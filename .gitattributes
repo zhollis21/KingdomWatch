@@ -1,0 +1,70 @@
+# === Text normalization ===
+# Enforce CRLF for file types that .editorconfig targets.
+# Other text files (e.g. shell scripts) are left at the platform default.
+* text=auto
+
+*.cs text eol=crlf
+*.json text eol=crlf
+*.md text eol=crlf
+*.editorconfig text eol=crlf
+*.yml text eol=crlf
+*.yaml text eol=crlf
+*.gitattributes text eol=crlf
+
+# .NET project files (Core/, Core.Tests/, Harness/, once they exist)
+*.csproj text eol=crlf
+*.props text eol=crlf
+*.targets text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+
+# === Unity text-based (YAML-serialized) assets ===
+# Force Text serialization is set in Game/ProjectSettings/EditorSettings.asset,
+# so these are YAML, not binary — treat them as text/mergeable. LF (not CRLF)
+# matches the convention most Unity/git tooling and other contributors expect.
+*.unity text eol=lf
+*.asset text eol=lf
+*.prefab text eol=lf
+*.mat text eol=lf
+*.meta text eol=lf
+*.anim text eol=lf
+*.controller text eol=lf
+*.overrideController text eol=lf
+*.mask text eol=lf
+*.physicMaterial text eol=lf
+*.physicsMaterial2D text eol=lf
+*.asmdef text eol=lf
+*.asmref text eol=lf
+*.shader text eol=lf
+*.shadergraph text eol=lf
+*.compute text eol=lf
+*.cginc text eol=lf
+*.hlsl text eol=lf
+*.inputactions text eol=lf
+
+# === Binary assets ===
+# No Git LFS yet (revisit once real art/audio starts landing past the M0
+# prototype) — these rules just stop Git from corrupting binaries via eol
+# normalization or generating noisy diffs on them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.psd binary
+*.tga binary
+*.tif binary
+*.tiff binary
+*.exr binary
+*.hdr binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.fbx binary
+*.obj binary -diff
+*.blend binary
+*.ttf binary
+*.otf binary
+*.dll binary
+*.exe binary
+*.apk binary
+*.aab binary
