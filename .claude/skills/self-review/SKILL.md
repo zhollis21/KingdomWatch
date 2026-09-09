@@ -10,7 +10,7 @@ If issues are found: fix them, then re-run this review from the top. Do not pres
 
 Review all code written in this session against the checklist below. Fix every issue found before presenting. Do not surface the list of bugs found — present only the clean summary.
 
-**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet (an M0 throwaway prototype in `Game/`, `Core`/`Core.Tests`/`Harness` not yet scaffolded). Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
+**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet — an M0 throwaway prototype in `Game/`, and `Core`/`Core.Tests`/`Harness` scaffolded but effectively empty until M1 lands. Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
 
 ## Checklist
 

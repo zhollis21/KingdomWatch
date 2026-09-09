@@ -10,13 +10,25 @@
 
 ```
 Game/              Unity project (6.6 -> 6.7 LTS). The only Unity-dependent piece.
-Core/              (not yet scaffolded) netstandard2.1, zero Unity dependencies
-Core.Tests/        (not yet scaffolded) net10.0, references Core
-Harness/           (not yet scaffolded) net10.0, references Core
+Core/              netstandard2.1, zero Unity dependencies, single-target
+Core.Tests/        net10.0, NUnit, references Core
+Harness/           net10.0 console, references Core
 docs/design/       full design and technical plan
 ```
 
 See `docs/design/kingdom-watch-plan-v7.1.md` §5 for the architectural reasoning behind the split — Core must stay buildable and testable with zero Unity dependency, which is central to the determinism/debugging strategy.
+
+### Building
+
+```powershell
+dotnet build KingdomWatch.sln
+dotnet test KingdomWatch.sln
+dotnet run --project Harness
+```
+
+The SDK is pinned in `global.json`. Shared compiler settings live in the root `Directory.Build.props`; `Game/Directory.Build.props` is intentionally empty and stops those settings reaching the `.csproj` files Unity regenerates on import — don't delete it.
+
+Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
 
 ## Working with AI Agents
 

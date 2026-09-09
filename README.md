@@ -18,7 +18,7 @@ M0 prototyping. Orthographic 3D with sprite villagers has been selected after de
 
 Open `Game/` with Unity **6000.6.0f1**, open `Assets/Prototypes/Orthographic3D.unity`, and press Play. The town generates at runtime. See [prototype controls and Android setup](docs/town-prototype.md).
 
-Repository layout: `Game/` contains Unity; future standalone C# projects will live in `Core/`, `Core.Tests/`, and `Harness/`.
+Repository layout: `Game/` contains Unity. The standalone C# projects are `Core/` (the simulation), `Core.Tests/`, and `Harness/` (headless console runner) — build them with `dotnet build KingdomWatch.sln`, no Unity required.
 
 ## Stack
 
