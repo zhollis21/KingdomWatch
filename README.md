@@ -12,7 +12,13 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 
 ## Status
 
-Pre-production. Design is locked through v7.1; implementation has not started. See [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) for current progress against M0–M8.
+M0 prototyping. Orthographic 3D with sprite villagers has been selected after desktop and Android trials. The playable town prototype includes camera orbit/tilt, touch selection, moving sunlight, and an elevated bridge. Core simulation implementation has not started, and sustained performance budgets remain open. See [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) for M0–M8.
+
+## Run the prototype
+
+Open `Game/` with Unity **6000.6.0f1**, open `Assets/Prototypes/Orthographic3D.unity`, and press Play. The town generates at runtime. See [prototype controls and Android setup](docs/town-prototype.md).
+
+Repository layout: `Game/` contains Unity; future standalone C# projects will live in `Core/`, `Core.Tests/`, and `Harness/`.
 
 ## Stack
 
