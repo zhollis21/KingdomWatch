@@ -1,1 +1,25 @@
-# KingdomWatch
+# Kingdom Watch
+
+A grounded low-fantasy god sim. Six wandering bands — three per race — arrive in an empty land. Over centuries they settle, farm, build, learn trades, form households, split into rival polities, feud, trade, march, starve, and remember. Around 1,650 individuals at equilibrium, every one of them a real person with a name, traits, skills, relationships, grudges, and ambitions.
+
+There is no magic in the world except you. The people know it — they build shrines, ordain priests, and argue over what your interventions meant.
+
+The player watches from any altitude and unlocks powers as the world reaches milestones.
+
+> If something happens in the simulation, the player should be able to zoom in and see why.
+
+With powers-only agency, this is a mechanical necessity, not an aspiration: observation is the player's only diagnostic.
+
+## Status
+
+Pre-production. Design is locked through v7.1; implementation has not started. See [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) for current progress against M0–M8.
+
+## Stack
+
+- **Engine:** Unity 6.6 → 6.7 LTS, C#
+- **Core:** `netstandard2.1`, zero Unity dependencies, deterministic
+- **Platform:** Android first, desktop an acceptable fallback
+
+## Design doc
+
+The full design and technical plan lives at [docs/design/kingdom-watch-plan-v7.1.md](docs/design/kingdom-watch-plan-v7.1.md) — locked decisions, entity model, simulation architecture, milestones, and open questions.
