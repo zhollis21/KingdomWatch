@@ -22,7 +22,9 @@ Android Build Support, SDK/NDK, and OpenJDK are required in Unity Hub. Connect a
 
 The shared Android profile enables Development Build and Autoconnect Profiler. Deep Profiling is off. Keep the app running and select the Android player in the Profiler target dropdown. Device selection is local setup; no phone serial is committed. Raw captures belong in `Game/ProfilerCaptures/` (also ignored); keep written findings in `docs/`.
 
-Initial phone captures were collected before the flat-view removal. Those captures overlap and do not establish a 2D-versus-3D performance difference. The app currently retains Unity's default mobile frame-rate target; a controlled 60 FPS baseline and sustained thermal test are still required before closing the performance portion of M0.
+A ~17-minute on-device sustained capture (Pixel 10 Pro XL, `KingdomWatch_2026-09-09_14-46-30`, 17,443 frames) establishes a baseline for the current content (16 houses, 80 villagers, roads, trees, bridge): main thread median 9.42ms (~106 FPS), p95 12.07ms, p99 16.41ms, max 73.81ms (one spike); only 0.85% of sampled frames missed the 60 FPS threshold and 0.1% missed 30 FPS. Render thread stayed under 4.5ms throughout. See #3 for the full numbers.
+
+Not yet captured: a render-ceiling ramp test (N animated sprites until below 60 FPS) and an allocation/GC baseline. Both matter more once M2's stress-test content (~10k trees, ~500 buildings, 200 stepped agents) exists than they do against this scene, so they're deferred rather than blocking M0.
 
 ## Rendering and limitations
 

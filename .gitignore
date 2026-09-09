@@ -108,3 +108,20 @@ Game/[Aa]ssets/[Ss]ceneDependencyCache*
 # === .NET projects (Core/, Core.Tests/, Harness/) ===
 **/[Bb]in/
 **/[Oo]bj/
+
+# === Claude Code / Codex CLI local files ===
+.claude/**/*.local*
+# Codex CLI auto-syncs its own local skill cache from .claude/skills here;
+# don't commit it — .claude/skills is the single source of truth.
+.agents/skills
+.codex/
+
+# tools/ holds a few scripts that are actually part of the repo, plus
+# generated/local output (pr-comments.md). Ignore the directory's contents,
+# then allow-list the real scripts. (Must be `tools/*`, not `tools/` — a
+# directory-matching ignore can't be un-ignored file by file afterward.)
+tools/*
+!tools/Get-OpenPrComments.ps1
+
+# Editor/IDE settings are per-contributor, not a repo convention here.
+.vscode/
