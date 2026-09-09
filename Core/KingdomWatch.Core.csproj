@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The simulation. Zero Unity dependencies, zero package references, and
+    deliberately SINGLE-targeted.
+
+    netstandard2.1 rather than net10.0 because Unity 6.x consumes managed
+    plug-ins built for .NET Standard 2.1 or .NET Framework 4.8 only - assemblies
+    compiled for .NET Core, any version, are not supported.
+
+    Do NOT change this to <TargetFrameworks>netstandard2.1;net10.0</TargetFrameworks>.
+    The debugging strategy depends on the harness and the Unity build reaching
+    bit-identical state from the same seed; two compilation targets is two
+    chances to diverge. See docs/design/kingdom-watch-plan-v7.1.md section 5.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>KingdomWatch.Core</AssemblyName>
+    <RootNamespace>KingdomWatch.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

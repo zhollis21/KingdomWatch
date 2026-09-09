@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KingdomWatch.Harness</AssemblyName>
+    <RootNamespace>KingdomWatch.Harness</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\KingdomWatch.Core.csproj" />
+  </ItemGroup>
+
+</Project>

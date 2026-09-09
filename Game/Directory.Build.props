@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Intentionally empty, and load-bearing.
+
+    Unity regenerates Game/*.csproj on every asset import (they are gitignored -
+    see .gitignore). MSBuild walks up the directory tree from each project it
+    evaluates, so without this file those generated projects would inherit the
+    repo-root Directory.Build.props and pick up settings - TreatWarningsAsErrors
+    above all - that nobody can fix in-repo, because the files are regenerated.
+
+    This stops the walk. Do not delete. See issue #50.
+  -->
+
+</Project>

@@ -1,0 +1,40 @@
+name: CI
+
+# Covers the standalone .NET projects only. The Unity project in Game/ is not
+# built here - it needs a licensed Unity installation, and M1 is deliberately
+# Unity-free.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore KingdomWatch.sln
+
+      - name: Build
+        run: dotnet build KingdomWatch.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test KingdomWatch.sln --configuration Release --no-build
