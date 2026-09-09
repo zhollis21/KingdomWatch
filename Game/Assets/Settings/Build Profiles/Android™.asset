@@ -18,13 +18,10 @@ MonoBehaviour:
   m_PlatformId: b9b35072a6f44c2e863f17467ea3dc13
   m_PlatformBuildProfile:
     rid: 3216738035480395841
-  m_ActivePlatformGuid:
+  m_ActivePlatformGuid: 
   m_AdditionalPlatformBuildSettings: []
-  m_OverrideGlobalSceneList: 1
-  m_Scenes:
-  - enabled: 1
-    path: Assets/Prototypes/Orthographic3D.unity
-    guid: d32dc11496e146f9acb9ae39af7d732f
+  m_OverrideGlobalSceneList: 0
+  m_Scenes: []
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:
@@ -56,10 +53,10 @@ MonoBehaviour:
         m_ExportAsGoogleAndroidProject: 0
         m_DebugSymbolLevel: 1
         m_DebugSymbolFormat: 5
-        m_CurrentDeploymentTargetId:
+        m_CurrentDeploymentTargetId: __builtin__target_default
         m_BuildType: 1
         m_LinkTimeOptimization: 0
         m_BuildAppBundle: 0
         m_ProfileableShell: 0
-        m_IPAddressToConnect:
+        m_IPAddressToConnect: 
         m_SymlinkSources: 0
