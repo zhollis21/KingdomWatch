@@ -30,7 +30,7 @@ $lines = [System.Collections.Generic.List[string]]::new()
 # ---------------------------------------------------------------------------
 # Fetch all open PRs
 # ---------------------------------------------------------------------------
-$openPRs = gh pr list --repo $REPO --state open --json 'number,title' | ConvertFrom-Json
+$openPRs = gh pr list --repo $REPO --state open --limit 200 --json 'number,title' | ConvertFrom-Json
 
 if (-not $openPRs.Count) {
     Write-Host "No open pull requests found."
@@ -97,7 +97,7 @@ foreach ($prItem in $openPRs) {
     $lines.Add("")
 
     # ---- Review Summaries ----
-    $reviews = gh api "repos/$REPO/pulls/$PRNum/reviews" | ConvertFrom-Json
+    $reviews = gh api "repos/$REPO/pulls/$PRNum/reviews" --paginate | ConvertFrom-Json
     $reviewLines = [System.Collections.Generic.List[string]]::new()
     foreach ($r in $reviews) {
         $body = $r.body.Trim()
@@ -129,7 +129,7 @@ foreach ($prItem in $openPRs) {
     }
 
     # ---- Inline Code Comments ----
-    $allComments = gh api "repos/$REPO/pulls/$PRNum/comments" | ConvertFrom-Json
+    $allComments = gh api "repos/$REPO/pulls/$PRNum/comments" --paginate | ConvertFrom-Json
     $topLevel = $allComments | Where-Object { -not $_.in_reply_to_id }
     $replies = $allComments | Where-Object { $_.in_reply_to_id }
 
@@ -184,11 +184,21 @@ foreach ($prItem in $openPRs) {
     }
 
     # ---- General PR Comments ----
-    $issueComments = gh api "repos/$REPO/issues/$PRNum/comments" | ConvertFrom-Json
+    $issueComments = gh api "repos/$REPO/issues/$PRNum/comments" --paginate | ConvertFrom-Json
     $generalLines = [System.Collections.Generic.List[string]]::new()
     foreach ($c in $issueComments) {
         $body = $c.body.Trim()
-        if (-not $body -or $body -match '<details>|<summary>|<a href') { continue }
+        if (-not $body) { continue }
+
+        # Unwrap <details> rather than skipping bodies that contain it — same
+        # reasoning as Review Summaries above. A body-wide skip throws away
+        # legitimate comments containing a plain link (`<a href`) or a
+        # collapsed section, not just bot-generated ones.
+        $body = $body -replace '(?s)<summary>\s*(.*?)\s*</summary>', "**`$1**`n"
+        $body = $body -replace '</?details[^>]*>', ''
+        $body = ($body -replace '(?m)^\s*$\n{2,}', "`n").Trim()
+        if (-not $body) { continue }
+
         $dt = ([datetime]$c.created_at).ToLocalTime().ToString("yyyy-MM-dd h:mm tt")
         $generalLines.Add("#### $($c.user.login) — $dt")
         $generalLines.Add($body)
