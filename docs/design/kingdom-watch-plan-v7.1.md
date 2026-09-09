@@ -1,5 +1,7 @@
 # Kingdom Watch — Design & Technical Plan (v7.1)
 
+> **M0 decision, September 9, 2026:** Orthographic 3D with sprite villagers is selected following desktop and Android prototype trials. The flat 2D comparison has been retired. Current implementation and limitations are documented in [the town prototype guide](../town-prototype.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
+
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
 
 ---
