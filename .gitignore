@@ -122,3 +122,6 @@ Game/[Aa]ssets/[Ss]ceneDependencyCache*
 # directory-matching ignore can't be un-ignored file by file afterward.)
 tools/*
 !tools/Get-OpenPrComments.ps1
+
+# Editor/IDE settings are per-contributor, not a repo convention here.
+.vscode/
