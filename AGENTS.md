@@ -39,7 +39,7 @@ Test coverage, when you want to see what is untested:
 dotnet test --collect:"XPlat Code Coverage" --filter "FullyQualifiedName!~CoreAssemblyContractTests"
 ```
 
-The filter is load-bearing. `coverlet` instruments `KingdomWatch.Core.dll` to insert hit tracking, and the rewritten assembly picks up `System.Runtime` and `System.Threading` references — so the zero-dependency contract test fails under coverage, correctly, because the instrumented assembly is not the one that ships. CI runs the full suite uninstrumented, so nothing is skipped there. Output lands in `TestResults/` (git-ignored).
+The filter is load-bearing. `coverlet` instruments `KingdomWatch.Core.dll` to insert hit tracking, and the rewritten assembly picks up `System.Runtime` and `System.Threading` references — so the zero-dependency contract test fails under coverage, correctly, because the instrumented assembly is not the one that ships. CI runs the full suite uninstrumented, so nothing is skipped there. Output lands in `Core.Tests/TestResults/` (git-ignored).
 
 There is no coverage target and no gate. Coverage is a tool for finding untested branches, not a number to hit.
 
@@ -50,6 +50,10 @@ There is no coverage target and no gate. Coverage is a tool for finding untested
 Concretely: two explicit fields beat bit-packing into one; a plain class beats a hand-rolled store; a straightforward algorithm beats a clever one. When a real constraint does force something awkward, say in a comment what the constraint was, so the next person can tell whether it still applies.
 
 Determinism (design doc §5) is the standing exception. It is a correctness requirement rather than an optimization, so it outranks convenience — integer-only arithmetic in branching code is not premature cleverness, it is the rule.
+
+**When fixing a bug or closing a hole, write the failing test first.** Watch it go red, then make it green. A test written after the fix proves only that the code does what it does — it can pass for the wrong reason, or assert something the bug never violated. A test that has actually been seen to fail is the only kind that will catch the bug coming back.
+
+If the fix gets written first anyway, the cheap recovery is to revert it, confirm the test goes red, and restore. That is worth the two minutes.
 
 ## Working with AI Agents
 

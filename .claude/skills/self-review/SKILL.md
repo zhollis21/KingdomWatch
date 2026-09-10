@@ -42,7 +42,7 @@ Review all code written in this session against the checklist below. Fix every i
 **Tests**
 
 - New behavior has new tests; changed behavior has updated tests
-- Bug fixes include a regression test that fails without the fix
+- Bug fixes include a regression test **written first and seen to fail** — if the fix landed first, revert it, confirm red, restore (`AGENTS.md`, Engineering principles)
 - Tests cover failure paths, not just the happy path
 - Anything in `Core`/`Harness` should be tested there — off-device, no Unity Editor required. Anything that can only be tested from inside the Unity Editor or on-device is a real cost; ask whether the logic actually needs to live there.
 

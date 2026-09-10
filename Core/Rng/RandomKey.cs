@@ -24,11 +24,29 @@ namespace KingdomWatch.Core.Rng
     /// which change when storage is compacted or a slot is recycled - keying a
     /// draw on one would make the result depend on storage layout rather than
     /// on identity. Key on the durable id instead.
+    ///
+    /// Durable ids follow one rule: mix a type tag, then mix the id's parts.
+    /// Without the tag an id would be indistinguishable from the plain numbers
+    /// it is built from - Event#7 would key exactly what the bare number 7
+    /// keys, and Person#42 what the pair (1, 42) keys, since EntityKind.Person
+    /// is 1. Small integers are precisely what counters and indices look like,
+    /// so that collision was reachable by accident.
+    ///
+    /// Such a collision is the quiet kind. The world stays perfectly
+    /// reproducible, no test fails, and the cross-platform hash still agrees;
+    /// it surfaces much later as two things that should be independent moving
+    /// in lockstep. Domain granularity is the other half of the protection -
+    /// see the remarks on RandomDomain.
     /// </remarks>
     public readonly struct RandomKey
     {
-        // "EventId" in ASCII. Changing it changes every event-keyed draw in
-        // every world, so it is as fixed as the mixer itself.
+        // Type tags, mixed ahead of a durable id's parts so that an id can
+        // never key the same draw as the plain numbers it is built from.
+        // "EntityId" and "EventId" in ASCII - deliberately large and arbitrary,
+        // because a caller folding in counters and indices will never produce
+        // one by accident. Changing either changes every draw keyed on that
+        // type in every world, so they are as fixed as the mixer itself.
+        private const ulong EntityDiscriminator = 0x456E746974794964UL;
         private const ulong EventDiscriminator = 0x4576656E74496400UL;
 
         private readonly ulong _state;
@@ -48,18 +66,15 @@ namespace KingdomWatch.Core.Rng
         public RandomKey Mix(int value) => Mix((long)value);
 
         /// <summary>
-        /// Folds a durable entity id into the key. Kind and value are mixed
-        /// separately so Person#1 and Settlement#1 key different draws.
+        /// Folds a durable entity id into the key: its type tag, then its kind,
+        /// then its value. Kind is mixed separately from value so Person#1 and
+        /// Settlement#1 key different draws.
         /// </summary>
-        public RandomKey Mix(EntityId id) => Mix((ulong)id.Kind).Mix(id.Value);
+        public RandomKey Mix(EntityId id) =>
+            Mix(EntityDiscriminator).Mix((ulong)id.Kind).Mix(id.Value);
 
         /// <summary>
-        /// Folds a durable event id into the key. A discriminator is mixed
-        /// ahead of the value so that Event#7 does not key the same draw as the
-        /// bare number 7, matching how <see cref="Mix(EntityId)"/> mixes a kind
-        /// ahead of its value. The constant is deliberately large and arbitrary
-        /// - "EventId" in ASCII - because a caller passing counters and indices
-        /// will never produce it by accident.
+        /// Folds a durable event id into the key: its type tag, then its value.
         /// </summary>
         public RandomKey Mix(EventId id) => Mix(EventDiscriminator).Mix(id.Value);
 

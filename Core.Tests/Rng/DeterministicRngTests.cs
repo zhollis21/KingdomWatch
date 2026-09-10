@@ -148,6 +148,23 @@ namespace KingdomWatch.Core.Tests.Rng
         }
 
         [Test]
+        public void An_entity_id_does_not_key_the_same_draw_as_its_parts()
+        {
+            // EntityKind.Person is 1, so without a type tag Person#42 would key
+            // exactly what the pair (1, 42) keys - and small integers are what
+            // counters and indices look like, so a call site could reach that
+            // collision without trying.
+            var rng = NewRng();
+
+            var viaEntity = rng.Key(RandomDomain.Social)
+                .Mix(new EntityId(EntityKind.Person, 42UL)).Mix(3).NextUInt64();
+            var viaParts = rng.Key(RandomDomain.Social)
+                .Mix(1UL).Mix(42UL).Mix(3).NextUInt64();
+
+            Assert.That(viaEntity, Is.Not.EqualTo(viaParts));
+        }
+
+        [Test]
         public void An_event_id_does_not_key_the_same_draw_as_an_entity_id()
         {
             var rng = NewRng();
@@ -372,12 +389,12 @@ namespace KingdomWatch.Core.Tests.Rng
             Assert.That(
                 string.Join("|", lines),
                 Is.EqualTo(
-                    "combat=15090781993901883543"
-                    + "|conception=12562992479150466351"
-                    + "|social=15365053140993468727"
+                    "combat=13514175954488880116"
+                    + "|conception=12047574463750113385"
+                    + "|social=16099087809957385506"
                     + "|event=5573920518276458559"
-                    + "|below100=46"
-                    + "|range=646"));
+                    + "|below100=67"
+                    + "|range=467"));
         }
 
         private static string Line(string name, ulong value) =>
