@@ -53,6 +53,26 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void The_None_kind_and_value_zero_only_ever_occur_together()
+        {
+            // Neither half is a usable id on its own. EntityKind.None means
+            // "no entity", so it cannot carry a value; and IdAllocator counts
+            // from 1, so value 0 can never name a real entity of a real kind.
+            // Both states would otherwise be storable in history and saves.
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => new EntityId(EntityKind.None, 5UL),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => new EntityId(EntityKind.Person, 0UL),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => new EntityId(EntityKind.None, 0UL), Throws.Nothing);
+                Assert.That(default(EntityId).IsNone, Is.True);
+            });
+        }
+
+        [Test]
         public void Ordering_is_by_kind_then_value()
         {
             var ids = new List<EntityId>
@@ -80,10 +100,17 @@ namespace KingdomWatch.Core.Tests.Data
             // The scheduler breaks ties on entity id, so a partial order would
             // leave event order depending on collection iteration - which
             // section 4 calls out as the way determinism silently dies.
-            var ids = new List<EntityId>();
+            // None is included as a value, not as a kind carrying values -
+            // EntityKind.None only ever pairs with 0.
+            var ids = new List<EntityId> { EntityId.None };
 
             foreach (EntityKind kind in Enum.GetValues(typeof(EntityKind)))
             {
+                if (kind == EntityKind.None)
+                {
+                    continue;
+                }
+
                 for (var value = 1UL; value <= 3UL; value++)
                 {
                     ids.Add(new EntityId(kind, value));

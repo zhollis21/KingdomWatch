@@ -24,8 +24,29 @@ namespace KingdomWatch.Core.Data
         /// <summary>The absence of an entity. Equal to <c>default</c>.</summary>
         public static readonly EntityId None = default;
 
+        /// <summary>
+        /// Builds a durable id. The <see cref="EntityKind.None"/> kind and the
+        /// value 0 only ever occur together: neither is a usable id on its own,
+        /// and both would otherwise be storable in history and saves.
+        /// </summary>
         public EntityId(EntityKind kind, ulong value)
         {
+            if (kind == EntityKind.None && value != 0UL)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    "EntityKind.None means no entity, so it cannot carry a value.");
+            }
+
+            if (kind != EntityKind.None && value == 0UL)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    "Durable ids count from 1, so 0 never names a real " + kind + ".");
+            }
+
             Kind = kind;
             Value = value;
         }

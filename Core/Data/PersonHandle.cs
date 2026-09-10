@@ -16,7 +16,9 @@ namespace KingdomWatch.Core.Data
     /// history-corruption bug that the two types exist to prevent. See
     /// docs/design/kingdom-watch-plan-v7.1.md section 5.
     ///
-    /// Generation 0 is reserved for <see cref="None"/>; a live slot starts at
+    /// Generation 0 is reserved for <see cref="None"/> and the constructor
+    /// enforces it, so a handle can never report <see cref="IsNone"/> while
+    /// comparing unequal to <see cref="None"/>. A live slot starts at
     /// generation 1. Slot allocation itself belongs to PersonStore (issue #6),
     /// not here.
     /// </remarks>
@@ -33,10 +35,13 @@ namespace KingdomWatch.Core.Data
                     nameof(index), index, "Storage index cannot be negative.");
             }
 
-            if (generation < 0)
+            if (generation < 1)
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(generation), generation, "Generation cannot be negative.");
+                    nameof(generation),
+                    generation,
+                    "Generation 0 is reserved for PersonHandle.None; a live slot starts at 1. "
+                    + "Use PersonHandle.None or default rather than building one.");
             }
 
             Index = index;

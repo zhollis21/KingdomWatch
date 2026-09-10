@@ -67,6 +67,25 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void Generation_zero_cannot_be_constructed()
+        {
+            // Generation 0 belongs to None alone. Letting it through the
+            // constructor produced handles where IsNone was true, ToString
+            // printed "None", and equality with PersonHandle.None was false -
+            // three answers to one question. None is reached through the field
+            // or through default, never by building one.
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => new PersonHandle(5, 0), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => new PersonHandle(0, 0), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(default(PersonHandle), Is.EqualTo(PersonHandle.None));
+                Assert.That(PersonHandle.None.IsNone, Is.True);
+            });
+        }
+
+        [Test]
         public void Equality_operators_match_typed_equality()
         {
             var handle = new PersonHandle(4, 1);
