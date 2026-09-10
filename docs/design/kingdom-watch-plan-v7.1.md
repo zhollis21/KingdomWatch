@@ -398,16 +398,17 @@ The same split applies to households, settlements, polities, dynasties, and name
 ```csharp
 public struct PersonRecord
 {
-    public PersonHandle Handle;
-    public EntityId     Id;
-    public int          PositionX, PositionY;
-    public JobId        Job;
-    public short        Health;
-    public HouseholdHandle Household;
-    public byte         AgeStage, BirthCulture, Assimilation;
+    public PersonHandle  Handle;
+    public EntityId      Id;      // None marks an unoccupied slot
+    public WorldPosition Position;
+    public short         Health;
+    public byte          AgeStage, BirthCulture, Assimilation;
     // skills indexed separately: [personIndex * skillCount + skillId]
+    // Job (JobId) and Household (HouseholdHandle) are deferred — see below
 }
 ```
+
+`Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints, and the `Job`/`Household` fields are deliberately absent as of #6. Neither `JobId` nor `HouseholdHandle` exists yet, and neither shape is settled — #52 describes recipes as data rather than code, which may make a job reference a data-table lookup rather than a handle at all. Guessing either one now means dependent code gets written against it before #52 and #9 make their own design decision. Adding them later is a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`.
 
 **Dense records now; split measured hot fields into parallel arrays only if M2 says so.**
 
@@ -426,17 +427,26 @@ public sealed class PersonStore
 {
     private PersonRecord[] _people;      // layout is private
 
+    public PersonHandle Add(EntityId id, WorldPosition position, short health,
+                            byte ageStage, byte birthCulture, byte assimilation);
+    public void Remove(PersonHandle h);  // frees the slot for reuse
+    public bool IsAlive(PersonHandle h); // the non-throwing question
+
     public short GetHealth(PersonHandle h) => _people[h.Index].Health;
     public void  SetHealth(PersonHandle h, short v) => _people[h.Index].Health = v;
 
-    public Span<PersonRecord> AliveSpan();          // bulk path
+    public Span<PersonRecord> RecordSpan();         // bulk path
     public IEnumerable<PersonHandle> Alive();       // scattered path
 }
 ```
 
-Runtime cost is effectively zero — small accessors on a sealed class are inlined by the JIT. **Use accessors for scattered single-entity access and spans for bulk loops**, so tight iteration keeps its vectorization.
+Runtime cost is effectively zero — small accessors on a sealed class are inlined by the JIT. **Use accessors for scattered single-entity access and spans for bulk loops**, so tight iteration keeps its vectorization. Accessors validate the handle and throw on a stale one, so a handle held across a removal fails where the bug is rather than silently reading a stranger.
 
-Allocation-free in the tick loop either way.
+`PersonStore` also owns slot allocation, which is what makes `PersonHandle.Generation` mean anything. **Removal tombstones a slot in place rather than compacting the array.** Swapping the last record into the freed slot would be denser, but it moves a live person to a different index while other code still holds handles pointing at the old one — and those handles would still carry a matching generation, so they resolve silently to the wrong person. That is the exact corruption the handle/id split exists to prevent, so density loses. A freed slot keeps the generation it reached and hands the next occupant that plus one; clearing it would send the next occupant back to generation 1 and make a handle from the *first* occupant match the second.
+
+The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is an M2 question if profiling raises it, not a guess to make now.
+
+The bulk path is allocation-free. The scattered path is not quite: `Alive()` allocates one iterator per enumeration, so it is not the tick-loop path. #59 tracks the broader zero-allocation claim, which nothing measures yet.
 
 **Correction on the Burst path.** `NativeArray`, Unity Jobs, and Burst are Unity dependencies, so they cannot be introduced into `KingdomWatch.Core` without breaking the zero-dependency rule that the harness, tests, and determinism strategy all rest on. If profiling ever demands them, the seam is a separate `KingdomWatch.UnityOptimization` backend — not an in-place change to Core.
 
