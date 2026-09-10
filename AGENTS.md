@@ -31,6 +31,16 @@ The SDK is pinned in `global.json`. Shared compiler settings live in the root `D
 
 Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
 
+Test coverage, when you want to see what is untested:
+
+```powershell
+dotnet test --collect:"XPlat Code Coverage" --filter "FullyQualifiedName!~CoreAssemblyContractTests"
+```
+
+The filter is load-bearing. `coverlet` instruments `KingdomWatch.Core.dll` to insert hit tracking, and the rewritten assembly picks up `System.Runtime` and `System.Threading` references — so the zero-dependency contract test fails under coverage, correctly, because the instrumented assembly is not the one that ships. CI runs the full suite uninstrumented, so nothing is skipped there. Output lands in `TestResults/` (git-ignored).
+
+There is no coverage target and no gate. Coverage is a tool for finding untested branches, not a number to hit.
+
 ## Engineering principles
 
 **Write the cleanest, most understandable, maintainable, and testable version by default.** Reach for a more complicated or lower-level implementation only when there is a *specific, identified* need — a measured performance problem, a platform constraint — never a suspected future one.
