@@ -102,15 +102,9 @@ namespace KingdomWatch.Core.Data
                     nameof(id));
             }
 
-            var slot = TakeSlot();
+            var handle = ClaimSlot();
 
-            // A fresh slot's record is default, so its handle generation is 0
-            // and the first occupant gets 1. A recycled slot kept the
-            // generation its last occupant had, so the next one gets that plus
-            // one and every handle from before the removal is detectably stale.
-            var handle = new PersonHandle(slot, _people[slot].Handle.Generation + 1);
-
-            _people[slot] = new PersonRecord
+            _people[handle.Index] = new PersonRecord
             {
                 Handle = handle,
                 Id = id,
@@ -234,15 +228,35 @@ namespace KingdomWatch.Core.Data
             }
         }
 
-        private int TakeSlot()
+        /// <summary>
+        /// Picks the slot the next person will occupy and the handle that will
+        /// address them, then commits that choice.
+        /// </summary>
+        /// <remarks>
+        /// The handle is built before any bookkeeping moves, and deliberately
+        /// so. It is the only thing in an <see cref="Add"/> that can be
+        /// rejected, and taking the slot first would leave a refused handle
+        /// having already consumed one - dropped from the free list, occupied
+        /// by nobody, and unreachable from then on. Ordering it this way makes
+        /// a half-applied Add impossible rather than merely unlikely, and
+        /// keeps that true for whatever gets added here later.
+        /// </remarks>
+        private PersonHandle ClaimSlot()
         {
             var reusable = _freeSlots.Count - 1;
 
             if (reusable >= 0)
             {
                 var recycled = _freeSlots[reusable];
+
+                // A recycled slot kept the generation its last occupant had,
+                // so the next one gets that plus one and every handle from
+                // before the removal is detectably stale.
+                var reused = new PersonHandle(
+                    recycled, _people[recycled].Handle.Generation + 1);
+
                 _freeSlots.RemoveAt(reusable);
-                return recycled;
+                return reused;
             }
 
             if (_slotCount == _people.Length)
@@ -255,7 +269,10 @@ namespace KingdomWatch.Core.Data
                     ref _people, _people.Length == 0 ? InitialCapacity : _people.Length * 2);
             }
 
-            return _slotCount++;
+            // A slot nobody has used starts its first occupant at generation 1.
+            var fresh = new PersonHandle(_slotCount, 1);
+            _slotCount++;
+            return fresh;
         }
 
         private int SlotFor(PersonHandle handle)
