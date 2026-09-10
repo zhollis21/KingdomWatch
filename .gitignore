@@ -108,6 +108,8 @@ Game/[Aa]ssets/[Ss]ceneDependencyCache*
 # === .NET projects (Core/, Core.Tests/, Harness/) ===
 **/[Bb]in/
 **/[Oo]bj/
+# Coverage runs write here; see AGENTS.md for the command.
+[Tt]est[Rr]esults/
 
 # === Claude Code / Codex CLI local files ===
 .claude/**/*.local*

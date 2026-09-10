@@ -10,7 +10,7 @@ If issues are found: fix them, then re-run this review from the top. Do not pres
 
 Review all code written in this session against the checklist below. Fix every issue found before presenting. Do not surface the list of bugs found — present only the clean summary.
 
-**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet — an M0 throwaway prototype in `Game/`, and `Core`/`Core.Tests`/`Harness` scaffolded but effectively empty until M1 lands. Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
+**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet — an M0 throwaway prototype in `Game/`, and `Core` holding only the entity identity types and the keyed RNG so far. Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
 
 ## Checklist
 
@@ -19,6 +19,7 @@ Review all code written in this session against the checklist below. Fix every i
 - Fixed timestep; simulation time never derived from `Time.deltaTime` or wall-clock
 - Own seeded PRNG only — never `UnityEngine.Random` inside `Core`
 - Randomness keyed to stable event/decision identity, not drawn from a mutable per-subsystem stream, wherever execution paths can differ by LOD (see §5 "Randomness must be keyed, not streamed")
+- Each decision type has its own `RandomDomain` value rather than reusing a broad one — draws collide only within a domain, and a collision is silent (see `AGENTS.md`)
 - Stable iteration order — never iterate a `Dictionary`/`HashSet` and act on the order
 - No reentrant event handling with arbitrary subscriber order (§4)
 
@@ -41,8 +42,10 @@ Review all code written in this session against the checklist below. Fix every i
 **Tests**
 
 - New behavior has new tests; changed behavior has updated tests
-- Bug fixes include a regression test that fails without the fix
+- Bug fixes include a regression test **written first and seen to fail** — if the fix landed first, revert it, confirm red, restore (`AGENTS.md`, Engineering principles)
 - Tests cover failure paths, not just the happy path
+- Tests probe the input space, not just the happy path — for every public entry point, what a caller *can* pass rather than what the docs say they should. Enums accept any cast int; structs have a `default`; sentinels and boundaries need their own cases (`AGENTS.md`, Building)
+- Any public API taking an enum rejects undefined values (`EnumGuard`) — full coverage will not catch this, since the lines still run
 - Anything in `Core`/`Harness` should be tested there — off-device, no Unity Editor required. Anything that can only be tested from inside the Unity Editor or on-device is a real cost; ask whether the logic actually needs to live there.
 
 **Build & test health**
@@ -65,6 +68,7 @@ Review all code written in this session against the checklist below. Fix every i
 
 - New code matches surrounding style (naming, file organization, access modifiers, async patterns)
 - New abstractions follow existing patterns rather than introducing parallel ones
+- Simplest implementation that does the job — no bit-packing, caching, or hand-tuning without a specific identified need (`AGENTS.md`, Engineering principles)
 
 **TODOs**
 

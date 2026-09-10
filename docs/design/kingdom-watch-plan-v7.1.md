@@ -1,5 +1,7 @@
 # Kingdom Watch — Design & Technical Plan (v7.1)
 
+> **How to read this.** A living plan, not a specification. It records current best thinking and is expected to be revised as real code gets written and teaches us things. Treat its claims the way `/kickoff` treats an issue's — a well-informed hypothesis from someone who had context you may lack, worth taking seriously and not worth adopting unexamined. Where the code and this document disagree, that is a prompt to work out which one is wrong, not an automatic win for the document. §2's "Locked decisions" are the settled *game* questions, reopened deliberately rather than casually; everything else, including the code sketches below, is illustrative.
+
 > **M0 decision, September 9, 2026:** Orthographic 3D with sprite villagers is selected following desktop and Android prototype trials. The flat 2D comparison has been retired. Current implementation and limitations are documented in [the town prototype guide](../town-prototype.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
@@ -376,6 +378,7 @@ public readonly struct PersonHandle {
 
 // Durable identity — never changes, never reused, safe in history and saves.
 public readonly struct EntityId {
+    public readonly EntityKind Kind;
     public readonly ulong Value;
 }
 
@@ -389,6 +392,8 @@ public readonly struct EventId {
 `PersonHandle` is for the running simulation. `EntityId` is for history, genealogy, save data, and anything that outlives the entity. Without the split, a reused storage slot silently repoints an old history entry at a different person.
 
 The same split applies to households, settlements, polities, dynasties, and named animals or monsters.
+
+`EntityId` carries its `Kind` as an explicit field rather than packing a tag into the `ulong`. Two plain fields are easier to read, test and print (`Person#1234`) than masks and shifts, and they let the WorldValidator check that a durable reference points at the *right kind* of entity rather than merely resolving to something. The cost is 16 bytes instead of 8, which nothing currently measures as a problem — the whole population is ~105 KB. Revisit if M2 profiling disagrees.
 
 ```csharp
 public struct PersonRecord

@@ -28,4 +28,4 @@ Repository layout: `Game/` contains Unity. The standalone C# projects are `Core/
 
 ## Design doc
 
-The full design and technical plan lives at [docs/design/kingdom-watch-plan-v7.1.md](docs/design/kingdom-watch-plan-v7.1.md) — locked decisions, entity model, simulation architecture, milestones, and open questions.
+The full design and technical plan lives at [docs/design/kingdom-watch-plan-v7.1.md](docs/design/kingdom-watch-plan-v7.1.md) — current decisions, entity model, simulation architecture, milestones, and open questions. It is a living plan that gets revised as the code teaches us things, not a frozen specification.

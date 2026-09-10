@@ -1,22 +1,22 @@
 using System;
-using System.Reflection;
+using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Harness
 {
     /// <summary>
-    /// The headless entry point. Empty of simulation on purpose - the world,
-    /// clock and entity model arrive with the rest of M1. This exists so the
-    /// console seam is real from the first commit rather than being invented
-    /// under pressure once there is something to run.
+    /// The headless entry point. Empty of simulation on purpose - the world and
+    /// the clock arrive with the rest of M1. This exists so the console seam is
+    /// real from the first commit rather than being invented under pressure
+    /// once there is something to run.
     /// </summary>
     internal static class Program
     {
         private static int Main()
         {
-            // Core has no public types yet, so loading it by name is the only way
-            // to confirm the reference actually resolves at runtime. Replace this
-            // with real work as soon as there is a world to build.
-            var core = Assembly.Load(new AssemblyName("KingdomWatch.Core")).GetName();
+            // Referenced through a real Core type, so the seam is checked at
+            // compile time. Replace this with an actual run as soon as there is
+            // a world to build.
+            var core = typeof(EntityId).Assembly.GetName();
 
             Console.WriteLine("Kingdom Watch harness");
             Console.WriteLine($"  Core: {core.Name} {core.Version}");
