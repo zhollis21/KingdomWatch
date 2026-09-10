@@ -15,6 +15,24 @@ namespace KingdomWatch.Core.Tests.Data
     public sealed class EntityIdTests
     {
         [Test]
+        public void An_undefined_kind_is_rejected()
+        {
+            // An enum parameter looks like the type system pins it to the
+            // declared members, but an enum is an int with names and any int
+            // casts in. EntityId is persisted, so an unresolvable kind would
+            // reach history and saves.
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => new EntityId((EntityKind)999, 5UL),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => new EntityId((EntityKind)(-1), 5UL),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
         public void Same_kind_and_value_are_equal()
         {
             var left = new EntityId(EntityKind.Person, 1UL);

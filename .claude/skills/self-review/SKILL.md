@@ -44,6 +44,8 @@ Review all code written in this session against the checklist below. Fix every i
 - New behavior has new tests; changed behavior has updated tests
 - Bug fixes include a regression test **written first and seen to fail** — if the fix landed first, revert it, confirm red, restore (`AGENTS.md`, Engineering principles)
 - Tests cover failure paths, not just the happy path
+- Tests probe the input space, not just the happy path — for every public entry point, what a caller *can* pass rather than what the docs say they should. Enums accept any cast int; structs have a `default`; sentinels and boundaries need their own cases (`AGENTS.md`, Building)
+- Any public API taking an enum rejects undefined values (`EnumGuard`) — full coverage will not catch this, since the lines still run
 - Anything in `Core`/`Harness` should be tested there — off-device, no Unity Editor required. Anything that can only be tested from inside the Unity Editor or on-device is a real cost; ask whether the logic actually needs to live there.
 
 **Build & test health**

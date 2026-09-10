@@ -41,6 +41,9 @@ namespace KingdomWatch.Core.Data
         // tick loop, which section 5 forbids.
         private readonly ReadOnlyCollection<PersonHandle> _membersView;
 
+        private static readonly bool[] DefinedPurposes =
+            EnumGuard.BuildMask(typeof(MobileGroupPurpose));
+
         public MobileGroup(EntityId id, MobileGroupPurpose purpose, WorldPosition position)
         {
             if (id.Kind != EntityKind.MobileGroup)
@@ -48,6 +51,12 @@ namespace KingdomWatch.Core.Data
                 throw new ArgumentException(
                     "A MobileGroup needs an EntityId of kind MobileGroup, not " + id.Kind + ".",
                     nameof(id));
+            }
+
+            if (!EnumGuard.IsDefined(DefinedPurposes, (int)purpose))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(purpose), purpose, "Not a defined MobileGroupPurpose.");
             }
 
             if (purpose == MobileGroupPurpose.None)

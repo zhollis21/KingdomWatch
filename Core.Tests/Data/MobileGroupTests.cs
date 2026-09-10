@@ -137,6 +137,19 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void An_undefined_purpose_is_rejected()
+        {
+            // Purpose is persisted with the group, so an unrecognised value
+            // would reach saves and leave a group nothing knows how to run.
+            Assert.That(
+                () => new MobileGroup(
+                    new EntityId(EntityKind.MobileGroup, 1UL),
+                    (MobileGroupPurpose)999,
+                    default),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
         public void All_three_launch_purposes_are_constructible()
         {
             var purposes = new[]

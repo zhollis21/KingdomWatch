@@ -24,6 +24,8 @@ namespace KingdomWatch.Core.Data
         /// <summary>The absence of an entity. Equal to <c>default</c>.</summary>
         public static readonly EntityId None = default;
 
+        private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(EntityKind));
+
         /// <summary>
         /// Builds a durable id. The <see cref="EntityKind.None"/> kind and the
         /// value 0 only ever occur together: neither is a usable id on its own,
@@ -31,6 +33,12 @@ namespace KingdomWatch.Core.Data
         /// </summary>
         public EntityId(EntityKind kind, ulong value)
         {
+            if (!EnumGuard.IsDefined(DefinedKinds, (int)kind))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(kind), kind, "Not a defined EntityKind.");
+            }
+
             if (kind == EntityKind.None && value != 0UL)
             {
                 throw new ArgumentOutOfRangeException(

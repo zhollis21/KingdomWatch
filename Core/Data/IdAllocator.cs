@@ -23,14 +23,14 @@ namespace KingdomWatch.Core.Data
     /// </remarks>
     public sealed class IdAllocator
     {
-        private static readonly int SlotCount = ComputeSlotCount();
+        private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(EntityKind));
 
         private readonly ulong[] _nextByKind;
         private ulong _nextEventId = 1UL;
 
         public IdAllocator()
         {
-            _nextByKind = new ulong[SlotCount];
+            _nextByKind = new ulong[DefinedKinds.Length];
 
             for (var i = 0; i < _nextByKind.Length; i++)
             {
@@ -111,39 +111,21 @@ namespace KingdomWatch.Core.Data
             _nextEventId = next;
         }
 
-        private static int ComputeSlotCount()
-        {
-            var kinds = (EntityKind[])Enum.GetValues(typeof(EntityKind));
-            var max = 0;
-
-            foreach (var kind in kinds)
-            {
-                if ((int)kind > max)
-                {
-                    max = (int)kind;
-                }
-            }
-
-            return max + 1;
-        }
-
         private static int SlotFor(EntityKind kind)
         {
+            if (!EnumGuard.IsDefined(DefinedKinds, (int)kind))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(kind), kind, "Not a defined EntityKind.");
+            }
+
             if (kind == EntityKind.None)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(kind), kind, "EntityKind.None is not allocatable.");
             }
 
-            var slot = (int)kind;
-
-            if (slot < 0 || slot >= SlotCount)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(kind), kind, "Not a defined EntityKind.");
-            }
-
-            return slot;
+            return (int)kind;
         }
     }
 }

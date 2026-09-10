@@ -43,6 +43,14 @@ The filter is load-bearing. `coverlet` instruments `KingdomWatch.Core.dll` to in
 
 There is no coverage target and no gate. Coverage is a tool for finding untested branches, not a number to hit.
 
+**Full coverage is not the same as tested.** Coverage measures which lines *ran*, not which inputs were *considered*, so a constructor can be at 100% line and branch coverage and still accept values nobody thought about. Three rounds of review on #56 found exactly that: every finding was an invariant that was documented but not enforced, in code that coverage reported as fully covered.
+
+So write tests against the input space, not the line count. For each public entry point, ask what a caller can actually pass rather than what the docs say they should:
+
+- **Enums are the classic trap.** An enum parameter looks like the type system pins it to the declared members, but an enum is an int with names and `(EntityKind)999` casts in silently. Any public API taking an enum must reject undefined values — see `EnumGuard`.
+- **Sentinels and boundaries.** Zero, negative, `MaxValue`, the empty collection, the default struct — and any state where two "is this empty/none/valid?" predicates could disagree with each other.
+- **Values that bypass the guards.** A collection handed out through a read-only interface can still be downcast and mutated unless it is genuinely read-only.
+
 ## Engineering principles
 
 **Write the cleanest, most understandable, maintainable, and testable version by default.** Reach for a more complicated or lower-level implementation only when there is a *specific, identified* need — a measured performance problem, a platform constraint — never a suspected future one.

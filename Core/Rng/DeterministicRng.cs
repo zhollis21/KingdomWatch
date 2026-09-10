@@ -22,6 +22,8 @@ namespace KingdomWatch.Core.Rng
     /// </remarks>
     public sealed class DeterministicRng
     {
+        private static readonly bool[] DefinedDomains = EnumGuard.BuildMask(typeof(RandomDomain));
+
         public DeterministicRng(ulong worldSeed)
         {
             WorldSeed = worldSeed;
@@ -36,6 +38,15 @@ namespace KingdomWatch.Core.Rng
         /// </summary>
         public RandomKey Key(RandomDomain domain)
         {
+            if (!EnumGuard.IsDefined(DefinedDomains, (int)domain))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(domain),
+                    domain,
+                    "Not a defined RandomDomain. An unrecognised domain would key a "
+                    + "subsystem's draws under something nobody declared.");
+            }
+
             if (domain == RandomDomain.None)
             {
                 throw new ArgumentOutOfRangeException(

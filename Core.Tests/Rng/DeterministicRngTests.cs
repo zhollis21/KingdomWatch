@@ -368,6 +368,24 @@ namespace KingdomWatch.Core.Tests.Rng
         }
 
         [Test]
+        public void An_undefined_domain_is_rejected()
+        {
+            // A cast slips any int past the enum. An unrecognised domain would
+            // not fail anywhere - it would quietly key a whole subsystem's
+            // draws under a domain nobody declared, which is the coupling this
+            // design exists to prevent.
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => NewRng().Key((RandomDomain)999),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => NewRng().Key((RandomDomain)(-1)),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
         public void Golden_vectors_pin_the_algorithm()
         {
             // Changing the mixer changes every roll in every world, past and
