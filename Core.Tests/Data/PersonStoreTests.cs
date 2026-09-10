@@ -201,17 +201,41 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
-        public void A_handle_from_another_store_is_not_honoured()
+        public void Handles_carry_no_store_identity_which_is_a_known_limitation()
         {
+            // Recorded rather than desired. A handle is an index and a
+            // generation and nothing that says who issued it, so a handle from
+            // a different PersonStore whose slot history happens to match is
+            // indistinguishable from a local one: it resolves, and it can
+            // remove the local person. That is acceptable only because a world
+            // has exactly one PersonStore. If that ever stops being true this
+            // test should fail, and the fix is real store identity rather than
+            // a new assertion here.
+            //
+            // An earlier version of this test claimed the opposite guarantee
+            // and passed only because the target store was empty, so the
+            // index-range check fired instead of any store check.
             var ids = new IdAllocator();
-            var store = new PersonStore();
-            var other = new PersonStore();
-            var foreignHandle = other.Add(ids.Next(EntityKind.Person), default, 50, 0, 0, 0);
+            var mine = new PersonStore();
+            var theirs = new PersonStore();
+
+            var myPerson = mine.Add(ids.Next(EntityKind.Person), default, 11, 0, 0, 0);
+            var theirPerson = theirs.Add(ids.Next(EntityKind.Person), default, 22, 0, 0, 0);
 
             Assert.Multiple(() =>
             {
-                Assert.That(store.IsAlive(foreignHandle), Is.False);
-                Assert.That(() => store.GetHealth(foreignHandle), Throws.ArgumentException);
+                Assert.That(theirPerson, Is.EqualTo(myPerson), "same slot history, equal handles");
+                Assert.That(mine.IsAlive(theirPerson), Is.True, "not distinguishable");
+                Assert.That(mine.GetHealth(theirPerson), Is.EqualTo(11), "reads MY person");
+            });
+
+            // The destructive half of the same limitation.
+            mine.Remove(theirPerson);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(mine.Count, Is.Zero, "a foreign handle removed my person");
+                Assert.That(theirs.Count, Is.EqualTo(1), "while theirs is untouched");
             });
         }
 

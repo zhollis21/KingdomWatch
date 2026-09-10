@@ -36,6 +36,21 @@ namespace KingdomWatch.Core.Data
     /// is required for every real person, so its absence already says the slot
     /// holds nobody.
     ///
+    /// A handle is only meaningful to the store that issued it. Handles carry
+    /// no store identity, so one taken from a different PersonStore with the
+    /// same slot history is indistinguishable from a local one and will
+    /// resolve - and remove. A world has exactly one person store, which is
+    /// what makes that acceptable; adding a second one means adding store
+    /// identity to the handle first. There is a test recording this.
+    ///
+    /// Two invariants here cannot be enforced by the type system, because the
+    /// bulk span hands out records by reference: <see cref="Count"/> equals the
+    /// number of occupied slots, and every occupied slot's
+    /// <see cref="PersonRecord.Handle"/> matches its own index and current
+    /// generation. Writing identity fields through the span breaks both.
+    /// Checking them belongs to the WorldValidator (#13), where world-state
+    /// invariants live.
+    ///
     /// Nothing here is Unity-aware, and nothing here may become so.
     /// NativeArray, Jobs and Burst are Unity dependencies and cannot enter
     /// Core; if profiling ever demands them the seam is a separate
