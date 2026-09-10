@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 using NUnit.Framework;
 
@@ -42,6 +43,27 @@ namespace KingdomWatch.Core.Tests.Data
             band.AddMember(third);
 
             Assert.That(band.Members, Is.EqualTo(new[] { first, second, third }));
+        }
+
+        [Test]
+        public void Members_cannot_be_mutated_behind_the_guards()
+        {
+            // AddMember rejects duplicates and None because a person present
+            // twice breaks the rule that every living person has exactly one
+            // current spatial presence. Handing back the live list would make
+            // those checks advisory - a downcast walks straight past them, and
+            // can reorder members, which is part of the determinism contract.
+            var band = NewBand();
+            band.AddMember(new PersonHandle(7, 1));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Members, Is.Not.InstanceOf<List<PersonHandle>>());
+                Assert.That(
+                    () => ((IList<PersonHandle>)band.Members).Add(new PersonHandle(9, 1)),
+                    Throws.TypeOf<NotSupportedException>());
+                Assert.That(band.Members, Has.Count.EqualTo(1));
+            });
         }
 
         [Test]

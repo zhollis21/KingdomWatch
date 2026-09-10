@@ -42,10 +42,11 @@ namespace KingdomWatch.Core.Rng
     {
         // Type tags, mixed ahead of a durable id's parts so that an id can
         // never key the same draw as the plain numbers it is built from.
-        // "EntityId" and "EventId" in ASCII - deliberately large and arbitrary,
-        // because a caller folding in counters and indices will never produce
-        // one by accident. Changing either changes every draw keyed on that
-        // type in every world, so they are as fixed as the mixer itself.
+        // The bytes spell "EntityId", and "EventId" padded with a trailing NUL
+        // to fill eight - deliberately large and arbitrary, because a caller
+        // folding in counters and indices will never produce one by accident.
+        // Changing either changes every draw keyed on that type in every world,
+        // so they are as fixed as the mixer itself.
         private const ulong EntityDiscriminator = 0x456E746974794964UL;
         private const ulong EventDiscriminator = 0x4576656E74496400UL;
 

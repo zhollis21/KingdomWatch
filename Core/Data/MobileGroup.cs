@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace KingdomWatch.Core.Data
 {
@@ -33,6 +34,13 @@ namespace KingdomWatch.Core.Data
         // section 5 forbids acting on the order of an unordered collection.
         private readonly List<PersonHandle> _members = new List<PersonHandle>();
 
+        // Wrapped once here rather than on each access. Returning the list
+        // itself would let a caller downcast and mutate it, walking past the
+        // AddMember checks below and past the insertion order that systems
+        // depend on. Building the wrapper per call would allocate inside the
+        // tick loop, which section 5 forbids.
+        private readonly ReadOnlyCollection<PersonHandle> _membersView;
+
         public MobileGroup(EntityId id, MobileGroupPurpose purpose, WorldPosition position)
         {
             if (id.Kind != EntityKind.MobileGroup)
@@ -51,6 +59,7 @@ namespace KingdomWatch.Core.Data
             Id = id;
             Purpose = purpose;
             Position = position;
+            _membersView = _members.AsReadOnly();
         }
 
         /// <summary>Durable identity, safe to reference from history.</summary>
@@ -67,7 +76,7 @@ namespace KingdomWatch.Core.Data
         public PersonHandle Leader { get; set; }
 
         /// <summary>Members in a stable, deterministic order.</summary>
-        public IReadOnlyList<PersonHandle> Members => _members;
+        public IReadOnlyList<PersonHandle> Members => _membersView;
 
         /// <summary>
         /// Adds a member. Throws when the person is already in this group,
