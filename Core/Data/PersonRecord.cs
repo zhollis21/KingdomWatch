@@ -1,8 +1,12 @@
 namespace KingdomWatch.Core.Data
 {
     /// <summary>
-    /// One person's stored state. Only <see cref="PersonStore"/> writes these;
-    /// systems reach them through its accessors or its bulk span.
+    /// One person's stored state, in two halves. The identity fields
+    /// (<see cref="Handle"/> and <see cref="Id"/>) belong to
+    /// <see cref="PersonStore"/> and only it may write them. The simulation
+    /// fields below them are the caller's to change, either through the
+    /// store's accessors or in place through
+    /// <see cref="PersonStore.RecordSpan"/>.
     /// </summary>
     /// <remarks>
     /// A dense record rather than parallel arrays. At roughly 1,650 people the
@@ -39,18 +43,26 @@ namespace KingdomWatch.Core.Data
     public struct PersonRecord
     {
         /// <summary>
-        /// The handle that currently addresses this slot. Present so a caller
-        /// iterating <see cref="PersonStore.RecordSpan"/> can tell which person
-        /// a record belongs to - a span alone carries no handles.
+        /// Store-owned. The handle that currently addresses this slot, present
+        /// so a caller iterating <see cref="PersonStore.RecordSpan"/> can tell
+        /// which person a record belongs to - a span alone carries no handles.
+        /// Read it; writing it forges an identity the store knows nothing
+        /// about.
         /// </summary>
         public PersonHandle Handle;
 
         /// <summary>
-        /// Durable identity, safe to reference from history and saves.
-        /// <see cref="EntityId.None"/> marks an unoccupied slot: see
-        /// <see cref="PersonStore"/>.
+        /// Store-owned. Durable identity, safe to reference from history and
+        /// saves. <see cref="EntityId.None"/> marks an unoccupied slot, so
+        /// writing this field is what silently turns a tombstone into an
+        /// apparent person, or a person into a leak. Births and deaths go
+        /// through <see cref="PersonStore.Add"/> and
+        /// <see cref="PersonStore.Remove"/>.
         /// </summary>
         public EntityId Id;
+
+        // Simulation fields: the caller's to write, through the store's
+        // accessors or in place through the bulk span.
 
         public WorldPosition Position;
 
