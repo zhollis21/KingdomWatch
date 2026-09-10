@@ -132,20 +132,31 @@ namespace KingdomWatch.Core.Tests.Rng
         }
 
         [Test]
-        public void An_event_id_keys_the_same_draw_as_its_bare_value()
+        public void An_event_id_does_not_key_the_same_draw_as_its_bare_value()
         {
-            // Documents a real asymmetry: EntityId mixes its kind and then its
-            // value, so Person#7 and Settlement#7 differ. EventId has no kind,
-            // so it mixes as its value alone and Event#7 keys exactly what the
-            // bare number 7 keys. Two decisions in the same domain and the same
-            // key position must therefore not use an event id in one place and
-            // a plain counter in the other.
+            // Event#7 must not collide with the plain number 7, or a call site
+            // keyed on an event id would share a draw with one keyed on a
+            // counter. A collision like that is invisible - it does not crash,
+            // fail a test, or disturb the cross-platform hash - and surfaces
+            // only as two independent things moving in lockstep.
             var rng = NewRng();
 
             var viaEvent = rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64();
             var viaValue = rng.Key(RandomDomain.Social).Mix(7UL).NextUInt64();
 
-            Assert.That(viaEvent, Is.EqualTo(viaValue));
+            Assert.That(viaEvent, Is.Not.EqualTo(viaValue));
+        }
+
+        [Test]
+        public void An_event_id_does_not_key_the_same_draw_as_an_entity_id()
+        {
+            var rng = NewRng();
+
+            var viaEvent = rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64();
+            var viaEntity = rng.Key(RandomDomain.Social)
+                .Mix(new EntityId(EntityKind.Person, 7UL)).NextUInt64();
+
+            Assert.That(viaEvent, Is.Not.EqualTo(viaEntity));
         }
 
         [Test]
@@ -353,6 +364,7 @@ namespace KingdomWatch.Core.Tests.Rng
                 Line("combat", rng.Key(RandomDomain.Combat).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64()),
                 Line("conception", rng.Key(RandomDomain.Conception).Mix(Household).Mix(1).NextUInt64()),
                 Line("social", rng.Key(RandomDomain.Social).Mix(Attacker).Mix(4).Mix(9).NextUInt64()),
+                Line("event", rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64()),
                 Line("below100", rng.Key(RandomDomain.Social).Mix(Attacker).Below(100UL)),
                 Line("range", (ulong)(long)rng.Key(RandomDomain.Social).Mix(Attacker).Range(0, 1000)),
             };
@@ -363,6 +375,7 @@ namespace KingdomWatch.Core.Tests.Rng
                     "combat=15090781993901883543"
                     + "|conception=12562992479150466351"
                     + "|social=15365053140993468727"
+                    + "|event=5573920518276458559"
                     + "|below100=46"
                     + "|range=646"));
         }

@@ -27,6 +27,10 @@ namespace KingdomWatch.Core.Rng
     /// </remarks>
     public readonly struct RandomKey
     {
+        // "EventId" in ASCII. Changing it changes every event-keyed draw in
+        // every world, so it is as fixed as the mixer itself.
+        private const ulong EventDiscriminator = 0x4576656E74496400UL;
+
         private readonly ulong _state;
 
         internal RandomKey(ulong state)
@@ -49,8 +53,15 @@ namespace KingdomWatch.Core.Rng
         /// </summary>
         public RandomKey Mix(EntityId id) => Mix((ulong)id.Kind).Mix(id.Value);
 
-        /// <summary>Folds a durable event id into the key.</summary>
-        public RandomKey Mix(EventId id) => Mix(id.Value);
+        /// <summary>
+        /// Folds a durable event id into the key. A discriminator is mixed
+        /// ahead of the value so that Event#7 does not key the same draw as the
+        /// bare number 7, matching how <see cref="Mix(EntityId)"/> mixes a kind
+        /// ahead of its value. The constant is deliberately large and arbitrary
+        /// - "EventId" in ASCII - because a caller passing counters and indices
+        /// will never produce it by accident.
+        /// </summary>
+        public RandomKey Mix(EventId id) => Mix(EventDiscriminator).Mix(id.Value);
 
         /// <summary>The full 64-bit value for this key.</summary>
         public ulong NextUInt64() => Draw(0UL);

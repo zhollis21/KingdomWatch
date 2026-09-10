@@ -19,6 +19,7 @@ Review all code written in this session against the checklist below. Fix every i
 - Fixed timestep; simulation time never derived from `Time.deltaTime` or wall-clock
 - Own seeded PRNG only — never `UnityEngine.Random` inside `Core`
 - Randomness keyed to stable event/decision identity, not drawn from a mutable per-subsystem stream, wherever execution paths can differ by LOD (see §5 "Randomness must be keyed, not streamed")
+- Each decision type has its own `RandomDomain` value rather than reusing a broad one — draws collide only within a domain, and a collision is silent (see `AGENTS.md`)
 - Stable iteration order — never iterate a `Dictionary`/`HashSet` and act on the order
 - No reentrant event handling with arbitrary subscriber order (§4)
 

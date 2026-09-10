@@ -31,6 +31,8 @@ The SDK is pinned in `global.json`. Shared compiler settings live in the root `D
 
 Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
 
+When adding randomness, give each decision type its own `RandomDomain` value rather than reusing a broad one. Two draws can only collide when they share a domain, and a collision is silent — it does not crash, fail a test, or disturb the cross-platform determinism hash. It surfaces much later as two things that should be independent moving in lockstep, which is close to undebuggable from the outside. See the remarks on `RandomDomain`.
+
 Test coverage, when you want to see what is untested:
 
 ```powershell
