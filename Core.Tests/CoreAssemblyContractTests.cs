@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Versioning;
+using KingdomWatch.Core.Data;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests
@@ -18,11 +19,10 @@ namespace KingdomWatch.Core.Tests
     [TestFixture]
     public sealed class CoreAssemblyContractTests
     {
-        // Core exposes no public types yet, so there is nothing to reference at
-        // compile time. The ProjectReference still copies the assembly to this
-        // project's output, which is what makes the load succeed.
-        private static Assembly CoreAssembly =>
-            Assembly.Load(new AssemblyName("KingdomWatch.Core"));
+        // Taken from a real Core type rather than loaded by name, so the
+        // reference is checked at compile time and cannot quietly start
+        // resolving something else.
+        private static Assembly CoreAssembly => typeof(EntityId).Assembly;
 
         [Test]
         public void Core_targets_netstandard21_and_only_netstandard21()

@@ -34,8 +34,9 @@ Step 3.
 Modes: **create** (default) and **audit** (`audit 63`, `audit all`) — see the
 last section.
 
-Note on project state: this repo is early — design is locked (see
-`docs/design/kingdom-watch-plan-v7.1.md`) but most of `Core`/`Game` doesn't
+Note on project state: this repo is early — the design is sketched out in
+`docs/design/kingdom-watch-plan-v7.1.md` (a living plan rather than a spec;
+treat its claims the way `/kickoff` treats an issue's) but most of `Core`/`Game` doesn't
 exist yet. Many issues right now will be design/scoping issues rather than code
 bugs. Step 2's "verify against the code" still applies — just apply it to the
 design doc and whatever _does_ exist (the Unity prototype, `docs/`) rather than
@@ -189,7 +190,7 @@ matter — take what applies and drop the rest:
 - **Scope edges.** What is explicitly _not_ part of this. The cheapest sentence in
   any issue.
 - **Constraints that must hold.** Contracts a fix can't break — determinism, the
-  Core/Game boundary, a locked design decision from §2 of the design doc.
+  Core/Game boundary, or a decision recorded in §2 of the design doc.
 - **Milestone.** Which milestone this belongs to, if it's not obvious.
 - **Priority** — always. See Step 7.
 

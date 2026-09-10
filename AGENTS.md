@@ -2,7 +2,8 @@
 
 ## Session Startup
 
-- Read `README.md` and `docs/design/kingdom-watch-plan-v7.1.md` (or its latest version) before making changes — the design doc is the source of truth for what this game is and why.
+- Read `README.md` and `docs/design/kingdom-watch-plan-v7.1.md` (or its latest version) before making changes — the design doc explains what this game is and why.
+- **Treat the design doc the way `/kickoff` treats an issue:** a well-informed hypothesis from someone who had context you may lack — worth taking seriously, not worth adopting unexamined. It is a loose, living plan rather than a specification, and it is expected to be iterated on as real code teaches us things. Verify its claims against the code that actually exists; where the two disagree, work out which one is wrong instead of assuming it is the code. When a decision supersedes something the doc says, update the doc in the same change.
 - GitHub Issues and Milestones track the backlog (see `/milestones` — M0 through M8, matching the design doc's §19).
 - Keep `README.md` and this file up to date when repository-wide decisions are made.
 
@@ -29,6 +30,14 @@ dotnet run --project Harness
 The SDK is pinned in `global.json`. Shared compiler settings live in the root `Directory.Build.props`; `Game/Directory.Build.props` is intentionally empty and stops those settings reaching the `.csproj` files Unity regenerates on import — don't delete it.
 
 Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
+
+## Engineering principles
+
+**Write the cleanest, most understandable, maintainable, and testable version by default.** Reach for a more complicated or lower-level implementation only when there is a *specific, identified* need — a measured performance problem, a platform constraint — never a suspected future one.
+
+Concretely: two explicit fields beat bit-packing into one; a plain class beats a hand-rolled store; a straightforward algorithm beats a clever one. When a real constraint does force something awkward, say in a comment what the constraint was, so the next person can tell whether it still applies.
+
+Determinism (design doc §5) is the standing exception. It is a correctness requirement rather than an optimization, so it outranks convenience — integer-only arithmetic in branching code is not premature cleverness, it is the rule.
 
 ## Working with AI Agents
 
