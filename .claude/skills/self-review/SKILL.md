@@ -10,7 +10,9 @@ If issues are found: fix them, then re-run this review from the top. Do not pres
 
 Review all code written in this session against the checklist below. Fix every issue found before presenting. Do not surface the list of bugs found — present only the clean summary.
 
-**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet — an M0 throwaway prototype in `Game/`, and `Core` holding only the entity identity types and the keyed RNG so far. Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
+**Run this generatively, not confirmationally.** The failure mode is reading the code and tests you just wrote and asking "does this look right?" — that question can only confirm what is there. It cannot find what is missing, because what is missing is not in the list you are reading. For every checklist item, derive from the code what *should* exist, write that down, and diff it against what does. Items that are binary and greppable (a suppression, a stale reference, an unused using) survive the lazier reading; items needing enumeration — test coverage above all — do not.
+
+**This checklist is intentionally thin right now.** KingdomWatch has almost no code yet — an M0 throwaway prototype in `Game/`, and `Core` holding the entity identity types, the keyed RNG and person storage so far. Grow this list as real conventions emerge over time. A checklist item earns its place by having actually caught something once; don't pre-invent items for patterns that don't exist yet.
 
 ## Checklist
 
@@ -41,11 +43,20 @@ Review all code written in this session against the checklist below. Fix every i
 
 **Tests**
 
+Judge coverage from the API surface, never from the test list. Before deciding the tests are thorough, **build the matrix**: every public entry point down one axis, every class of input a caller can actually pass across the other — valid, sentinel (`default`, `None`), boundary (zero, one, one-past-the-last, the min and max of the field's own type), malformed, and stale. Tick the cells that have a real test. Then name the empty cells out loud and decide deliberately which to fill and why the rest can stay empty. An empty cell nobody named is an oversight; an empty cell with a stated reason is a decision.
+
 - New behavior has new tests; changed behavior has updated tests
+- **Mutation-check every assertion that protects an invariant that matters.** Break the invariant on purpose — weaken the comparison, delete the guard clause, drop half a compound condition — confirm the test goes red, then restore. This applies to new code, not only to bug fixes: a test that has never been seen to fail may be passing for a reason unrelated to what it claims, and full coverage will not reveal that, since the lines still run. Say in the summary which invariants were mutation-checked and what the mutation was.
 - Bug fixes include a regression test **written first and seen to fail** — if the fix landed first, revert it, confirm red, restore (`AGENTS.md`, Engineering principles)
-- Tests cover failure paths, not just the happy path
+- Tests cover failure paths, not just the happy path — and *every* failure path the code can take, not one representative sample. Four rejection branches want four cases, not one that happens to hit the first
+- **Destructive operations get their own invalid-input tests, separate from the read operations.** A stale or malformed reference that reads the wrong data is a bug; one that writes, removes or deletes is a worse bug, it runs through different code, and it is the one that looks like legitimate behavior afterwards. Testing the read path does not cover the write path
+- **Where two branches interact, test the crossing in a single sequence** — a free list that drains and then falls back to allocating, a cache that fills and then evicts, a buffer that grows after being partly recycled. Each branch tested alone can pass while the handover between them is broken
+- **Invariants that hand-maintained bookkeeping can violate get asserted directly** — a count kept alongside a collection, a parallel index, a reverse map. Drive a mixed sequence of operations, then assert the two agree, rather than trusting each operation to have maintained it
+- Values round-trip at the extremes of their own type, not just at comfortable mid-range values — this is what catches a narrowing cast or a silent clamp
 - Tests probe the input space, not just the happy path — for every public entry point, what a caller *can* pass rather than what the docs say they should. Enums accept any cast int; structs have a `default`; sentinels and boundaries need their own cases (`AGENTS.md`, Building)
 - Any public API taking an enum rejects undefined values (`EnumGuard`) — full coverage will not catch this, since the lines still run
+- Determinism has tests of its own where it is a requirement: repeat the same read twice and assert the order did not vary; assert that a sequence of operations lands in a fixed, stated arrangement rather than merely a valid one
+- A guard that cannot be reached, and cannot be reached in a test either, is unverifiable code — prefer deleting it over shipping it, unless a seam that exists for real reasons already makes it testable (see `IdAllocator`'s exhaustion guard, reachable through the `ResumeFrom` that save/load needs anyway)
 - Anything in `Core`/`Harness` should be tested there — off-device, no Unity Editor required. Anything that can only be tested from inside the Unity Editor or on-device is a real cost; ask whether the logic actually needs to live there.
 
 **Build & test health**
@@ -69,6 +80,7 @@ Review all code written in this session against the checklist below. Fix every i
 - New code matches surrounding style (naming, file organization, access modifiers, async patterns)
 - New abstractions follow existing patterns rather than introducing parallel ones
 - Simplest implementation that does the job — no bit-packing, caching, or hand-tuning without a specific identified need (`AGENTS.md`, Engineering principles)
+- **Verify claimed precedent instead of recalling it.** Before a decision rests on "the neighbouring code does this" — go read that code. Precedent recalled from memory is usually right about the pattern and wrong about the detail, and the detail is what settles the question: whether that guard is *tested*, whether that field is *validated*, whether that suppression was actually *approved*. One grep, before the justification, not after someone challenges it
 
 **TODOs**
 
@@ -90,6 +102,7 @@ Present:
 
 1. What was done and why (brief)
 2. Architectural tradeoffs or non-obvious decisions
-3. Residual concerns where the right approach is genuinely unclear
+3. How the work was verified — which invariants were mutation-checked and what the mutation was, plus any matrix cell left deliberately untested and why
+4. Residual concerns where the right approach is genuinely unclear
 
 Do NOT list bugs found and fixed. Do NOT ask for approval on obvious decisions.
