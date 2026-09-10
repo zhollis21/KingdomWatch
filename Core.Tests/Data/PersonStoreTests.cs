@@ -511,6 +511,34 @@ namespace KingdomWatch.Core.Tests.Data
             });
         }
 
+        [Test]
+        public void A_slot_taken_from_newly_grown_space_starts_at_generation_one()
+        {
+            // Every other generation-one assertion sits at a low index, below
+            // the capacity the store starts with, so none of them crosses a
+            // growth. Slot handout derives a fresh slot's generation without
+            // consulting the record, which is only correct while grown space
+            // arrives empty - this is the assertion that would notice if
+            // growth ever started carrying values across.
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+            var handles = new List<PersonHandle>();
+
+            for (var i = 0; i < 40; i++)
+            {
+                handles.Add(AddPerson(store, ids));
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    handles.Select(handle => handle.Generation).Distinct().ToList(),
+                    Is.EqualTo(new List<int> { 1 }),
+                    "no slot here was ever recycled, so every one is on its first occupant");
+                Assert.That(handles[39], Is.EqualTo(new PersonHandle(39, 1)));
+            });
+        }
+
         private static PersonHandle AddPerson(PersonStore store, IdAllocator ids) =>
             store.Add(ids.Next(EntityKind.Person), default, 50, 0, 0, 0);
     }
