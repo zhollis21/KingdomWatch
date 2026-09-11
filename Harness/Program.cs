@@ -38,15 +38,20 @@ namespace KingdomWatch.Harness
                 return Usage();
             }
 
+            // Range checks live with the soak itself, whose messages say why
+            // a value is refused; this only rejects what is not a number.
             for (var i = 0; i < args.Length; i += 2)
             {
+                var parsed = int.TryParse(
+                    args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value);
+
                 switch (args[i])
                 {
-                    case "--years":
-                        years = int.Parse(args[i + 1], CultureInfo.InvariantCulture);
+                    case "--years" when parsed:
+                        years = value;
                         break;
-                    case "--entities":
-                        entities = int.Parse(args[i + 1], CultureInfo.InvariantCulture);
+                    case "--entities" when parsed:
+                        entities = value;
                         break;
                     default:
                         return Usage();

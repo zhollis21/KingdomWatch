@@ -42,6 +42,23 @@ namespace KingdomWatch.Core.Tests.Performance
             });
         }
 
+        // A span that cannot fit in SimulationTime is refused before the first
+        // day runs. Without the guard the loop would iterate for roughly a
+        // hundred billion days before the tick arithmetic wrapped.
+        [Test]
+        public void A_span_past_the_end_of_time_is_refused_up_front()
+        {
+            var soak = NewSoak();
+            var tooMany = (long.MaxValue / SimulationTime.TicksPerDay) + 1L;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => soak.RunDays(tooMany), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => soak.RunDays(long.MaxValue), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(soak.EventsDispatched, Is.Zero, "nothing should have run");
+            });
+        }
+
         // The measurements below only mean something if the workload really
         // exercises the paths it claims to - scheduling, cancelling, and
         // compacting - and does so identically every time.
@@ -70,6 +87,10 @@ namespace KingdomWatch.Core.Tests.Performance
                 Assert.That(second.EventsDispatched, Is.EqualTo(first.EventsDispatched));
                 Assert.That(second.Cancellations, Is.EqualTo(first.Cancellations));
                 Assert.That(second.PeakPending, Is.EqualTo(first.PeakPending));
+                // Counts alone would let two runs dispatch the same events
+                // in a different order. The trace hash would not.
+                Assert.That(first.TraceHash, Is.Not.Zero);
+                Assert.That(second.TraceHash, Is.EqualTo(first.TraceHash));
             });
         }
 

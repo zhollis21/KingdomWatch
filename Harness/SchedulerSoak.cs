@@ -59,6 +59,16 @@ namespace KingdomWatch.Harness
         public int PeakPending { get; private set; }
 
         /// <summary>
+        /// Folds every dispatched event's id and time, in dispatch order, so
+        /// two runs that agree on counts but not on order do not agree here.
+        /// A stand-in for the determinism hash #13 will build properly.
+        /// </summary>
+        public ulong TraceHash { get; private set; } = FnvOffset;
+
+        private const ulong FnvOffset = 0xCBF29CE484222325UL;
+        private const ulong FnvPrime = 0x100000001B3UL;
+
+        /// <summary>
         /// Advances the clock one simulated day at a time. Per-day stepping is
         /// the shape the validator (#13) needs, and it keeps the per-call
         /// cascade budget meaningful.
@@ -71,6 +81,15 @@ namespace KingdomWatch.Harness
             }
 
             var start = _clock.Now;
+
+            // Refused before the first day rather than discovered when the
+            // tick arithmetic wraps, which would be a hundred billion days in.
+            if (days > (long.MaxValue - start.Ticks) / SimulationTime.TicksPerDay)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(days), days, "That many days from " + start + " would run past the end of simulation time.");
+            }
+
             for (var day = 1L; day <= days; day++)
             {
                 _clock.AdvanceTo(start.Plus(day * SimulationTime.TicksPerDay), this);
@@ -81,6 +100,7 @@ namespace KingdomWatch.Harness
         {
             var i = (int)(scheduled.PrimaryEntity.Value - 1UL);
             EventsDispatched++;
+            TraceHash = Fold(Fold(TraceHash, scheduled.Id.Value), (ulong)scheduled.Time.Ticks);
 
             _pending[i] = Book(clock, i, clock.Now.Plus(Interval(i)));
 
@@ -106,6 +126,10 @@ namespace KingdomWatch.Harness
                 PeakPending = clock.ScheduledCount;
             }
         }
+
+        // FNV-1a over 64-bit words. Feeding the running hash forward is what
+        // makes it order-sensitive.
+        private static ulong Fold(ulong hash, ulong value) => (hash ^ value) * FnvPrime;
 
         // Six to twelve hours, varying by entity so they do not march in lockstep.
         private static long Interval(int entity) => SimulationTime.TicksPerHour * (6L + (entity % 7));
