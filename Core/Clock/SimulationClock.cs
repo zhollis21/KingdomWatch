@@ -46,8 +46,9 @@ namespace KingdomWatch.Core.Clock
     ///
     /// Position alone still cannot bound a cascade that climbs - reacting for
     /// one person, then the next, then the next - so
-    /// <see cref="MaxCascadePerInstant"/> puts a ceiling on how far one instant
-    /// may cascade. Between them, a runaway fails loudly instead of hanging.
+    /// <see cref="MaxCascadePerAdvance"/> puts a ceiling on how far one call may
+    /// cascade at a single instant. Between them, a runaway fails loudly
+    /// instead of hanging.
     ///
     /// Not thread-safe, and not intended to be. The simulation is
     /// single-threaded by design - section 5's determinism rules do not survive
@@ -59,18 +60,29 @@ namespace KingdomWatch.Core.Clock
     public sealed class SimulationClock
     {
         /// <summary>
-        /// How many events one instant may cascade into before the clock calls
-        /// it a runaway.
+        /// How many same-instant reactions one <see cref="AdvanceTo"/> call
+        /// may cascade into before the clock calls it a runaway.
         /// </summary>
         /// <remarks>
         /// This counts only reactions scheduled from inside a handler AT the
         /// instant being dispatched - never events booked ahead of time - so a
         /// legitimate same-tick batch does not consume any of it however large
         /// the population grows. A cascade that deep is a system reacting to
-        /// its own reaction, and the alternative to failing is a clock that
-        /// never advances again.
+        /// its own reaction, and the alternative to failing is an
+        /// <see cref="AdvanceTo"/> that never returns.
+        ///
+        /// The budget is per call, and resets whenever the dispatched instant
+        /// changes within one. It does NOT carry across calls that happen to
+        /// dispatch at the same instant. That is deliberate: a paused player
+        /// casting a power is an event at the frozen instant, dispatched by its
+        /// own <see cref="AdvanceTo"/>, with a short cascade behind it - and a
+        /// budget shared across calls would eventually throw at a player who
+        /// merely acted enough times while paused. What this guards is that
+        /// <see cref="AdvanceTo"/> terminates. A driver that keeps re-entering
+        /// one instant has control between calls, can read <see cref="Now"/>,
+        /// and can see for itself that time is not moving.
         /// </remarks>
-        public const int MaxCascadePerInstant = 10_000;
+        public const int MaxCascadePerAdvance = 10_000;
 
         private readonly IdAllocator _ids;
         private readonly EventQueue _queue = new EventQueue();
@@ -79,16 +91,16 @@ namespace KingdomWatch.Core.Clock
         private bool _hasCurrent;
         private ScheduledEvent _current;
 
-        private SimulationTime _cascadeInstant;
+        // Written by Schedule, reset by AdvanceTo - see MaxCascadePerAdvance.
         private int _cascadeCount;
 
         /// <summary>
         /// Builds a clock starting at <see cref="SimulationTime.Zero"/>.
         /// </summary>
         /// <param name="ids">
-        /// The world's allocator. Scheduled events take their durable ids from
-        /// the same counter as everything else, so an id in the queue and the
-        /// same id in history are the same event.
+        /// The world's allocator. Scheduled events draw from its single event
+        /// counter - the same one history and provenance will draw from - so an
+        /// id in the queue and the same id in the journal are the same event.
         /// </param>
         public SimulationClock(IdAllocator ids)
         {
@@ -141,11 +153,11 @@ namespace KingdomWatch.Core.Clock
                 {
                     _cascadeCount++;
 
-                    if (_cascadeCount > MaxCascadePerInstant)
+                    if (_cascadeCount > MaxCascadePerAdvance)
                     {
                         throw new InvalidOperationException(
                             "A cascade at " + time + " has scheduled more than "
-                            + MaxCascadePerInstant + " reactions at that same instant without the "
+                            + MaxCascadePerAdvance + " reactions at that same instant without the "
                             + "clock advancing, most recently " + scheduled
                             + ". Something is reacting to its own reaction.");
                     }
@@ -213,16 +225,22 @@ namespace KingdomWatch.Core.Clock
             }
 
             _dispatching = true;
+            _cascadeCount = 0;
 
             try
             {
                 var dispatched = 0;
 
+                // The instant currently being dispatched. Its starting value is
+                // irrelevant: the count was just zeroed, so whether the first
+                // event matches or not, it begins the call with a full budget.
+                var instant = SimulationTime.Zero;
+
                 while (_queue.TryDequeueDueBy(target, out var due))
                 {
-                    if (due.Time != _cascadeInstant)
+                    if (due.Time != instant)
                     {
-                        _cascadeInstant = due.Time;
+                        instant = due.Time;
                         _cascadeCount = 0;
                     }
 

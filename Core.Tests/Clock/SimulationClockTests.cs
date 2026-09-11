@@ -587,7 +587,7 @@ namespace KingdomWatch.Core.Tests.Clock
 
             var recorder = new Recorder((scheduled, running) =>
             {
-                if (reactions >= SimulationClock.MaxCascadePerInstant)
+                if (reactions >= SimulationClock.MaxCascadePerAdvance)
                 {
                     return;
                 }
@@ -600,7 +600,7 @@ namespace KingdomWatch.Core.Tests.Clock
 
             Assert.That(
                 recorder.Handled,
-                Has.Count.EqualTo(SimulationClock.MaxCascadePerInstant + 1));
+                Has.Count.EqualTo(SimulationClock.MaxCascadePerAdvance + 1));
         }
 
         [Test]
@@ -610,7 +610,7 @@ namespace KingdomWatch.Core.Tests.Clock
             // them. A budget that accumulated instead of resetting would trip
             // partway through a perfectly healthy run - so this fails if the
             // reset is removed, which a shorter run would not.
-            const int Instants = SimulationClock.MaxCascadePerInstant + 500;
+            const int Instants = SimulationClock.MaxCascadePerAdvance + 500;
 
             var clock = NewClock();
             var recorder = new Recorder((scheduled, running) =>
@@ -635,6 +635,87 @@ namespace KingdomWatch.Core.Tests.Clock
 
             // One task plus its one same-instant reaction, at every instant.
             Assert.That(recorder.Handled, Has.Count.EqualTo(Instants * 2));
+        }
+
+        [Test]
+        public void Each_advance_gets_a_fresh_cascade_budget_even_at_the_same_instant()
+        {
+            // A paused player: simulated time is frozen at noon, and every
+            // power they cast is an event at noon dispatched by its own
+            // AdvanceTo, with a short cascade behind it. A budget that carried
+            // across calls would eventually throw at a player who merely acted
+            // enough times while paused. More casts than the budget, each with
+            // a cascade of one - the total far exceeds the cap, and none of it
+            // may accumulate.
+            const int Casts = SimulationClock.MaxCascadePerAdvance + 500;
+
+            var clock = NewClock();
+            clock.AdvanceTo(Noon, new Recorder());
+            var recorder = new Recorder((scheduled, running) =>
+            {
+                if (scheduled.Phase == SimulationPhase.Physical)
+                {
+                    running.Schedule(
+                        scheduled.Time,
+                        SimulationPhase.Lifecycle,
+                        ScheduledEventKind.BirthCheck,
+                        scheduled.PrimaryEntity,
+                        EntityId.None);
+                }
+            });
+
+            for (var cast = 0; cast < Casts; cast++)
+            {
+                ScheduleTask(clock, Noon, 1UL);
+                clock.AdvanceTo(Noon, recorder);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(recorder.Handled, Has.Count.EqualTo(Casts * 2));
+                Assert.That(clock.Now, Is.EqualTo(Noon));
+            });
+        }
+
+        [Test]
+        public void A_handler_exception_does_not_leave_a_spent_budget_behind()
+        {
+            // A driver that catches a system's exception and carries on at the
+            // same instant should not inherit the headroom that system used up.
+            var clock = NewClock();
+            ScheduleTask(clock, Noon, 1UL);
+
+            var runaway = new Recorder((scheduled, running) => ScheduleTask(
+                running, scheduled.Time, scheduled.PrimaryEntity.Value + 1UL));
+
+            Assert.That(
+                () => clock.AdvanceTo(Dusk, runaway),
+                Throws.TypeOf<InvalidOperationException>()
+                    .With.Message.Contains("reacting to its own reaction"));
+
+            // Now = Noon after the throw. Cancel the leftover and run a healthy
+            // cascade at the same instant that would exceed what was left.
+            while (clock.TryPeekNext(out var leftover))
+            {
+                clock.Cancel(leftover.Id);
+            }
+
+            ScheduleTask(clock, Noon, 1UL);
+            var reactions = 0;
+            var healthy = new Recorder((scheduled, running) =>
+            {
+                if (reactions >= 100)
+                {
+                    return;
+                }
+
+                reactions++;
+                ScheduleTask(running, scheduled.Time, scheduled.PrimaryEntity.Value + 1UL);
+            });
+
+            var dispatched = clock.AdvanceTo(Noon, healthy);
+
+            Assert.That(dispatched, Is.EqualTo(101));
         }
 
         [Test]

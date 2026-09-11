@@ -14,9 +14,10 @@ namespace KingdomWatch.Core.Clock
     /// social reactions to it, and so on.
     ///
     /// Section 4 says the exact phase list can evolve. The rule that must not
-    /// is that there is no reentrant event handling with arbitrary subscriber
-    /// order - see <see cref="SimulationClock"/>, which enforces it by refusing
-    /// to schedule at or before the position it is currently dispatching.
+    /// change is that there is no reentrant event handling with arbitrary
+    /// subscriber order - see <see cref="SimulationClock"/>, which enforces it
+    /// by refusing to schedule at or before the position it is currently
+    /// dispatching.
     ///
     /// Values are explicit and ordering-significant. Renumbering them reorders
     /// every event in every existing world, which rewrites its history; append
