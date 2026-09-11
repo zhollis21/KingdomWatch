@@ -33,6 +33,10 @@ Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyCo
 
 When adding randomness, give each decision type its own `RandomDomain` value rather than reusing a broad one. Two draws can only collide when they share a domain, and a collision is silent — it does not crash, fail a test, or disturb the cross-platform determinism hash. It surfaces much later as two things that should be independent moving in lockstep, which is close to undebuggable from the outside. See the remarks on `RandomDomain`.
 
+The same "give it its own value" rule applies to `ScheduledEventKind`, for the same reason: a kind reused across two unrelated occurrences makes them indistinguishable to the scheduler, to history and to the validator.
+
+**Never renumber or reorder an enum whose values are persisted or ordering-significant** — `EntityKind`, `RandomDomain`, `SimulationPhase`, `ScheduledEventKind`. Append instead. Renumbering silently repoints every existing world's saved references, or reorders every event it ever dispatched, which rewrites its history. `ScheduledEventKind` is the sharpest case, because its numeric value *is* the priority that orders two events sharing an instant, phase and primary entity.
+
 Test coverage, when you want to see what is untested:
 
 ```powershell
@@ -50,6 +54,8 @@ So write tests against the input space, not the line count. For each public entr
 - **Enums are the classic trap.** An enum parameter looks like the type system pins it to the declared members, but an enum is an int with names and `(EntityKind)999` casts in silently. Any public API taking an enum must reject undefined values — see `EnumGuard`.
 - **Sentinels and boundaries.** Zero, negative, `MaxValue`, the empty collection, the default struct — and any state where two "is this empty/none/valid?" predicates could disagree with each other.
 - **Values that bypass the guards.** A collection handed out through a read-only interface can still be downcast and mutated unless it is genuinely read-only.
+
+A null-forgiving `!` is allowed in `Core.Tests` for the single purpose of reaching an `ArgumentNullException` guard — `new SimulationClock(null!)` — and nowhere else. Nullable reference types make the call a compile error otherwise, so without it the guard ships untested. This does not extend to `Core`, `Harness`, or to silencing a nullable warning in test setup.
 
 ## Engineering principles
 
