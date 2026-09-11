@@ -304,6 +304,97 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
+        public void Position_ignores_the_id_that_the_full_order_falls_back_on()
+        {
+            // The distinction the scheduler's forward-only guard rests on.
+            // These two are different events - CompareTo separates them - but
+            // they occupy the same position, and a reaction landing on its own
+            // cause has to be recognisable as exactly that.
+            var cause = Build(
+                1UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                EntityId.None);
+            var sameSpot = Build(
+                2UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                EntityId.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cause.ComparePositionTo(sameSpot), Is.Zero);
+                Assert.That(sameSpot.ComparePositionTo(cause), Is.Zero);
+                Assert.That(cause.CompareTo(sameSpot), Is.Negative);
+            });
+        }
+
+        [Test]
+        public void Position_agrees_with_the_full_order_on_every_other_component()
+        {
+            var earlier = Build(
+                9UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                Person(1UL));
+            var laterTime = Build(
+                1UL,
+                Dusk,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                Person(1UL));
+            var laterPhase = Build(
+                1UL,
+                Noon,
+                SimulationPhase.Lifecycle,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                Person(1UL));
+            var laterPrimary = Build(
+                1UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(2UL),
+                Person(1UL));
+            var laterKind = Build(
+                1UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.BirthCheck,
+                Person(1UL),
+                Person(1UL));
+            var laterSecondary = Build(
+                1UL,
+                Noon,
+                SimulationPhase.Physical,
+                ScheduledEventKind.TaskCompleted,
+                Person(1UL),
+                Person(2UL));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(earlier.ComparePositionTo(laterTime), Is.Negative);
+                Assert.That(earlier.ComparePositionTo(laterPhase), Is.Negative);
+                Assert.That(earlier.ComparePositionTo(laterPrimary), Is.Negative);
+                Assert.That(earlier.ComparePositionTo(laterKind), Is.Negative);
+                Assert.That(earlier.ComparePositionTo(laterSecondary), Is.Negative);
+                Assert.That(laterTime.ComparePositionTo(earlier), Is.Positive);
+                Assert.That(laterPhase.ComparePositionTo(earlier), Is.Positive);
+                Assert.That(laterPrimary.ComparePositionTo(earlier), Is.Positive);
+                Assert.That(laterKind.ComparePositionTo(earlier), Is.Positive);
+                Assert.That(laterSecondary.ComparePositionTo(earlier), Is.Positive);
+            });
+        }
+
+        [Test]
         public void Nothing_but_an_event_and_itself_compares_equal()
         {
             // The whole point of the sixth component: a zero from CompareTo

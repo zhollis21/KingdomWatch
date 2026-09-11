@@ -541,35 +541,116 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
-        public void A_reaction_identical_to_its_cause_is_allowed_and_runs_after_it()
+        public void A_reaction_landing_exactly_where_its_cause_did_is_refused()
         {
-            // Section 4's five components tie here. The id breaks it forward,
-            // because a newly allocated id is always the larger one - so an
-            // otherwise identical reaction is a legal reaction rather than an
-            // error.
+            // The guard compares position, not identity. Were it built on
+            // CompareTo, the newly allocated id would make this reaction
+            // compare greater and the guard would wave it through - and a
+            // handler doing it unconditionally would dispatch forever with the
+            // clock frozen at noon.
             var clock = NewClock();
             ScheduleTask(clock, Noon, 1UL);
 
-            var echoed = false;
+            var recorder = new Recorder((scheduled, running) => ScheduleTask(
+                running, scheduled.Time, 1UL));
+
+            Assert.That(
+                () => clock.AdvanceTo(Dusk, recorder),
+                Throws.TypeOf<InvalidOperationException>()
+                    .With.Message.Contains("never at or before it"));
+        }
+
+        [Test]
+        public void A_cascade_that_climbs_forever_at_one_instant_is_stopped()
+        {
+            // Position alone cannot catch this one: each reaction is for the
+            // next person, so every step really is strictly ahead of the last
+            // and the clock still never advances. The budget is what bounds it.
+            var clock = NewClock();
+            ScheduleTask(clock, Noon, 1UL);
+
+            var recorder = new Recorder((scheduled, running) => ScheduleTask(
+                running, scheduled.Time, scheduled.PrimaryEntity.Value + 1UL));
+
+            Assert.That(
+                () => clock.AdvanceTo(Dusk, recorder),
+                Throws.TypeOf<InvalidOperationException>()
+                    .With.Message.Contains("reacting to its own reaction"));
+        }
+
+        [Test]
+        public void A_cascade_within_the_budget_is_left_alone()
+        {
+            var clock = NewClock();
+            ScheduleTask(clock, Noon, 1UL);
+            var reactions = 0;
+
             var recorder = new Recorder((scheduled, running) =>
             {
-                if (echoed)
+                if (reactions >= SimulationClock.MaxCascadePerInstant)
                 {
                     return;
                 }
 
-                echoed = true;
-                ScheduleTask(running, scheduled.Time, 1UL);
+                reactions++;
+                ScheduleTask(running, scheduled.Time, scheduled.PrimaryEntity.Value + 1UL);
             });
 
             clock.AdvanceTo(Dusk, recorder);
 
-            Assert.Multiple(() =>
+            Assert.That(
+                recorder.Handled,
+                Has.Count.EqualTo(SimulationClock.MaxCascadePerInstant + 1));
+        }
+
+        [Test]
+        public void The_cascade_budget_resets_when_the_clock_moves_on()
+        {
+            // Deliberately more instants than the budget allows at any one of
+            // them. A budget that accumulated instead of resetting would trip
+            // partway through a perfectly healthy run - so this fails if the
+            // reset is removed, which a shorter run would not.
+            const int Instants = SimulationClock.MaxCascadePerInstant + 500;
+
+            var clock = NewClock();
+            var recorder = new Recorder((scheduled, running) =>
             {
-                Assert.That(recorder.Handled, Has.Count.EqualTo(2));
-                Assert.That(recorder.Handled[1].Id, Is.GreaterThan(recorder.Handled[0].Id));
-                Assert.That(recorder.Handled[1].Time, Is.EqualTo(Noon));
+                if (scheduled.Phase == SimulationPhase.Physical)
+                {
+                    running.Schedule(
+                        scheduled.Time,
+                        SimulationPhase.Lifecycle,
+                        ScheduledEventKind.BirthCheck,
+                        scheduled.PrimaryEntity,
+                        EntityId.None);
+                }
             });
+
+            for (var tick = 1; tick <= Instants; tick++)
+            {
+                ScheduleTask(clock, new SimulationTime(tick), 1UL);
+            }
+
+            clock.AdvanceTo(new SimulationTime(Instants), recorder);
+
+            // One task plus its one same-instant reaction, at every instant.
+            Assert.That(recorder.Handled, Has.Count.EqualTo(Instants * 2));
+        }
+
+        [Test]
+        public void A_reaction_one_tick_later_is_a_reaction_not_a_cascade()
+        {
+            // The budget must not catch a system that legitimately reschedules
+            // itself forward, which is the normal shape of a repeating task.
+            var clock = NewClock();
+            ScheduleTask(clock, SimulationTime.Zero.Plus(1L), 1UL);
+
+            var recorder = new Recorder((scheduled, running) => ScheduleTask(
+                running, scheduled.Time.Plus(1L), 1UL));
+
+            var dispatched = clock.AdvanceTo(SimulationTime.FromMinutes(5L), recorder);
+
+            Assert.That(dispatched, Is.EqualTo(300));
         }
 
         [Test]

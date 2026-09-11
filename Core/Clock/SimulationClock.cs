@@ -36,6 +36,19 @@ namespace KingdomWatch.Core.Clock
     /// check, rather than a convention. Loosening it later is easy; noticing
     /// later that it was never true is not.
     ///
+    /// It compares POSITION rather than full identity - see
+    /// <see cref="ScheduledEvent.ComparePositionTo"/>. That distinction is
+    /// load-bearing rather than pedantic: a freshly allocated
+    /// <see cref="EventId"/> is always the larger one, so a guard built on
+    /// <see cref="ScheduledEvent.CompareTo"/> accepts a reaction landing
+    /// exactly where its own cause did, and a handler that reproduces itself
+    /// there dispatches forever with the clock frozen.
+    ///
+    /// Position alone still cannot bound a cascade that climbs - reacting for
+    /// one person, then the next, then the next - so
+    /// <see cref="MaxCascadePerInstant"/> puts a ceiling on how far one instant
+    /// may cascade. Between them, a runaway fails loudly instead of hanging.
+    ///
     /// Not thread-safe, and not intended to be. The simulation is
     /// single-threaded by design - section 5's determinism rules do not survive
     /// arbitrary interleaving.
@@ -45,12 +58,29 @@ namespace KingdomWatch.Core.Clock
     /// </remarks>
     public sealed class SimulationClock
     {
+        /// <summary>
+        /// How many events one instant may cascade into before the clock calls
+        /// it a runaway.
+        /// </summary>
+        /// <remarks>
+        /// This counts only reactions scheduled from inside a handler AT the
+        /// instant being dispatched - never events booked ahead of time - so a
+        /// legitimate same-tick batch does not consume any of it however large
+        /// the population grows. A cascade that deep is a system reacting to
+        /// its own reaction, and the alternative to failing is a clock that
+        /// never advances again.
+        /// </remarks>
+        public const int MaxCascadePerInstant = 10_000;
+
         private readonly IdAllocator _ids;
         private readonly EventQueue _queue = new EventQueue();
 
         private bool _dispatching;
         private bool _hasCurrent;
         private ScheduledEvent _current;
+
+        private SimulationTime _cascadeInstant;
+        private int _cascadeCount;
 
         /// <summary>
         /// Builds a clock starting at <see cref="SimulationTime.Zero"/>.
@@ -94,12 +124,31 @@ namespace KingdomWatch.Core.Clock
 
             if (_hasCurrent)
             {
-                if (scheduled.CompareTo(_current) <= 0)
+                // Position, not CompareTo. A freshly allocated id is always the
+                // larger one, so comparing full identity would accept a
+                // reaction landing exactly where its own cause did - and a
+                // handler that reproduces itself there dispatches forever
+                // without the clock ever moving.
+                if (scheduled.ComparePositionTo(_current) <= 0)
                 {
                     throw new InvalidOperationException(
                         "Cannot schedule " + scheduled + " while dispatching " + _current
                         + ": reactions run after the event that caused them, never at or before it. "
                         + "Schedule a same-instant reaction into a later SimulationPhase.");
+                }
+
+                if (time == _current.Time)
+                {
+                    _cascadeCount++;
+
+                    if (_cascadeCount > MaxCascadePerInstant)
+                    {
+                        throw new InvalidOperationException(
+                            "A cascade at " + time + " has scheduled more than "
+                            + MaxCascadePerInstant + " reactions at that same instant without the "
+                            + "clock advancing, most recently " + scheduled
+                            + ". Something is reacting to its own reaction.");
+                    }
                 }
             }
             else if (time < Now)
@@ -171,6 +220,12 @@ namespace KingdomWatch.Core.Clock
 
                 while (_queue.TryDequeueDueBy(target, out var due))
                 {
+                    if (due.Time != _cascadeInstant)
+                    {
+                        _cascadeInstant = due.Time;
+                        _cascadeCount = 0;
+                    }
+
                     Now = due.Time;
                     _current = due;
                     _hasCurrent = true;

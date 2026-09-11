@@ -118,6 +118,28 @@ namespace KingdomWatch.Core.Clock
         /// </summary>
         public int CompareTo(ScheduledEvent other)
         {
+            var byPosition = ComparePositionTo(other);
+            return byPosition != 0 ? byPosition : Id.CompareTo(other.Id);
+        }
+
+        /// <summary>
+        /// Orders by everything except <see cref="Id"/> — WHERE an event sits
+        /// in the instant, rather than WHICH event it is. Returns 0 for two
+        /// distinct events occupying the same position.
+        /// </summary>
+        /// <remarks>
+        /// Position and identity are different questions, and the scheduler
+        /// needs both separately. <see cref="CompareTo"/> answers "which runs
+        /// first", and must be total, so it falls back to
+        /// <see cref="Id"/>. <see cref="SimulationClock.Schedule"/> asks "is
+        /// this reaction ahead of the event that caused it", which is about
+        /// position alone — a freshly allocated id is always the larger one, so
+        /// a guard built on <see cref="CompareTo"/> can never reject a reaction
+        /// that lands exactly where its own cause did, and a handler that
+        /// reproduces itself there freezes the clock.
+        /// </remarks>
+        public int ComparePositionTo(ScheduledEvent other)
+        {
             var byTime = Time.CompareTo(other.Time);
 
             if (byTime != 0)
@@ -146,9 +168,7 @@ namespace KingdomWatch.Core.Clock
                 return byKind;
             }
 
-            var bySecondary = SecondaryEntity.CompareTo(other.SecondaryEntity);
-
-            return bySecondary != 0 ? bySecondary : Id.CompareTo(other.Id);
+            return SecondaryEntity.CompareTo(other.SecondaryEntity);
         }
 
         public bool Equals(ScheduledEvent other) =>
