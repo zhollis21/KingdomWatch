@@ -12,7 +12,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 
 ## Status
 
-M0 prototyping. Orthographic 3D with sprite villagers has been selected after desktop and Android trials, and a sustained on-device baseline looks healthy (see [docs/town-prototype.md](docs/town-prototype.md)). Core simulation implementation has not started; a render-ceiling ramp test and allocation/GC baseline are deferred to M2's stress test. See [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) for M0–M8.
+M0 prototyping. Orthographic 3D with sprite villagers has been selected after desktop and Android trials, and a sustained on-device baseline looks healthy (see [docs/town-prototype.md](docs/town-prototype.md)). M1 is underway in `Core/`: entity identity, keyed RNG, person storage, and the simulation clock and event scheduler. A render-ceiling ramp test and allocation/GC baseline are deferred to M2's stress test. See [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) for M0–M8.
 
 ## Run the prototype
 

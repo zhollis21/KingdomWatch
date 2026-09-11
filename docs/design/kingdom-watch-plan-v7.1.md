@@ -148,7 +148,7 @@ Without this rule, genealogy, grievances, apprenticeship, and history all stop b
 **Before M1.** Fixed timestep is right for determinism, but you cannot literally iterate every tick when running centuries at 10,000×.
 
 ```
-World clock = integer simulation time
+World clock = integer simulation time · 1 tick = 1 simulated second
 
 Normal / local detail:
     advance in fixed small steps
@@ -160,11 +160,21 @@ Scheduled detail:
 
 Compression:
     advance to min(
-        next discrete event,
-        next threshold crossing,
+        next scheduled event,
         requested target time
     )
 ```
+
+**Built at #4.** One tick is one simulated second: fine enough for the hunger
+crossing at 17:42 and the walk from 10:00 to 10:12 below, and for the finer
+positions stepped detail needs at M3. Two hundred years is about 6.3e9 ticks, so
+a signed 64-bit count is nowhere near a limit.
+
+Threshold crossings share the one queue rather than forming a second input to
+that `min()`. A predicted crossing and a discrete event are both *"wake me at
+T"* and differ only in where they came from. What a threshold needs beyond
+scheduling is **re-prediction** — Aldric eats, so the crossing he was booked for
+is wrong — which is a cancel and a reschedule, not a separate structure.
 
 ### Threshold crossings make compression trustworthy
 
@@ -188,11 +198,18 @@ SimulationTime
 → PrimaryEntityId
 → EventKindPriority
 → SecondaryEntityId
+→ EventId
 ```
 
 `SimulationTime → Phase → EntityId` alone is not a total order — one entity can have two same-phase events at the same instant. Without a complete discriminator, ordering depends on collection iteration and determinism silently dies.
 
+**`EventId` is the last component because the five before it are not enough either.** Two events of the same kind, at the same instant, between the same pair of entities tie — two hauling trips finishing in the same simulated second, or a batch of birth checks scheduled "in thirty days" from a shared origin. A heap breaks such a tie on its array layout: identical on replay today, reordered the first time the queue is rebuilt from a save (§17) or compacted after heavy cancellation, and invisible to the cross-platform hash because desktop and IL2CPP execute the same operations and agree on the same wrong answer. `EventId` is already durable, monotonic, never reused and comparable, and a scheduled event needs one anyway for history and provenance — so the tiebreak is scheduling order, pinned as stored data rather than left to the container.
+
 **Events emitted while handling another event are queued, never executed recursively.** Otherwise `PersonDied → household reacts → HouseholdEnded → settlement reacts → …` turns a clean domain-event architecture into callback spaghetti.
+
+The scheduler enforces both rules rather than documenting them: it refuses to advance the clock from inside a handler, and refuses to schedule anything at or before the **position** it is dispatching. A same-instant reaction goes into a **later phase**, which is what the phases are for — and that keeps *"dispatch proceeds in non-decreasing key order"* a real invariant the WorldValidator can check.
+
+**Position is the first five components; `EventId` is identity, not position.** The distinction is load-bearing. A freshly allocated id is always the larger one, so a guard comparing full identity can never reject a reaction landing exactly where its own cause did — and a handler that reproduces itself there dispatches forever with the clock frozen at one instant. Position alone still cannot bound a cascade that *climbs* — reacting for one person, then the next, then the next — so the clock also caps how far a single `AdvanceTo` call may cascade at one instant. Reactions booked ahead of time never count against that cap, so a legitimate same-tick batch is unaffected however large the population grows. The cap is per call, not per instant across calls: a paused player casting a power is an event at the frozen instant, dispatched by its own `AdvanceTo`, and a budget shared across calls would eventually throw at a player who merely acted enough times while paused. What the cap guarantees is that `AdvanceTo` terminates; a driver that keeps re-entering one instant has control between calls and can see for itself that time is not moving.
 
 Process in phases:
 
