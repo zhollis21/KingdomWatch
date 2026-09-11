@@ -463,7 +463,7 @@ Runtime cost is effectively zero — small accessors on a sealed class are inlin
 
 The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is an M2 question if profiling raises it, not a guess to make now.
 
-The bulk path is allocation-free. The scattered path is not quite: `Alive()` allocates one iterator per enumeration, so it is not the tick-loop path. #59 tracks the broader zero-allocation claim, which nothing measures yet.
+The bulk path is allocation-free. The scattered path is not quite: `Alive()` allocates one iterator per enumeration, so it is not the tick-loop path. `Core.Tests/Performance/SchedulerSoakTests` holds the scheduler to the broader zero-allocation claim (#59); systems added later get the same test.
 
 **Correction on the Burst path.** `NativeArray`, Unity Jobs, and Burst are Unity dependencies, so they cannot be introduced into `KingdomWatch.Core` without breaking the zero-dependency rule that the harness, tests, and determinism strategy all rest on. If profiling ever demands them, the seam is a separate `KingdomWatch.UnityOptimization` backend — not an in-place change to Core.
 

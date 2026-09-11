@@ -38,3 +38,9 @@ jobs:
 
       - name: Test
         run: dotnet test KingdomWatch.sln --configuration Release --no-build
+
+      # Puts the throughput figure in every CI log (#58) and fails the build
+      # if the harness stops running. Twenty years gives the same
+      # sim-years/s as the 200-year default in a tenth of the time.
+      - name: Run harness
+        run: dotnet run --project Harness/KingdomWatch.Harness.csproj --configuration Release --no-build -- --years 20

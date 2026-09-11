@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Core\KingdomWatch.Core.csproj" />
+    <!-- For SchedulerSoak: the performance tests bound the exact workload the harness reports on. -->
+    <ProjectReference Include="..\Harness\KingdomWatch.Harness.csproj" />
   </ItemGroup>
 
 </Project>
