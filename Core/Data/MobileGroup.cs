@@ -17,10 +17,11 @@ namespace KingdomWatch.Core.Data
     /// belong to a household, call a settlement home, and be marching 40 km
     /// away in an army all at once. Membership here is the spatial half only.
     ///
-    /// SharedSupplies is part of this entity in section 3 but is deliberately
-    /// absent for now - it needs the authoritative resource ledger, and a
-    /// placeholder here would become a second resource representation the day
-    /// that lands. Tracked by issue #12.
+    /// SharedSupplies is the group's <see cref="ResourceLedger"/> - the same
+    /// accounting a settlement will use, so nothing is lost or doubled when a
+    /// band settles and hands its supplies over (#54). It was deliberately
+    /// absent until the ledger existed (#12), because a placeholder would have
+    /// become a second resource representation the day the ledger landed.
     ///
     /// A plain class rather than dense records behind an accessor layer: the
     /// storage rules in section 5 are aimed at the roughly 1,650 people, and
@@ -69,12 +70,16 @@ namespace KingdomWatch.Core.Data
             Purpose = purpose;
             Position = position;
             _membersView = _members.AsReadOnly();
+            SharedSupplies = new ResourceLedger();
         }
 
         /// <summary>Durable identity, safe to reference from history.</summary>
         public EntityId Id { get; }
 
         public MobileGroupPurpose Purpose { get; }
+
+        /// <summary>Food, tools and materials the group carries as a whole.</summary>
+        public ResourceLedger SharedSupplies { get; }
 
         public WorldPosition Position { get; set; }
 

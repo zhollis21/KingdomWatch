@@ -359,7 +359,7 @@ Every EntityId is unique.
 Every living person belongs somewhere.
 No dead person has active tasks.
 No resource count is negative.
-Reservations never exceed availability.
+No reservation without stock behind it: reserved is drawn out of available, never counted alongside it.
 Every household member resolves.
 Every settlement belongs to a valid polity.
 Every child has valid parents.
@@ -732,7 +732,7 @@ recipe: iron_tools
   degrades_to: bone_tools
 ```
 
-Start at 3–4 for M1, expand toward 10 by M6. Resource count is a config file.
+Start at 3–4 for M1, expand toward 10 by M6. Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (spoilage, weight) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; stone tools and hide clothing wait, since tools may be personal property (§6) rather than stock and hides have no source until hunting exists.
 
 ### Technology is a capability graph, not a tree
 
@@ -990,13 +990,15 @@ Nearby, `Bob picks up 4 logs → carries → deposits`. Offscreen, `lumber produ
 CURRENT STOCK
     available + reserved + carried + in-process  ==  current material stock
 
-AUDIT (WorldValidator, not maintained at runtime)
+AUDIT (counters kept by the ledger; the equation is checked by WorldValidator, not per mutation)
     opening + produced + gathered + imported
       ==
     current + consumed + exported + destroyed + embodied in construction
 ```
 
 The visible pile of logs is a *rendering* of the ledger, not the authoritative state.
+
+As of #12, `ResourceLedger` is that model: one per holder (`MobileGroup.SharedSupplies` now, settlements later), stock derived from the four buckets so the first equation holds by construction, every mutation a named operation that refuses to go negative, and the flow counters bumped by the operations because there is nowhere else they could be counted. Both equations are structural while the ledger is the only write path; they become real checks the moment save/load or a bulk path exists. Reserved and carried are defined from the start so that reservation (#24) and hauling extend the ledger rather than growing a second representation.
 
 ### Founding and abandonment
 

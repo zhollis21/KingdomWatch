@@ -25,6 +25,24 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(band.Destination, Is.Null);
                 Assert.That(band.Position, Is.EqualTo(new WorldPosition(10, 20)));
                 Assert.That(band.Purpose, Is.EqualTo(MobileGroupPurpose.NomadicBand));
+                Assert.That(band.SharedSupplies.Stock(ResourceKind.Food), Is.Zero);
+            });
+        }
+
+        [Test]
+        public void Each_band_has_its_own_supplies()
+        {
+            // Two bands sharing a ledger would be the second-representation
+            // bug in a different shape: one band eating the other's food.
+            var first = NewBand();
+            var second = NewBand();
+
+            first.SharedSupplies.Open(ResourceKind.Food, 5);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.SharedSupplies, Is.Not.SameAs(second.SharedSupplies));
+                Assert.That(second.SharedSupplies.Stock(ResourceKind.Food), Is.Zero);
             });
         }
 
