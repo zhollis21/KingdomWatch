@@ -359,7 +359,7 @@ Every EntityId is unique.
 Every living person belongs somewhere.
 No dead person has active tasks.
 No resource count is negative.
-Reservations never exceed availability.
+No reservation without stock behind it: reserved is drawn out of available, never counted alongside it.
 Every household member resolves.
 Every settlement belongs to a valid polity.
 Every child has valid parents.

@@ -597,6 +597,71 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void A_recipe_with_a_kind_on_both_sides_completes_at_full_stock()
+        {
+            // Food x1 -> Food x1 leaves stock unchanged, so it must complete
+            // even at the maximum. A check against stock before the input
+            // comes out would refuse it.
+            var refine = new Recipe(
+                "Refine",
+                new[] { new ResourceQuantity(ResourceKind.Food, 1) },
+                new[] { new ResourceQuantity(ResourceKind.Food, 1) },
+                1L);
+            var ledger = WithFood(int.MaxValue);
+            ledger.BeginRecipe(refine);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => ledger.CompleteRecipe(refine), Throws.Nothing);
+                Assert.That(ledger.Available(ResourceKind.Food), Is.EqualTo(int.MaxValue));
+                Assert.That(ledger.Flows(ResourceKind.Food).Consumed, Is.EqualTo(1L));
+                Assert.That(ledger.Flows(ResourceKind.Food).Produced, Is.EqualTo(1L));
+                Assert.That(ledger.AuditBalances(), Is.True);
+            });
+        }
+
+        [Test]
+        public void A_recipe_that_nets_more_than_the_room_left_is_still_refused()
+        {
+            // Food x1 -> Food x2 nets one more. With one unit of room it
+            // completes; with none it must not, and the input stays in
+            // process.
+            var grow = new Recipe(
+                "Grow",
+                new[] { new ResourceQuantity(ResourceKind.Food, 1) },
+                new[] { new ResourceQuantity(ResourceKind.Food, 2) },
+                1L);
+            var ledger = WithFood(int.MaxValue);
+            ledger.BeginRecipe(grow);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => ledger.CompleteRecipe(grow), Throws.TypeOf<OverflowException>());
+                Assert.That(ledger.InProcess(ResourceKind.Food), Is.EqualTo(1));
+                Assert.That(ledger.Stock(ResourceKind.Food), Is.EqualTo(int.MaxValue));
+            });
+        }
+
+        [Test]
+        public void Completing_a_gathering_recipe_never_begun_is_a_gather()
+        {
+            // A gathering recipe has no inputs, so there is nothing for the
+            // un-begun check to look at and Complete is exactly Gather. That
+            // is not a hole: Gather is a public operation, and the run itself
+            // is #52's task state, not the ledger's. Pinned so the remarks
+            // cannot drift from the behaviour.
+            var ledger = new ResourceLedger();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => ledger.CompleteRecipe(Forage), Throws.Nothing);
+                Assert.That(ledger.Available(ResourceKind.Food), Is.EqualTo(3));
+                Assert.That(ledger.Flows(ResourceKind.Food).Gathered, Is.EqualTo(3L));
+                Assert.That(ledger.AuditBalances(), Is.True);
+            });
+        }
+
+        [Test]
         public void The_audit_balances_after_every_kind_of_operation()
         {
             var ledger = new ResourceLedger();

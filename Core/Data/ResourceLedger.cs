@@ -273,7 +273,8 @@ namespace KingdomWatch.Core.Data
 
         /// <summary>
         /// Abandons a run: the inputs return to the available pool. Throws if
-        /// the run was never begun, because that would conjure stock.
+        /// the run's inputs are not in process, because returning them would
+        /// conjure stock. A no-op for a gathering recipe, which has none.
         /// </summary>
         public void CancelRecipe(Recipe recipe)
         {
@@ -298,7 +299,10 @@ namespace KingdomWatch.Core.Data
         /// Finishes a run: the inputs are consumed and the outputs become
         /// available. Outputs of a gathering recipe are tallied as gathered
         /// rather than produced, since they came from the world, not from
-        /// stock. Throws if the run was never begun.
+        /// stock. Throws if the run's inputs are not in process - which, for
+        /// a gathering recipe, is nothing: it has no inputs, so completing one
+        /// is exactly a <see cref="Gather"/> whether or not it was begun. The
+        /// run itself is the task's state (#52), not the ledger's.
         /// </summary>
         public void CompleteRecipe(Recipe recipe)
         {
@@ -312,13 +316,13 @@ namespace KingdomWatch.Core.Data
             ThrowUnlessInProcess(recipe, inputs);
 
             // All or nothing, as with BeginRecipe: an output that would not fit
-            // must not cost the inputs. Checked against stock before the inputs
-            // come out, which is conservative when a kind is on both sides -
-            // that only matters within a few units of int.MaxValue.
+            // must not cost the inputs. The room for an output is measured
+            // after its own kind's input has come out - Food x1 -> Food x1
+            // leaves stock unchanged and must complete even at the maximum.
             for (var i = 0; i < outputs.Count; i++)
             {
                 var line = outputs[i];
-                ThrowIfNoRoom(ref Ref(line.Kind), line.Kind, line.Quantity);
+                ThrowIfNoRoom(ref Ref(line.Kind), line.Kind, line.Quantity - InputQuantity(inputs, line.Kind));
             }
 
             for (var i = 0; i < inputs.Count; i++)
@@ -394,9 +398,11 @@ namespace KingdomWatch.Core.Data
             account.Available += quantity;
         }
 
+        // The quantity may be zero or negative when a recipe consumes as much
+        // of a kind as it makes, or more; there is always room for that.
         private static void ThrowIfNoRoom(ref Account account, ResourceKind kind, int quantity)
         {
-            if (StockOf(ref account) > int.MaxValue - quantity)
+            if (quantity > 0 && StockOf(ref account) > int.MaxValue - quantity)
             {
                 throw new OverflowException(
                     "Adding " + Describe(quantity) + " " + kind + " would overflow the ledger.");
@@ -405,6 +411,21 @@ namespace KingdomWatch.Core.Data
 
         private static int StockOf(ref Account account) =>
             account.Available + account.Reserved + account.Carried + account.InProcess;
+
+        // A kind appears at most once per side, which Recipe guarantees, so
+        // the first match is the only one. A short scan, no lookup structure.
+        private static int InputQuantity(IReadOnlyList<ResourceQuantity> inputs, ResourceKind kind)
+        {
+            for (var i = 0; i < inputs.Count; i++)
+            {
+                if (inputs[i].Kind == kind)
+                {
+                    return inputs[i].Quantity;
+                }
+            }
+
+            return 0;
+        }
 
         private static void TakeAvailable(ref Account account, ResourceKind kind, int quantity) =>
             Take(ref account.Available, kind, quantity, "available");
