@@ -43,8 +43,15 @@ namespace KingdomWatch.Core.Data
     /// define. Quantities are integers because the sim branches on them.
     ///
     /// Flat arrays indexed by <see cref="ResourceKind"/>, nothing allocated
-    /// after construction, and integer arithmetic that throws on overflow
-    /// rather than wrapping silently.
+    /// after construction. Every check that can refuse an operation - room,
+    /// availability, inputs in process - runs before any bucket moves, so a
+    /// refused operation leaves the ledger exactly as it was. The flow
+    /// counters are plain 64-bit arithmetic: an increment is at most
+    /// int.MaxValue, so overflowing one takes over four billion maximum-sized
+    /// operations on a single resource, which no run reaches and no test can
+    /// drive. A checked increment there would be a guard nothing can exercise,
+    /// and one placed after the bucket mutation - the only place it could go
+    /// without a preflight of its own - would throw after the fact.
     /// </remarks>
     public sealed class ResourceLedger
     {
@@ -120,7 +127,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             AddAvailable(ref account, kind, quantity);
-            account.Opening = checked(account.Opening + quantity);
+            account.Opening += quantity;
         }
 
         /// <summary>Stock taken from the world: foraged, felled, quarried.</summary>
@@ -128,7 +135,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             AddAvailable(ref account, kind, quantity);
-            account.Gathered = checked(account.Gathered + quantity);
+            account.Gathered += quantity;
         }
 
         /// <summary>Stock received from another ledger. See <see cref="TransferTo"/>.</summary>
@@ -136,7 +143,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             AddAvailable(ref account, kind, quantity);
-            account.Imported = checked(account.Imported + quantity);
+            account.Imported += quantity;
         }
 
         /// <summary>Stock used up: eaten, burnt as fuel.</summary>
@@ -144,7 +151,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             TakeAvailable(ref account, kind, quantity);
-            account.Consumed = checked(account.Consumed + quantity);
+            account.Consumed += quantity;
         }
 
         /// <summary>Stock handed to another ledger. See <see cref="TransferTo"/>.</summary>
@@ -152,7 +159,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             TakeAvailable(ref account, kind, quantity);
-            account.Exported = checked(account.Exported + quantity);
+            account.Exported += quantity;
         }
 
         /// <summary>Stock lost: spoiled, raided, burned down.</summary>
@@ -160,7 +167,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             TakeAvailable(ref account, kind, quantity);
-            account.Destroyed = checked(account.Destroyed + quantity);
+            account.Destroyed += quantity;
         }
 
         /// <summary>Stock built into a camp or building. No longer stock.</summary>
@@ -168,7 +175,7 @@ namespace KingdomWatch.Core.Data
         {
             ref var account = ref Ref(kind, quantity);
             TakeAvailable(ref account, kind, quantity);
-            account.Embodied = checked(account.Embodied + quantity);
+            account.Embodied += quantity;
         }
 
         /// <summary>Promises available stock to a task.</summary>
@@ -221,9 +228,9 @@ namespace KingdomWatch.Core.Data
                     "A ledger cannot transfer to itself.", nameof(other));
             }
 
-            // Export runs first, so the receiver is checked for room before
-            // anything leaves - otherwise a full receiver would lose the stock
-            // in transit with both audits still balancing.
+            // The receiver is checked for room before anything leaves. Export
+            // would otherwise run first, and a full receiver would lose the
+            // stock in transit with both audits still balancing.
             ThrowIfNoRoom(ref other.Ref(kind, quantity), kind, quantity);
             Export(kind, quantity);
             other.Import(kind, quantity);
@@ -330,7 +337,7 @@ namespace KingdomWatch.Core.Data
                 var line = inputs[i];
                 ref var account = ref Ref(line.Kind);
                 account.InProcess -= line.Quantity;
-                account.Consumed = checked(account.Consumed + line.Quantity);
+                account.Consumed += line.Quantity;
             }
 
             for (var i = 0; i < outputs.Count; i++)
@@ -345,7 +352,7 @@ namespace KingdomWatch.Core.Data
                 {
                     ref var account = ref Ref(line.Kind);
                     AddAvailable(ref account, line.Kind, line.Quantity);
-                    account.Produced = checked(account.Produced + line.Quantity);
+                    account.Produced += line.Quantity;
                 }
             }
         }

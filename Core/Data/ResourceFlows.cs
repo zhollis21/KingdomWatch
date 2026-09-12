@@ -9,6 +9,8 @@ namespace KingdomWatch.Core.Data
     /// <remarks>
     /// Each counter only ever grows. They are 64-bit because they accumulate
     /// over centuries where the live buckets only ever hold what exists now.
+    /// Plain arithmetic throughout: see the overflow remarks on
+    /// <see cref="ResourceLedger"/>.
     /// </remarks>
     public readonly struct ResourceFlows
     {
@@ -57,9 +59,9 @@ namespace KingdomWatch.Core.Data
         public long Embodied { get; }
 
         /// <summary>Everything that ever entered.</summary>
-        public long TotalIn => checked(Opening + Produced + Gathered + Imported);
+        public long TotalIn => Opening + Produced + Gathered + Imported;
 
         /// <summary>Everything that ever left.</summary>
-        public long TotalOut => checked(Consumed + Exported + Destroyed + Embodied);
+        public long TotalOut => Consumed + Exported + Destroyed + Embodied;
     }
 }
