@@ -223,6 +223,37 @@ namespace KingdomWatch.Core.Tests.Events
             });
         }
 
+        // Claims to equal everything. Two of these are still two subscribers.
+        private sealed class Indiscriminate : IDomainEventSubscriber
+        {
+            internal int Heard { get; private set; }
+
+            public void On(in DomainEvent published) => Heard++;
+
+            public override bool Equals(object? obj) => obj is Indiscriminate;
+
+            public override int GetHashCode() => 0;
+        }
+
+        [Test]
+        public void Duplicate_subscribers_are_judged_by_identity_not_equality()
+        {
+            var (_, _, bus) = NewWorld();
+            var first = new Indiscriminate();
+            var second = new Indiscriminate();
+            bus.Subscribe(first);
+            bus.Subscribe(second);
+
+            bus.Publish(DomainEventKind.PersonBorn, Person(1UL), EntityId.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bus.SubscriberCount, Is.EqualTo(2));
+                Assert.That(first.Heard, Is.EqualTo(1));
+                Assert.That(second.Heard, Is.EqualTo(1));
+            });
+        }
+
         [Test]
         public void Subscription_is_sealed_by_the_first_publish()
         {

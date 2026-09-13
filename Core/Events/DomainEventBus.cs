@@ -97,10 +97,16 @@ namespace KingdomWatch.Core.Events
                     + "notification order, so every subscriber is wired before the world runs.");
             }
 
-            if (_subscribers.Contains(subscriber))
+            // By identity, not Equals: the promise is that one INSTANCE hears
+            // each event once, and a subscriber with value equality must not
+            // be able to shadow a different one.
+            for (var i = 0; i < _subscribers.Count; i++)
             {
-                throw new ArgumentException(
-                    "Already subscribed. A subscriber hears each event once.", nameof(subscriber));
+                if (ReferenceEquals(_subscribers[i], subscriber))
+                {
+                    throw new ArgumentException(
+                        "Already subscribed. A subscriber hears each event once.", nameof(subscriber));
+                }
             }
 
             _subscribers.Add(subscriber);
