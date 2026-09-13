@@ -59,22 +59,23 @@ namespace KingdomWatch.Core.Relationships
         /// </summary>
         public bool IsActive => !FormedBy.IsNone && EndedBy.IsNone;
 
-        public bool Involves(EntityId person) => person == First || person == Second;
+        /// <summary>
+        /// Whether the person is one of the two. <see cref="EntityId.None"/>
+        /// names nobody and so is never involved - which matters only on a
+        /// <c>default</c> record, whose endpoints are both None.
+        /// </summary>
+        public bool Involves(EntityId person) =>
+            !person.IsNone && (person == First || person == Second);
 
         /// <summary>The other party. Throws for someone not in the partnership.</summary>
         public EntityId PartnerOf(EntityId person)
         {
-            if (person == First)
+            if (!Involves(person))
             {
-                return Second;
+                throw new ArgumentException(person + " is not in this partnership.", nameof(person));
             }
 
-            if (person == Second)
-            {
-                return First;
-            }
-
-            throw new ArgumentException(person + " is not in this partnership.", nameof(person));
+            return person == First ? Second : First;
         }
 
         internal Partnership Ended(EventId endedBy, SimulationTime endedAt) =>

@@ -288,6 +288,7 @@ namespace KingdomWatch.Core.Tests.Relationships
                 Assert.That(() => ties.Decay(settlement, SimulationTime.Zero), Throws.ArgumentException);
                 Assert.That(() => ties.Ties(EntityId.None), Throws.ArgumentException);
                 Assert.That(() => ties.TryGet(aldric, settlement, out _), Throws.ArgumentException);
+                Assert.That(ties.TryGet(aldric, aldric, out _), Is.False, "a question about oneself has an answer: no tie");
                 Assert.That(ties.Ties(aldric).Length, Is.Zero, "nothing was recorded");
             });
         }

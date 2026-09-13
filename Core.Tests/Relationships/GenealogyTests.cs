@@ -150,6 +150,8 @@ namespace KingdomWatch.Core.Tests.Relationships
                 Assert.That(() => new ParentLinks(person, person), Throws.ArgumentException);
                 Assert.That(() => new ParentLinks(EntityId.None, EntityId.None), Throws.Nothing, "founders");
                 Assert.That(() => new ParentLinks(person, EntityId.None), Throws.Nothing, "one known parent");
+                Assert.That(ParentLinks.None.Includes(EntityId.None), Is.False, "nobody is not a parent");
+                Assert.That(new ParentLinks(person, EntityId.None).Includes(EntityId.None), Is.False);
             });
         }
 

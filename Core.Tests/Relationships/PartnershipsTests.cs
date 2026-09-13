@@ -243,7 +243,12 @@ namespace KingdomWatch.Core.Tests.Relationships
             // The struct is public, so default is always constructible. A
             // record with no forming event never happened, and must not read
             // as a live partnership.
-            Assert.That(default(Partnership).IsActive, Is.False);
+            Assert.Multiple(() =>
+            {
+                Assert.That(default(Partnership).IsActive, Is.False);
+                Assert.That(default(Partnership).Involves(EntityId.None), Is.False, "None names nobody");
+                Assert.That(() => default(Partnership).PartnerOf(EntityId.None), Throws.ArgumentException);
+            });
         }
 
         [Test]
@@ -260,7 +265,9 @@ namespace KingdomWatch.Core.Tests.Relationships
             Assert.Multiple(() =>
             {
                 Assert.That(record.Involves(bram), Is.False);
+                Assert.That(record.Involves(EntityId.None), Is.False);
                 Assert.That(() => record.PartnerOf(bram), Throws.ArgumentException);
+                Assert.That(() => record.PartnerOf(EntityId.None), Throws.ArgumentException);
             });
         }
     }
