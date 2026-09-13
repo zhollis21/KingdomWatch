@@ -1,8 +1,8 @@
 ---
 name: kickoff
-description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, surface tradeoffs, ask clarifying questions, and agree a plan before any code exists. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
+description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
 argument-hint: "<issue number> [more issue numbers]"
-allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Read Grep Glob AskUserQuestion ExitPlanMode
+allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
 ---
 
 # Kickoff
@@ -12,10 +12,11 @@ Kicking off: $ARGUMENTS
 The point of this skill is to spend thinking time where it is cheap. A wrong
 assumption costs seconds to fix while it is still a sentence in a plan, and hours
 once it is code with tests and a PR built on top of it. So the order here is
-deliberately: understand → verify → analyze → ask → agree → _then_ branch.
+deliberately: understand → verify → analyze → brief → ask → agree → _then_ branch
+and build.
 
-Nothing gets implemented during this skill. It ends at an approved plan and a
-branch to build it on.
+Nothing gets implemented before the plan is approved. Once it is, the approval is
+the go-ahead: cut the branch and carry straight on into implementation.
 
 It does write to GitHub, in two narrow places, because findings that live only in
 a chat window get re-derived at full price by the next person to open the issue:
@@ -229,7 +230,34 @@ behavior you cannot verify from the desktop.
 
 ---
 
-## Step 4 — Ask clarifying questions
+## Step 4 — Brief, then ask
+
+**Brief first, questions second.** Before the first `AskUserQuestion`, write a
+short overview in the conversation so the user is answering from the same picture
+you are. A question arriving cold — "refuse or queue nested publishes?" — asks the
+user to reconstruct the whole problem in their head before they can answer it;
+the same question after two paragraphs of context is answerable in a sentence.
+
+The brief covers, in this order and briefly:
+
+- **What the issue is** — the problem in your own words, reflecting what Step 2
+  verified rather than the issue's title. Say what already exists that this
+  builds on, with file paths.
+- **Where it fits** — which milestone, what depends on it, what it depends on,
+  and which neighbouring issues will consume or feed it (the dependency order
+  from Step 2).
+- **The decisions to make** — each one named, with the options and the tradeoff
+  in a line or two apiece, and your recommendation. This is the list Step 3
+  produced. If a decision has an obvious default and no real alternative, say
+  so and do not put it to the user.
+
+Write it in plain language. The user may not have the design doc open, and a
+decision explained as "the clock already refuses reentrant dispatch, so the bus
+should too" lands better than a paragraph of tradeoffs that assumes they remember
+why. Keep it to what the questions need — this is a brief, not the plan; the plan
+is Step 5.
+
+Then ask.
 
 The user's explicit goal is to fix it right the first time, which means questions
 are welcome — but their value comes from being answerable and consequential, not
@@ -319,9 +347,10 @@ name or the eventual PR body.
 
 Confirm the branch name before creating it; it is annoying to rename later.
 
-Create the branch and stop there. Don't commit, don't push, and don't start
-implementing — per `AGENTS.md`, those are separate explicit asks. Hand back with
-a one-line summary of what was agreed and what the next step is.
+Create the branch and carry on: the approved plan is the instruction to
+implement, so start building without asking again. Commits, pushes and the PR
+remain separate explicit asks per `AGENTS.md`; run `/self-review` before
+presenting the result.
 
 ---
 
