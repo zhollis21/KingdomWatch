@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-description: "Pull and evaluate open PR review comments for this repository. Use when asked to address PR feedback, review open comments, or work through reviewer notes."
+description: "Pull open PR review comments for this repository, present an overview of each finding with whether it is valid and what the options are, then act on what the user chooses. Use when asked to address PR feedback, review open comments, or work through reviewer notes."
 allowed-tools: Bash(pwsh tools/Get-OpenPrComments.ps1) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr comment:*) Bash(gh api graphql:*) Bash(gh api repos/:*) Read Glob Grep
 ---
 
@@ -66,12 +66,32 @@ Two things to know when acting on one:
 
 ## Step 2: Evaluate Each Comment
 
-For each comment:
+**Present the whole picture before asking anything.** Write an overview in the
+conversation first, one entry per comment, so the user reads every finding with
+its evaluation before a single question lands. A question arriving cold asks the
+user to re-derive the reviewer's point and your view of it before they can
+answer; the same question after the overview is answerable in a word.
 
-1. Determine if it's a valid concern that needs fixing
-2. If valid — explain the issue, present possible solutions with pros/cons, then wait for the user to choose before implementing
-3. If unsure — ask the user before acting
-4. Do not assume all comments are valid or silently fix them
+For each comment, the entry says:
+
+1. **What the reviewer found**, in a sentence — not a paste of the comment.
+2. **Whether it is valid**, and why. Reviewers can be wrong: check the cited
+   line against the synced checkout, check whether a later push already
+   addressed it, and check the claim against the code rather than accepting it.
+   Say "not an issue — here's why" as readily as "valid".
+3. **If valid, what to do about it.** Match the depth to the decision:
+   - **Open-and-shut** — one obviously right fix and nothing to weigh (a missing
+     guard, a stale comment, a test the rule plainly requires): state the fix
+     in a line and move on. Do not manufacture alternatives for it.
+   - **A real choice** — two or more fixes that lead to different code, or a
+     fix with a cost worth knowing about: lay out the options with the pro and
+     con of each, and say which you recommend.
+
+Then ask. Use `AskUserQuestion` for the real choices, batched into one call;
+for the open-and-shut ones and the non-issues, ask for a single go-ahead rather
+than a question apiece. Wait for the answer before implementing anything — do
+not silently fix a comment, and do not assume a comment is valid because a
+reviewer posted it.
 
 ## Step 3: Resolve threads and keep the PR current
 
