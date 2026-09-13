@@ -80,6 +80,20 @@ namespace KingdomWatch.Core.Tests.History
         }
 
         [Test]
+        public void A_defaulted_event_is_refused_rather_than_recorded()
+        {
+            // default(DomainEvent) skips the constructor that requires an id.
+            var journal = new EventJournal(4);
+            journal.On(Event(1UL, Noon));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => journal.On(default), Throws.TypeOf<ArgumentException>());
+                Assert.That(journal.Count, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public void Time_may_stand_still_between_entries_but_never_run_backwards()
         {
             var journal = new EventJournal(4);
@@ -98,7 +112,7 @@ namespace KingdomWatch.Core.Tests.History
         {
             var ids = new IdAllocator();
             var clock = new SimulationClock(ids);
-            var bus = new DomainEventBus(ids, clock);
+            var bus = new DomainEventBus(clock);
             var journal = new EventJournal(4);
             bus.Subscribe(journal);
 

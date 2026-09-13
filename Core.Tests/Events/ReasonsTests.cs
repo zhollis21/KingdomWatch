@@ -159,6 +159,12 @@ namespace KingdomWatch.Core.Tests.Events
 
                 // The unused slots hold None; asking for None must not find them.
                 Assert.That(one.Contains(ReasonCode.None), Is.False);
+
+                // None is a defined member and the honest answer is "no"; an
+                // undefined value is a caller bug and is refused.
+                Assert.That(() => four.Contains((ReasonCode)999), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => four.Contains((ReasonCode)(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Reasons.None.Contains((ReasonCode)999), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 

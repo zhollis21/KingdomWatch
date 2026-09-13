@@ -65,6 +65,16 @@ namespace KingdomWatch.Core.History
 
         public void On(in DomainEvent published)
         {
+            // A default(DomainEvent) skips the constructor that requires an
+            // id. Recording one would put Event#None in the chronicle and the
+            // hash, and nothing downstream could ever refer back to it.
+            if (published.Id.IsNone)
+            {
+                throw new ArgumentException(
+                    "Cannot record an event with no id: it was never published through the bus.",
+                    nameof(published));
+            }
+
             if (_count > 0 && published.Time < _events[_count - 1].Time)
             {
                 throw new InvalidOperationException(

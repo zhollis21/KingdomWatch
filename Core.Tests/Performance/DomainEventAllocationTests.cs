@@ -85,7 +85,7 @@ namespace KingdomWatch.Core.Tests.Performance
         {
             var ids = new IdAllocator();
             var clock = new SimulationClock(ids);
-            var bus = new DomainEventBus(ids, clock);
+            var bus = new DomainEventBus(clock);
             // Two events per entity per day, for both passes; growth past
             // this would be an allocation the test is right to report.
             var journal = new EventJournal(Entities * 2 * Days * 2);

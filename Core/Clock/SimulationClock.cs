@@ -99,8 +99,9 @@ namespace KingdomWatch.Core.Clock
         /// </summary>
         /// <param name="ids">
         /// The world's allocator. Scheduled events draw from its single event
-        /// counter - the same one history and provenance will draw from - so an
-        /// id in the queue and the same id in the journal are the same event.
+        /// counter - the same one the domain-event bus draws from - so an id
+        /// in the queue and an id in the journal never name two different
+        /// things.
         /// </param>
         public SimulationClock(IdAllocator ids)
         {
@@ -109,6 +110,15 @@ namespace KingdomWatch.Core.Clock
 
         /// <summary>Where the world clock currently stands.</summary>
         public SimulationTime Now { get; private set; }
+
+        /// <summary>
+        /// The allocator scheduled events draw their ids from. Internal so
+        /// that <see cref="Events.DomainEventBus"/> can share it by taking
+        /// the clock alone: a bus that accepted its own allocator could be
+        /// wired with a different one, and two counters both starting at 1
+        /// would hand the same id to a wake-up and a fact.
+        /// </summary>
+        internal IdAllocator Ids => _ids;
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
         public int ScheduledCount => _queue.Count;

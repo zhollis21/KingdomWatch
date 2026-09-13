@@ -108,9 +108,22 @@ namespace KingdomWatch.Core.Events
             }
         }
 
-        public bool Contains(ReasonCode code) =>
-            code != ReasonCode.None
-            && (_first == code || _second == code || _third == code || _fourth == code);
+        /// <summary>
+        /// True when <paramref name="code"/> was recorded. Asking about
+        /// <see cref="ReasonCode.None"/> is answered false rather than
+        /// refused - it is a defined member, and "no" is the honest answer -
+        /// but an undefined value is refused like everywhere else in Core.
+        /// </summary>
+        public bool Contains(ReasonCode code)
+        {
+            if (!EnumGuard.IsDefined(DefinedCodes, (int)code))
+            {
+                throw new ArgumentOutOfRangeException(nameof(code), code, "Not a defined ReasonCode.");
+            }
+
+            return code != ReasonCode.None
+                && (_first == code || _second == code || _third == code || _fourth == code);
+        }
 
         public bool Equals(Reasons other) =>
             Count == other.Count

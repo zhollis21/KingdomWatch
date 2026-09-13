@@ -66,19 +66,13 @@ namespace KingdomWatch.Core.Tests.Events
         {
             var ids = new IdAllocator();
             var clock = new SimulationClock(ids);
-            return (ids, clock, new DomainEventBus(ids, clock));
+            return (ids, clock, new DomainEventBus(clock));
         }
 
         [Test]
-        public void A_bus_needs_an_allocator_and_a_clock()
+        public void A_bus_needs_a_clock()
         {
-            var ids = new IdAllocator();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(() => new DomainEventBus(null!, new SimulationClock(ids)), Throws.TypeOf<ArgumentNullException>());
-                Assert.That(() => new DomainEventBus(ids, null!), Throws.TypeOf<ArgumentNullException>());
-            });
+            Assert.That(() => new DomainEventBus(null!), Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]

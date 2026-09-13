@@ -55,16 +55,16 @@ namespace KingdomWatch.Core.Events
         private bool _sealed;
         private bool _publishing;
 
-        /// <param name="ids">
-        /// The world's allocator. Domain events draw from its single event
-        /// counter, the same one <see cref="SimulationClock"/> draws from, so
-        /// an id names exactly one thing across the queue and the journal.
+        /// <param name="clock">
+        /// Stamps each event with the instant it happened, and supplies the
+        /// allocator. Domain events draw from the clock's own event counter -
+        /// there is no way to hand the bus a different one - so an id names
+        /// exactly one thing across the queue and the journal.
         /// </param>
-        /// <param name="clock">Stamps each event with the instant it happened.</param>
-        public DomainEventBus(IdAllocator ids, SimulationClock clock)
+        public DomainEventBus(SimulationClock clock)
         {
-            _ids = ids ?? throw new ArgumentNullException(nameof(ids));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            _ids = clock.Ids;
         }
 
         public int SubscriberCount => _subscribers.Count;
