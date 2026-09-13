@@ -206,12 +206,15 @@ namespace KingdomWatch.Core.Relationships
         }
 
         /// <summary>
-        /// The tie from one person toward another, if there is one.
+        /// The tie from one person toward another, if there is one. Asking
+        /// about oneself is refused like writing to oneself: nothing has cause
+        /// to, so a call that does is a bug worth hearing about.
         /// </summary>
         public bool TryGet(EntityId from, EntityId toward, out SocialTie tie)
         {
             RelationshipGuard.RequirePerson(from, nameof(from));
             RelationshipGuard.RequirePerson(toward, nameof(toward));
+            RelationshipGuard.RequireDistinct(from, toward, nameof(toward));
 
             if (_byPerson.TryGetValue(from, out var ties))
             {
