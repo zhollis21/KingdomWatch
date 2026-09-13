@@ -642,6 +642,12 @@ The split matters because v6 marks dead relationship edges rather than deleting 
 
 Retention thresholds are tuning work, not architecture — but the four-way split is architecture and must exist before relationships are written.
 
+As built (#10), the split is four stores under `Core/Relationships/`, not one graph with a kind flag — `Genealogy`, `Partnerships`, `SocialTies`, `Memories` — because one edge shape would carry dead fields for three of its four uses. All are keyed by `EntityId`, since relationships outlive the people in them, and reads come back as spans so the marriage checks and social decisions that run under the tick loop stay allocation-free. Three things the table above leaves implicit:
+
+- **"Marked dead, not deleted" is true of two kinds, not four.** Genealogy is untouched by death; a partnership is marked ended by the `PersonDied` event. Social ties have no dead flag — a tie toward the dead decays out like any other, because the grudge that outlives its object is a memory, not a tie. Memories are forgotten or promoted by tier.
+- **Genealogy cannot form a cycle by construction.** A person is recorded once, and their parents must already be recorded, so nobody can be named as a parent of their own ancestor. The validator's cycle check (#13) has nothing to find; it exists to catch a save that was edited by hand. `Genealogy.Kinship` names the nearest relation within two generations, which is the vocabulary the ban and the cousin taboo are written in; family formation (#9) decides policy over it.
+- **Decay and compaction are caller-driven.** `SocialTies.Decay` and `Memories.Compact` apply whatever time has elapsed; the system that owns a person's social life calls them on its cadence. The stores never touch the clock, and the death cascade (#9) calls `Partnerships.End` and `Memories.WitnessDied` directly rather than the stores subscribing to `PersonDied` — bus subscribers listen, they do not mutate.
+
 ### Minimal demographic model
 
 M1 requires births and deaths, so the *mechanism* must exist before it — though the numbers are tuning, not architecture:
