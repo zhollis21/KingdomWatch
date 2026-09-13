@@ -1,7 +1,7 @@
 ---
 name: pr-feedback
 description: "Pull open PR review comments for this repository, present an overview of each finding with whether it is valid and what the options are, then act on what the user chooses. Use when asked to address PR feedback, review open comments, or work through reviewer notes."
-allowed-tools: Bash(pwsh tools/Get-OpenPrComments.ps1) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr comment:*) Bash(gh api graphql:*) Bash(gh api repos/:*) Read Glob Grep
+allowed-tools: Bash(pwsh tools/Get-OpenPrComments.ps1) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr comment:*) Bash(gh api graphql:*) Bash(gh api repos/:*) Bash(git *) Bash(dotnet *) Read Glob Grep Edit Write AskUserQuestion
 ---
 
 # PR Feedback
