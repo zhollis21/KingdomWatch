@@ -42,6 +42,8 @@ namespace KingdomWatch.Core.Relationships
             RelationshipGuard.RequireEvent(formedBy, nameof(formedBy));
             RequireUnpartnered(a, nameof(a));
             RequireUnpartnered(b, nameof(b));
+            RequireNotBeforeLastEnding(a, formedAt, nameof(formedAt));
+            RequireNotBeforeLastEnding(b, formedAt, nameof(formedAt));
 
             var first = a < b ? a : b;
             var second = a < b ? b : a;
@@ -120,6 +122,30 @@ namespace KingdomWatch.Core.Relationships
                 throw new InvalidOperationException(
                     person + " is already partnered with " + _byPerson[person][active].PartnerOf(person)
                     + "; that partnership must end first.");
+            }
+        }
+
+        // History is oldest first and a person's records never overlap in
+        // time, so a new partnership cannot start before the last one ended.
+        // The last record is the latest ending: RequireUnpartnered has just
+        // established that none is active, and endings are appended in time
+        // order by this very check.
+        private void RequireNotBeforeLastEnding(EntityId person, SimulationTime formedAt, string paramName)
+        {
+            if (!_byPerson.TryGetValue(person, out var list) || list.Count == 0)
+            {
+                return;
+            }
+
+            var lastEnded = list[list.Count - 1].EndedAt;
+
+            if (formedAt < lastEnded)
+            {
+                throw new ArgumentOutOfRangeException(
+                    paramName,
+                    formedAt,
+                    person + "'s previous partnership ended at " + lastEnded
+                    + "; a new one cannot form before that.");
             }
         }
 

@@ -343,6 +343,14 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void Default_settings_are_refused_by_the_store()
+        {
+            // The settings constructor validates every field, so default is
+            // the one invalid instance that can exist - a zero witness cap.
+            Assert.That(() => new Memories(default), Throws.ArgumentException);
+        }
+
+        [Test]
         public void A_default_memory_has_no_witnesses()
         {
             Assert.Multiple(() =>

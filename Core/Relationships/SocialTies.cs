@@ -17,7 +17,9 @@ namespace KingdomWatch.Core.Relationships
     /// <see cref="SocialTie.MaxMagnitude"/>, and each person holds at most
     /// <see cref="SocialTieSettings.MaxTiesPerPerson"/> ties - past that the
     /// weakest is evicted, ties broken by the lower id so that the choice is
-    /// a function of the state and never of hashing.
+    /// a function of the state and never of hashing. A tie with nothing left
+    /// in it is not held at all, whether it got there by adjustment or by
+    /// decay.
     ///
     /// Decay is caller-driven. <see cref="Decay"/> applies whatever time has
     /// elapsed since each tie was last touched, so the system that owns a
@@ -39,6 +41,16 @@ namespace KingdomWatch.Core.Relationships
 
         public SocialTies(SocialTieSettings settings)
         {
+            // The settings constructor validates every field, so a zero cap
+            // can only mean default(SocialTieSettings) - which also carries a
+            // zero decay interval to divide by.
+            if (settings.MaxTiesPerPerson == 0)
+            {
+                throw new ArgumentException(
+                    "Default settings are not settings; construct SocialTieSettings explicitly.",
+                    nameof(settings));
+            }
+
             _settings = settings;
         }
 
@@ -50,6 +62,13 @@ namespace KingdomWatch.Core.Relationships
         /// there is none. Results are clamped; the tie is stamped with
         /// <paramref name="now"/>.
         /// </summary>
+        /// <remarks>
+        /// The store never holds a tie with nothing in it. An existing tie
+        /// adjusted to zero weight is removed, and a new one that would start
+        /// at zero is not added - and evicts nobody to make room for nothing.
+        /// A caller whose computed adjustment nets to zero is not wrong, so
+        /// this is a rule rather than a refusal.
+        /// </remarks>
         public void Adjust(
             EntityId from,
             EntityId toward,
@@ -70,12 +89,34 @@ namespace KingdomWatch.Core.Relationships
                 ref var tie = ref ties[index];
                 RequireNotBefore(now, tie.LastTouched);
 
-                tie = new SocialTie(
+                var adjusted = new SocialTie(
                     toward,
                     ClampSigned((long)tie.Liking + liking),
                     ClampUnsigned((long)tie.Resentment + resentment),
                     ClampUnsigned((long)tie.Familiarity + familiarity),
                     now);
+
+                if (adjusted.Weight == 0)
+                {
+                    ties.RemoveAt(index);
+                }
+                else
+                {
+                    tie = adjusted;
+                }
+
+                return;
+            }
+
+            var fresh = new SocialTie(
+                toward,
+                ClampSigned(liking),
+                ClampUnsigned(resentment),
+                ClampUnsigned(familiarity),
+                now);
+
+            if (fresh.Weight == 0)
+            {
                 return;
             }
 
@@ -84,12 +125,7 @@ namespace KingdomWatch.Core.Relationships
                 ties.RemoveAt(WeakestIndex(ties));
             }
 
-            ties.Add(new SocialTie(
-                toward,
-                ClampSigned(liking),
-                ClampUnsigned(resentment),
-                ClampUnsigned(familiarity),
-                now));
+            ties.Add(fresh);
         }
 
         /// <summary>

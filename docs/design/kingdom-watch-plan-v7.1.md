@@ -619,7 +619,7 @@ Transfer personal wealth to the household
 Emit PersonDied
 ```
 
-Relationship edges are **marked dead, not deleted** — a grudge against a dead man still shapes how his family is treated.
+Genealogy and partnership edges are **marked dead, not deleted** — a grudge against a dead man still shapes how his family is treated. Social ties and memories follow their own retention rules instead (see Relationships, below): a tie toward the dead decays out, and the grudge itself is a memory.
 
 The decisions on top of that:
 

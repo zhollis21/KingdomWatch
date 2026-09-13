@@ -43,6 +43,15 @@ namespace KingdomWatch.Core.Relationships
 
         public Memories(MemorySettings settings)
         {
+            // The settings constructor validates every field, so a zero
+            // witness cap can only mean default(MemorySettings).
+            if (settings.MaxWitnesses == 0)
+            {
+                throw new ArgumentException(
+                    "Default settings are not settings; construct MemorySettings explicitly.",
+                    nameof(settings));
+            }
+
             _settings = settings;
         }
 

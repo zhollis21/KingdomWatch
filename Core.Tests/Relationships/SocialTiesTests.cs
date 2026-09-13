@@ -305,6 +305,58 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void Default_settings_are_refused_by_the_store()
+        {
+            // The settings constructor validates every field, so default is
+            // the one invalid instance that can exist - a zero cap and a
+            // zero decay interval.
+            Assert.That(() => new SocialTies(default), Throws.ArgumentException);
+        }
+
+        [Test]
+        public void A_tie_adjusted_to_nothing_is_removed()
+        {
+            var ids = new IdAllocator();
+            var ties = new SocialTies(Settings);
+            var aldric = ids.Next(EntityKind.Person);
+            var mira = ids.Next(EntityKind.Person);
+            ties.Adjust(aldric, mira, 5, 2, 0, SimulationTime.Zero);
+
+            ties.Adjust(aldric, mira, -5, -2, 0, SimulationTime.Zero);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ties.TryGet(aldric, mira, out _), Is.False);
+                Assert.That(ties.Ties(aldric).Length, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void A_new_tie_that_would_be_nothing_is_not_added_and_evicts_nobody()
+        {
+            var ids = new IdAllocator();
+            var ties = new SocialTies(Settings);
+            var aldric = ids.Next(EntityKind.Person);
+            var a = ids.Next(EntityKind.Person);
+            var b = ids.Next(EntityKind.Person);
+            var c = ids.Next(EntityKind.Person);
+            var nobody = ids.Next(EntityKind.Person);
+            ties.Adjust(aldric, a, 1, 0, 0, SimulationTime.Zero);
+            ties.Adjust(aldric, b, 1, 0, 0, SimulationTime.Zero);
+            ties.Adjust(aldric, c, 1, 0, 0, SimulationTime.Zero);
+
+            ties.Adjust(aldric, nobody, 0, 0, 0, SimulationTime.Zero);
+            ties.Adjust(aldric, nobody, 0, -5, -5, SimulationTime.Zero);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ties.TryGet(aldric, nobody, out _), Is.False);
+                Assert.That(ties.TryGet(aldric, a, out _), Is.True, "the weakest real tie was not evicted");
+                Assert.That(ties.Ties(aldric).Length, Is.EqualTo(3));
+            });
+        }
+
+        [Test]
         public void The_same_operations_produce_the_same_state()
         {
             // Eviction and removal order must be a function of the operations

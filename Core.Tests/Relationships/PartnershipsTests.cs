@@ -161,6 +161,40 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void A_partnership_cannot_form_before_a_previous_one_ended()
+        {
+            // History promises oldest-first, and two records for one person
+            // must not overlap in time. Either participant's latest ending
+            // bounds the next formation.
+            var ids = new IdAllocator();
+            var store = new Partnerships();
+            var mira = ids.Next(EntityKind.Person);
+            var aldric = ids.Next(EntityKind.Person);
+            var bram = ids.Next(EntityKind.Person);
+            var cara = ids.Next(EntityKind.Person);
+            store.Form(mira, aldric, ids.NextEvent(), SimulationTime.FromDays(1));
+            store.End(mira, aldric, ids.NextEvent(), SimulationTime.FromDays(10));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => store.Form(mira, bram, ids.NextEvent(), SimulationTime.FromDays(9)),
+                    Throws.TypeOf<ArgumentOutOfRangeException>(),
+                    "mira's side");
+                Assert.That(
+                    () => store.Form(cara, aldric, ids.NextEvent(), SimulationTime.FromDays(9)),
+                    Throws.TypeOf<ArgumentOutOfRangeException>(),
+                    "aldric's side");
+                Assert.That(store.History(mira).Length, Is.EqualTo(1), "a refused Form records nothing");
+                Assert.That(store.History(bram).Length, Is.Zero);
+                Assert.That(
+                    () => store.Form(mira, bram, ids.NextEvent(), SimulationTime.FromDays(10)),
+                    Throws.Nothing,
+                    "the same instant is allowed");
+            });
+        }
+
+        [Test]
         public void Refused_inputs()
         {
             var ids = new IdAllocator();
