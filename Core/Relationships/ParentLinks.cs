@@ -12,6 +12,10 @@ namespace KingdomWatch.Core.Relationships
     /// Two explicit fields rather than an array of up to two. The roles are
     /// real - the demographic model (#11) needs to know which parent carried
     /// the pregnancy - and two fields cost nothing to read, print or hash.
+    ///
+    /// The constructor checks what can be checked without a genealogy: each
+    /// side is a person or nobody, and the two are not the same person.
+    /// Whether they are recorded is <see cref="Genealogy.Record"/>'s question.
     /// </remarks>
     public readonly struct ParentLinks : IEquatable<ParentLinks>
     {
@@ -20,6 +24,15 @@ namespace KingdomWatch.Core.Relationships
 
         public ParentLinks(EntityId mother, EntityId father)
         {
+            RequirePersonOrNone(mother, nameof(mother));
+            RequirePersonOrNone(father, nameof(father));
+
+            if (!mother.IsNone && mother == father)
+            {
+                throw new ArgumentException(
+                    mother + " cannot be both parents.", nameof(father));
+            }
+
             Mother = mother;
             Father = father;
         }
@@ -43,5 +56,13 @@ namespace KingdomWatch.Core.Relationships
         public static bool operator ==(ParentLinks left, ParentLinks right) => left.Equals(right);
 
         public static bool operator !=(ParentLinks left, ParentLinks right) => !left.Equals(right);
+
+        private static void RequirePersonOrNone(EntityId parent, string paramName)
+        {
+            if (!parent.IsNone)
+            {
+                RelationshipGuard.RequirePerson(parent, paramName);
+            }
+        }
     }
 }

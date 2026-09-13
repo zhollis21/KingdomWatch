@@ -305,6 +305,33 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void A_person_with_no_ties_has_no_entry()
+        {
+            // Entries are keyed by durable id and so would outlive the
+            // person; a 200-year run must not keep one for everyone who ever
+            // had a tie. Every way a person's last tie can go is covered.
+            var ids = new IdAllocator();
+            var ties = new SocialTies(Settings);
+            var aldric = ids.Next(EntityKind.Person);
+            var mira = ids.Next(EntityKind.Person);
+
+            ties.Adjust(aldric, mira, 0, 0, 0, SimulationTime.Zero);
+            Assert.That(ties.PersonCount, Is.Zero, "a nothing-tie toward a stranger");
+
+            ties.Adjust(aldric, mira, 3, 0, 0, SimulationTime.Zero);
+            Assert.That(ties.PersonCount, Is.EqualTo(1));
+            ties.Adjust(aldric, mira, -3, 0, 0, SimulationTime.Zero);
+            Assert.That(ties.PersonCount, Is.Zero, "adjusted to nothing");
+
+            ties.Adjust(aldric, mira, 1, 0, 0, SimulationTime.Zero);
+            ties.Decay(aldric, SimulationTime.FromDays(5));
+            Assert.That(ties.PersonCount, Is.Zero, "decayed to nothing");
+
+            ties.Adjust(aldric, mira, 1, 0, 0, SimulationTime.FromDays(5));
+            Assert.That(ties.TryGet(aldric, mira, out _), Is.True, "and a tie can form again afterwards");
+        }
+
+        [Test]
         public void Default_settings_are_refused_by_the_store()
         {
             // The settings constructor validates every field, so default is

@@ -2,8 +2,8 @@ namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
     /// The nearest blood relation between two people, as far as
-    /// <see cref="Genealogy.Kinship"/> looks: two generations up, and the
-    /// cousins that gives.
+    /// <see cref="Genealogy.Kinship"/> looks: two generations up, which
+    /// reaches as far as first cousins.
     /// </summary>
     /// <remarks>
     /// This is the vocabulary section 6's family-formation rules are written

@@ -343,6 +343,31 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void A_holder_with_no_memories_has_no_entry()
+        {
+            // Same reasoning as SocialTies: entries are keyed by durable id,
+            // and WitnessDied walks every holder, so a holder that has
+            // forgotten everything must not stay on the walk.
+            var ids = new IdAllocator();
+            var memories = new Memories(Settings);
+            var holder = ids.Next(EntityKind.Person);
+            memories.Record(holder, ids.NextEvent(), EntityId.None, 1, ReadOnlySpan<EntityId>.Empty, SimulationTime.Zero);
+            Assert.That(memories.HolderCount, Is.EqualTo(1));
+
+            memories.Compact(holder, SimulationTime.FromDays(100));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(memories.HolderCount, Is.Zero);
+                Assert.That(memories.Held(holder).Length, Is.Zero);
+                Assert.That(
+                    () => memories.Record(holder, ids.NextEvent(), EntityId.None, 1, ReadOnlySpan<EntityId>.Empty, SimulationTime.FromDays(100)),
+                    Throws.Nothing,
+                    "and the holder can remember again afterwards");
+            });
+        }
+
+        [Test]
         public void Default_settings_are_refused_by_the_store()
         {
             // The settings constructor validates every field, so default is

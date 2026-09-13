@@ -53,7 +53,11 @@ namespace KingdomWatch.Core.Relationships
         /// <summary>Meaningless while <see cref="IsActive"/>.</summary>
         public SimulationTime EndedAt { get; }
 
-        public bool IsActive => EndedBy.IsNone;
+        /// <summary>
+        /// Formed and not yet ended. A <c>default</c> record was never formed
+        /// and so is not active either.
+        /// </summary>
+        public bool IsActive => !FormedBy.IsNone && EndedBy.IsNone;
 
         public bool Involves(EntityId person) => person == First || person == Second;
 

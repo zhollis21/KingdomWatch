@@ -39,7 +39,11 @@ namespace KingdomWatch.Core.Relationships
         /// <summary>How many people are recorded.</summary>
         public int Count => _parents.Count;
 
-        public bool IsRecorded(EntityId person) => _parents.ContainsKey(person);
+        public bool IsRecorded(EntityId person)
+        {
+            RelationshipGuard.RequirePerson(person, nameof(person));
+            return _parents.ContainsKey(person);
+        }
 
         /// <summary>
         /// Records a person and their parents. Once per person; parents first.
@@ -49,14 +53,12 @@ namespace KingdomWatch.Core.Relationships
         public void Record(EntityId child, EntityId mother, EntityId father)
         {
             RelationshipGuard.RequirePerson(child, nameof(child));
-            RequireParent(mother, nameof(mother), child);
-            RequireParent(father, nameof(father), child);
 
-            if (!mother.IsNone && mother == father)
-            {
-                throw new ArgumentException(
-                    mother + " cannot be both parents of " + child + ".", nameof(father));
-            }
+            // ParentLinks checks kinds and distinctness; what is left is what
+            // only a genealogy can know.
+            var parents = new ParentLinks(mother, father);
+            RequireRecordedParent(parents.Mother, nameof(mother), child);
+            RequireRecordedParent(parents.Father, nameof(father), child);
 
             if (_parents.ContainsKey(child))
             {
@@ -64,9 +66,9 @@ namespace KingdomWatch.Core.Relationships
                     child + " is already recorded, and ancestry is written once.");
             }
 
-            _parents.Add(child, new ParentLinks(mother, father));
-            AddChild(mother, child);
-            AddChild(father, child);
+            _parents.Add(child, parents);
+            AddChild(parents.Mother, child);
+            AddChild(parents.Father, child);
         }
 
         /// <summary>The recorded parents. Throws for an unrecorded person.</summary>
@@ -148,14 +150,12 @@ namespace KingdomWatch.Core.Relationships
             return KinshipDegree.None;
         }
 
-        private void RequireParent(EntityId parent, string paramName, EntityId child)
+        private void RequireRecordedParent(EntityId parent, string paramName, EntityId child)
         {
             if (parent.IsNone)
             {
                 return;
             }
-
-            RelationshipGuard.RequirePerson(parent, paramName);
 
             if (parent == child)
             {

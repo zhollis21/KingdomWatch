@@ -238,6 +238,15 @@ namespace KingdomWatch.Core.Tests.Relationships
         }
 
         [Test]
+        public void A_default_partnership_is_not_active()
+        {
+            // The struct is public, so default is always constructible. A
+            // record with no forming event never happened, and must not read
+            // as a live partnership.
+            Assert.That(default(Partnership).IsActive, Is.False);
+        }
+
+        [Test]
         public void PartnerOf_refuses_an_outsider()
         {
             var ids = new IdAllocator();

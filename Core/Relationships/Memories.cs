@@ -58,6 +58,12 @@ namespace KingdomWatch.Core.Relationships
         public MemorySettings Settings => _settings;
 
         /// <summary>
+        /// How many holders currently remember at least one thing. A holder
+        /// with no memories has no entry.
+        /// </summary>
+        public int HolderCount => _byHolder.Count;
+
+        /// <summary>
         /// Records a new memory. One per holder per event. Returns how many of
         /// the offered witnesses were taken.
         /// </summary>
@@ -77,9 +83,7 @@ namespace KingdomWatch.Core.Relationships
                 RelationshipGuard.RequirePerson(witness, nameof(witnesses));
             }
 
-            var held = ListFor(holder);
-
-            if (IndexOf(held, originEvent) >= 0)
+            if (_byHolder.TryGetValue(holder, out var already) && IndexOf(already, originEvent) >= 0)
             {
                 throw new InvalidOperationException(
                     holder + " already remembers " + originEvent + "; a memory is recorded once.");
@@ -97,7 +101,7 @@ namespace KingdomWatch.Core.Relationships
                 }
             }
 
-            held.Add(new Memory(originEvent, holder, subject, valence, TierFor(list), now, list));
+            ListFor(holder).Add(new Memory(originEvent, holder, subject, valence, TierFor(list), now, list));
             return taken;
         }
 
@@ -198,6 +202,14 @@ namespace KingdomWatch.Core.Relationships
                 {
                     held.RemoveAt(i);
                 }
+            }
+
+            // A holder that has forgotten everything has no entry: entries
+            // are keyed by durable id and would outlive the holder, and
+            // WitnessDied walks every one of them.
+            if (held.Count == 0)
+            {
+                _byHolder.Remove(holder);
             }
         }
 

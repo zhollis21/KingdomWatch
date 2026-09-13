@@ -129,7 +129,27 @@ namespace KingdomWatch.Core.Tests.Relationships
                 Assert.That(() => tree.Children(settlement), Throws.ArgumentException);
                 Assert.That(() => tree.AreSiblings(settlement, founder), Throws.ArgumentException);
                 Assert.That(() => tree.AreSiblings(founder, EntityId.None), Throws.ArgumentException);
+                Assert.That(() => tree.IsRecorded(EntityId.None), Throws.ArgumentException);
+                Assert.That(() => tree.IsRecorded(settlement), Throws.ArgumentException);
                 Assert.That(tree.IsRecorded(child), Is.False);
+            });
+        }
+
+        [Test]
+        public void ParentLinks_cannot_name_a_non_person_or_the_same_person_twice()
+        {
+            var ids = new IdAllocator();
+            var person = ids.Next(EntityKind.Person);
+            var other = ids.Next(EntityKind.Person);
+            var settlement = ids.Next(EntityKind.Settlement);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => new ParentLinks(settlement, other), Throws.ArgumentException);
+                Assert.That(() => new ParentLinks(person, settlement), Throws.ArgumentException);
+                Assert.That(() => new ParentLinks(person, person), Throws.ArgumentException);
+                Assert.That(() => new ParentLinks(EntityId.None, EntityId.None), Throws.Nothing, "founders");
+                Assert.That(() => new ParentLinks(person, EntityId.None), Throws.Nothing, "one known parent");
             });
         }
 

@@ -57,6 +57,13 @@ namespace KingdomWatch.Core.Relationships
         public SocialTieSettings Settings => _settings;
 
         /// <summary>
+        /// How many people currently hold at least one tie. A person with no
+        /// ties has no entry - entries are keyed by durable id and would
+        /// otherwise outlive the person.
+        /// </summary>
+        public int PersonCount => _byPerson.Count;
+
+        /// <summary>
         /// Moves what <paramref name="from"/> feels toward
         /// <paramref name="toward"/> by the given amounts, creating the tie if
         /// there is none. Results are clamped; the tie is stamped with
@@ -81,31 +88,34 @@ namespace KingdomWatch.Core.Relationships
             RelationshipGuard.RequirePerson(toward, nameof(toward));
             RelationshipGuard.RequireDistinct(from, toward, nameof(toward));
 
-            var ties = ListFor(from);
-            var index = IndexOf(ties, toward);
-
-            if (index >= 0)
+            if (_byPerson.TryGetValue(from, out var existing))
             {
-                ref var tie = ref ties[index];
-                RequireNotBefore(now, tie.LastTouched);
+                var index = IndexOf(existing, toward);
 
-                var adjusted = new SocialTie(
-                    toward,
-                    ClampSigned((long)tie.Liking + liking),
-                    ClampUnsigned((long)tie.Resentment + resentment),
-                    ClampUnsigned((long)tie.Familiarity + familiarity),
-                    now);
-
-                if (adjusted.Weight == 0)
+                if (index >= 0)
                 {
-                    ties.RemoveAt(index);
-                }
-                else
-                {
-                    tie = adjusted;
-                }
+                    ref var tie = ref existing[index];
+                    RequireNotBefore(now, tie.LastTouched);
 
-                return;
+                    var adjusted = new SocialTie(
+                        toward,
+                        ClampSigned((long)tie.Liking + liking),
+                        ClampUnsigned((long)tie.Resentment + resentment),
+                        ClampUnsigned((long)tie.Familiarity + familiarity),
+                        now);
+
+                    if (adjusted.Weight == 0)
+                    {
+                        existing.RemoveAt(index);
+                        DropIfEmpty(from, existing);
+                    }
+                    else
+                    {
+                        tie = adjusted;
+                    }
+
+                    return;
+                }
             }
 
             var fresh = new SocialTie(
@@ -119,6 +129,10 @@ namespace KingdomWatch.Core.Relationships
             {
                 return;
             }
+
+            // Only now is there something to hold, so only now does the
+            // person get an entry.
+            var ties = ListFor(from);
 
             if (ties.Count == _settings.MaxTiesPerPerson)
             {
@@ -174,6 +188,8 @@ namespace KingdomWatch.Core.Relationships
                     ties.RemoveAt(i);
                 }
             }
+
+            DropIfEmpty(person, ties);
         }
 
         /// <summary>
@@ -268,6 +284,15 @@ namespace KingdomWatch.Core.Relationships
             }
 
             return (sbyte)(value < 0 ? value + steps : value - steps);
+        }
+
+        // A person with no ties has no entry; see PersonCount.
+        private void DropIfEmpty(EntityId person, SpanList<SocialTie> ties)
+        {
+            if (ties.Count == 0)
+            {
+                _byPerson.Remove(person);
+            }
         }
 
         private SpanList<SocialTie> ListFor(EntityId person)
