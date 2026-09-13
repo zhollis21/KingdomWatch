@@ -88,6 +88,7 @@ namespace KingdomWatch.Core.Clock
         private readonly EventQueue _queue = new EventQueue();
 
         private bool _dispatching;
+        private bool _busClaimed;
         private bool _hasCurrent;
         private ScheduledEvent _current;
 
@@ -99,8 +100,9 @@ namespace KingdomWatch.Core.Clock
         /// </summary>
         /// <param name="ids">
         /// The world's allocator. Scheduled events draw from its single event
-        /// counter - the same one history and provenance will draw from - so an
-        /// id in the queue and the same id in the journal are the same event.
+        /// counter - the same one the domain-event bus draws from - so an id
+        /// in the queue and an id in the journal never name two different
+        /// things.
         /// </param>
         public SimulationClock(IdAllocator ids)
         {
@@ -109,6 +111,34 @@ namespace KingdomWatch.Core.Clock
 
         /// <summary>Where the world clock currently stands.</summary>
         public SimulationTime Now { get; private set; }
+
+        /// <summary>
+        /// The allocator scheduled events draw their ids from. Internal so
+        /// that <see cref="Events.DomainEventBus"/> can share it by taking
+        /// the clock alone: a bus that accepted its own allocator could be
+        /// wired with a different one, and two counters both starting at 1
+        /// would hand the same id to a wake-up and a fact.
+        /// </summary>
+        internal IdAllocator Ids => _ids;
+
+        /// <summary>
+        /// Called by <see cref="Events.DomainEventBus"/> as it is built.
+        /// Refuses a second bus on this clock: the bus's promise that
+        /// publishing never nests is kept by a flag on the bus, and two buses
+        /// over one clock would let a subscriber on one publish through the
+        /// other with neither noticing.
+        /// </summary>
+        internal void ClaimBus()
+        {
+            if (_busClaimed)
+            {
+                throw new InvalidOperationException(
+                    "This clock already has a DomainEventBus. A world has one bus, so that the rule against "
+                    + "publishing from inside a subscriber holds across every event stream there is.");
+            }
+
+            _busClaimed = true;
+        }
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
         public int ScheduledCount => _queue.Count;

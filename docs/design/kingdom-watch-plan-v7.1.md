@@ -342,6 +342,7 @@ Core contents:
                            Attitudes, Faith, Knowledge, Culture, Founding,
                            TownPlanner, Reservations, Milestones
   Data/                 <- SoA storage, entity handles, recipes, race tables
+  Events/               <- domain events, subscribers, decision provenance
   WorldGen/             <- terrain, biomes, homelands, resources, sanity check
   Rng/DeterministicRng.cs
   History/              <- event journal + compaction
@@ -485,6 +486,8 @@ BridgeDestroyed · FamineStarted
 ```
 
 This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, faith attribution, attitudes, and debugging from one mechanism.
+
+**Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is still to come. A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
 
 ### Decision provenance
 
