@@ -98,6 +98,25 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
+        public void A_router_cannot_own_a_kind_itself()
+        {
+            // It implements the handler interface, so this compiles - and
+            // would dispatch into itself until the stack ran out.
+            var router = new ScheduledEventRouter();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => router.Register(ScheduledEventKind.TaskCompleted, router),
+                    Throws.TypeOf<ArgumentException>());
+                Assert.That(
+                    () => router.Handle(Build(ScheduledEventKind.TaskCompleted, 1UL), new SimulationClock(new IdAllocator())),
+                    Throws.TypeOf<InvalidOperationException>(),
+                    "the refused registration must not have taken the slot");
+            });
+        }
+
+        [Test]
         public void Registration_rejects_a_null_handler_and_a_kind_that_is_not_one()
         {
             var router = new ScheduledEventRouter();

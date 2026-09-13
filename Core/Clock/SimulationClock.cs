@@ -88,6 +88,7 @@ namespace KingdomWatch.Core.Clock
         private readonly EventQueue _queue = new EventQueue();
 
         private bool _dispatching;
+        private bool _busClaimed;
         private bool _hasCurrent;
         private ScheduledEvent _current;
 
@@ -119,6 +120,25 @@ namespace KingdomWatch.Core.Clock
         /// would hand the same id to a wake-up and a fact.
         /// </summary>
         internal IdAllocator Ids => _ids;
+
+        /// <summary>
+        /// Called by <see cref="Events.DomainEventBus"/> as it is built.
+        /// Refuses a second bus on this clock: the bus's promise that
+        /// publishing never nests is kept by a flag on the bus, and two buses
+        /// over one clock would let a subscriber on one publish through the
+        /// other with neither noticing.
+        /// </summary>
+        internal void ClaimBus()
+        {
+            if (_busClaimed)
+            {
+                throw new InvalidOperationException(
+                    "This clock already has a DomainEventBus. A world has one bus, so that the rule against "
+                    + "publishing from inside a subscriber holds across every event stream there is.");
+            }
+
+            _busClaimed = true;
+        }
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
         public int ScheduledCount => _queue.Count;

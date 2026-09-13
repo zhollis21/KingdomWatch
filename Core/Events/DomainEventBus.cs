@@ -23,11 +23,12 @@ namespace KingdomWatch.Core.Events
     /// the two, "who hears about it first" is a property of the wiring, not
     /// of anything that happens at run time.
     ///
-    /// **Publishing from inside a subscriber is refused.** Section 4: events
-    /// emitted while handling another are queued, never executed recursively -
-    /// otherwise PersonDied → household reacts → HouseholdEnded → settlement
-    /// reacts → … runs subscribers of the second event in the middle of the
-    /// first's. The queue that does the ordering is the clock's, and it already
+    /// **Publishing from inside a subscriber is refused - the bus does not
+    /// defer it, it throws.** Section 4 requires that a reaction to an event
+    /// is queued rather than run recursively, otherwise PersonDied → household
+    /// reacts → HouseholdEnded → settlement reacts → … runs subscribers of the
+    /// second event in the middle of the first's. The queue that satisfies
+    /// that requirement is the clock's, not this type's: the clock already
     /// enforces that a same-instant reaction lands in a LATER
     /// <see cref="SimulationPhase"/> (see <see cref="SimulationClock.Schedule"/>).
     /// So a subscriber that must cause more events schedules a clock event and
@@ -37,6 +38,11 @@ namespace KingdomWatch.Core.Events
     /// the phone suspends mid-cascade (#15). Refusing costs one
     /// <see cref="ScheduledEventKind"/> per reaction; that is the design's
     /// stated mechanism.
+    ///
+    /// That promise is only as good as the number of buses: a subscriber on
+    /// one bus publishing through a second would nest without either
+    /// noticing. So a clock has exactly one bus, and the constructor refuses
+    /// a second (see <see cref="SimulationClock.ClaimBus"/>).
     ///
     /// Publishing outside a dispatch is fine - world generation publishes
     /// SettlementFounded and PersonBorn at T=0 before the clock has run.
@@ -64,6 +70,7 @@ namespace KingdomWatch.Core.Events
         public DomainEventBus(SimulationClock clock)
         {
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            clock.ClaimBus();
             _ids = clock.Ids;
         }
 

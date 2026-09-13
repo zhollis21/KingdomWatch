@@ -76,6 +76,22 @@ namespace KingdomWatch.Core.Tests.Events
         }
 
         [Test]
+        public void A_clock_has_exactly_one_bus()
+        {
+            // The nested-publish guard is a flag on the bus. A second bus on
+            // the same clock would let a subscriber on one publish through the
+            // other, nesting with neither noticing.
+            var (_, clock, first) = NewWorld();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => new DomainEventBus(clock), Throws.TypeOf<InvalidOperationException>());
+                // The first bus is unaffected by the refusal.
+                Assert.That(first.Publish(DomainEventKind.PersonBorn, Person(1UL), EntityId.None).IsNone, Is.False);
+            });
+        }
+
+        [Test]
         public void Publishing_stamps_a_fresh_id_and_the_clock_instant_and_returns_the_id()
         {
             var (_, clock, bus) = NewWorld();

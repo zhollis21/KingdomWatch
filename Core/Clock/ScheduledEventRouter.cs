@@ -35,6 +35,16 @@ namespace KingdomWatch.Core.Clock
                 throw new ArgumentNullException(nameof(handler));
             }
 
+            // The router is itself a handler, so this compiles - and a kind
+            // routed back to the router dispatches into itself until the
+            // stack runs out.
+            if (ReferenceEquals(handler, this))
+            {
+                throw new ArgumentException(
+                    "A router cannot own a kind: dispatching " + kind + " would route straight back here.",
+                    nameof(handler));
+            }
+
             var slot = SlotFor(kind);
 
             if (_byKind[slot] != null)

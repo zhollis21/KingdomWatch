@@ -7,11 +7,16 @@ namespace KingdomWatch.Core.Events
     /// the decision site ranked them. Rides on every <see cref="DomainEvent"/>.
     /// </summary>
     /// <remarks>
-    /// Four inline fields and a count rather than an array: section 5 caps
-    /// provenance at two to four reasons, and an array per event would be an
-    /// allocation on every publish in a tick loop the design commits to keeping
-    /// allocation-free (section 18). Four overloaded constructors instead of
-    /// <c>params</c> for the same reason.
+    /// Four inline fields and a count rather than an array: section 5 asks
+    /// for the top two to four reasons, so four is the cap, and an array per
+    /// event would be an allocation on every publish in a tick loop the design
+    /// commits to keeping allocation-free (section 18). Four overloaded
+    /// constructors instead of <c>params</c> for the same reason.
+    ///
+    /// Fewer than two is fine when fewer contributed. "Two to four" describes
+    /// how much the feed shows of a weighed decision, not a floor - a decision
+    /// with one dominant cause records that one cause rather than inventing a
+    /// second to fill the slot.
     ///
     /// Order is meaningful and preserved - first is the strongest contributor.
     /// A code may appear once: listing the same reason twice is a bug at the
