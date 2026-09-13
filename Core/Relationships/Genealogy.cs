@@ -99,28 +99,19 @@ namespace KingdomWatch.Core.Relationships
         /// </summary>
         public bool AreSiblings(EntityId a, EntityId b)
         {
-            RelationshipGuard.RequirePerson(a, nameof(a));
-            RelationshipGuard.RequirePerson(b, nameof(b));
-            RequireRecorded(a, nameof(a));
-            RequireRecorded(b, nameof(b));
-
-            return a != b && ShareAParent(a, b);
+            RequireRecordedPair(a, b);
+            return ShareAParent(a, b);
         }
 
         /// <summary>
-        /// The nearest relation between two people within two generations.
+        /// The nearest relation between two different people within two
+        /// generations. Asking about the same person twice is refused, as it
+        /// is everywhere in this namespace: no pair loop has cause to, so a
+        /// call that does is a bug worth hearing about.
         /// </summary>
         public KinshipDegree Kinship(EntityId a, EntityId b)
         {
-            RelationshipGuard.RequirePerson(a, nameof(a));
-            RelationshipGuard.RequirePerson(b, nameof(b));
-            RequireRecorded(a, nameof(a));
-            RequireRecorded(b, nameof(b));
-
-            if (a == b)
-            {
-                return KinshipDegree.Self;
-            }
+            RequireRecordedPair(a, b);
 
             if (IsParentOf(a, b) || IsParentOf(b, a))
             {
@@ -168,6 +159,15 @@ namespace KingdomWatch.Core.Relationships
                     parent + " is not recorded, and parents are recorded before their children.",
                     paramName);
             }
+        }
+
+        private void RequireRecordedPair(EntityId a, EntityId b)
+        {
+            RelationshipGuard.RequirePerson(a, nameof(a));
+            RelationshipGuard.RequirePerson(b, nameof(b));
+            RelationshipGuard.RequireDistinct(a, b, nameof(b));
+            RequireRecorded(a, nameof(a));
+            RequireRecorded(b, nameof(b));
         }
 
         private void RequireRecorded(EntityId person, string paramName)

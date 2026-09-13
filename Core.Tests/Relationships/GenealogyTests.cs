@@ -173,7 +173,7 @@ namespace KingdomWatch.Core.Tests.Relationships
                 Assert.That(tree.AreSiblings(b, a), Is.True);
                 Assert.That(tree.AreSiblings(b, unrelated), Is.True, "share a father");
                 Assert.That(tree.AreSiblings(a, unrelated), Is.False);
-                Assert.That(tree.AreSiblings(a, a), Is.False, "nobody is their own sibling");
+                Assert.That(() => tree.AreSiblings(a, a), Throws.ArgumentException, "nobody has cause to ask about themselves");
                 Assert.That(tree.AreSiblings(mother, firstFather), Is.False, "founders share nothing");
             });
         }
@@ -199,7 +199,7 @@ namespace KingdomWatch.Core.Tests.Relationships
 
             Assert.Multiple(() =>
             {
-                Assert.That(tree.Kinship(me, me), Is.EqualTo(KinshipDegree.Self));
+                Assert.That(() => tree.Kinship(me, me), Throws.ArgumentException, "nobody has cause to ask about themselves");
                 Assert.That(tree.Kinship(me, parent), Is.EqualTo(KinshipDegree.ParentChild));
                 Assert.That(tree.Kinship(parent, me), Is.EqualTo(KinshipDegree.ParentChild));
                 Assert.That(tree.Kinship(me, inLaw), Is.EqualTo(KinshipDegree.ParentChild));

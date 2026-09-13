@@ -1,7 +1,7 @@
 namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
-    /// The nearest blood relation between two people, as far as
+    /// The nearest blood relation between two different people, as far as
     /// <see cref="Genealogy.Kinship"/> looks: two generations up, which
     /// reaches as far as first cousins.
     /// </summary>
@@ -13,6 +13,10 @@ namespace KingdomWatch.Core.Relationships
     /// them. Half-siblings are <see cref="Sibling"/>: the ban does not
     /// distinguish, and neither does the graph.
     ///
+    /// There is no "same person" member. A pair loop never has cause to ask
+    /// about someone and themselves, so the genealogy refuses the question
+    /// rather than naming an answer to it.
+    ///
     /// Ordered nearest first. When two relations both hold - which inbreeding
     /// makes possible - the nearer one is reported. A query result rather
     /// than a stored value, so renumbering would be safe; append anyway, so
@@ -23,21 +27,18 @@ namespace KingdomWatch.Core.Relationships
         /// <summary>No relation within two generations.</summary>
         None = 0,
 
-        /// <summary>The same person.</summary>
-        Self = 1,
-
-        ParentChild = 2,
+        ParentChild = 1,
 
         /// <summary>At least one parent in common. Half-siblings included.</summary>
-        Sibling = 3,
+        Sibling = 2,
 
         /// <summary>Grandparent or grandchild.</summary>
-        Grandparent = 4,
+        Grandparent = 3,
 
         /// <summary>A parent's sibling, or a sibling's child.</summary>
-        AuntUncle = 5,
+        AuntUncle = 4,
 
         /// <summary>A parent of each is a sibling of a parent of the other.</summary>
-        FirstCousin = 6,
+        FirstCousin = 5,
     }
 }
