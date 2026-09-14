@@ -160,6 +160,30 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void The_last_meal_the_world_can_hold_is_served_and_books_nothing_after_it()
+        {
+            // Booked for the last representable instant, a meal is still a
+            // meal. The stream ends there because there is no tomorrow to
+            // book into - not by throwing after the ledger has already moved.
+            var world = new World();
+            var band = world.NewBand(1, 3);
+            var lastMeal = new SimulationTime(long.MaxValue);
+            world.Clock.AdvanceTo(lastMeal.Plus(-Hunger.MealInterval), world.Router);
+            world.Hunger.Track(band);
+
+            var dispatched = world.Clock.AdvanceTo(lastMeal, world.Router);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(dispatched, Is.EqualTo(1));
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.Zero);
+                Assert.That(world.People.GetLastFedAt(band.Members[0]), Is.EqualTo(lastMeal));
+                Assert.That(world.Clock.ScheduledCount, Is.Zero);
+                Assert.That(world.Hunger.TrackedCount, Is.EqualTo(1), "still tracked; time ran out, the holder did not");
+            });
+        }
+
+        [Test]
         public void A_meal_draws_one_ration_per_living_member_from_the_ledger()
         {
             var world = new World();

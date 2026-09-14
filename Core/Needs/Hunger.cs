@@ -208,7 +208,15 @@ namespace KingdomWatch.Core.Needs
             }
 
             ServeMeal(_tracked[index], clock.Now);
-            ScheduleMeal(scheduled.PrimaryEntity);
+
+            // The stream ends with time itself. A meal due within one interval
+            // of the last representable instant has no tomorrow to book into,
+            // and throwing for that after the ledger has moved would leave
+            // AdvanceTo unable to reach the end of the world.
+            if (clock.Now.Ticks <= long.MaxValue - MealInterval)
+            {
+                ScheduleMeal(scheduled.PrimaryEntity);
+            }
         }
 
         private void ServeMeal(Tracked tracked, SimulationTime now)
@@ -251,15 +259,19 @@ namespace KingdomWatch.Core.Needs
             // living at the table changes nothing: there is no one to be fed
             // or to go without, and "famine ended" over an empty group would
             // be a lie in the chronicle.
+            //
+            // Published before the flag moves: a refused publish is a wiring
+            // bug the bus throws for, and the flag should not then say a
+            // famine was announced that nobody heard.
             if (unfed > 0 && !tracked.InFamine)
             {
-                tracked.InFamine = true;
                 _bus.Publish(DomainEventKind.FamineStarted, group.Id, EntityId.None);
+                tracked.InFamine = true;
             }
             else if (unfed == 0 && fed > 0 && tracked.InFamine)
             {
-                tracked.InFamine = false;
                 _bus.Publish(DomainEventKind.FamineEnded, group.Id, EntityId.None);
+                tracked.InFamine = false;
             }
         }
 
