@@ -7,8 +7,8 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Lifecycle
 {
     /// <summary>
-    /// One or more people sharing a home, food access and wealth. Section 3's
-    /// social container: a person belongs to a household and occupies a home
+    /// One or more people sharing a home and food access - and, once #68
+    /// gives them any, wealth. Section 3's social container: a person belongs to a household and occupies a home
     /// through it, wherever they physically are.
     /// </summary>
     /// <remarks>

@@ -15,8 +15,10 @@ namespace KingdomWatch.Core.Data
     /// on <see cref="AgeStages"/>.
     ///
     /// Values are explicit and must never be renumbered or reordered: they are
-    /// written into saves, and the ordering - younger is smaller - is what
-    /// <see cref="AgeStages"/> relies on. Append new stages at the end.
+    /// written into saves. Append new stages at the end. <see cref="AgeStages"/>
+    /// names the stages it means rather than comparing against the order, so
+    /// an undefined value cast in is neither adult nor dependent instead of
+    /// quietly counting as grown.
     /// </remarks>
     public enum AgeStage : byte
     {
@@ -48,7 +50,7 @@ namespace KingdomWatch.Core.Data
         /// Whether a person in this stage is grown: may form a partnership, may
         /// head a household, is not a dependent. Adult and Elder.
         /// </summary>
-        public static bool IsAdult(AgeStage stage) => stage >= AgeStage.Adult;
+        public static bool IsAdult(AgeStage stage) => stage == AgeStage.Adult || stage == AgeStage.Elder;
 
         /// <summary>
         /// Whether a person in this stage is a dependent: someone who is
@@ -57,6 +59,7 @@ namespace KingdomWatch.Core.Data
         /// participation at Adult, and an adolescent left alone in a house is
         /// a child alone in a house.
         /// </summary>
-        public static bool IsDependent(AgeStage stage) => stage != AgeStage.None && stage < AgeStage.Adult;
+        public static bool IsDependent(AgeStage stage) =>
+            stage == AgeStage.Infant || stage == AgeStage.Child || stage == AgeStage.Adolescent;
     }
 }

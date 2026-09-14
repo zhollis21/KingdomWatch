@@ -42,7 +42,7 @@ namespace KingdomWatch.Core.Needs
     /// children, adolescents), then adults, then elders - and within a sitting
     /// in the order the group lists its members. The rule protects the next
     /// generation, and it makes a famine read the way a chronicle would tell
-    /// it: the old go first. Status is not a factor, because the only status
+    /// it: the old go without first. Status is not a factor, because the only status
     /// that exists is the band's leader and section 6 puts feeding priority
     /// with the household, not the polity. This replaced the insertion-order
     /// placeholder #51 shipped with.

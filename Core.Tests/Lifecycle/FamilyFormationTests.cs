@@ -56,12 +56,19 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
-        public void The_same_person_twice_is_refused()
+        public void The_same_person_twice_is_refused_but_a_stale_handle_twice_is_an_error()
         {
             var w = new HouseholdWorld();
             var her = w.NewPerson(AgeStage.Adult, Sex.Female);
+            var dead = w.NewPerson(AgeStage.Adult, Sex.Female);
+            w.People.Remove(dead);
 
-            Assert.That(w.Family.Evaluate(her, her), Is.EqualTo(PartnerRefusal.SamePerson));
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Family.Evaluate(her, her), Is.EqualTo(PartnerRefusal.SamePerson));
+                Assert.That(() => w.Family.Evaluate(dead, dead), Throws.ArgumentException, "a stale handle is a bug, not a refusal");
+                Assert.That(() => w.Family.Evaluate(PersonHandle.None, PersonHandle.None), Throws.ArgumentException);
+            });
         }
 
         [TestCase(AgeStage.Infant)]

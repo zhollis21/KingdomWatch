@@ -50,9 +50,11 @@ namespace KingdomWatch.Core.Data
     /// <see cref="PersonRecord.Handle"/> matches its own index and current
     /// generation. Writing identity fields through the span breaks both, and
     /// a third with them: the id-to-handle index answers
-    /// <see cref="TryGetHandle"/> for exactly the occupied slots. Checking
-    /// them belongs to the WorldValidator (#13), where world-state invariants
-    /// live.
+    /// <see cref="TryGetHandle"/> for exactly the occupied slots. A fourth is
+    /// kept by another class: <see cref="PersonRecord.Household"/> agrees with
+    /// the member list <see cref="Lifecycle.Households"/> maintains, and a
+    /// write through the span bypasses it. Checking all of them belongs to the
+    /// WorldValidator (#13), where world-state invariants live.
     ///
     /// Nothing here is Unity-aware, and nothing here may become so.
     /// NativeArray, Jobs and Burst are Unity dependencies and cannot enter

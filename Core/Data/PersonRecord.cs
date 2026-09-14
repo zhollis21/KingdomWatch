@@ -77,7 +77,11 @@ namespace KingdomWatch.Core.Data
 
         public AgeStage AgeStage;
 
-        /// <summary>Fixed at birth; the store has no setter for it.</summary>
+        /// <summary>
+        /// Set at birth. The store has no setter, so nothing changes it
+        /// through scattered access; the bulk span can, like every simulation
+        /// field, and is trusted not to.
+        /// </summary>
         public Sex Sex;
 
         public byte BirthCulture;
@@ -94,9 +98,11 @@ namespace KingdomWatch.Core.Data
 
         /// <summary>
         /// The household this person belongs to, or <see cref="EntityId.None"/>
-        /// for someone in none. Written only by
-        /// <see cref="Lifecycle.Households"/>, which keeps this and the
-        /// household's member list saying the same thing.
+        /// for someone in none. Written by <see cref="Lifecycle.Households"/>,
+        /// which keeps this and the household's member list saying the same
+        /// thing - and by nothing else. The bulk span could; a write there
+        /// breaks that agreement the way writing <see cref="Id"/> breaks the
+        /// store's, and the validator (#13) is what catches both.
         /// </summary>
         public EntityId Household;
     }

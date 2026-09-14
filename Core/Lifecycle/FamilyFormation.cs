@@ -70,12 +70,17 @@ namespace KingdomWatch.Core.Lifecycle
         /// </summary>
         public PartnerRefusal Evaluate(PersonHandle a, PersonHandle b)
         {
+            // Read through the store before anything else, so a stale handle
+            // throws where the bug is rather than coming back as a refusal.
+            var stageA = _people.GetAgeStage(a);
+            var stageB = _people.GetAgeStage(b);
+
             if (a == b)
             {
                 return PartnerRefusal.SamePerson;
             }
 
-            if (!AgeStages.IsAdult(_people.GetAgeStage(a)) || !AgeStages.IsAdult(_people.GetAgeStage(b)))
+            if (!AgeStages.IsAdult(stageA) || !AgeStages.IsAdult(stageB))
             {
                 return PartnerRefusal.NotAdult;
             }
