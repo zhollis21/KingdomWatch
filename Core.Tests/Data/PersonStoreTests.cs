@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Clock;
@@ -16,14 +17,15 @@ namespace KingdomWatch.Core.Tests.Data
             var store = new PersonStore();
             var id = ids.Next(EntityKind.Person);
 
-            var handle = store.Add(id, new WorldPosition(3, -4), 90, 2, 1, 200, SimulationTime.FromHours(8));
+            var handle = store.Add(id, new WorldPosition(3, -4), 90, AgeStage.Child, Sex.Female, 1, 200, SimulationTime.FromHours(8));
 
             Assert.Multiple(() =>
             {
                 Assert.That(store.GetId(handle), Is.EqualTo(id));
                 Assert.That(store.GetPosition(handle), Is.EqualTo(new WorldPosition(3, -4)));
                 Assert.That(store.GetHealth(handle), Is.EqualTo(90));
-                Assert.That(store.GetAgeStage(handle), Is.EqualTo(2));
+                Assert.That(store.GetAgeStage(handle), Is.EqualTo(AgeStage.Child));
+                Assert.That(store.GetSex(handle), Is.EqualTo(Sex.Female));
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(1));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(200));
                 Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromHours(8)));
@@ -40,7 +42,7 @@ namespace KingdomWatch.Core.Tests.Data
 
             store.SetPosition(handle, new WorldPosition(7, 8));
             store.SetHealth(handle, 12);
-            store.SetAgeStage(handle, 3);
+            store.SetAgeStage(handle, AgeStage.Adolescent);
             store.SetBirthCulture(handle, 4);
             store.SetAssimilation(handle, 5);
             store.SetLastFedAt(handle, SimulationTime.FromDays(6));
@@ -49,7 +51,7 @@ namespace KingdomWatch.Core.Tests.Data
             {
                 Assert.That(store.GetPosition(handle), Is.EqualTo(new WorldPosition(7, 8)));
                 Assert.That(store.GetHealth(handle), Is.EqualTo(12));
-                Assert.That(store.GetAgeStage(handle), Is.EqualTo(3));
+                Assert.That(store.GetAgeStage(handle), Is.EqualTo(AgeStage.Adolescent));
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(4));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(5));
                 Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromDays(6)));
@@ -67,13 +69,13 @@ namespace KingdomWatch.Core.Tests.Data
             Assert.Multiple(() =>
             {
                 Assert.That(
-                    () => store.Add(ids.Next(EntityKind.Settlement), default, 1, 0, 0, 0, default),
+                    () => store.Add(ids.Next(EntityKind.Settlement), default, 1, AgeStage.Adult, Sex.Male, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(
-                    () => store.Add(ids.Next(EntityKind.Household), default, 1, 0, 0, 0, default),
+                    () => store.Add(ids.Next(EntityKind.Household), default, 1, AgeStage.Adult, Sex.Male, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(
-                    () => store.Add(EntityId.None, default, 1, 0, 0, 0, default),
+                    () => store.Add(EntityId.None, default, 1, AgeStage.Adult, Sex.Male, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(store.Count, Is.Zero, "a refused Add must not consume a slot");
             });
@@ -93,6 +95,94 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(first, Is.EqualTo(new PersonHandle(0, 1)));
                 Assert.That(second, Is.EqualTo(new PersonHandle(1, 1)));
             });
+        }
+
+        [Test]
+        public void An_undefined_or_missing_age_stage_or_sex_is_refused()
+        {
+            // An enum is an int with names; (AgeStage)99 casts in silently.
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, AgeStage.None, Sex.Male, 0, 0, default),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, (AgeStage)99, Sex.Male, 0, 0, default),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, AgeStage.Adult, Sex.None, 0, 0, default),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, AgeStage.Adult, (Sex)7, 0, 0, default),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(store.Count, Is.Zero, "a refused Add must not consume a slot");
+            });
+
+            var handle = AddPerson(store, ids);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => store.SetAgeStage(handle, AgeStage.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => store.SetAgeStage(handle, (AgeStage)200), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(store.GetAgeStage(handle), Is.EqualTo(AgeStage.Adult), "a refused Set changed nothing");
+            });
+        }
+
+        [Test]
+        public void A_durable_id_can_be_stored_once()
+        {
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+            var id = ids.Next(EntityKind.Person);
+            store.Add(id, default, 1, AgeStage.Adult, Sex.Male, 0, 0, default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => store.Add(id, default, 1, AgeStage.Adult, Sex.Male, 0, 0, default),
+                    Throws.ArgumentException);
+                Assert.That(store.Count, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public void A_durable_id_finds_its_live_handle_and_nothing_after_removal()
+        {
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+            var id = ids.Next(EntityKind.Person);
+            var handle = store.Add(id, default, 1, AgeStage.Adult, Sex.Male, 0, 0, default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(store.TryGetHandle(id, out var found), Is.True);
+                Assert.That(found, Is.EqualTo(handle));
+                Assert.That(store.TryGetHandle(ids.Next(EntityKind.Person), out _), Is.False, "never stored");
+                Assert.That(store.TryGetHandle(EntityId.None, out _), Is.False);
+            });
+
+            store.Remove(handle);
+            var newcomer = AddPerson(store, ids);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(store.TryGetHandle(id, out _), Is.False, "the dead are not found");
+                Assert.That(store.TryGetHandle(store.GetId(newcomer), out var reused), Is.True);
+                Assert.That(reused, Is.EqualTo(newcomer), "the recycled slot answers for its new occupant");
+            });
+        }
+
+        [Test]
+        public void A_new_person_is_in_no_household()
+        {
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+            var handle = AddPerson(store, ids);
+
+            Assert.That(store.GetHousehold(handle), Is.EqualTo(EntityId.None));
         }
 
         [Test]
@@ -172,6 +262,8 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(() => store.GetId(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetPosition(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetHealth(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetSex(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetHousehold(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAgeStage(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetBirthCulture(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAssimilation(subject), Throws.ArgumentException);
@@ -179,7 +271,7 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(
                         () => store.SetPosition(subject, default), Throws.ArgumentException);
                     Assert.That(() => store.SetHealth(subject, 1), Throws.ArgumentException);
-                    Assert.That(() => store.SetAgeStage(subject, 1), Throws.ArgumentException);
+                    Assert.That(() => store.SetAgeStage(subject, AgeStage.Infant), Throws.ArgumentException);
                     Assert.That(() => store.SetBirthCulture(subject, 1), Throws.ArgumentException);
                     Assert.That(() => store.SetAssimilation(subject, 1), Throws.ArgumentException);
                     Assert.That(
@@ -226,8 +318,8 @@ namespace KingdomWatch.Core.Tests.Data
             var mine = new PersonStore();
             var theirs = new PersonStore();
 
-            var myPerson = mine.Add(ids.Next(EntityKind.Person), default, 11, 0, 0, 0, default);
-            var theirPerson = theirs.Add(ids.Next(EntityKind.Person), default, 22, 0, 0, 0, default);
+            var myPerson = mine.Add(ids.Next(EntityKind.Person), default, 11, AgeStage.Adult, Sex.Male, 0, 0, default);
+            var theirPerson = theirs.Add(ids.Next(EntityKind.Person), default, 22, AgeStage.Adult, Sex.Male, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -391,11 +483,11 @@ namespace KingdomWatch.Core.Tests.Data
             var ids = new IdAllocator();
             var store = new PersonStore();
             var firstId = ids.Next(EntityKind.Person);
-            var first = store.Add(firstId, default, 50, 0, 0, 0, default);
+            var first = store.Add(firstId, default, 50, AgeStage.Adult, Sex.Male, 0, 0, default);
             store.Remove(first);
 
             var secondId = ids.Next(EntityKind.Person);
-            var second = store.Add(secondId, default, 50, 0, 0, 0, default);
+            var second = store.Add(secondId, default, 50, AgeStage.Adult, Sex.Male, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -467,12 +559,13 @@ namespace KingdomWatch.Core.Tests.Data
                 ids.Next(EntityKind.Person),
                 new WorldPosition(int.MinValue, int.MaxValue),
                 short.MinValue,
-                byte.MaxValue,
+                AgeStage.Elder,
+                Sex.Male,
                 byte.MaxValue,
                 byte.MaxValue,
                 new SimulationTime(long.MaxValue));
             var opposite = store.Add(
-                ids.Next(EntityKind.Person), default, short.MaxValue, 0, 0, 0, default);
+                ids.Next(EntityKind.Person), default, short.MaxValue, AgeStage.Infant, Sex.Female, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -480,7 +573,7 @@ namespace KingdomWatch.Core.Tests.Data
                     store.GetPosition(extreme),
                     Is.EqualTo(new WorldPosition(int.MinValue, int.MaxValue)));
                 Assert.That(store.GetHealth(extreme), Is.EqualTo(short.MinValue));
-                Assert.That(store.GetAgeStage(extreme), Is.EqualTo(byte.MaxValue));
+                Assert.That(store.GetAgeStage(extreme), Is.EqualTo(AgeStage.Elder));
                 Assert.That(store.GetBirthCulture(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetAssimilation(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetLastFedAt(extreme), Is.EqualTo(new SimulationTime(long.MaxValue)));
@@ -549,6 +642,6 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         private static PersonHandle AddPerson(PersonStore store, IdAllocator ids) =>
-            store.Add(ids.Next(EntityKind.Person), default, 50, 0, 0, 0, default);
+            store.Add(ids.Next(EntityKind.Person), default, 50, AgeStage.Adult, Sex.Male, 0, 0, default);
     }
 }

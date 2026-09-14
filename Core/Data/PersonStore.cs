@@ -48,9 +48,13 @@ namespace KingdomWatch.Core.Data
     /// bulk span hands out records by reference: <see cref="Count"/> equals the
     /// number of occupied slots, and every occupied slot's
     /// <see cref="PersonRecord.Handle"/> matches its own index and current
-    /// generation. Writing identity fields through the span breaks both.
-    /// Checking them belongs to the WorldValidator (#13), where world-state
-    /// invariants live.
+    /// generation. Writing identity fields through the span breaks both, and
+    /// a third with them: the id-to-handle index answers
+    /// <see cref="TryGetHandle"/> for exactly the occupied slots. A fourth is
+    /// kept by another class: <see cref="PersonRecord.Household"/> agrees with
+    /// the member list <see cref="Lifecycle.Households"/> maintains, and a
+    /// write through the span bypasses it. Checking all of them belongs to the
+    /// WorldValidator (#13), where world-state invariants live.
     ///
     /// Nothing here is Unity-aware, and nothing here may become so.
     /// NativeArray, Jobs and Burst are Unity dependencies and cannot enter
@@ -70,6 +74,17 @@ namespace KingdomWatch.Core.Data
         // either is deterministic, which is what matters, since the order
         // people are removed in is itself deterministic.
         private readonly List<int> _freeSlots = new List<int>();
+
+        // Durable id back to the live handle. Relationships (section 6) are
+        // keyed by EntityId because they outlive the people in them, so
+        // anything that acts on kin - adoption, for one - gets ids back and
+        // needs handles to do anything with them. Kept in step with Add and
+        // Remove; a dead person's id is simply absent.
+        private readonly Dictionary<EntityId, PersonHandle> _handlesById =
+            new Dictionary<EntityId, PersonHandle>();
+
+        private static readonly bool[] DefinedAgeStages = EnumGuard.BuildMask(typeof(AgeStage));
+        private static readonly bool[] DefinedSexes = EnumGuard.BuildMask(typeof(Sex));
 
         private int _slotCount;
         private int _count;
@@ -95,7 +110,8 @@ namespace KingdomWatch.Core.Data
             EntityId id,
             WorldPosition position,
             short health,
-            byte ageStage,
+            AgeStage ageStage,
+            Sex sex,
             byte birthCulture,
             byte assimilation,
             SimulationTime lastFedAt)
@@ -110,6 +126,23 @@ namespace KingdomWatch.Core.Data
                     nameof(id));
             }
 
+            if (_handlesById.ContainsKey(id))
+            {
+                throw new ArgumentException(
+                    id + " is already stored; a durable id names one person.", nameof(id));
+            }
+
+            if (!EnumGuard.IsDefined(DefinedAgeStages, (int)ageStage) || ageStage == AgeStage.None)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(ageStage), ageStage, "Not a defined AgeStage, or None.");
+            }
+
+            if (!EnumGuard.IsDefined(DefinedSexes, (int)sex) || sex == Sex.None)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sex), sex, "Not a defined Sex, or None.");
+            }
+
             var handle = ClaimSlot();
 
             _people[handle.Index] = new PersonRecord
@@ -119,11 +152,14 @@ namespace KingdomWatch.Core.Data
                 Position = position,
                 Health = health,
                 AgeStage = ageStage,
+                Sex = sex,
                 BirthCulture = birthCulture,
                 Assimilation = assimilation,
                 LastFedAt = lastFedAt,
+                Household = EntityId.None,
             };
 
+            _handlesById.Add(id, handle);
             _count++;
             return handle;
         }
@@ -132,21 +168,42 @@ namespace KingdomWatch.Core.Data
         /// Removes a person and frees their slot for reuse. Throws when the
         /// handle does not address a live person, rather than reporting it, so
         /// that a caller holding a stale handle finds out at the point the bug
-        /// is instead of much later.
+        /// is instead of much later. Also refuses someone still in a household,
+        /// for the reason in the body.
         /// </summary>
         public void Remove(PersonHandle handle)
         {
             var slot = SlotFor(handle);
+
+            // The record knows it is in a household even though this class
+            // knows nothing about households: removing it now would leave the
+            // handle in that household's member list, naming a slot that is
+            // about to be someone else's. The death cascade leaves first.
+            if (!_people[slot].Household.IsNone)
+            {
+                throw new InvalidOperationException(
+                    handle + " is in " + _people[slot].Household + "; they leave it before their slot is freed.");
+            }
 
             // Everything except the handle is wiped. The handle stays so the
             // slot remembers the generation it reached - clearing it would send
             // the next occupant back to generation 1, and a handle kept from
             // the first occupant would then match the second exactly, which is
             // precisely the silent mis-resolution the generation prevents.
+            _handlesById.Remove(_people[slot].Id);
             _people[slot] = new PersonRecord { Handle = handle };
             _count--;
             _freeSlots.Add(slot);
         }
+
+        /// <summary>
+        /// Finds the live person a durable id names. False for the dead, the
+        /// never-born and <see cref="EntityId.None"/> - the non-throwing
+        /// question, because the ids that arrive here come from genealogy and
+        /// partnerships, which keep naming people after they have died.
+        /// </summary>
+        public bool TryGetHandle(EntityId id, out PersonHandle handle) =>
+            _handlesById.TryGetValue(id, out handle);
 
         /// <summary>
         /// Whether the handle still addresses a live person. The non-throwing
@@ -171,10 +228,25 @@ namespace KingdomWatch.Core.Data
         public void SetHealth(PersonHandle handle, short value) =>
             _people[SlotFor(handle)].Health = value;
 
-        public byte GetAgeStage(PersonHandle handle) => _people[SlotFor(handle)].AgeStage;
+        public AgeStage GetAgeStage(PersonHandle handle) => _people[SlotFor(handle)].AgeStage;
 
-        public void SetAgeStage(PersonHandle handle, byte value) =>
+        /// <summary>
+        /// Moves a person to a stage. Refuses an undefined stage and
+        /// <see cref="AgeStage.None"/>, for the same reason <see cref="Add"/>
+        /// does: a person is always in some stage.
+        /// </summary>
+        public void SetAgeStage(PersonHandle handle, AgeStage value)
+        {
+            if (!EnumGuard.IsDefined(DefinedAgeStages, (int)value) || value == AgeStage.None)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value, "Not a defined AgeStage, or None.");
+            }
+
             _people[SlotFor(handle)].AgeStage = value;
+        }
+
+        public Sex GetSex(PersonHandle handle) => _people[SlotFor(handle)].Sex;
 
         public byte GetBirthCulture(PersonHandle handle) => _people[SlotFor(handle)].BirthCulture;
 
@@ -190,6 +262,18 @@ namespace KingdomWatch.Core.Data
 
         public void SetLastFedAt(PersonHandle handle, SimulationTime value) =>
             _people[SlotFor(handle)].LastFedAt = value;
+
+        public EntityId GetHousehold(PersonHandle handle) => _people[SlotFor(handle)].Household;
+
+        /// <summary>
+        /// Records which household a person belongs to. Internal, and called
+        /// by <see cref="Lifecycle.Households"/> alone: the registry is what
+        /// keeps this field and the household's member list agreeing, and a
+        /// write from anywhere else is the one thing that can make them
+        /// disagree.
+        /// </summary>
+        internal void SetHousehold(PersonHandle handle, EntityId value) =>
+            _people[SlotFor(handle)].Household = value;
 
         /// <summary>
         /// The bulk path: every allocated slot in slot order, which is stable

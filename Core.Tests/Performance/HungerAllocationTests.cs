@@ -69,7 +69,9 @@ namespace KingdomWatch.Core.Tests.Performance
 
             for (var i = 0; i < members; i++)
             {
-                band.AddMember(people.Add(ids.Next(EntityKind.Person), default, 100, 0, 0, 0, SimulationTime.Zero));
+                // Every stage, so all three sittings run in the measured span.
+                var stage = (AgeStage)(1 + (i % 5));
+                band.AddMember(people.Add(ids.Next(EntityKind.Person), default, 100, stage, Sex.Female, 0, 0, SimulationTime.Zero));
             }
 
             band.SharedSupplies.Gather(ResourceKind.Food, food);

@@ -32,16 +32,20 @@ namespace KingdomWatch.Core.Needs
     /// unfed. Nobody's hunger is ticked.
     ///
     /// **The holder is a <see cref="MobileGroup"/>** because that is the only
-    /// thing with a ledger. Settlements (#54) and household food access (#9) do
-    /// not exist yet; when they do, the draw moves to whatever holds the
-    /// ledger and the household layer decides who has access to it.
+    /// thing with a ledger. Settlements (#54) do not exist yet; when they do,
+    /// the draw moves to whatever holds the ledger. Households (#9) have food
+    /// ACCESS rather than food - section 6 - so they do not hold a ledger of
+    /// their own and the draw does not go through them.
     ///
-    /// **Shortfall feeds in member order.** When the ledger cannot cover
-    /// everyone, members eat in the order the group lists them and the tail
-    /// goes without. That is a placeholder chosen for being deterministic and
-    /// simple, not a rule: the band generator (#54) or household food access
-    /// (#9) owns the real priority - by age, status or whatever they decide -
-    /// and both issues carry a note saying so.
+    /// **Shortfall feeds the young first.** When the ledger cannot cover
+    /// everyone, the table is served in three sittings - dependents (infants,
+    /// children, adolescents), then adults, then elders - and within a sitting
+    /// in the order the group lists its members. The rule protects the next
+    /// generation, and it makes a famine read the way a chronicle would tell
+    /// it: the old go without first. Status is not a factor, because the only status
+    /// that exists is the band's leader and section 6 puts feeding priority
+    /// with the household, not the polity. This replaced the insertion-order
+    /// placeholder #51 shipped with.
     ///
     /// **Damage here, death elsewhere.** An unfed member past
     /// <see cref="StarvationGrace"/> loses <see cref="StarvationDamagePerMeal"/>
@@ -67,8 +71,8 @@ namespace KingdomWatch.Core.Needs
     /// Allocation-free after <see cref="Track"/>: the tracked list and its
     /// entries are built up front, the member loop is by index, and
     /// publishing is the bus's allocation-free path. Deterministic by
-    /// construction - no randomness, and member order is the group's stable
-    /// insertion order.
+    /// construction - no randomness, and the order within a sitting is the
+    /// group's stable insertion order.
     /// </remarks>
     public sealed class Hunger : IScheduledEventHandler
     {
@@ -163,7 +167,7 @@ namespace KingdomWatch.Core.Needs
         /// A query, not a prediction: nothing keeps it current, which is why it
         /// is not a scheduled event (see the type's remarks). Living members
         /// only, because the dead do not eat and their handles may still be in
-        /// the group until the death cascade (#9) removes them.
+        /// the group until the death cascade (Lifecycle.Deaths) removes them.
         /// </remarks>
         public int DaysOfFood(MobileGroup group)
         {
@@ -229,38 +233,18 @@ namespace KingdomWatch.Core.Needs
 
         private void ServeMeal(Tracked tracked, SimulationTime now)
         {
-            var group = tracked.Group;
-            var ledger = group.SharedSupplies;
-            var members = group.Members;
             var fed = 0;
             var unfed = 0;
 
-            for (var i = 0; i < members.Count; i++)
-            {
-                var member = members[i];
+            // Three sittings, each a pass over the members in group order:
+            // dependents, then adults, then elders. Three passes rather than a
+            // sort because a sort would need somewhere to put the sorted
+            // handles, and this runs inside the tick loop.
+            ServeSitting(tracked, now, Sitting.Dependents, ref fed, ref unfed);
+            ServeSitting(tracked, now, Sitting.Adults, ref fed, ref unfed);
+            ServeSitting(tracked, now, Sitting.Elders, ref fed, ref unfed);
 
-                // Membership is spatial and lags death until the cascade (#9)
-                // removes the handle; the dead neither eat nor starve.
-                if (!_people.IsAlive(member))
-                {
-                    continue;
-                }
-
-                if (ledger.Available(ResourceKind.Food) >= DailyRation)
-                {
-                    ledger.Consume(ResourceKind.Food, DailyRation);
-                    _people.SetLastFedAt(member, now);
-                    fed++;
-                    continue;
-                }
-
-                unfed++;
-
-                if (_people.GetLastFedAt(member).TicksUntil(now) > StarvationGrace)
-                {
-                    Starve(member);
-                }
-            }
+            var group = tracked.Group;
 
             // A famine opens on the first meal that leaves someone unfed and
             // closes on the first that feeds everyone. A meal with nobody
@@ -281,6 +265,57 @@ namespace KingdomWatch.Core.Needs
                 _bus.Publish(DomainEventKind.FamineEnded, group.Id, EntityId.None);
                 tracked.InFamine = false;
             }
+        }
+
+        private void ServeSitting(
+            Tracked tracked, SimulationTime now, Sitting sitting, ref int fed, ref int unfed)
+        {
+            var ledger = tracked.Group.SharedSupplies;
+            var members = tracked.Group.Members;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                var member = members[i];
+
+                // Membership is spatial and lags death until the cascade
+                // (Lifecycle.Deaths) removes the handle; the dead neither eat
+                // nor starve.
+                if (!_people.IsAlive(member) || SittingOf(_people.GetAgeStage(member)) != sitting)
+                {
+                    continue;
+                }
+
+                if (ledger.Available(ResourceKind.Food) >= DailyRation)
+                {
+                    ledger.Consume(ResourceKind.Food, DailyRation);
+                    _people.SetLastFedAt(member, now);
+                    fed++;
+                    continue;
+                }
+
+                unfed++;
+
+                if (_people.GetLastFedAt(member).TicksUntil(now) > StarvationGrace)
+                {
+                    Starve(member);
+                }
+            }
+        }
+
+        // Total over the byte, not just the defined stages: a meal that threw
+        // part-way would leave some members fed and the holder's meal stream
+        // unbooked, which is worse than any seating. The store refuses an
+        // undefined stage on every write but the bulk span, and a record
+        // corrupted there is the WorldValidator's (#13) to name, not a
+        // meal's; here it eats with the adults.
+        private static Sitting SittingOf(AgeStage stage)
+        {
+            if (AgeStages.IsDependent(stage))
+            {
+                return Sitting.Dependents;
+            }
+
+            return stage == AgeStage.Elder ? Sitting.Elders : Sitting.Adults;
         }
 
         // Zero is "as bad as starvation gets" for the mortality model to read,
@@ -330,6 +365,15 @@ namespace KingdomWatch.Core.Needs
             }
 
             return -1;
+        }
+
+        // The order the table is served in when food is short. See the type's
+        // remarks for why this order and not another.
+        private enum Sitting
+        {
+            Dependents,
+            Adults,
+            Elders,
         }
 
         // A class rather than a struct so InFamine can be flipped in place

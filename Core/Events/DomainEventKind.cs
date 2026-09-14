@@ -49,5 +49,13 @@ namespace KingdomWatch.Core.Events
         /// <see cref="FamineStarted"/> opened.
         /// </summary>
         FamineEnded = 13,
+
+        /// <summary>
+        /// A household's last member left it and its home went back to the
+        /// housing stock. Published by <see cref="Lifecycle.Households"/>,
+        /// so the chronicle can close what <see cref="HouseholdFormed"/>
+        /// opened.
+        /// </summary>
+        HouseholdDissolved = 14,
     }
 }

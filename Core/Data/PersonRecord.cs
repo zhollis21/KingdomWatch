@@ -22,23 +22,30 @@ namespace KingdomWatch.Core.Data
     /// records in place through the array indexer, and the accessors that do it
     /// are what systems see instead of this type.
     ///
-    /// Section 5 also lists Job and Household fields here. Both are absent for
-    /// now: JobId does not exist until #52 and HouseholdHandle until #9, and
-    /// neither type's shape is settled - #52 describes recipes as data rather
-    /// than code, which may make a job reference a data-table lookup rather
-    /// than a handle at all. A placeholder guessed now would have dependent
-    /// code written against it before either issue makes its own design
-    /// decision. Same reasoning as MobileGroup deferring SharedSupplies to #12.
-    /// Adding them later is a field plus an accessor pair, which is the whole
-    /// point of storage living behind PersonStore.
+    /// Section 5 also lists a Job field here. It is absent for now: JobId does
+    /// not exist until #52 and its shape is not settled - #52 describes recipes
+    /// as data rather than code, which may make a job reference a data-table
+    /// lookup rather than a handle at all. A placeholder guessed now would have
+    /// dependent code written against it before that issue makes its own
+    /// design decision. Same reasoning as MobileGroup deferring SharedSupplies
+    /// to #12. Adding it later is a field plus an accessor pair, which is the
+    /// whole point of storage living behind PersonStore.
+    ///
+    /// <see cref="Household"/> is an <see cref="EntityId"/> rather than the
+    /// HouseholdHandle section 5 sketched. Households are a few hundred plain
+    /// objects in a registry (<see cref="Lifecycle.Households"/>), not a
+    /// recycled-slot store, so there is no generation to check - and a durable
+    /// id that is never reused already makes a reference to a dissolved
+    /// household fail loudly on lookup.
     ///
     /// Skills are deliberately not a field either - section 5 indexes them
     /// separately as [personIndex * skillCount + skillId], and they arrive with
     /// #22 in M3.
     ///
-    /// AgeStage, BirthCulture and Assimilation are raw bytes rather than enums
-    /// because the enums that would give them meaning belong to systems not
-    /// built yet. Section 5 declares them the same way.
+    /// BirthCulture and Assimilation are raw bytes rather than enums because
+    /// the enums that would give them meaning belong to systems not built yet.
+    /// Section 5 declares them the same way. AgeStage was one too, until #9
+    /// needed to tell adults from children.
     /// </remarks>
     public struct PersonRecord
     {
@@ -68,7 +75,14 @@ namespace KingdomWatch.Core.Data
 
         public short Health;
 
-        public byte AgeStage;
+        public AgeStage AgeStage;
+
+        /// <summary>
+        /// Set at birth. The store has no setter, so nothing changes it
+        /// through scattered access; the bulk span can, like every simulation
+        /// field, and is trusted not to.
+        /// </summary>
+        public Sex Sex;
 
         public byte BirthCulture;
 
@@ -81,5 +95,15 @@ namespace KingdomWatch.Core.Data
         /// nutrition modifier.
         /// </summary>
         public Clock.SimulationTime LastFedAt;
+
+        /// <summary>
+        /// The household this person belongs to, or <see cref="EntityId.None"/>
+        /// for someone in none. Written by <see cref="Lifecycle.Households"/>,
+        /// which keeps this and the household's member list saying the same
+        /// thing - and by nothing else. The bulk span could; a write there
+        /// breaks that agreement the way writing <see cref="Id"/> breaks the
+        /// store's, and the validator (#13) is what catches both.
+        /// </summary>
+        public EntityId Household;
     }
 }

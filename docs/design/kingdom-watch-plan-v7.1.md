@@ -420,14 +420,19 @@ public struct PersonRecord
     public EntityId      Id;      // None marks an unoccupied slot
     public WorldPosition Position;
     public short         Health;
-    public byte          AgeStage, BirthCulture, Assimilation;
+    public AgeStage      AgeStage;    // #9: Infant … Elder, an enum since eligibility needs it
+    public Sex           Sex;         // #9: fixed at birth
+    public byte          BirthCulture, Assimilation;
     public SimulationTime LastFedAt;   // #51: hunger integrates from here
+    public EntityId      Household;   // #9: None for nobody's; see below
     // skills indexed separately: [personIndex * skillCount + skillId]
-    // Job (JobId) and Household (HouseholdHandle) are deferred — see below
+    // Job (JobId) is deferred — see below
 }
 ```
 
-`Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints, and the `Job`/`Household` fields are deliberately absent as of #6. Neither `JobId` nor `HouseholdHandle` exists yet, and neither shape is settled — #52 describes recipes as data rather than code, which may make a job reference a data-table lookup rather than a handle at all. Guessing either one now means dependent code gets written against it before #52 and #9 make their own design decision. Adding them later is a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`.
+`Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints, and the `Job` field is deliberately absent as of #6. `JobId` does not exist yet and its shape is not settled — #52 describes recipes as data rather than code, which may make a job reference a data-table lookup rather than a handle at all. Guessing it now means dependent code gets written against it before #52 makes its own design decision. Adding it later is a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`.
+
+`Household` is an `EntityId`, not the `HouseholdHandle` this section originally sketched (#9). Households are a few hundred plain objects in a registry rather than a recycled-slot store, so there is no generation to check, and a durable id that is never reused already makes a reference to a dissolved household fail loudly on lookup. The registry (`Households`, §6) is the only writer of the field, which is what keeps it and the household's member list agreeing. `PersonStore` also gained the reverse lookup, `TryGetHandle(EntityId)`: relationships are keyed by durable id because they outlive the people in them, so anything acting on kin gets ids back and needs handles to do anything with them.
 
 **Dense records now; split measured hot fields into parallel arrays only if M2 says so.**
 
@@ -571,7 +576,7 @@ Settlement owns bulk resources. Household has food *access*, wealth/status, and 
 
 *UI consequence:* the "Grain: 4 days" house tooltip must read from settlement stores scaled by household size. Otherwise it advertises household economics that don't exist.
 
-**As of #51,** `Hunger` is the draw: one `MealDue` scheduled event per food holder per day, at which each living member takes a ration from the holder's ledger. The holder is a `MobileGroup` until settlements exist (#54), and there is no household layer in between until #9. §4's per-person sketch — *Aldric ate at 08:00 → HungerCritical at 17:42* — is deliberately not what runs: the daily meal is itself a scheduled boundary, so a thirty-day jump dispatches thirty meals and dates the famine on the day the ledger runs short, and per-person meal *times* are a change to when the draw happens, which waits for M3's daily schedules. Hunger is integrated rather than polled: a person stores only when they last ate, and starvation is evaluated from that distance when a meal finds them unfed. Past a grace period each missed meal costs health; turning low health into a death is the mortality model's (§6 below, #11). When the ledger cannot cover everyone, members eat in the group's insertion order and the tail goes without — a placeholder until #9 or #54 decides the real priority. `DaysOfFood()` is the tooltip's number as a query; a *predicted* depletion event waits until something aggregates meals over more than a day, because the ledger has no change notification to keep a prediction fresh.
+**As of #51,** `Hunger` is the draw: one `MealDue` scheduled event per food holder per day, at which each living member takes a ration from the holder's ledger. The holder is a `MobileGroup` until settlements exist (#54); households have food *access* rather than food, so the draw does not go through them (#9). §4's per-person sketch — *Aldric ate at 08:00 → HungerCritical at 17:42* — is deliberately not what runs: the daily meal is itself a scheduled boundary, so a thirty-day jump dispatches thirty meals and dates the famine on the day the ledger runs short, and per-person meal *times* are a change to when the draw happens, which waits for M3's daily schedules. Hunger is integrated rather than polled: a person stores only when they last ate, and starvation is evaluated from that distance when a meal finds them unfed. Past a grace period each missed meal costs health; turning low health into a death is the mortality model's (§6 below, #11). When the ledger cannot cover everyone, the table is served in three sittings — dependents (infant, child, adolescent), then adults, then elders — and within a sitting in the group's insertion order; the tail goes without (#9, replacing #51's insertion-order placeholder). The rule protects the next generation and reads the way a chronicle would tell a famine. Status is not a factor: the only status that exists is the band's leader, and feeding priority belongs to the household, not the polity. `DaysOfFood()` is the tooltip's number as a query; a *predicted* depletion event waits until something aggregates meals over more than a day, because the ledger has no change notification to keep a prediction fresh.
 
 ### Age stages
 
@@ -593,7 +598,7 @@ Adolescent maps directly onto apprenticeship. No childhood simulator needed — 
 
 Partner eligibility checks age, race fertility compatibility, existing partnership, kinship, settlement distance, and relationship.
 
-**Kinship: a hard ban through grandparents.** Parent, child, sibling, half-sibling, grandparent, grandchild.
+**Kinship: a hard ban through grandparents.** Parent, child, sibling, half-sibling, grandparent, grandchild — and aunt or uncle with niece or nephew, which the list originally omitted: they are closer than the first cousins the next paragraph makes a taboo, so leaving them out would permit what the taboo refuses (#9).
 
 **First cousins are a culture taboo, not a rule.** Some settlements permit it, some don't, and it drifts. This reuses the taboo layer (§10) and gets a pressure valve for free: cultural reinforcement means a settlement with a strained mating pool and repeated failed pairings can loosen its taboo over time, so demographic pressure surfaces as cultural change.
 
@@ -605,11 +610,15 @@ Harness test: mating-pool viability over 500 years, flagging any settlement wher
 
 **Widows and widowers may remarry** after a mourning period. Culture can modulate its length. This matters demographically — in a 1,650-person world, blocking remarriage wastes fertile adults.
 
+As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evaluate(a, b)` answers "may these two?" with a `PartnerRefusal` — same person, not adult, same sex, already partnered, mourning, kinship banned, cousin taboo, no home — and `Partner(a, b, reasons)` does "they do": publishes `MarriageFormed` with the caller's reasons, records the partnership against that event, forms a household in a newly claimed home and moves both in with any dependent children of theirs, dissolving a household left empty. Choosing *who* pairs off is the social decision system's (#38) and the only place randomness enters. A refusal is a reason rather than a bool so the decision system can tell "wrong" from "early". Three of the inputs above are not checked because they do not exist yet: race fertility (#34), settlement distance (#54) and the relationship between the two (#38 weighs it before asking). The mourning period and the cousin taboo are `FamilyFormationSettings` until culture exists to own them (#40). Both people must be in the genealogy — founders with no parents — or kinship cannot be checked and the genealogy throws rather than guess. `AgeStage` became an enum here (Infant, Child, Adolescent, Adult, Elder) because eligibility and adoption both branch on it; advancing people through it is #22's. `Sex` was added to the record for the same reason: children have a mother and a father.
+
 ### Property
 
 **Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth, tools, and status.
 
 On death, personal wealth folds into the household. This gives some wealth variation and makes a master's tools a real asset, without the machinery of full dynastic inheritance law.
+
+As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth, no tools — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
 
 ### Death cascade
 
@@ -630,6 +639,10 @@ The decisions on top of that:
 - **Dependent children stay with the household.** With no surviving adult, the **nearest kin household adopts them**.
 - **When a household empties, its home returns to the settlement's housing stock** for reassignment. This is not just tidy: housing supply throttles household formation and therefore fertility, so a plague that empties houses makes it easier for the survivors' children to marry.
 - **Political succession is handled separately** by the polity (§8), not by household inheritance.
+
+As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
+
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. The steps that act on things not yet built join the cascade when they are: tasks and the job (#52), reservations (#24), apprenticeship and a master's tools (#22), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 
