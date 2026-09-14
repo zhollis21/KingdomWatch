@@ -45,8 +45,10 @@ namespace KingdomWatch.Core.Needs
     ///
     /// **Damage here, death elsewhere.** An unfed member past
     /// <see cref="StarvationGrace"/> loses <see cref="StarvationDamagePerMeal"/>
-    /// health per missed meal, floored at zero. Turning low health into a
-    /// death is the mortality model's (#11), with <see cref="PersonRecord.LastFedAt"/>
+    /// health per missed meal. A missed meal never takes health below zero,
+    /// and never touches health already at or below it - what a value there
+    /// means is not this system's to say. Turning low health into a death is
+    /// the mortality model's (#11), with <see cref="PersonRecord.LastFedAt"/>
     /// as its nutrition input, so the mortality curve lives in exactly one place.
     ///
     /// **No predicted "food runs out in N days" event.** Section 4 names food
@@ -135,8 +137,13 @@ namespace KingdomWatch.Core.Needs
                     group.Id + " is already tracked; a second meal stream would draw twice a day.");
             }
 
-            _tracked.Add(new Tracked(group));
+            // Booked before recorded, for the same reason PersonStore builds
+            // the handle before it moves any bookkeeping: the booking is the
+            // one thing here that can be refused, and a holder recorded
+            // without a meal stream would refuse to be tracked again and go
+            // unfed for good.
             ScheduleMeal(group.Id);
+            _tracked.Add(new Tracked(group));
         }
 
         /// <summary>Whether a tracked holder's last meal left someone unfed.</summary>
@@ -256,10 +263,11 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
-        // Floored at zero rather than allowed to keep falling: zero is "as bad
-        // as starvation gets" for the mortality model to read, and a health
-        // already at or below it is left alone - it is not this system's to
-        // push further down.
+        // Zero is "as bad as starvation gets" for the mortality model to read,
+        // so damage stops there. Health already at or below zero is left
+        // exactly as it is: the store allows negative values and #11 decides
+        // what they mean, so this neither pushes one further down nor - as an
+        // unconditional Max(0, ...) would - raises it back to zero.
         private void Starve(PersonHandle member)
         {
             var health = _people.GetHealth(member);

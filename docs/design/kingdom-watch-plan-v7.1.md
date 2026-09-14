@@ -421,6 +421,7 @@ public struct PersonRecord
     public WorldPosition Position;
     public short         Health;
     public byte          AgeStage, BirthCulture, Assimilation;
+    public SimulationTime LastFedAt;   // #51: hunger integrates from here
     // skills indexed separately: [personIndex * skillCount + skillId]
     // Job (JobId) and Household (HouseholdHandle) are deferred — see below
 }
@@ -446,7 +447,8 @@ public sealed class PersonStore
     private PersonRecord[] _people;      // layout is private
 
     public PersonHandle Add(EntityId id, WorldPosition position, short health,
-                            byte ageStage, byte birthCulture, byte assimilation);
+                            byte ageStage, byte birthCulture, byte assimilation,
+                            SimulationTime lastFedAt);
     public void Remove(PersonHandle h);  // frees the slot for reuse
     public bool IsAlive(PersonHandle h); // the non-throwing question
 
@@ -482,7 +484,7 @@ Publish meaningful simulation events; interested systems subscribe and react det
 PersonBorn · PersonDied · MarriageFormed · HouseholdFormed
 SettlementFounded · SettlementAbandoned · RulerSucceeded
 WarDeclared · BattleEnded · DivineActWitnessed
-BridgeDestroyed · FamineStarted
+BridgeDestroyed · FamineStarted · FamineEnded
 ```
 
 This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, faith attribution, attitudes, and debugging from one mechanism.

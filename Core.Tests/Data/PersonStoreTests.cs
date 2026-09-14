@@ -175,12 +175,15 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(() => store.GetAgeStage(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetBirthCulture(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAssimilation(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetLastFedAt(subject), Throws.ArgumentException);
                     Assert.That(
                         () => store.SetPosition(subject, default), Throws.ArgumentException);
                     Assert.That(() => store.SetHealth(subject, 1), Throws.ArgumentException);
                     Assert.That(() => store.SetAgeStage(subject, 1), Throws.ArgumentException);
                     Assert.That(() => store.SetBirthCulture(subject, 1), Throws.ArgumentException);
                     Assert.That(() => store.SetAssimilation(subject, 1), Throws.ArgumentException);
+                    Assert.That(
+                        () => store.SetLastFedAt(subject, SimulationTime.FromDays(1L)), Throws.ArgumentException);
                     Assert.That(() => store.Remove(subject), Throws.ArgumentException);
                     Assert.That(store.IsAlive(subject), Is.False);
                 });

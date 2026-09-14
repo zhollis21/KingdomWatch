@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
@@ -135,6 +136,26 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(() => world.Hunger.Track(null!), Throws.ArgumentNullException);
                 Assert.That(() => world.Hunger.Track(band), Throws.InvalidOperationException);
                 Assert.That(world.Clock.ScheduledCount, Is.EqualTo(1), "the refused Track booked nothing");
+            });
+        }
+
+        [Test]
+        public void A_holder_whose_first_meal_cannot_be_booked_is_not_left_half_tracked()
+        {
+            // The only way the first booking fails is the clock standing within
+            // a meal of the end of time. If tracking recorded the holder before
+            // booking, it would be tracked with no meal stream, and refuse to
+            // be tracked again - fed never, silently.
+            var world = new World();
+            var band = world.NewBand(1, 3);
+            world.Clock.AdvanceTo(new SimulationTime(long.MaxValue - 1L), world.Router);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => world.Hunger.Track(band), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(world.Hunger.TrackedCount, Is.Zero);
+                Assert.That(world.Clock.ScheduledCount, Is.Zero);
+                Assert.That(() => world.Hunger.IsInFamine(band), Throws.InvalidOperationException, "not tracked");
             });
         }
 
