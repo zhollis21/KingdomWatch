@@ -31,7 +31,7 @@ namespace KingdomWatch.Core.Tests.Performance
             bus.Subscribe(journal);
             var people = new PersonStore();
             var router = new ScheduledEventRouter();
-            var hunger = new Hunger(clock, bus, people);
+            var hunger = new Hunger(bus, people);
             router.Register(ScheduledEventKind.MealDue, hunger);
 
             var fed = NewBand(ids, people, WellFed, food: WellFed * Hunger.DailyRation * 100);

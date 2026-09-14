@@ -30,7 +30,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 Bus.Subscribe(Journal);
                 People = new PersonStore();
                 Router = new ScheduledEventRouter();
-                Hunger = new Hunger(Clock, Bus, People);
+                Hunger = new Hunger(Bus, People);
                 Router.Register(ScheduledEventKind.MealDue, Hunger);
             }
 
@@ -98,9 +98,8 @@ namespace KingdomWatch.Core.Tests.Needs
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Hunger(null!, world.Bus, world.People), Throws.ArgumentNullException);
-                Assert.That(() => new Hunger(world.Clock, null!, world.People), Throws.ArgumentNullException);
-                Assert.That(() => new Hunger(world.Clock, world.Bus, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Hunger(null!, world.People), Throws.ArgumentNullException);
+                Assert.That(() => new Hunger(world.Bus, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -537,8 +536,10 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
-        public void Handle_refuses_a_clock_it_was_not_built_on()
+        public void Handle_refuses_a_clock_other_than_its_bus_s()
         {
+            // The clock is derived from the bus, so the only way to reach
+            // Hunger with another one is to dispatch from it directly.
             var world = new World();
             var band = world.NewBand(1, 3);
             world.Hunger.Track(band);

@@ -77,6 +77,17 @@ namespace KingdomWatch.Core.Events
         public int SubscriberCount => _subscribers.Count;
 
         /// <summary>
+        /// The clock this bus stamps events with. Internal so that a system
+        /// which both schedules and publishes - <see cref="Needs.Hunger"/> -
+        /// can take the bus alone and derive the clock from it, for the same
+        /// reason this bus takes the clock alone and derives the allocator: a
+        /// system handed the two separately could be wired with a clock the
+        /// bus does not stamp from, and its wake-ups and its facts would then
+        /// disagree about when things happened.
+        /// </summary>
+        internal SimulationClock Clock => _clock;
+
+        /// <summary>
         /// Adds a subscriber. Order of subscription is order of notification,
         /// so this is refused once anything has been published: a subscriber
         /// arriving mid-run would hear later events in a different position

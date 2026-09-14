@@ -108,11 +108,17 @@ namespace KingdomWatch.Core.Needs
         // lookup per holder per day; a dictionary would be solving nothing.
         private readonly List<Tracked> _tracked = new List<Tracked>();
 
-        public Hunger(SimulationClock clock, DomainEventBus bus, PersonStore people)
+        /// <param name="bus">
+        /// Where famines are announced, and where the clock comes from: meals
+        /// are booked on the clock the bus stamps events with, so a wake-up
+        /// and the fact it produces can never disagree about when. There is
+        /// no way to hand this class a different clock.
+        /// </param>
+        public Hunger(DomainEventBus bus, PersonStore people)
         {
-            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
+            _clock = bus.Clock;
         }
 
         /// <summary>How many holders have meals scheduled.</summary>
@@ -191,12 +197,14 @@ namespace KingdomWatch.Core.Needs
             }
 
             // The clock is what the router passes through, and it must be the
-            // one Track booked the meal on: a different clock here means the
-            // next meal lands on a queue nobody is dispatching.
+            // bus's: that is the one Track booked the meal on, and the one the
+            // famine this meal may announce will be stamped with. A different
+            // clock here means the next meal lands on a queue nobody is
+            // dispatching.
             if (!ReferenceEquals(clock, _clock))
             {
                 throw new InvalidOperationException(
-                    "Hunger was built on one clock and dispatched by another.");
+                    "Hunger schedules on its bus's clock, but was dispatched by another.");
             }
 
             var index = IndexOf(scheduled.PrimaryEntity);
