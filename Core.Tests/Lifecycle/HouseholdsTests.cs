@@ -231,6 +231,56 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_housed_person_cannot_be_removed_until_they_leave()
+        {
+            var w = new HouseholdWorld();
+            var household = w.Households.Form();
+            var person = w.NewPerson(AgeStage.Adult, Sex.Female);
+            w.Households.Join(household, person);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.People.Remove(person), Throws.InvalidOperationException);
+                Assert.That(w.People.IsAlive(person), Is.True, "a refused Remove changed nothing");
+                Assert.That(household.Members, Is.EqualTo(new[] { person }));
+            });
+
+            w.Households.Leave(person);
+
+            Assert.That(() => w.People.Remove(person), Throws.Nothing);
+        }
+
+        [Test]
+        public void A_refused_dissolution_announcement_leaves_the_household_standing()
+        {
+            var housing = new CountedHousing();
+            var w = new HouseholdWorld(FamilyFormationSettings.Default, housing);
+            w.Bus.Subscribe(new Refuser(DomainEventKind.HouseholdDissolved));
+            var household = w.Households.Form();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Households.Dissolve(household), Throws.InvalidOperationException);
+                Assert.That(w.Households.TryGet(household.Id, out _), Is.True);
+                Assert.That(w.Households.All, Is.EqualTo(new[] { household }));
+                Assert.That(housing.Released, Is.Empty, "the home was not given back");
+            });
+        }
+
+        [Test]
+        public void A_refused_formation_announcement_registers_nothing()
+        {
+            var w = new HouseholdWorld();
+            w.Bus.Subscribe(new Refuser(DomainEventKind.HouseholdFormed));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Households.Form(), Throws.InvalidOperationException);
+                Assert.That(w.Households.Count, Is.Zero);
+            });
+        }
+
+        [Test]
         public void Has_adult_is_whether_anyone_grown_is_in_it()
         {
             var world = new HouseholdWorld();
@@ -261,6 +311,26 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(() => camp.Release(EntityId.None), Throws.Nothing);
                 Assert.That(() => camp.Release(ids.Next(EntityKind.Settlement)), Throws.ArgumentException);
             });
+        }
+
+        // A subscriber that refuses one kind of event - the wiring bug the bus
+        // propagates rather than swallows.
+        private sealed class Refuser : IDomainEventSubscriber
+        {
+            private readonly DomainEventKind _refused;
+
+            public Refuser(DomainEventKind refused)
+            {
+                _refused = refused;
+            }
+
+            public void On(in DomainEvent published)
+            {
+                if (published.Kind == _refused)
+                {
+                    throw new InvalidOperationException("refused " + published.Kind);
+                }
+            }
         }
 
         // Housing with no room: what a settled band's stock will look like at

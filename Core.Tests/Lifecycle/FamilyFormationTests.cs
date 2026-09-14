@@ -384,6 +384,27 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_housed_parent_brings_an_unhoused_dependent_too()
+        {
+            // The old household and no household are both places a dependent
+            // child follows their parent out of.
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new CampSpace());
+            var old = w.NewCouple(out var widow, out var husband);
+            var housed = w.NewChildOf(old, widow, husband, AgeStage.Child);
+            var unhoused = w.NewPerson(AgeStage.Infant, Sex.Male, widow, husband);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+            w.Deaths.Die(husband, Reasons.None);
+
+            var formed = w.Family.Partner(widow, suitor, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed.Members, Is.EqualTo(new[] { widow, housed, unhoused, suitor }));
+                Assert.That(w.Households.TryGet(old.Id, out _), Is.False);
+            });
+        }
+
+        [Test]
         public void Only_the_partners_own_dependents_follow_them()
         {
             // A widow living with her dependent nephew: he is in her household

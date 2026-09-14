@@ -262,6 +262,8 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(() => store.GetId(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetPosition(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetHealth(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetSex(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetHousehold(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAgeStage(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetBirthCulture(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAssimilation(subject), Throws.ArgumentException);

@@ -168,11 +168,22 @@ namespace KingdomWatch.Core.Data
         /// Removes a person and frees their slot for reuse. Throws when the
         /// handle does not address a live person, rather than reporting it, so
         /// that a caller holding a stale handle finds out at the point the bug
-        /// is instead of much later.
+        /// is instead of much later. Also refuses someone still in a household,
+        /// for the reason in the body.
         /// </summary>
         public void Remove(PersonHandle handle)
         {
             var slot = SlotFor(handle);
+
+            // The record knows it is in a household even though this class
+            // knows nothing about households: removing it now would leave the
+            // handle in that household's member list, naming a slot that is
+            // about to be someone else's. The death cascade leaves first.
+            if (!_people[slot].Household.IsNone)
+            {
+                throw new InvalidOperationException(
+                    handle + " is in " + _people[slot].Household + "; they leave it before their slot is freed.");
+            }
 
             // Everything except the handle is wiped. The handle stays so the
             // slot remembers the generation it reached - clearing it would send

@@ -192,10 +192,10 @@ namespace KingdomWatch.Core.Lifecycle
         }
 
         // Leaves the old household, joins the new one, and brings along any
-        // of this person's own children who are dependents in the same place
-        // they were - the old household, or no household at all, since
-        // worldgen may seed a parent and child unhoused. A child housed
-        // elsewhere stays there. Children of the couple appear twice, once
+        // of this person's own children who are dependents either in the old
+        // household or in none at all - worldgen may seed a child unhoused,
+        // and a homeless child of the couple has nowhere better to be. A
+        // child housed elsewhere stays there. Children of the couple appear twice, once
         // per parent; the second pass finds them already moved and leaves
         // them be.
         private void MoveIn(PersonHandle person, Household household)
@@ -215,13 +215,19 @@ namespace KingdomWatch.Core.Lifecycle
             for (var i = 0; i < children.Length; i++)
             {
                 if (!_people.TryGetHandle(children[i], out var child)
-                    || _people.GetHousehold(child) != previousId
                     || !AgeStages.IsDependent(_people.GetAgeStage(child)))
                 {
                     continue;
                 }
 
-                if (previous != null)
+                var childsHousehold = _people.GetHousehold(child);
+
+                if (!childsHousehold.IsNone && childsHousehold != previousId)
+                {
+                    continue;
+                }
+
+                if (!childsHousehold.IsNone)
                 {
                     _households.Leave(child);
                 }

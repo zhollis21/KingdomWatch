@@ -73,6 +73,15 @@ namespace KingdomWatch.Core.Lifecycle
         /// against a household that already exists; the alternative, a Form
         /// that takes founders, would have to be undone if a founder turned
         /// out to be in another household already.
+        ///
+        /// Announced before recorded, as <see cref="Needs.Hunger"/> announces
+        /// a famine before it flips its flag: a refused publish is a wiring
+        /// bug the bus throws for, and the registry should not then hold a
+        /// household nobody heard of. The home claimed for it is not given
+        /// back on that path - by then the world has thrown out of its tick
+        /// and is being discarded, and unwinding housing for a bug would be a
+        /// transaction layer this simulation does not have; what counts as a
+        /// resumable state is the snapshot's (#15).
         /// </remarks>
         public Household Form()
         {
@@ -84,9 +93,9 @@ namespace KingdomWatch.Core.Lifecycle
             var home = _housing.Claim();
             var household = new Household(_clock.Ids.Next(EntityKind.Household), home, _clock.Now);
 
+            _bus.Publish(DomainEventKind.HouseholdFormed, household.Id, home);
             _byId.Add(household.Id, household);
             _ordered.Add(household);
-            _bus.Publish(DomainEventKind.HouseholdFormed, household.Id, home);
 
             return household;
         }
@@ -107,10 +116,12 @@ namespace KingdomWatch.Core.Lifecycle
                     household + " still has members; move them out before dissolving it.");
             }
 
+            // Announced first, for the reason Form is: a refused publish
+            // leaves the household exactly as it was.
+            _bus.Publish(DomainEventKind.HouseholdDissolved, household.Id, household.Home);
             _byId.Remove(household.Id);
             _ordered.Remove(household);
             _housing.Release(household.Home);
-            _bus.Publish(DomainEventKind.HouseholdDissolved, household.Id, household.Home);
         }
 
         /// <summary>
