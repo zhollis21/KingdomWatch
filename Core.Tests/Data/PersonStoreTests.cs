@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using NUnit.Framework;
 
@@ -15,7 +16,7 @@ namespace KingdomWatch.Core.Tests.Data
             var store = new PersonStore();
             var id = ids.Next(EntityKind.Person);
 
-            var handle = store.Add(id, new WorldPosition(3, -4), 90, 2, 1, 200);
+            var handle = store.Add(id, new WorldPosition(3, -4), 90, 2, 1, 200, SimulationTime.FromHours(8));
 
             Assert.Multiple(() =>
             {
@@ -25,6 +26,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetAgeStage(handle), Is.EqualTo(2));
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(1));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(200));
+                Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromHours(8)));
                 Assert.That(store.Count, Is.EqualTo(1));
             });
         }
@@ -41,6 +43,7 @@ namespace KingdomWatch.Core.Tests.Data
             store.SetAgeStage(handle, 3);
             store.SetBirthCulture(handle, 4);
             store.SetAssimilation(handle, 5);
+            store.SetLastFedAt(handle, SimulationTime.FromDays(6));
 
             Assert.Multiple(() =>
             {
@@ -49,6 +52,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetAgeStage(handle), Is.EqualTo(3));
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(4));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(5));
+                Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromDays(6)));
             });
         }
 
@@ -63,13 +67,13 @@ namespace KingdomWatch.Core.Tests.Data
             Assert.Multiple(() =>
             {
                 Assert.That(
-                    () => store.Add(ids.Next(EntityKind.Settlement), default, 1, 0, 0, 0),
+                    () => store.Add(ids.Next(EntityKind.Settlement), default, 1, 0, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(
-                    () => store.Add(ids.Next(EntityKind.Household), default, 1, 0, 0, 0),
+                    () => store.Add(ids.Next(EntityKind.Household), default, 1, 0, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(
-                    () => store.Add(EntityId.None, default, 1, 0, 0, 0),
+                    () => store.Add(EntityId.None, default, 1, 0, 0, 0, default),
                     Throws.ArgumentException);
                 Assert.That(store.Count, Is.Zero, "a refused Add must not consume a slot");
             });
@@ -219,8 +223,8 @@ namespace KingdomWatch.Core.Tests.Data
             var mine = new PersonStore();
             var theirs = new PersonStore();
 
-            var myPerson = mine.Add(ids.Next(EntityKind.Person), default, 11, 0, 0, 0);
-            var theirPerson = theirs.Add(ids.Next(EntityKind.Person), default, 22, 0, 0, 0);
+            var myPerson = mine.Add(ids.Next(EntityKind.Person), default, 11, 0, 0, 0, default);
+            var theirPerson = theirs.Add(ids.Next(EntityKind.Person), default, 22, 0, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -384,11 +388,11 @@ namespace KingdomWatch.Core.Tests.Data
             var ids = new IdAllocator();
             var store = new PersonStore();
             var firstId = ids.Next(EntityKind.Person);
-            var first = store.Add(firstId, default, 50, 0, 0, 0);
+            var first = store.Add(firstId, default, 50, 0, 0, 0, default);
             store.Remove(first);
 
             var secondId = ids.Next(EntityKind.Person);
-            var second = store.Add(secondId, default, 50, 0, 0, 0);
+            var second = store.Add(secondId, default, 50, 0, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -462,9 +466,10 @@ namespace KingdomWatch.Core.Tests.Data
                 short.MinValue,
                 byte.MaxValue,
                 byte.MaxValue,
-                byte.MaxValue);
+                byte.MaxValue,
+                new SimulationTime(long.MaxValue));
             var opposite = store.Add(
-                ids.Next(EntityKind.Person), default, short.MaxValue, 0, 0, 0);
+                ids.Next(EntityKind.Person), default, short.MaxValue, 0, 0, 0, default);
 
             Assert.Multiple(() =>
             {
@@ -475,6 +480,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetAgeStage(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetBirthCulture(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetAssimilation(extreme), Is.EqualTo(byte.MaxValue));
+                Assert.That(store.GetLastFedAt(extreme), Is.EqualTo(new SimulationTime(long.MaxValue)));
                 Assert.That(store.GetHealth(opposite), Is.EqualTo(short.MaxValue));
             });
         }
@@ -540,6 +546,6 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         private static PersonHandle AddPerson(PersonStore store, IdAllocator ids) =>
-            store.Add(ids.Next(EntityKind.Person), default, 50, 0, 0, 0);
+            store.Add(ids.Next(EntityKind.Person), default, 50, 0, 0, 0, default);
     }
 }
