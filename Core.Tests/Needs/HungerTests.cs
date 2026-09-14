@@ -56,7 +56,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 for (var i = 0; i < members; i++)
                 {
                     band.AddMember(People.Add(
-                        Ids.Next(EntityKind.Person), default, StartingHealth, 0, 0, 0, Clock.Now));
+                        Ids.Next(EntityKind.Person), default, StartingHealth, AgeStage.Adult, Sex.Female, 0, 0, Clock.Now));
                 }
 
                 if (food > 0)
@@ -65,6 +65,14 @@ namespace KingdomWatch.Core.Tests.Needs
                 }
 
                 return band;
+            }
+
+            internal PersonHandle NewMember(MobileGroup band, AgeStage stage)
+            {
+                var member = People.Add(
+                    Ids.Next(EntityKind.Person), default, StartingHealth, stage, Sex.Female, 0, 0, Clock.Now);
+                band.AddMember(member);
+                return member;
             }
 
             internal void RunDays(long days)
@@ -246,10 +254,11 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
-        public void Shortfall_feeds_in_member_order_and_the_tail_goes_without()
+        public void Shortfall_within_one_sitting_feeds_in_member_order_and_the_tail_goes_without()
         {
             var world = new World();
-            // Enough for two of three; the third is short by one.
+            // Three adults - one sitting - with enough for two; the third is
+            // short by one.
             var band = world.NewBand(3, 2 * Hunger.DailyRation + Hunger.DailyRation - 1);
             world.Hunger.Track(band);
 
@@ -267,6 +276,53 @@ namespace KingdomWatch.Core.Tests.Needs
                     Is.EqualTo(Hunger.DailyRation - 1),
                     "a partial ration is not a meal: the remainder stays in the ledger");
                 Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
+            });
+        }
+
+        [Test]
+        public void Shortfall_feeds_dependents_then_adults_then_elders_whatever_the_member_order()
+        {
+            var world = new World();
+            // Inserted oldest first, so insertion order and feeding order
+            // disagree on every pair.
+            var band = world.NewBand(0, 3 * Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var adult = world.NewMember(band, AgeStage.Adult);
+            var adolescent = world.NewMember(band, AgeStage.Adolescent);
+            var child = world.NewMember(band, AgeStage.Child);
+            var infant = world.NewMember(band, AgeStage.Infant);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+
+            var mealTime = SimulationTime.FromDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(adolescent), Is.EqualTo(mealTime), "dependents eat first");
+                Assert.That(world.People.GetLastFedAt(child), Is.EqualTo(mealTime));
+                Assert.That(world.People.GetLastFedAt(infant), Is.EqualTo(mealTime));
+                Assert.That(world.People.GetLastFedAt(adult), Is.EqualTo(SimulationTime.Zero), "then adults, and there was none left");
+                Assert.That(world.People.GetLastFedAt(elder), Is.EqualTo(SimulationTime.Zero), "elders last");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.Zero);
+            });
+        }
+
+        [Test]
+        public void Shortfall_feeds_adults_before_elders()
+        {
+            var world = new World();
+            var band = world.NewBand(0, Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var adult = world.NewMember(band, AgeStage.Adult);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(adult), Is.EqualTo(SimulationTime.FromDays(1L)));
+                Assert.That(world.People.GetLastFedAt(elder), Is.EqualTo(SimulationTime.Zero));
             });
         }
 
