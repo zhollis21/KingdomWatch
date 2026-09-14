@@ -37,5 +37,9 @@ namespace KingdomWatch.Core.Rng
         Combat = 1,
         Conception = 2,
         Social = 3,
+        /// <summary>A person's yearly roll against the life table (#11).</summary>
+        Mortality = 4,
+        /// <summary>The sex of a newborn (#11).</summary>
+        ChildSex = 5,
     }
 }

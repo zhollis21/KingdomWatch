@@ -75,6 +75,14 @@ namespace KingdomWatch.Core.Data
 
         public short Health;
 
+        /// <summary>
+        /// Where this person is in life. A reading of <see cref="BornTick"/>
+        /// rather than a fact of its own: <see cref="Lifecycle.Aging"/> moves
+        /// it at each boundary the age crosses, and where the two disagree
+        /// the age wins. Kept as a field because every system that branches
+        /// on it - eligibility, adoption, seating - reads it far more often
+        /// than anyone crosses a boundary.
+        /// </summary>
         public AgeStage AgeStage;
 
         /// <summary>
@@ -91,10 +99,40 @@ namespace KingdomWatch.Core.Data
         /// <summary>
         /// When this person last ate. Written by <see cref="Needs.Hunger"/>
         /// at each meal they draw; how long ago it was is what starvation
-        /// integrates over, and what the mortality model (#11) reads as the
-        /// nutrition modifier.
+        /// integrates over, and what <see cref="Lifecycle.Mortality"/> and
+        /// <see cref="Lifecycle.Fertility"/> read as the nutrition modifier.
         /// </summary>
         public Clock.SimulationTime LastFedAt;
+
+        /// <summary>
+        /// When this person was born, in ticks since the start of the world -
+        /// negative for a founder born before it. Set at birth and never
+        /// changed; age is the distance from here to now, computed when
+        /// something asks and never ticked. The demographic model
+        /// (<see cref="Lifecycle.Aging"/>, <see cref="Lifecycle.Mortality"/>,
+        /// <see cref="Lifecycle.Fertility"/>) reads it.
+        /// </summary>
+        /// <remarks>
+        /// A raw long rather than a <see cref="Clock.SimulationTime"/> because
+        /// that type refuses to be negative - time never runs backwards - and
+        /// worldgen seeds a band of people who were forty before tick zero.
+        /// Offsetting the world clock so that founders fit would put the
+        /// start of history at some arbitrary year; a signed duration is the
+        /// honest representation.
+        /// </remarks>
+        public long BornTick;
+
+        /// <summary>
+        /// The scheduled <see cref="Clock.ScheduledEventKind.BirthDue"/> this
+        /// person is carrying, or <see cref="EventId.None"/> when not
+        /// pregnant. The pregnancy IS the pending event - section 17 names
+        /// birth due dates as the future commitments a save serializes - so
+        /// the record points at it rather than keeping a due date of its own
+        /// that could disagree with the queue. Written by
+        /// <see cref="Lifecycle.Fertility"/> at conception and birth, and
+        /// cleared by the death cascade, which cancels the event.
+        /// </summary>
+        public EventId PregnancyDue;
 
         /// <summary>
         /// The household this person belongs to, or <see cref="EntityId.None"/>

@@ -1,0 +1,380 @@
+using System;
+using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Needs;
+using NUnit.Framework;
+
+namespace KingdomWatch.Core.Tests.Lifecycle
+{
+    [TestFixture]
+    public sealed class MortalityTests
+    {
+        // A table nobody dies to unless a test says so.
+        private static DemographicSettings Immortal() => new DemographicSettings
+        {
+            InfantMortalityPerMille = 0,
+            ChildMortalityPerMille = 0,
+            AdolescentMortalityPerMille = 0,
+            AdultMortalityPerMille = 0,
+            ElderMortalityPerMille = 0,
+            SoftLifespanYears = 1_000L,
+            MaxLifespanYears = 2_000L,
+            ConceptionPerMille = 0,
+        };
+
+        [Test]
+        public void Construction_refuses_a_missing_collaborator_and_a_bad_table()
+        {
+            var w = new DemographicWorld();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => new Mortality(null!, w.People, w.Deaths, w.Rng, w.Settings), Throws.ArgumentNullException);
+                Assert.That(() => new Mortality(w.Bus, null!, w.Deaths, w.Rng, w.Settings), Throws.ArgumentNullException);
+                Assert.That(() => new Mortality(w.Bus, w.People, null!, w.Rng, w.Settings), Throws.ArgumentNullException);
+                Assert.That(() => new Mortality(w.Bus, w.People, w.Deaths, null!, w.Settings), Throws.ArgumentNullException);
+                Assert.That(() => new Mortality(w.Bus, w.People, w.Deaths, w.Rng, null!), Throws.ArgumentNullException);
+                Assert.That(
+                    () => new Mortality(w.Bus, w.People, w.Deaths, w.Rng, new DemographicSettings { MaxLifespanYears = 10L }),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void The_first_check_is_booked_for_the_next_birthday_after_the_announcement()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            w.Advance(SimulationTime.TicksPerDay * 7L);
+            var person = w.NewPerson(30L, Sex.Male);
+
+            var found = false;
+            var count = w.Clock.ScheduledCount;
+
+            // The elder boundary is also booked; the check is whichever of
+            // the two comes first, and a thirty-year-old's next birthday is.
+            if (w.Clock.TryPeekNext(out var next))
+            {
+                found = next.Kind == ScheduledEventKind.MortalityCheck
+                    && next.Time == w.BirthdayOf(person, 31L)
+                    && next.Phase == Mortality.Phase
+                    && next.PrimaryEntity == w.IdOf(person);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True, "the next birthday, a year less a week out");
+                Assert.That(count, Is.EqualTo(2), "one check and one boundary");
+            });
+        }
+
+        [Test]
+        public void Nobody_dies_to_a_table_of_zeros()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var people = new List<PersonHandle>();
+
+            for (var i = 0; i < 20; i++)
+            {
+                var person = w.NewPerson(i, i % 2 == 0 ? Sex.Female : Sex.Male);
+                band.AddMember(person);
+                people.Add(person);
+            }
+
+            w.AdvanceYears(100L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.Count, Is.EqualTo(20));
+                Assert.That(w.Published(DomainEventKind.PersonDied), Is.Empty);
+                Assert.That(w.People.GetAgeStage(people[0]), Is.EqualTo(AgeStage.Elder), "they aged while surviving");
+            });
+        }
+
+        [Test]
+        public void A_certain_table_kills_on_the_next_birthday_and_the_reason_reads_off_the_age()
+        {
+            var settings = new DemographicSettings
+            {
+                AdultMortalityPerMille = 1000,
+                ElderMortalityPerMille = 1000,
+                InfantMortalityPerMille = 0,
+                ChildMortalityPerMille = 0,
+                AdolescentMortalityPerMille = 0,
+                SoftLifespanYears = 70L,
+                MaxLifespanYears = 100L,
+                ConceptionPerMille = 0,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewBand();
+            var young = w.NewPerson(30L, Sex.Male);
+            var old = w.NewPerson(75L, Sex.Female);
+            var child = w.NewPerson(5L, Sex.Female);
+            band.AddMember(young);
+            band.AddMember(old);
+            band.AddMember(child);
+            var youngId = w.IdOf(young);
+            var oldId = w.IdOf(old);
+
+            w.AdvanceTo(w.BirthdayOf(young, 31L).Plus(-1L));
+            var youngBefore = w.People.IsAlive(young);
+            w.AdvanceYears(1L);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(youngBefore, Is.True, "nothing between birthdays");
+                Assert.That(w.People.IsAlive(young), Is.False);
+                Assert.That(w.People.IsAlive(old), Is.False);
+                Assert.That(w.People.IsAlive(child), Is.True, "the child's rate is zero");
+                Assert.That(deaths, Has.Count.EqualTo(2));
+                Assert.That(ReasonFor(deaths, youngId), Is.EqualTo(ReasonCode.Illness), "before the soft lifespan");
+                Assert.That(ReasonFor(deaths, oldId), Is.EqualTo(ReasonCode.OldAge), "past it");
+                Assert.That(band.Members, Is.EqualTo(new[] { child }), "the cascade ran");
+            });
+        }
+
+        [Test]
+        public void Nobody_outlives_the_maximum_lifespan()
+        {
+            var settings = new DemographicSettings
+            {
+                InfantMortalityPerMille = 0,
+                ChildMortalityPerMille = 0,
+                AdolescentMortalityPerMille = 0,
+                AdultMortalityPerMille = 0,
+                ElderMortalityPerMille = 0,
+                SoftLifespanYears = 90L,
+                MaxLifespanYears = 91L,
+                ConceptionPerMille = 0,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(89L, Sex.Male);
+            band.AddMember(person);
+
+            // The ninetieth birthday rolls the soft-lifespan rate, which is
+            // the elder rate - zero. The ninety-first is certain.
+            w.AdvanceTo(w.BirthdayOf(person, 90L));
+            var atNinety = w.People.IsAlive(person);
+            w.AdvanceTo(w.BirthdayOf(person, 91L));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(atNinety, Is.True);
+                Assert.That(w.People.IsAlive(person), Is.False);
+                Assert.That(w.Published(DomainEventKind.PersonDied)[0].Reasons.Contains(ReasonCode.OldAge), Is.True);
+            });
+        }
+
+        [Test]
+        public void Frailty_and_hunger_multiply_the_yearly_chance_and_certainty_caps_it()
+        {
+            var settings = new DemographicSettings
+            {
+                AdultMortalityPerMille = 100,
+                HealthFloor = 50,
+                FrailtyMultiplier = 3,
+                HungerMultiplier = 4,
+                ConceptionPerMille = 0,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var well = w.NewPerson(30L, Sex.Male);
+            var frail = w.NewPerson(30L, Sex.Male);
+            var hungry = w.NewPerson(30L, Sex.Male);
+            var both = w.NewPerson(30L, Sex.Male);
+            var atFloor = w.NewPerson(30L, Sex.Male);
+            w.People.SetHealth(frail, 49);
+            w.People.SetHealth(both, 0);
+            w.People.SetHealth(atFloor, 50);
+
+            // Past the grace period for those who have not eaten since tick
+            // zero; the others are fed now.
+            w.Advance(Hunger.StarvationGrace + 1L);
+            w.People.SetLastFedAt(well, w.Clock.Now);
+            w.People.SetLastFedAt(frail, w.Clock.Now);
+            w.People.SetLastFedAt(atFloor, w.Clock.Now);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Mortality.YearlyChancePerMille(well), Is.EqualTo(100));
+                Assert.That(w.Mortality.YearlyChancePerMille(atFloor), Is.EqualTo(100), "at the floor is not below it");
+                Assert.That(w.Mortality.YearlyChancePerMille(frail), Is.EqualTo(300));
+                Assert.That(w.Mortality.YearlyChancePerMille(hungry), Is.EqualTo(400));
+                Assert.That(w.Mortality.YearlyChancePerMille(both), Is.EqualTo(1000), "1200 capped");
+            });
+        }
+
+        [Test]
+        public void Starving_to_zero_health_is_death_at_that_meal_with_the_reason_starved()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewStarvingBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+
+            // Meals on days 1 and 2 are within grace; day 3 onward costs
+            // health. A hundred health at ten a meal is ten meals: day 12.
+            var fatal = SimulationTime.FromDays(12L);
+            w.AdvanceTo(fatal.Plus(-1L));
+            var justBefore = w.People.GetHealth(person);
+            w.AdvanceTo(fatal);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(justBefore, Is.EqualTo(Hunger.StarvationDamagePerMeal));
+                Assert.That(w.People.IsAlive(person), Is.False);
+                Assert.That(deaths, Has.Count.EqualTo(1));
+                Assert.That(deaths[0].Time, Is.EqualTo(fatal), "the day of the meal, not a later check");
+                Assert.That(deaths[0].Reasons.Contains(ReasonCode.Starved), Is.True);
+                Assert.That(band.Members, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void A_starvation_crossing_for_someone_with_health_left_kills_nobody()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+
+            w.Clock.Schedule(
+                w.Clock.Now.Plus(1L), Mortality.Phase, ScheduledEventKind.StarvationCritical, w.IdOf(person), EntityId.None);
+            w.Advance(1L);
+
+            Assert.That(w.People.IsAlive(person), Is.True);
+        }
+
+        [Test]
+        public void A_starvation_crossing_for_someone_below_zero_kills_them()
+        {
+            // Hunger never takes health below zero, but the bulk span can;
+            // what a value there means is decided here, and it means dead.
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            w.People.SetHealth(person, -7);
+
+            w.Clock.Schedule(
+                w.Clock.Now.Plus(1L), Mortality.Phase, ScheduledEventKind.StarvationCritical, w.IdOf(person), EntityId.None);
+            w.Advance(1L);
+
+            Assert.That(w.People.IsAlive(person), Is.False);
+        }
+
+        [Test]
+        public void A_starvation_crossing_for_the_dead_is_ignored()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            var id = w.IdOf(person);
+
+            w.Clock.Schedule(w.Clock.Now.Plus(1L), Mortality.Phase, ScheduledEventKind.StarvationCritical, id, EntityId.None);
+            w.Deaths.Die(person, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Advance(1L), Throws.Nothing);
+                Assert.That(w.Published(DomainEventKind.PersonDied), Has.Count.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public void A_check_that_comes_due_for_the_dead_is_ignored()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            w.Deaths.Die(person, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.AdvanceYears(2L), Throws.Nothing);
+                Assert.That(w.Published(DomainEventKind.PersonDied), Has.Count.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public void The_same_seed_produces_the_same_deaths_and_another_seed_does_not()
+        {
+            var first = Timeline(seed: 7UL);
+            var again = Timeline(seed: 7UL);
+            var other = Timeline(seed: 8UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first, Is.Not.Empty, "somebody died in fifty years");
+                Assert.That(first.Count, Is.LessThan(40), "and not everybody at once");
+                Assert.That(again, Is.EqualTo(first));
+                Assert.That(other, Is.Not.EqualTo(first));
+            });
+        }
+
+        [Test]
+        public void Handle_refuses_a_kind_it_does_not_own_and_a_clock_that_is_not_its_own()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var person = w.NewPerson(1L, Sex.Male);
+            var foreign = new ScheduledEvent(
+                new EventId(1UL), SimulationTime.Zero, Mortality.Phase, ScheduledEventKind.MealDue, w.IdOf(person), EntityId.None);
+            var owned = new ScheduledEvent(
+                new EventId(2UL), SimulationTime.Zero, Mortality.Phase, ScheduledEventKind.MortalityCheck, w.IdOf(person), EntityId.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Mortality.Handle(foreign, w.Clock), Throws.InvalidOperationException);
+                Assert.That(
+                    () => w.Mortality.Handle(owned, new SimulationClock(new IdAllocator())),
+                    Throws.InvalidOperationException);
+            });
+        }
+
+        // The tick of every death over fifty years among forty adults on the
+        // default table, in order.
+        private static List<long> Timeline(ulong seed)
+        {
+            var w = new DemographicWorld(new DemographicSettings { ConceptionPerMille = 0 }, seed);
+            var band = w.NewBand();
+
+            for (var i = 0; i < 40; i++)
+            {
+                band.AddMember(w.NewPerson(20L + i, i % 2 == 0 ? Sex.Female : Sex.Male));
+            }
+
+            w.AdvanceYears(50L);
+
+            var ticks = new List<long>();
+
+            foreach (var death in w.Published(DomainEventKind.PersonDied))
+            {
+                ticks.Add(death.Time.Ticks);
+            }
+
+            return ticks;
+        }
+
+        private static ReasonCode ReasonFor(List<DomainEvent> deaths, EntityId person)
+        {
+            foreach (var death in deaths)
+            {
+                if (death.PrimaryEntity == person)
+                {
+                    return death.Reasons[0];
+                }
+            }
+
+            throw new InvalidOperationException(person + " did not die.");
+        }
+    }
+}

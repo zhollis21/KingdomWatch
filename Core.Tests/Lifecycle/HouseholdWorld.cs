@@ -69,7 +69,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal PersonHandle NewPerson(AgeStage stage, Sex sex, EntityId mother, EntityId father)
         {
             var id = Ids.Next(EntityKind.Person);
-            var handle = People.Add(id, default, 100, stage, sex, 0, 0, Clock.Now);
+            var handle = People.Add(id, default, 100, stage, sex, 0, 0, Clock.Now, 0L);
             Genealogy.Record(id, mother, father);
             return handle;
         }

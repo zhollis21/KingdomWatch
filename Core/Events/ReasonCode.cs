@@ -35,5 +35,11 @@ namespace KingdomWatch.Core.Events
         TradersAttacked = 5,
         RelationsDeteriorated = 6,
         TerritoryClaim = 7,
+        /// <summary>Died with health at zero from missed meals (#11).</summary>
+        Starved = 8,
+        /// <summary>Died to the life table before the soft lifespan (#11).</summary>
+        Illness = 9,
+        /// <summary>Died to the life table at or past the soft lifespan (#11).</summary>
+        OldAge = 10,
     }
 }

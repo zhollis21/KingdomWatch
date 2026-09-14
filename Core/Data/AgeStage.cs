@@ -10,9 +10,10 @@ namespace KingdomWatch.Core.Data
     /// children to visibly exist without a childhood simulator, and the
     /// systems that read this - who may marry, who counts as a dependent, who
     /// eats first when food runs short - all branch on the stage and nothing
-    /// finer. Moving people between stages is #22's; what a stage means to
-    /// each system is that system's, and the meanings that exist so far are
-    /// on <see cref="AgeStages"/>.
+    /// finer. Moving people between stages is <see cref="Lifecycle.Aging"/>'s,
+    /// at the birthdays <see cref="Lifecycle.DemographicSettings"/> names;
+    /// what a stage means to each system is that system's, and the meanings
+    /// that exist so far are on <see cref="AgeStages"/>.
     ///
     /// Values are explicit and must never be renumbered or reordered: they are
     /// written into saves. Append new stages at the end. <see cref="AgeStages"/>

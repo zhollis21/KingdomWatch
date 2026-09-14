@@ -16,9 +16,19 @@ namespace KingdomWatch.Core.Tests.Needs
 
         private static readonly long Day = SimulationTime.TicksPerDay;
 
+        // Stands in for Mortality: remembers each starvation crossing Hunger
+        // raises, so the tests here can see it without the death cascade.
+        private sealed class Crossings : IScheduledEventHandler
+        {
+            internal List<ScheduledEvent> Raised { get; } = new List<ScheduledEvent>();
+
+            public void Handle(ScheduledEvent scheduled, SimulationClock clock) => Raised.Add(scheduled);
+        }
+
         // Everything a meal touches, wired the way a world will wire it: the
         // router drives the clock, hunger owns MealDue, the journal remembers
-        // what the bus publishes.
+        // what the bus publishes, and a recorder answers the crossing that
+        // Mortality would.
         private sealed class World
         {
             internal World()
@@ -31,8 +41,12 @@ namespace KingdomWatch.Core.Tests.Needs
                 People = new PersonStore();
                 Router = new ScheduledEventRouter();
                 Hunger = new Hunger(Bus, People);
+                Starvation = new Crossings();
                 Router.Register(ScheduledEventKind.MealDue, Hunger);
+                Router.Register(ScheduledEventKind.StarvationCritical, Starvation);
             }
+
+            internal Crossings Starvation { get; }
 
             internal IdAllocator Ids { get; }
 
@@ -56,7 +70,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 for (var i = 0; i < members; i++)
                 {
                     band.AddMember(People.Add(
-                        Ids.Next(EntityKind.Person), default, StartingHealth, AgeStage.Adult, Sex.Female, 0, 0, Clock.Now));
+                        Ids.Next(EntityKind.Person), default, StartingHealth, AgeStage.Adult, Sex.Female, 0, 0, Clock.Now, 0L));
                 }
 
                 if (food > 0)
@@ -70,7 +84,7 @@ namespace KingdomWatch.Core.Tests.Needs
             internal PersonHandle NewMember(MobileGroup band, AgeStage stage)
             {
                 var member = People.Add(
-                    Ids.Next(EntityKind.Person), default, StartingHealth, stage, Sex.Female, 0, 0, Clock.Now);
+                    Ids.Next(EntityKind.Person), default, StartingHealth, stage, Sex.Female, 0, 0, Clock.Now, 0L);
                 band.AddMember(member);
                 return member;
             }
@@ -390,6 +404,34 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void The_meal_that_reaches_zero_raises_the_starvation_crossing_once_for_the_same_instant()
+        {
+            var world = new World();
+            var band = world.NewBand(2, 0);
+            world.Hunger.Track(band);
+            var starving = band.Members[0];
+            var alreadyGone = band.Members[1];
+            world.People.SetHealth(starving, (short)(2 * Hunger.StarvationDamagePerMeal));
+            world.People.SetHealth(alreadyGone, 0);
+
+            // Day 3 is the first meal past the grace period; day 4 takes the
+            // starving member to zero; day 5 finds them there and raises
+            // nothing more. The member already at zero never crosses.
+            world.RunDays(5L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Starvation.Raised, Has.Count.EqualTo(1));
+                var crossing = world.Starvation.Raised[0];
+                Assert.That(crossing.Kind, Is.EqualTo(ScheduledEventKind.StarvationCritical));
+                Assert.That(crossing.PrimaryEntity, Is.EqualTo(world.People.GetId(starving)));
+                Assert.That(crossing.Time, Is.EqualTo(SimulationTime.FromDays(4L)), "the instant of the meal, not later");
+                Assert.That(crossing.Phase, Is.EqualTo(SimulationPhase.Lifecycle), "after the meal's own phase");
+                Assert.That(world.People.GetHealth(starving), Is.Zero);
+            });
+        }
+
+        [Test]
         public void Eating_again_resets_the_grace_period()
         {
             var world = new World();
@@ -410,7 +452,7 @@ namespace KingdomWatch.Core.Tests.Needs
             Assert.Multiple(() =>
             {
                 Assert.That(starved, Is.EqualTo(StartingHealth - Hunger.StarvationDamagePerMeal));
-                Assert.That(fed, Is.EqualTo(starved), "the meal itself heals nothing; that is #11's");
+                Assert.That(fed, Is.EqualTo(starved), "the meal itself heals nothing; nothing does yet");
                 Assert.That(withinGrace, Is.EqualTo(starved));
                 Assert.That(pastGrace, Is.EqualTo(starved - Hunger.StarvationDamagePerMeal));
             });

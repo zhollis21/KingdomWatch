@@ -50,10 +50,17 @@ namespace KingdomWatch.Core.Needs
     /// **Damage here, death elsewhere.** An unfed member past
     /// <see cref="StarvationGrace"/> loses <see cref="StarvationDamagePerMeal"/>
     /// health per missed meal. A missed meal never takes health below zero,
-    /// and never touches health already at or below it - what a value there
-    /// means is not this system's to say. Turning low health into a death is
-    /// the mortality model's (#11), with <see cref="PersonRecord.LastFedAt"/>
-    /// as its nutrition input, so the mortality curve lives in exactly one place.
+    /// and never touches health already at or below it. The meal that
+    /// reaches zero raises <see cref="ScheduledEventKind.StarvationCritical"/>
+    /// for the same instant in the lifecycle phase - section 6: starvation
+    /// raises its own threshold event - and <see cref="Lifecycle.Mortality"/>
+    /// answers it with the death, after this meal has finished serving the
+    /// table it would otherwise be removing people from. Mortality also
+    /// reads <see cref="PersonRecord.LastFedAt"/> as its nutrition modifier,
+    /// so the mortality curve lives in exactly one place. A world that
+    /// feeds people without a Mortality to answer the crossing throws at
+    /// the router when the first person starves: a wake-up nobody answers
+    /// is a wiring bug.
     ///
     /// **No predicted "food runs out in N days" event.** Section 4 names food
     /// depletion as a threshold crossing, and the daily meal is the boundary
@@ -318,18 +325,33 @@ namespace KingdomWatch.Core.Needs
             return stage == AgeStage.Elder ? Sitting.Elders : Sitting.Adults;
         }
 
-        // Zero is "as bad as starvation gets" for the mortality model to read,
-        // so damage stops there. Health already at or below zero is left
-        // exactly as it is: the store allows negative values and #11 decides
-        // what they mean, so this neither pushes one further down nor - as an
-        // unconditional Max(0, ...) would - raises it back to zero.
+        // Zero is as bad as starvation gets, so damage stops there - and the
+        // meal that reaches it raises the crossing, once, for the same
+        // instant in the lifecycle phase, where Mortality turns it into a
+        // death after this loop has finished walking the table. Health
+        // already at or below zero is left exactly as it is: the crossing
+        // was raised when it got there, and this neither pushes it further
+        // down nor - as an unconditional Max(0, ...) would - raises it back.
         private void Starve(PersonHandle member)
         {
             var health = _people.GetHealth(member);
 
-            if (health > 0)
+            if (health <= 0)
             {
-                _people.SetHealth(member, (short)Math.Max(0, health - StarvationDamagePerMeal));
+                return;
+            }
+
+            var remaining = (short)Math.Max(0, health - StarvationDamagePerMeal);
+            _people.SetHealth(member, remaining);
+
+            if (remaining == 0)
+            {
+                _clock.Schedule(
+                    _clock.Now,
+                    Lifecycle.Mortality.Phase,
+                    ScheduledEventKind.StarvationCritical,
+                    _people.GetId(member),
+                    EntityId.None);
             }
         }
 
