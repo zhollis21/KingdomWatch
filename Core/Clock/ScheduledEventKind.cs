@@ -28,8 +28,8 @@ namespace KingdomWatch.Core.Clock
     /// Values are explicit and ordering-significant. Renumbering reorders every
     /// event in every existing world, which rewrites its history. Append.
     ///
-    /// The three below are the scheduled-detail examples section 4 names. More
-    /// arrive with the systems that need them.
+    /// The first three below are the scheduled-detail examples section 4
+    /// names. More arrive with the systems that need them.
     /// </remarks>
     public enum ScheduledEventKind
     {
@@ -44,5 +44,11 @@ namespace KingdomWatch.Core.Clock
 
         /// <summary>A person's low-frequency personal decision pass comes due.</summary>
         SocialDecision = 3,
+
+        /// <summary>
+        /// A food holder's daily meal comes due: its members draw rations from
+        /// its ledger. Owned by <see cref="Needs.Hunger"/>.
+        /// </summary>
+        MealDue = 4,
     }
 }

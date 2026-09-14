@@ -21,8 +21,9 @@ namespace KingdomWatch.Core.Events
     /// will. Renumbering silently relabels every event in every existing
     /// world's history. Append.
     ///
-    /// The twelve below are section 5's own list. More arrive with the systems
-    /// that publish them. See docs/design/kingdom-watch-plan-v7.1.md section 5.
+    /// The first twelve below are section 5's own list. More arrive with the
+    /// systems that publish them. See docs/design/kingdom-watch-plan-v7.1.md
+    /// section 5.
     /// </remarks>
     public enum DomainEventKind
     {
@@ -41,5 +42,12 @@ namespace KingdomWatch.Core.Events
         DivineActWitnessed = 10,
         BridgeDestroyed = 11,
         FamineStarted = 12,
+
+        /// <summary>
+        /// A holder in famine fed everyone at a meal again. Published by
+        /// <see cref="Needs.Hunger"/>, so the chronicle can close what
+        /// <see cref="FamineStarted"/> opened.
+        /// </summary>
+        FamineEnded = 13,
     }
 }

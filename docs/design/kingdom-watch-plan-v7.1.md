@@ -421,6 +421,7 @@ public struct PersonRecord
     public WorldPosition Position;
     public short         Health;
     public byte          AgeStage, BirthCulture, Assimilation;
+    public SimulationTime LastFedAt;   // #51: hunger integrates from here
     // skills indexed separately: [personIndex * skillCount + skillId]
     // Job (JobId) and Household (HouseholdHandle) are deferred — see below
 }
@@ -446,7 +447,8 @@ public sealed class PersonStore
     private PersonRecord[] _people;      // layout is private
 
     public PersonHandle Add(EntityId id, WorldPosition position, short health,
-                            byte ageStage, byte birthCulture, byte assimilation);
+                            byte ageStage, byte birthCulture, byte assimilation,
+                            SimulationTime lastFedAt);
     public void Remove(PersonHandle h);  // frees the slot for reuse
     public bool IsAlive(PersonHandle h); // the non-throwing question
 
@@ -482,7 +484,7 @@ Publish meaningful simulation events; interested systems subscribe and react det
 PersonBorn · PersonDied · MarriageFormed · HouseholdFormed
 SettlementFounded · SettlementAbandoned · RulerSucceeded
 WarDeclared · BattleEnded · DivineActWitnessed
-BridgeDestroyed · FamineStarted
+BridgeDestroyed · FamineStarted · FamineEnded
 ```
 
 This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, faith attribution, attitudes, and debugging from one mechanism.
@@ -568,6 +570,8 @@ Aldric + Mira marry → form household → need a home
 Settlement owns bulk resources. Household has food *access*, wealth/status, and possibly a small buffer. Meals consume settlement supply — no simulating every loaf in every pantry.
 
 *UI consequence:* the "Grain: 4 days" house tooltip must read from settlement stores scaled by household size. Otherwise it advertises household economics that don't exist.
+
+**As of #51,** `Hunger` is the draw: one `MealDue` scheduled event per food holder per day, at which each living member takes a ration from the holder's ledger. The holder is a `MobileGroup` until settlements exist (#54), and there is no household layer in between until #9. §4's per-person sketch — *Aldric ate at 08:00 → HungerCritical at 17:42* — is deliberately not what runs: the daily meal is itself a scheduled boundary, so a thirty-day jump dispatches thirty meals and dates the famine on the day the ledger runs short, and per-person meal *times* are a change to when the draw happens, which waits for M3's daily schedules. Hunger is integrated rather than polled: a person stores only when they last ate, and starvation is evaluated from that distance when a meal finds them unfed. Past a grace period each missed meal costs health; turning low health into a death is the mortality model's (§6 below, #11). When the ledger cannot cover everyone, members eat in the group's insertion order and the tail goes without — a placeholder until #9 or #54 decides the real priority. `DaysOfFood()` is the tooltip's number as a query; a *predicted* depletion event waits until something aggregates meals over more than a day, because the ledger has no change notification to keep a prediction fresh.
 
 ### Age stages
 

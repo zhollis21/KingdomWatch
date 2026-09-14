@@ -73,5 +73,13 @@ namespace KingdomWatch.Core.Data
         public byte BirthCulture;
 
         public byte Assimilation;
+
+        /// <summary>
+        /// When this person last ate. Written by <see cref="Needs.Hunger"/>
+        /// at each meal they draw; how long ago it was is what starvation
+        /// integrates over, and what the mortality model (#11) reads as the
+        /// nutrition modifier.
+        /// </summary>
+        public Clock.SimulationTime LastFedAt;
     }
 }

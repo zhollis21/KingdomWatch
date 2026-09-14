@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
 
 namespace KingdomWatch.Core.Data
 {
@@ -83,6 +84,12 @@ namespace KingdomWatch.Core.Data
         /// The durable id is allocated by the caller, through
         /// <see cref="IdAllocator"/>, and passed in - this class hands out
         /// storage slots, not identities.
+        ///
+        /// <paramref name="lastFedAt"/> is required rather than defaulted so
+        /// that nobody can be added at year fifty with a last meal at the
+        /// start of the world and starve at their first one. Whoever adds a
+        /// person - the band generator, a birth - knows when they last ate;
+        /// this class does not.
         /// </remarks>
         public PersonHandle Add(
             EntityId id,
@@ -90,7 +97,8 @@ namespace KingdomWatch.Core.Data
             short health,
             byte ageStage,
             byte birthCulture,
-            byte assimilation)
+            byte assimilation,
+            SimulationTime lastFedAt)
         {
             // Checking the kind covers EntityId.None as well: None is the only
             // id with no kind, and EntityId's constructor already refuses a
@@ -113,6 +121,7 @@ namespace KingdomWatch.Core.Data
                 AgeStage = ageStage,
                 BirthCulture = birthCulture,
                 Assimilation = assimilation,
+                LastFedAt = lastFedAt,
             };
 
             _count++;
@@ -176,6 +185,11 @@ namespace KingdomWatch.Core.Data
 
         public void SetAssimilation(PersonHandle handle, byte value) =>
             _people[SlotFor(handle)].Assimilation = value;
+
+        public SimulationTime GetLastFedAt(PersonHandle handle) => _people[SlotFor(handle)].LastFedAt;
+
+        public void SetLastFedAt(PersonHandle handle, SimulationTime value) =>
+            _people[SlotFor(handle)].LastFedAt = value;
 
         /// <summary>
         /// The bulk path: every allocated slot in slot order, which is stable
