@@ -351,6 +351,31 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_parent_in_no_household_brings_their_unhoused_dependents()
+        {
+            // Worldgen may seed a widow and her child without a household.
+            // Partnering her houses them both; a child of hers housed
+            // elsewhere stays where they are.
+            var w = new HouseholdWorld();
+            var widow = w.NewPerson(AgeStage.Adult, Sex.Female);
+            var late = w.NewPerson(AgeStage.Adult, Sex.Male);
+            var child = w.NewPerson(AgeStage.Child, Sex.Female, widow, late);
+            var fostered = w.NewPerson(AgeStage.Child, Sex.Male, widow, late);
+            var fosterHome = w.Households.Form();
+            w.Households.Join(fosterHome, fostered);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+
+            var formed = w.Family.Partner(widow, suitor, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed.Members, Is.EqualTo(new[] { widow, child, suitor }));
+                Assert.That(fosterHome.Members, Is.EqualTo(new[] { fostered }));
+                Assert.That(w.Households.Count, Is.EqualTo(2));
+            });
+        }
+
+        [Test]
         public void Only_the_partners_own_dependents_follow_them()
         {
             // A widow living with her dependent nephew: he is in her household

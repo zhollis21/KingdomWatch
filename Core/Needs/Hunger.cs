@@ -280,7 +280,7 @@ namespace KingdomWatch.Core.Needs
                 // Membership is spatial and lags death until the cascade
                 // (Lifecycle.Deaths) removes the handle; the dead neither eat
                 // nor starve.
-                if (!_people.IsAlive(member) || SittingOf(_people.GetAgeStage(member)) != sitting)
+                if (!_people.IsAlive(member) || SittingOf(member) != sitting)
                 {
                     continue;
                 }
@@ -302,14 +302,25 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
-        private static Sitting SittingOf(AgeStage stage)
+        // Every defined stage has a sitting. An undefined one is a record the
+        // bulk span corrupted - the store refuses it everywhere else - and
+        // feeding it with the adults would hide that, so the meal refuses.
+        private Sitting SittingOf(PersonHandle member)
         {
+            var stage = _people.GetAgeStage(member);
+
             if (AgeStages.IsDependent(stage))
             {
                 return Sitting.Dependents;
             }
 
-            return stage == AgeStage.Elder ? Sitting.Elders : Sitting.Adults;
+            if (AgeStages.IsAdult(stage))
+            {
+                return stage == AgeStage.Elder ? Sitting.Elders : Sitting.Adults;
+            }
+
+            throw new InvalidOperationException(
+                member + " has an undefined age stage (" + stage + "); the record is corrupt.");
         }
 
         // Zero is "as bad as starvation gets" for the mortality model to read,

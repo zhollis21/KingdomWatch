@@ -127,7 +127,8 @@ namespace KingdomWatch.Core.Lifecycle
         /// Partners two eligible people: announces the marriage with the
         /// caller's reasons, records the partnership against that event,
         /// forms a household in a new home, and moves both in along with
-        /// any dependent children of theirs from the households they leave.
+        /// any dependent children of theirs from wherever they were - the
+        /// household they leave, or none.
         /// A household left empty is dissolved. Throws when
         /// <see cref="Evaluate"/> would refuse.
         /// </summary>
@@ -179,20 +180,22 @@ namespace KingdomWatch.Core.Lifecycle
         }
 
         // Leaves the old household, joins the new one, and brings along any
-        // of this person's own children who are dependents in the old
-        // household. Children of the couple appear twice, once per parent;
-        // the second pass finds them already moved and leaves them be.
+        // of this person's own children who are dependents in the same place
+        // they were - the old household, or no household at all, since
+        // worldgen may seed a parent and child unhoused. A child housed
+        // elsewhere stays there. Children of the couple appear twice, once
+        // per parent; the second pass finds them already moved and leaves
+        // them be.
         private void MoveIn(PersonHandle person, Household household)
         {
             var previous = _households.Of(person);
+            var previousId = previous is null ? EntityId.None : previous.Id;
 
-            if (previous is null)
+            if (previous != null)
             {
-                _households.Join(household, person);
-                return;
+                _households.Leave(person);
             }
 
-            _households.Leave(person);
             _households.Join(household, person);
 
             var children = _genealogy.Children(_people.GetId(person));
@@ -200,17 +203,21 @@ namespace KingdomWatch.Core.Lifecycle
             for (var i = 0; i < children.Length; i++)
             {
                 if (!_people.TryGetHandle(children[i], out var child)
-                    || _people.GetHousehold(child) != previous.Id
+                    || _people.GetHousehold(child) != previousId
                     || !AgeStages.IsDependent(_people.GetAgeStage(child)))
                 {
                     continue;
                 }
 
-                _households.Leave(child);
+                if (previous != null)
+                {
+                    _households.Leave(child);
+                }
+
                 _households.Join(household, child);
             }
 
-            if (previous.Members.Count == 0)
+            if (previous != null && previous.Members.Count == 0)
             {
                 _households.Dissolve(previous);
             }

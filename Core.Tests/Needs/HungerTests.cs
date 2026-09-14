@@ -327,6 +327,21 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void A_member_whose_stage_is_undefined_is_a_corrupt_record_and_the_meal_says_so()
+        {
+            // The store refuses undefined stages on Add and SetAgeStage; the
+            // bulk span is the one way in. Feeding such a record with the
+            // adults would hide the corruption; a meal refuses it instead.
+            var world = new World();
+            var band = world.NewBand(2, 30);
+            world.Hunger.Track(band);
+            var records = world.People.RecordSpan();
+            records[band.Members[1].Index].AgeStage = (AgeStage)99;
+
+            Assert.That(() => world.RunDays(1L), Throws.InvalidOperationException.With.Message.Contains(band.Members[1].ToString()));
+        }
+
+        [Test]
         public void A_missed_meal_inside_the_grace_period_costs_nothing()
         {
             var world = new World();
