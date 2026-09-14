@@ -71,9 +71,15 @@ namespace KingdomWatch.Core.Lifecycle
         public PartnerRefusal Evaluate(PersonHandle a, PersonHandle b)
         {
             // Read through the store before anything else, so a stale handle
-            // throws where the bug is rather than coming back as a refusal.
+            // throws where the bug is rather than coming back as a refusal -
+            // and check the genealogy next, for the same reason: a person it
+            // does not know is an input error, not a refusal.
             var stageA = _people.GetAgeStage(a);
             var stageB = _people.GetAgeStage(b);
+            var idA = _people.GetId(a);
+            var idB = _people.GetId(b);
+            RequireRecorded(idA, nameof(a));
+            RequireRecorded(idB, nameof(b));
 
             if (a == b)
             {
@@ -89,9 +95,6 @@ namespace KingdomWatch.Core.Lifecycle
             {
                 return PartnerRefusal.SameSex;
             }
-
-            var idA = _people.GetId(a);
-            var idB = _people.GetId(b);
 
             if (!_partnerships.ActivePartnerOf(idA).IsNone || !_partnerships.ActivePartnerOf(idB).IsNone)
             {
@@ -161,6 +164,15 @@ namespace KingdomWatch.Core.Lifecycle
             MoveIn(b, household);
 
             return household;
+        }
+
+        private void RequireRecorded(EntityId person, string paramName)
+        {
+            if (!_genealogy.IsRecorded(person))
+            {
+                throw new ArgumentException(
+                    person + " is not in the genealogy, so kinship cannot be checked.", paramName);
+            }
         }
 
         private bool IsMourning(EntityId person)

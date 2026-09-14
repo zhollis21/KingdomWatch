@@ -233,13 +233,21 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
-        public void Someone_outside_the_genealogy_cannot_be_evaluated()
+        public void Someone_outside_the_genealogy_cannot_be_evaluated_whatever_else_would_refuse_them()
         {
             var w = new HouseholdWorld();
             var recorded = w.NewPerson(AgeStage.Adult, Sex.Female);
             var unrecorded = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Male, 0, 0, default);
+            var unrecordedChild = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Child, Sex.Male, 0, 0, default);
+            var unrecordedWoman = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Female, 0, 0, default);
 
-            Assert.That(() => w.Family.Evaluate(recorded, unrecorded), Throws.ArgumentException);
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Family.Evaluate(recorded, unrecorded), Throws.ArgumentException);
+                Assert.That(() => w.Family.Evaluate(unrecordedChild, recorded), Throws.ArgumentException, "not NotAdult");
+                Assert.That(() => w.Family.Evaluate(recorded, unrecordedWoman), Throws.ArgumentException, "not SameSex");
+                Assert.That(() => w.Family.Evaluate(unrecorded, unrecorded), Throws.ArgumentException, "not SamePerson");
+            });
         }
 
         [Test]
