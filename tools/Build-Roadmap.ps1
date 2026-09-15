@@ -208,30 +208,40 @@ function Find-Cycle([int]$n) {
 }
 foreach ($n in $issues.Keys) { if (-not $colour.ContainsKey($n)) { Find-Cycle $n } }
 
-foreach ($w in $warnings) { Write-Warning $w }
 
 # ---------------------------------------------------------------------------
 # Label sync — before the write, and mirrored into memory, because a label
 # change made with the workflow token fires no event to regenerate again.
 # ---------------------------------------------------------------------------
+function Set-BlockedLabel([int]$number, [string]$verb) {
+    # The API drops the odd request (a 503 on one issue failed the first publish). Retry with
+    # backoff; if it still fails, the label is stale until the next run rather than the publish
+    # being lost — every run re-derives every label, so nothing needs remembering.
+    $flag = if ($verb -eq 'add') { '--add-label' } else { '--remove-label' }
+    foreach ($delay in 0, 3, 10) {
+        if ($delay) { Start-Sleep -Seconds $delay }
+        gh issue edit $number --repo "$OWNER/$REPO_NAME" $flag blocked 2>&1 | Out-Null
+        if (-not $LASTEXITCODE) { return $true }
+    }
+    $warnings.Add("Could not $verb the blocked label on #$number after three attempts; it is stale until the next run.")
+    return $false
+}
+
 if ($SyncLabels) {
     $changed = 0
     foreach ($i in $issues.Values) {
         # Closed issues are never blocked, so the remove branch clears a label left behind by closing.
         $has = $i.labels -contains 'blocked'
         if ($i.blocked -and -not $has) {
-            gh issue edit $i.number --repo "$OWNER/$REPO_NAME" --add-label blocked | Out-Null
-            if ($LASTEXITCODE) { throw "Adding the blocked label to #$($i.number) failed with exit code $LASTEXITCODE." }
-            $i.labels = @($i.labels) + 'blocked'; $changed++
+            if (Set-BlockedLabel $i.number 'add') { $i.labels = @($i.labels) + 'blocked'; $changed++ }
         }
         elseif (-not $i.blocked -and $has) {
-            gh issue edit $i.number --repo "$OWNER/$REPO_NAME" --remove-label blocked | Out-Null
-            if ($LASTEXITCODE) { throw "Removing the blocked label from #$($i.number) failed with exit code $LASTEXITCODE." }
-            $i.labels = @($i.labels | Where-Object { $_ -ne 'blocked' }); $changed++
+            if (Set-BlockedLabel $i.number 'remove') { $i.labels = @($i.labels | Where-Object { $_ -ne 'blocked' }); $changed++ }
         }
     }
     Write-Host "Label sync: $changed issue(s) changed."
 }
+foreach ($w in $warnings) { Write-Warning $w }
 
 # ---------------------------------------------------------------------------
 # Derived views
