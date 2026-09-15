@@ -92,9 +92,9 @@
   // #161b22 and vice versa; every fill/text pair is at least 4.5:1.
   const PALETTES = {
     light: { done: ['#1a7f37', '#116329', '#ffffff'], ready: ['#0969da', '#0550ae', '#ffffff'], blocked: ['#d0d7de', '#6e7781', '#1f2328'],
-             cluster: '#57606a', clusterText: '#1f2328', edge: '#57606a', plain: ['#ffffff', '#8c959f', '#1f2328'] },
+             cluster: '#57606a', clusterText: '#1f2328', edge: '#57606a', stub: '#1f2328', plain: ['#ffffff', '#8c959f', '#1f2328'] },
     dark:  { done: ['#238636', '#3fb950', '#ffffff'], ready: ['#1f6feb', '#58a6ff', '#ffffff'], blocked: ['#30363d', '#8b949e', '#e6edf3'],
-             cluster: '#8b949e', clusterText: '#e6edf3', edge: '#8b949e', plain: ['#0d1117', '#8b949e', '#e6edf3'] },
+             cluster: '#8b949e', clusterText: '#e6edf3', edge: '#8b949e', stub: '#e6edf3', plain: ['#0d1117', '#8b949e', '#e6edf3'] },
   };
   const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
   const PRIORITY_WIDTH = { 'P0-blocker': 3.5, 'P1-high': 2.2, 'P2-normal': 1.2, 'P3-someday': 0.6 };
@@ -108,12 +108,14 @@
     if (line) out.push(line); return out;
   }
   function nodeDot(i, opts) {
-    const [fill, border, text] = P[stateOf(i)];
+    const [fill, stateBorder, text] = P[stateOf(i)];
+    // A stub's border says "elsewhere", not priority: fixed weight, dashed, in the text colour so it cannot vanish into the fill.
+    const border = opts.stub ? P.stub : stateBorder;
     const prefix = (prioShort(i) ? prioShort(i) + ' · ' : '') + (i.state === 'closed' ? '✓ ' : '');
     const lines = wrap(prefix + '#' + i.number + ' ' + i.title, 30);
     if (opts.stub) lines.push('(' + (i.milestone ? msShort(graph.milestones.find(m => m.number === i.milestone)) : 'unscheduled') + ')');
     const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
-    const width = PRIORITY_WIDTH[i.priority] ?? 1;
+    const width = opts.stub ? 2 : (PRIORITY_WIDTH[i.priority] ?? 1);
     return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)} penwidth=${width}`
       + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : ''))}];`;
   }
@@ -160,7 +162,7 @@
     <span>${chip('done')} done</span>
     <span>${chip('ready')} ready to pick up</span>
     <span>${chip('blocked')} blocked</span>
-    <span>${chip('blocked', 'border-style:dashed')} blocker in another milestone</span>
+    <span>${chip('blocked', `border-style:dashed;border-width:2px;border-color:${P.stub}`)} blocker in another milestone</span>
     <span><i class="line" style="border-top-color:${P.edge}"></i> blocked by</span>
     <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — priority is the label prefix and the border weight</span>
     <span>tap a node to open the issue</span></div>`;
