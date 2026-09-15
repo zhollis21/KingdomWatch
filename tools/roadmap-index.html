@@ -84,7 +84,6 @@
     link('all.md', 'Everything');
   } catch (e) { console.error('graph.json', e); }
   function msNum(m) { const x = /^M(\d+)/.exec(m.title); return x ? +x[1] : null; }
-  const msShort = m => m.title.split(' ')[0];
 
   // ---- DOT ----------------------------------------------------------------
   // Fill is state; the priority label rides on the node text and its border
@@ -113,7 +112,7 @@
     const border = opts.stub ? P.stub : stateBorder;
     const prefix = (prioShort(i) ? prioShort(i) + ' · ' : '') + (i.state === 'closed' ? '✓ ' : '');
     const lines = wrap(prefix + '#' + i.number + ' ' + i.title, 30);
-    if (opts.stub) lines.push('(' + (i.milestone ? msShort(graph.milestones.find(m => m.number === i.milestone)) : 'unscheduled') + ')');
+    if (opts.stub) lines.push('from ' + (i.milestone ? graph.milestones.find(m => m.number === i.milestone).title : 'no milestone'));
     const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
     const width = opts.stub ? 2 : (PRIORITY_WIDTH[i.priority] ?? 1);
     return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)} penwidth=${width}`
