@@ -59,8 +59,8 @@
 <body>
 <nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b>
   <span class="filters" title="What the charts show">
-    <label><input type="checkbox" id="f-done" checked> done</label>
-    <label><input type="checkbox" id="f-stubs" checked> blockers from other milestones</label>
+    <label><input type="checkbox" id="f-done" checked> show done issues</label>
+    <label><input type="checkbox" id="f-stubs" checked> chart blockers from other milestones</label>
   </span>
 </nav>
 <main id="content"><p><em>Loading…</em></p></main>
@@ -228,6 +228,11 @@
     content.innerHTML = marked.parse(md);
     document.title = (content.querySelector('h1')?.textContent || 'Roadmap') + ' · Kingdom Watch';
     for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
+    // "show done" means the tables too: a row whose first cell links a closed issue goes with its node.
+    if (!filters.done.checked) for (const tr of content.querySelectorAll('tbody tr')) {
+      const m = /\/issues\/(\d+)$/.exec(tr.querySelector('td a')?.getAttribute('href') || ''); const i = m && byNumber.get(+m[1]);
+      if (i && i.state === 'closed') tr.hidden = true;
+    }
     for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
     const fences = [...content.querySelectorAll('pre > code.language-mermaid')], specs = chartsFor(name);
     let hinted = false;
