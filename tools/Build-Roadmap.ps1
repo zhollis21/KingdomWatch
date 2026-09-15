@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Pulls every issue with its milestone, labels, native "blocked by"
-    relationships and the `Related: #N, #M` line from its body, then writes:
+    relationships, then writes:
 
       docs/roadmap/graph.json   the graph, for tools and agents
       docs/roadmap/README.md    ready-to-pick-up list + milestone overview
@@ -20,10 +20,8 @@
     issue it is blocked by is closed. Cross-milestone edges are drawn as
     dashed stub nodes so each chart stays readable on its own.
 
-    Edges come from two places and nowhere else:
-      - solid   = GitHub's native "blocked by" relationship (issue sidebar,
-                  or `gh api .../issues/N/dependencies/blocked_by`)
-      - dotted  = a line in the body matching exactly `Related: #N, #M`
+    The only edges are GitHub's native "blocked by" relationships (the issue
+    sidebar, or `gh api .../issues/N/dependencies/blocked_by`).
 
     Prose such as "Depends on #4" is deliberately NOT parsed: the bodies also
     say things like "open question #7", which is a design-doc reference.
@@ -95,7 +93,7 @@ query($owner:String!, $name:String!, $after:String) {
            orderBy:{field:CREATED_AT, direction:ASC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title state url body
+        number title state url
         labels(first:20) { pageInfo { hasNextPage } nodes { name } }
         milestone { number }
         blockedBy(first:50) { pageInfo { hasNextPage } nodes { number repository { nameWithOwner } } }
@@ -150,10 +148,6 @@ foreach ($n in $issueNodes) {
     $labels = @($n.labels.nodes.name)
     $number = [int]$n.number
     $priority = @($labels | Where-Object { $PRIORITIES -contains $_ })[0]
-    $related = @()
-    if ($n.body -match '(?m)^Related:\s*(#\d+(?:\s*,\s*#\d+)*)\s*$') {
-        $related = @([regex]::Matches($Matches[1], '\d+') | ForEach-Object { [int]$_.Value } | Where-Object { $_ -ne $number } | Sort-Object -Unique)
-    }
     $issues[$number] = [ordered]@{
         number = $number
         title = $n.title
@@ -165,7 +159,6 @@ foreach ($n in $issueNodes) {
         blockedBy = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -eq "$OWNER/$REPO_NAME" } | ForEach-Object { [int]$_.number } | Sort-Object)
         foreignBlockers = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -ne "$OWNER/$REPO_NAME" } | ForEach-Object { "$($_.repository.nameWithOwner)#$($_.number)" })
         blocking = [System.Collections.Generic.List[int]]::new()
-        related = $related
         openBlockers = @()
         ready = $false
         blocked = $false
@@ -181,9 +174,6 @@ foreach ($i in $issues.Values) {
     foreach ($b in $i.blockedBy) {
         if ($issues.ContainsKey($b)) { $issues[$b].blocking.Add($i.number) }
         else { $warnings.Add("#$($i.number) is blocked by #$b, which was not fetched.") }
-    }
-    foreach ($r in $i.related) {
-        if (-not $issues.ContainsKey($r)) { $warnings.Add("#$($i.number) lists Related: #$r, which does not exist.") }
     }
     foreach ($x in $i.foreignBlockers) { $warnings.Add("#$($i.number) is blocked by $x in another repository; the roadmap ignores it.") }
     if (-not $i.milestone) { $warnings.Add("#$($i.number) has no milestone.") }
@@ -320,20 +310,12 @@ function Write-Chart {
 
     $edges = [System.Collections.Generic.List[string]]::new()
     $stubs = [System.Collections.Generic.HashSet[int]]::new()
-    $relatedSeen = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($n in $inScope) {
         $i = $issues[$n]
         foreach ($b in $i.blockedBy) {
             if (-not $issues.ContainsKey($b)) { continue }
             if (-not $inScope.Contains($b)) { [void]$stubs.Add($b) }
             $edges.Add("  I$b --> I$n")
-        }
-        foreach ($r in $i.related) {
-            if (-not $issues.ContainsKey($r)) { continue }
-            $key = if ($n -lt $r) { "$n-$r" } else { "$r-$n" }
-            if (-not $relatedSeen.Add($key)) { continue }
-            if (-not $inScope.Contains($r)) { [void]$stubs.Add($r) }
-            $edges.Add("  I$n -.- I$r")
         }
     }
     foreach ($s in ($stubs | Sort-Object)) {
@@ -374,7 +356,7 @@ $legend = @(
     '```mermaid'
     'flowchart LR'
     '  L0["✓ done"]:::done --> L1["ready to pick up"]:::ready --> L2["blocked"]:::blocked'
-    '  L3["other milestone<br/><i>M9</i>"]:::blocked -.- L4["dotted: related"]:::plain'
+    '  L3["other milestone<br/><i>M9</i>"]:::blocked'
     '  L5["solid: blocked by"]:::plain --> L6[" "]:::plain'
 ) + ($CLASSDEFS | ForEach-Object { "  $_" }) + @("  style L3 $EXT_STYLE", '```')
 
@@ -412,7 +394,7 @@ $md.Add('# Roadmap')
 $md.Add('')
 $md.Add($stamp)
 $md.Add('')
-$md.Add("Every issue, in its milestone, with what it waits on. Solid arrows are GitHub's native *blocked by* relationships; dotted lines are ``Related: #N`` lines in issue bodies. An open issue is **ready** when everything it is blocked by is closed. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
+$md.Add("Every issue, in its milestone, with what it waits on. Arrows are GitHub's native *blocked by* relationships. An open issue is **ready** when everything it is blocked by is closed. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
 $md.Add('')
 $md.Add('## Ready to pick up')
 $md.Add('')

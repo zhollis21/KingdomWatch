@@ -9,12 +9,9 @@
 
 ## Issue dependencies
 
-Two kinds of edge between issues, and the roadmap reads nothing else:
+One kind of edge between issues, and the roadmap reads nothing else: **blocked by**, GitHub's native relationship (the *Relationships* box in the issue sidebar, or `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -f issue_id=<database id>`). Record the *direct* dependency only — if #17 needs #52 and #52 needs #12, do not also link #17 to #12; readiness is computed transitively. An open issue is *ready* when everything it is blocked by is closed, and the `blocked` label is derived from that by the roadmap workflow, so never set it by hand.
 
-- **Blocked by** is GitHub's native relationship (the *Relationships* box in the issue sidebar, or `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -f issue_id=<database id>`). Record the *direct* dependency only — if #17 needs #52 and #52 needs #12, do not also link #17 to #12; readiness is computed transitively. An open issue is *ready* when everything it is blocked by is closed, and the `blocked` label is derived from that by the roadmap workflow, so never set it by hand.
-- **Related** is a single line in the body, exactly `Related: #N, #M`, for "these touch the same thing" without a hard ordering. It is drawn dotted.
-
-Prose such as "Depends on #4" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` set both kinds when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, `gh workflow run roadmap.yml` or wait for the nightly run.
+Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` wire the relationships when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, `gh workflow run roadmap.yml` or wait for the nightly run.
 
 ## Repository Layout
 

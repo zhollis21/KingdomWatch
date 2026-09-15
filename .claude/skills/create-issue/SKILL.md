@@ -237,11 +237,10 @@ reader to skim headings.
   nothing.
 - **`## Options`** — see below.
 - **`## Constraint`** — contracts a fix must not break.
-- **`## Related`** — other issues, with the relationship stated in prose,
-  plus one machine-readable line for the roadmap: `Related: #N, #M` on its
-  own line, listing only the soft "touches the same thing" links. Hard
-  dependencies do not go here as text — they become GitHub *blocked by*
-  relationships in Step 8, which the roadmap reads directly.
+- **`## Related`** — other issues, with the relationship stated in prose.
+  Hard dependencies do not live here as text — they become GitHub *blocked
+  by* relationships in Step 8, which the roadmap reads directly; the prose
+  is for the reader, and can say why.
 
 ### Stating the problem, not the fix
 
@@ -387,8 +386,7 @@ comment and never get folded into the body. Then check:
    means a wrong relationship, which is the next check.
 5. **Relationships.** `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by`
    against what the body says it depends on. Prose that names a dependency the
-   relationship list lacks is the common drift; a `Related:` line naming a
-   closed or nonexistent issue is the other. Named blockers that have since
+   relationship list lacks is the common drift. Named blockers that have since
    closed are a separate finding — the deferral itself went stale even though
    the issue still looks accurate.
 6. **Title.** Does it state the problem or just name a topic?

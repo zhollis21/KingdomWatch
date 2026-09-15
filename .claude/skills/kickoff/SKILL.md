@@ -160,7 +160,7 @@ What you're looking for is not only exact duplicates but **dependency order**,
 which is easier to miss and more expensive to get wrong. The recorded order is
 in the graph: run `pwsh tools/Build-Roadmap.ps1` (read-only against GitHub,
 writes the git-ignored `docs/roadmap/`) and read `graph.json` — each issue's
-`blockedBy`, `blocking`, `related` and `ready`. Read it
+`blockedBy`, `blocking` and `ready`. Read it
 before the search, then treat the search as a check on it: an issue the dig
 says this one depends on, or unblocks, that the graph does not list is a
 missing relationship, and fixing it is part of kickoff (see
