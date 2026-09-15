@@ -145,6 +145,26 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void The_oldest_possible_founder_announced_at_the_end_of_time_is_an_elder_who_books_nothing()
+        {
+            // Born at the earliest accepted tick, announced a tick before the
+            // end: the distance between them no longer fits in a long. The
+            // age saturates rather than wrapping to an infant, and neither a
+            // boundary nor a yearly check has anywhere to land.
+            var w = new DemographicWorld(Immortal, 1UL);
+            w.Clock.AdvanceTo(new SimulationTime(long.MaxValue - 1L), w.Router);
+
+            var founder = w.NewPersonBornAt(PersonStore.EarliestBornTick, Sex.Male);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.GetAgeStage(founder), Is.EqualTo(AgeStage.Elder));
+                Assert.That(w.Clock.ScheduledCount, Is.Zero);
+                Assert.That(() => w.Advance(1L), Throws.Nothing);
+            });
+        }
+
+        [Test]
         public void A_person_announced_within_a_year_of_the_end_of_time_books_nothing()
         {
             // Their next birthday is past the last representable instant, so

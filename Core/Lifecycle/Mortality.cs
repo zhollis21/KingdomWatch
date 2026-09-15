@@ -206,21 +206,26 @@ namespace KingdomWatch.Core.Lifecycle
 
         // The next birthday after now. Booked on the birthday rather than a
         // year from now so that the checks stay on the calendar a person
-        // was born to, whatever instant they were announced at.
+        // was born to, whatever instant they were announced at. Derived
+        // from now and the part of a year already lived, not from the birth
+        // plus an age in years: the age of someone the clock has outrun is
+        // saturated (PersonStore.GetTicksLived), and multiplying it back up
+        // would wrap. The remainder is exact whenever the distance fits,
+        // which is every case but that one.
         private void ScheduleNextCheck(PersonHandle person, EntityId id)
         {
             var now = _clock.Now;
-            var born = _people.GetBornTick(person);
-            var offset = (_people.GetAgeYears(person, now) + 1L) * SimulationTime.TicksPerYear;
+            var untilBirthday = SimulationTime.TicksPerYear
+                - _people.GetTicksLived(person, now) % SimulationTime.TicksPerYear;
 
             // A birthday past the end of time never comes; see Aging.
-            if (born > long.MaxValue - offset)
+            if (now.Ticks > long.MaxValue - untilBirthday)
             {
                 return;
             }
 
             _clock.Schedule(
-                new SimulationTime(born + offset), Phase, ScheduledEventKind.MortalityCheck, id, EntityId.None);
+                now.Plus(untilBirthday), Phase, ScheduledEventKind.MortalityCheck, id, EntityId.None);
         }
     }
 }

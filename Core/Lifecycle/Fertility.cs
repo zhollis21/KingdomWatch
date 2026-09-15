@@ -183,7 +183,7 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
-            if (TryFindCouple(household, out var mother, out var father) && IsEligible(mother))
+            if (TryFindCouple(household, out var mother, out var father))
             {
                 Conceive(household.Id, mother, father);
             }
@@ -191,9 +191,11 @@ namespace KingdomWatch.Core.Lifecycle
             ScheduleCheck(householdId);
         }
 
-        // The first woman of fertile age whose active partner is a living
-        // man in this household. Members are listed in a stable order, so
-        // two runs find the same couple.
+        // The first woman of fertile age who may conceive today and whose
+        // active partner is a living man in this household. Members are
+        // listed in a stable order, so two runs find the same couple - and
+        // an ineligible woman ahead of an eligible one does not stand in her
+        // way, which matters only when two couples share a household.
         private bool TryFindCouple(Household household, out PersonHandle mother, out PersonHandle father)
         {
             var members = household.Members;
@@ -204,7 +206,8 @@ namespace KingdomWatch.Core.Lifecycle
                 var candidate = members[i];
 
                 if (_people.GetSex(candidate) != Sex.Female
-                    || !_settings.IsFertileAge(_people.GetAgeYears(candidate, now)))
+                    || !_settings.IsFertileAge(_people.GetAgeYears(candidate, now))
+                    || !IsEligible(candidate))
                 {
                     continue;
                 }
@@ -245,12 +248,12 @@ namespace KingdomWatch.Core.Lifecycle
         private bool IsPostpartum(PersonHandle mother)
         {
             var children = _genealogy.Children(_people.GetId(mother));
-            var now = _clock.Now.Ticks;
+            var now = _clock.Now;
 
             for (var i = 0; i < children.Length; i++)
             {
                 if (_people.TryGetHandle(children[i], out var child)
-                    && now - _people.GetBornTick(child) < _settings.PostpartumTicks)
+                    && _people.GetTicksLived(child, now) < _settings.PostpartumTicks)
                 {
                     return true;
                 }

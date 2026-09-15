@@ -91,8 +91,18 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal PersonHandle NewPerson(long ageYears, Sex sex, AgeStage stage) =>
             NewPersonBornAt(Clock.Now.Ticks - ageYears * SimulationTime.TicksPerYear, sex, stage);
 
-        internal PersonHandle NewPersonBornAt(long bornTick, Sex sex) =>
-            NewPersonBornAt(bornTick, sex, Settings.StageAt((Clock.Now.Ticks - bornTick) / SimulationTime.TicksPerYear));
+        // The stage the table says for the age, with the age read back from
+        // the store so that a birth the clock has outrun saturates the way
+        // it does everywhere else. Announced only once the stage is right.
+        internal PersonHandle NewPersonBornAt(long bornTick, Sex sex)
+        {
+            var id = Base.Ids.Next(EntityKind.Person);
+            var handle = People.Add(id, default, 100, AgeStage.Infant, sex, 0, 0, Clock.Now, bornTick);
+            People.SetAgeStage(handle, Settings.StageAt(People.GetAgeYears(handle, Clock.Now)));
+            Genealogy.Record(id, EntityId.None, EntityId.None);
+            Bus.Publish(DomainEventKind.PersonBorn, id, EntityId.None);
+            return handle;
+        }
 
         internal PersonHandle NewPersonBornAt(long bornTick, Sex sex, AgeStage stage) =>
             NewPersonBornAt(bornTick, sex, stage, EntityId.None, EntityId.None);

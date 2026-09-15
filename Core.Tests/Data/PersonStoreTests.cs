@@ -670,6 +670,26 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void Age_saturates_rather_than_wrapping_when_the_clock_has_outrun_a_founders_birth()
+        {
+            // The earliest accepted birth is half the range before the start;
+            // the clock runs to the end of the range. Past the halfway point
+            // the true distance no longer fits, and a wrapped negative age
+            // would make the oldest person in the world an infant.
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+            var founder = store.Add(ids.Next(EntityKind.Person), default, 50, AgeStage.Elder, Sex.Male, 0, 0, default, PersonStore.EarliestBornTick);
+            var endOfTime = new SimulationTime(long.MaxValue);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(store.GetTicksLived(founder, endOfTime), Is.EqualTo(long.MaxValue), "as old as can be measured");
+                Assert.That(store.GetAgeYears(founder, endOfTime), Is.EqualTo(long.MaxValue / SimulationTime.TicksPerYear));
+                Assert.That(store.GetTicksLived(founder, SimulationTime.Zero), Is.EqualTo(-PersonStore.EarliestBornTick), "exact while it fits");
+            });
+        }
+
+        [Test]
         public void Age_is_whole_years_from_the_birth_tick_which_may_predate_the_world()
         {
             var ids = new IdAllocator();

@@ -330,6 +330,36 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_founder_the_clock_has_outrun_is_checked_on_the_next_birthday_and_dies_of_old_age()
+        {
+            // Three quarters of the way to the end of time, a founder born at
+            // the earliest accepted tick: the distance no longer fits, the
+            // age saturates, and the next check must still be derived from
+            // the calendar rather than from a birth plus an age that would
+            // wrap when multiplied back up. They are past every lifespan,
+            // so that check is certain.
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var start = new SimulationTime(long.MaxValue / 4L * 3L);
+            w.Clock.AdvanceTo(start, w.Router);
+            var band = w.NewBand();
+            var founder = w.NewPersonBornAt(PersonStore.EarliestBornTick, Sex.Female);
+            band.AddMember(founder);
+            var id = w.IdOf(founder);
+
+            w.AdvanceYears(1L);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deaths, Has.Count.EqualTo(1));
+                Assert.That(deaths[0].PrimaryEntity, Is.EqualTo(id));
+                Assert.That(deaths[0].Reasons.Contains(ReasonCode.OldAge), Is.True);
+                Assert.That(deaths[0].Time, Is.GreaterThan(start).And.LessThanOrEqualTo(start.Plus(SimulationTime.TicksPerYear)));
+            });
+        }
+
+        [Test]
         public void A_check_that_comes_due_for_the_dead_is_ignored()
         {
             var w = new DemographicWorld(Immortal(), 1UL);

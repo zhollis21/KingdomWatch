@@ -653,6 +653,56 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void An_ineligible_first_wife_does_not_stop_a_second_from_conceiving()
+        {
+            var w = new DemographicWorld(Certain(), 1UL);
+            var band = w.NewBand();
+            var household = w.NewCouple(out var firstWife, out var firstHusband);
+            w.NewCouple(out var secondWife, out var secondHusband);
+            w.Households.Leave(secondWife);
+            w.Households.Leave(secondHusband);
+            w.Households.Join(household, secondWife);
+            w.Households.Join(household, secondHusband);
+            band.AddMember(firstWife);
+            band.AddMember(firstHusband);
+            band.AddMember(secondWife);
+            band.AddMember(secondHusband);
+
+            // The first check makes the first wife pregnant; the second finds
+            // her ineligible and moves on to the second.
+            w.Advance(Check);
+            var afterFirst = (w.Fertility.IsPregnant(firstWife), w.Fertility.IsPregnant(secondWife));
+            w.Advance(Check);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(afterFirst, Is.EqualTo((true, false)));
+                Assert.That(w.Fertility.IsPregnant(secondWife), Is.True);
+            });
+        }
+
+        [Test]
+        public void A_postpartum_gate_read_at_the_end_of_time_does_not_wrap()
+        {
+            // A child born at the earliest accepted tick, read when the clock
+            // has outrun that distance: the mother is long past recovery,
+            // not newly delivered.
+            var w = new DemographicWorld(Certain(), 1UL);
+            w.Clock.AdvanceTo(new SimulationTime(long.MaxValue - Gestation - Check - 1L), w.Router);
+            var band = w.NewBand();
+            var household = w.NewCouple(out var wife, out var husband);
+            band.AddMember(wife);
+            band.AddMember(husband);
+            var eldest = w.NewPersonBornAt(PersonStore.EarliestBornTick, Sex.Male, AgeStage.Elder, w.IdOf(wife), w.IdOf(husband));
+            w.Households.Join(household, eldest);
+            band.AddMember(eldest);
+
+            w.Advance(Check);
+
+            Assert.That(w.Fertility.IsPregnant(wife), Is.True);
+        }
+
+        [Test]
         public void A_mother_in_no_tracked_band_bears_a_child_in_no_band()
         {
             // A band that feeds the couple but that Fertility was never told

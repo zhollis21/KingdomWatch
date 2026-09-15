@@ -67,10 +67,10 @@ namespace KingdomWatch.Core.Data
 
         /// <summary>
         /// The earliest birth <see cref="Add"/> accepts: half the clock's range
-        /// before it started. Age is <c>now - BornTick</c>, and a birth further
-        /// back would overflow that subtraction before the clock itself had
-        /// run the same distance forward - some 146 billion years, which is
-        /// not a founder, it is a corrupted field.
+        /// before it started. A birth further back - some 146 billion years -
+        /// is not a founder, it is a corrupted field. Within the bound, age
+        /// arithmetic is exact until the clock has run the same distance
+        /// forward and saturates after that; see <see cref="GetTicksLived"/>.
         /// </summary>
         public const long EarliestBornTick = -(long.MaxValue / 2L);
 
@@ -290,11 +290,34 @@ namespace KingdomWatch.Core.Data
         public long GetBornTick(PersonHandle handle) => _people[SlotFor(handle)].BornTick;
 
         /// <summary>
-        /// Whole years this person has lived at <paramref name="now"/>. The
-        /// age is never stored; it is this distance, computed when asked.
+        /// Ticks this person has lived at <paramref name="now"/>: the distance
+        /// from their birth, never stored, computed when asked. Saturates at
+        /// <see cref="long.MaxValue"/> rather than wrapping.
+        /// </summary>
+        /// <remarks>
+        /// A birth may lie up to half the clock's range before the start and
+        /// the clock may run to its end, so the true distance can exceed what
+        /// a long holds. The subtraction can only wrap when the birth is
+        /// negative and the true value is past the maximum, so a negative
+        /// result from a negative birth is that case exactly, and the answer
+        /// is "as old as can be measured". Callers then see an elder past
+        /// every lifespan, which is what such a person is, rather than an
+        /// infant. A birth after <paramref name="now"/> is not saturated -
+        /// that is a negative distance, and the validator's (#13) to name.
+        /// </remarks>
+        public long GetTicksLived(PersonHandle handle, SimulationTime now)
+        {
+            var born = _people[SlotFor(handle)].BornTick;
+            var lived = now.Ticks - born;
+            return born < 0L && lived < 0L ? long.MaxValue : lived;
+        }
+
+        /// <summary>
+        /// Whole years this person has lived at <paramref name="now"/>. See
+        /// <see cref="GetTicksLived"/>.
         /// </summary>
         public long GetAgeYears(PersonHandle handle, SimulationTime now) =>
-            (now.Ticks - _people[SlotFor(handle)].BornTick) / SimulationTime.TicksPerYear;
+            GetTicksLived(handle, now) / SimulationTime.TicksPerYear;
 
         public EventId GetPregnancyDue(PersonHandle handle) => _people[SlotFor(handle)].PregnancyDue;
 
