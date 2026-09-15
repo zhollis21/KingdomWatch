@@ -20,7 +20,9 @@ namespace KingdomWatch.Core.Lifecycle
     /// **Once a year, not every tick.** Section 6: "every second, roll chance
     /// of dying" is exactly the pattern the scheduler exists to replace.
     /// A yearly roll on the birthday is the coarsest interval at which the
-    /// table's numbers still mean what they say - a chance per year - and
+    /// table's numbers still mean what they say - a chance per year of
+    /// life, rolled at the birthday that ends it, so the first birthday
+    /// rolls infancy's first year and the maximum birthday is certain - and
     /// it spreads deaths across the calendar, because birthdays are, so the
     /// chronicle does not report every death on the same day of the year.
     /// The roll is keyed on the person and the instant, so the same seed
@@ -95,23 +97,30 @@ namespace KingdomWatch.Core.Lifecycle
         }
 
         /// <summary>
-        /// The chance per mille that this person dies in the year ahead, as
-        /// the next check will roll it: the table's base for their age,
-        /// multiplied for frailty and hunger, capped at certainty. A query,
-        /// for the validator and the tooltip; the roll itself is
-        /// <see cref="Handle"/>'s.
+        /// The chance per mille that this person dies at their next birthday,
+        /// as the check there will roll it: the table's rate for the year of
+        /// life they are in now, multiplied for frailty and hunger, capped at
+        /// certainty - and certain outright if that birthday is the maximum
+        /// or their health is already gone. A query, for the validator and
+        /// the tooltip; the roll itself is <see cref="Handle"/>'s.
         /// </summary>
-        public int YearlyChancePerMille(PersonHandle person)
+        public int YearlyChancePerMille(PersonHandle person) =>
+            ChanceAtNextBirthday(person, _people.GetAgeYears(person, _clock.Now));
+
+        // The roll for the year of life numbered yearLived - from that
+        // birthday to the next - made at the birthday that ends it. Certain
+        // when that birthday is the maximum, and when health is already at
+        // zero: the check kills there without rolling, so that is what the
+        // year holds.
+        private int ChanceAtNextBirthday(PersonHandle person, long yearLived)
         {
-            // Certain, and not merely frail: the check kills at zero without
-            // rolling, so that is what the year ahead holds.
-            if (_people.GetHealth(person) <= 0)
+            if (_people.GetHealth(person) <= 0 || yearLived + 1L >= _settings.MaxLifespanYears)
             {
                 return PerMille;
             }
 
             var now = _clock.Now;
-            long chance = _settings.BaseMortalityPerMille(_people.GetAgeYears(person, now));
+            long chance = _settings.BaseMortalityPerMille(yearLived);
 
             if (_people.GetHealth(person) < _settings.HealthFloor)
             {
@@ -183,13 +192,18 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
+            // A birthday ends a year of life, and that year is what is rolled:
+            // the first birthday rolls infancy's first year, and the maximum
+            // birthday is the one nobody survives. Rolling the year ahead
+            // instead would leave the year from birth to the first birthday
+            // with no exposure at all.
             var now = _clock.Now;
-            var chance = YearlyChancePerMille(person);
+            var yearLived = _people.GetAgeYears(person, now) - 1L;
+            var chance = ChanceAtNextBirthday(person, yearLived);
 
             if (_rng.Key(RandomDomain.Mortality).Mix(id).Mix(now.Ticks).Chance(chance, PerMille))
             {
-                var age = _people.GetAgeYears(person, now);
-                var reason = age >= _settings.SoftLifespanYears ? ReasonCode.OldAge : ReasonCode.Illness;
+                var reason = yearLived >= _settings.SoftLifespanYears ? ReasonCode.OldAge : ReasonCode.Illness;
                 _deaths.Die(person, new Reasons(reason));
                 return;
             }

@@ -103,7 +103,10 @@ namespace KingdomWatch.Core.Lifecycle
         /// </summary>
         public short HealthFloor { get; init; } = 50;
 
-        /// <summary>Yearly death chance, per mille, for an infant.</summary>
+        /// <summary>
+        /// Death chance, per mille, for each year of infancy - rolled, like
+        /// every rate below, at the birthday that ends the year.
+        /// </summary>
         public int InfantMortalityPerMille { get; init; } = 60;
 
         /// <summary>Yearly death chance, per mille, for a child.</summary>

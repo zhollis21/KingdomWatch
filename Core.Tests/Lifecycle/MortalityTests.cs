@@ -139,6 +139,61 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void The_first_birthday_rolls_the_first_year_of_life()
+        {
+            // A table on which infancy ends at one and only infants die:
+            // the roll at the first birthday covers the year just lived,
+            // which was infancy, and it is certain. Rolling the rate for
+            // the year ahead instead would skip year zero entirely.
+            var settings = new DemographicSettings
+            {
+                ChildAtYears = 1L,
+                AdolescentAtYears = 2L,
+                AdultAtYears = 3L,
+                ElderAtYears = 4L,
+                FertileFromYears = 3L,
+                FertileUntilYears = 4L,
+                InfantMortalityPerMille = 1000,
+                ChildMortalityPerMille = 0,
+                AdolescentMortalityPerMille = 0,
+                AdultMortalityPerMille = 0,
+                ElderMortalityPerMille = 0,
+                ConceptionPerMille = 0,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewBand();
+            var newborn = w.NewPerson(0L, Sex.Female);
+            var toddler = w.NewPerson(1L, Sex.Female);
+            band.AddMember(newborn);
+            band.AddMember(toddler);
+
+            var queried = w.Mortality.YearlyChancePerMille(newborn);
+            w.AdvanceYears(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(queried, Is.EqualTo(1000), "the year ahead of a newborn is infancy");
+                Assert.That(w.People.IsAlive(newborn), Is.False, "died at the first birthday, of the first year");
+                Assert.That(w.People.IsAlive(toddler), Is.True, "the year a one-year-old lived was childhood");
+            });
+        }
+
+        [Test]
+        public void The_query_reports_certainty_when_the_next_birthday_is_the_maximum()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var s = w.Settings;
+            var lastYear = w.NewPerson(s.MaxLifespanYears - 1L, Sex.Male);
+            var yearBefore = w.NewPerson(s.MaxLifespanYears - 2L, Sex.Male);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Mortality.YearlyChancePerMille(lastYear), Is.EqualTo(1000));
+                Assert.That(w.Mortality.YearlyChancePerMille(yearBefore), Is.LessThan(1000));
+            });
+        }
+
+        [Test]
         public void Nobody_outlives_the_maximum_lifespan()
         {
             var settings = new DemographicSettings
