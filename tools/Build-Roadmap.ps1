@@ -254,7 +254,10 @@ function Write-Chart {
     <#
       Emits a flowchart for a set of "groups" (milestone title -> issue
       numbers). Issues outside every group that an in-scope edge touches are
-      drawn once as dashed stubs, labelled with their milestone.
+      drawn once as dashed stubs, labelled with their milestone — but only
+      what the group waits on or relates to. What it unblocks elsewhere is
+      left to the tables: #16 alone fans out to nine later issues, and
+      drawing that spreads the chart until nothing is readable.
     #>
     param([System.Collections.Specialized.OrderedDictionary]$Groups, [string]$Direction = 'TD')
     $out = [System.Collections.Generic.List[string]]::new()
@@ -284,11 +287,6 @@ function Write-Chart {
             if (-not $issues.ContainsKey($b)) { continue }
             if (-not $inScope.Contains($b)) { [void]$stubs.Add($b) }
             $edges.Add("  I$b --> I$n")
-        }
-        foreach ($b in $i.blocking) {
-            if ($inScope.Contains($b)) { continue }   # drawn from the other side
-            [void]$stubs.Add($b)
-            $edges.Add("  I$n --> I$b")
         }
         foreach ($r in $i.related) {
             if (-not $issues.ContainsKey($r)) { continue }
@@ -440,7 +438,7 @@ $md.Add('')
 if ($current) {
     $groups = [ordered]@{ $current.title = @($current.issues) }
     if ($next) { $groups[$next.title] = @($next.issues) }
-    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these depend on, or unblock, appear as dashed stubs. Bold outline = ready.')
+    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Bold outline = ready.')
     $md.Add('')
     foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) }
     foreach ($title in $groups.Keys) {
