@@ -237,19 +237,22 @@ namespace KingdomWatch.Core.Lifecycle
 
         // When she last gave birth is read off her youngest living child,
         // rather than kept as a field that would need a "never" sentinel.
-        // Children are recorded in birth order, so the walk is from the end;
-        // a child who has died takes their birth tick with them, and the
-        // next oldest stands in - older, so the gate can only be looser.
+        // Youngest by birth tick, not last recorded: the genealogy keeps
+        // children in the order they were written, and worldgen may seed a
+        // family in any order. A child who has died takes their birth tick
+        // with them, and the next youngest stands in - older, so the gate
+        // can only be looser.
         private bool IsPostpartum(PersonHandle mother)
         {
             var children = _genealogy.Children(_people.GetId(mother));
             var now = _clock.Now.Ticks;
 
-            for (var i = children.Length - 1; i >= 0; i--)
+            for (var i = 0; i < children.Length; i++)
             {
-                if (_people.TryGetHandle(children[i], out var child))
+                if (_people.TryGetHandle(children[i], out var child)
+                    && now - _people.GetBornTick(child) < _settings.PostpartumTicks)
                 {
-                    return now - _people.GetBornTick(child) < _settings.PostpartumTicks;
+                    return true;
                 }
             }
 

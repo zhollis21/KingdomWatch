@@ -94,11 +94,23 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal PersonHandle NewPersonBornAt(long bornTick, Sex sex) =>
             NewPersonBornAt(bornTick, sex, Settings.StageAt((Clock.Now.Ticks - bornTick) / SimulationTime.TicksPerYear));
 
-        internal PersonHandle NewPersonBornAt(long bornTick, Sex sex, AgeStage stage)
+        internal PersonHandle NewPersonBornAt(long bornTick, Sex sex, AgeStage stage) =>
+            NewPersonBornAt(bornTick, sex, stage, EntityId.None, EntityId.None);
+
+        // A child of two people already in the world, announced the same way.
+        internal PersonHandle NewChild(long ageYears, Sex sex, PersonHandle mother, PersonHandle father) =>
+            NewPersonBornAt(
+                Clock.Now.Ticks - ageYears * SimulationTime.TicksPerYear,
+                sex,
+                Settings.StageAt(ageYears),
+                IdOf(mother),
+                IdOf(father));
+
+        internal PersonHandle NewPersonBornAt(long bornTick, Sex sex, AgeStage stage, EntityId mother, EntityId father)
         {
             var id = Base.Ids.Next(EntityKind.Person);
             var handle = People.Add(id, default, 100, stage, sex, 0, 0, Clock.Now, bornTick);
-            Genealogy.Record(id, EntityId.None, EntityId.None);
+            Genealogy.Record(id, mother, father);
             Bus.Publish(DomainEventKind.PersonBorn, id, EntityId.None);
             return handle;
         }

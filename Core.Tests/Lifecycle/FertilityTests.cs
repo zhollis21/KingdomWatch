@@ -237,6 +237,29 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void The_youngest_child_is_the_youngest_by_birth_not_the_last_recorded()
+        {
+            // Worldgen may seed a family in any order. A mother whose
+            // five-year-old was recorded after her newborn is still a
+            // mother of a newborn.
+            var w = new DemographicWorld(Certain(), 1UL);
+            var band = w.NewBand();
+            var household = w.NewCouple(out var wife, out var husband);
+            band.AddMember(wife);
+            band.AddMember(husband);
+            var newborn = w.NewPersonBornAt(-SimulationTime.TicksPerDay, Sex.Male, AgeStage.Infant, w.IdOf(wife), w.IdOf(husband));
+            var elder = w.NewChild(5L, Sex.Female, wife, husband);
+            w.Households.Join(household, newborn);
+            w.Households.Join(household, elder);
+            band.AddMember(newborn);
+            band.AddMember(elder);
+
+            w.Advance(Check);
+
+            Assert.That(w.Fertility.IsPregnant(wife), Is.False, "a day past a birth, whatever order the children were recorded in");
+        }
+
+        [Test]
         public void A_partner_housed_elsewhere_or_of_the_same_sex_does_not_count()
         {
             var w = new DemographicWorld(Certain(), 1UL);
@@ -482,6 +505,40 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(w.People.Count, Is.EqualTo(2), "pregnant with another: no child");
                 Assert.That(w.People.GetPregnancyDue(wife), Is.EqualTo(due), "and the real pregnancy is untouched");
                 Assert.That(w.Clock.Cancel(due), Is.True, "still queued");
+            });
+        }
+
+        [Test]
+        public void A_mother_who_dies_at_her_yearly_check_on_the_day_of_delivery_bears_no_child()
+        {
+            // Her check sorts before her delivery on the same instant. The
+            // cascade cancels an event already positioned later in the
+            // instant being dispatched, and the clock carries on.
+            var settings = new DemographicSettings
+            {
+                AdultMortalityPerMille = 1000,
+                ConceptionPerMille = 1000,
+                GestationTicks = 110L * SimulationTime.TicksPerDay,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewBand();
+            w.NewCouple(out var wife, out var husband);
+            band.AddMember(wife);
+            band.AddMember(husband);
+            var term = new SimulationTime(settings.BirthCheckTicks + settings.GestationTicks);
+            Assert.That(term, Is.EqualTo(w.BirthdayOf(wife, 23L)), "the coincidence this test is about");
+
+            w.Advance(settings.BirthCheckTicks);
+            var due = w.People.GetPregnancyDue(wife);
+            w.AdvanceTo(term);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(due, Is.Not.EqualTo(EventId.None));
+                Assert.That(w.People.IsAlive(wife), Is.False);
+                Assert.That(w.People.Count, Is.Zero, "both founders share the birthday and the certain roll; no child");
+                Assert.That(w.Published(DomainEventKind.PersonBorn), Has.Count.EqualTo(2), "the founders only");
+                Assert.That(() => w.Advance(SimulationTime.TicksPerDay), Throws.Nothing);
             });
         }
 
