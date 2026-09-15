@@ -352,17 +352,21 @@ id=$(gh api repos/zhollis21/KingdomWatch/issues/<blocker> --jq .id) \
   && gh api -X POST repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -F issue_id=$id
 ```
 
-One call per blocker, direct dependencies only. Confirm every relationship
-landed before regenerating — a lookup or POST that failed leaves the issue
-with no blockers, which the roadmap would publish as *ready*:
+One call per blocker, direct dependencies only. Then read the relationships
+back and compare the list with what Step 5 agreed:
 
 ```bash
 gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by --jq '[.[].number]'
 ```
 
-Relationship edits do not trigger the roadmap workflow, so finish with
-`gh workflow run roadmap.yml` (the issue-opened event already fired, but before
-the relationships existed).
+**If any agreed blocker is missing, or the read-back fails, stop here** — fix
+the relationship, do not run the workflow. An issue with no blockers is
+published as *ready*, and a regeneration would make that public before anyone
+looked.
+
+Only once the list matches: relationship edits do not trigger the roadmap
+workflow, so finish with `gh workflow run roadmap.yml` (the issue-opened event
+already fired, but before the relationships existed).
 
 For a split from Step 4, file all of them, then edit the `## Related` sections to
 cross-link the real numbers once they exist.

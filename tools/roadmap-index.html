@@ -70,6 +70,9 @@
 <script>
 (async function () {
   const scheme = matchMedia('(prefers-color-scheme: dark)'); let dark = scheme.matches;
+  // GFM would turn a bare URL in an issue title into a live link. Untrusted text renders as written,
+  // so autolinked tokens (raw === text) go back to text; the generator's own [#N](url) links keep their label.
+  marked.use({ walkTokens(t) { if (t.type === 'link' && t.raw === t.text) { t.type = 'text'; t.text = t.raw; t.tokens = undefined; } } });
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
   const page = () => { try { return decodeURIComponent(location.hash.slice(1)) || 'README.md'; } catch (e) { return 'README.md'; } };   // a malformed %-escape must not strand the page on "Loading"
@@ -225,7 +228,7 @@
     box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); drag = { id: e.pointerId, x: e.clientX - x, y: e.clientY - y }; moved = false; });
     box.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { x = e.clientX - drag.x; y = e.clientY - drag.y; moved = true; apply(); } });
     box.addEventListener('pointerup', () => drag = null); box.addEventListener('pointercancel', () => drag = null);
-    svg.addEventListener('click', e => { if (moved) e.preventDefault(); }, true);   // a drag that ends on a node is not a tap
+    svg.addEventListener('click', e => { if (moved) { e.preventDefault(); moved = false; } }, true);   // the click that ends a drag is not a tap; one-shot, so a keyboard activation afterwards still works
     box.addEventListener('touchstart', e => { if (e.touches.length === 2) { drag = null; pinch = { d: dist(e), s: scale }; } }, { passive: true });
     box.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { scale = Math.min(4, Math.max(0.1, pinch.s * dist(e) / pinch.d)); apply(); } }, { passive: true });
     box.addEventListener('touchend', () => pinch = null);

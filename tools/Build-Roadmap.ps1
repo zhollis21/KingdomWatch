@@ -305,7 +305,7 @@ function Write-Chart {
     }
     foreach ($s in ($stubs | Sort-Object)) {
         $i = $issues[$s]
-        $ms = if ($i.milestone) { ($milestoneByNumber[$i.milestone].title -split ' ')[0] } else { 'unscheduled' }
+        $ms = if ($i.milestone) { ($milestoneByNumber[$i.milestone].title -split ' ')[0] -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;' } else { 'unscheduled' }
         $out.Add("  I$s[`"$(Format-Label $i)<br/><i>$ms</i>`"]:::$(Get-NodeClass $i)")
     }
     foreach ($e in $edges) { $out.Add($e) }
