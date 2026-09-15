@@ -110,6 +110,9 @@ do {
     $after = $page.issues.pageInfo.endCursor
 } while ($page.issues.pageInfo.hasNextPage)
 
+# Deliberate: an empty result is far likelier to be a silently failed fetch (gh has returned
+# nothing with exit 0 before) than a repository with no issues, and publishing an empty roadmap
+# over a real one is the worse outcome.
 if ($issueNodes.Count -eq 0) { throw 'No issues fetched; refusing to write an empty roadmap.' }
 # The sub-connections are capped rather than paginated; an issue past a cap
 # would silently lose labels or blockers, and a wrong "ready" is worse than no roadmap.
@@ -169,7 +172,7 @@ foreach ($i in $issues.Values) {
         if ($issues.ContainsKey($b)) { $issues[$b].blocking.Add($i.number) }
         else { $warnings.Add("#$($i.number) is blocked by #$b, which was not fetched.") }
     }
-    foreach ($x in $i.foreignBlockers) { $warnings.Add("#$($i.number) is blocked by $x in another repository; the roadmap ignores it.") }
+    foreach ($x in $i.foreignBlockers) { $warnings.Add("#$($i.number) is blocked by $x in another repository; its state cannot be read, so it is treated as open.") }
     if (-not $i.milestone) { $warnings.Add("#$($i.number) has no milestone.") }
     if ($i.state -eq 'open' -and -not $i.priority) { $warnings.Add("#$($i.number) has no priority label.") }
     $prioLabels = @($i.labels | Where-Object { $PRIORITIES -contains $_ })
@@ -281,7 +284,7 @@ function Write-Chart {
     foreach ($g in $Groups.Values) { foreach ($n in $g) { [void]$inScope.Add([int]$n) } }
 
     foreach ($title in $Groups.Keys) {
-        $safe = ($title -replace '"', '#quot;')
+        $safe = ($title -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;')
         $id = 'MS' + ($title -replace '[^A-Za-z0-9]', '')
         $out.Add("  subgraph $id[`"$safe`"]")
         $out.Add("    direction $Direction")
@@ -314,11 +317,15 @@ function Write-Chart {
 
 
 function Format-IssueLink($n) { if ($issues.ContainsKey($n)) { "[#$n]($($issues[$n].url))" } else { "#$n" } }
-# Titles and descriptions are untrusted text — anyone can open an issue — so HTML in them
-# is escaped before it reaches the site, and a fence in a description is neutralised because
-# the viewer pairs fences with charts by position.
-function Format-Prose([string]$s) { ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;') -replace '```', "'''" }
-function Format-Title($i) { (Format-Prose $i.title) -replace '\|', '\|' }   # a pipe would split the table cell
+# Titles, descriptions, label names — anything that arrives from GitHub — are untrusted text
+# that lands inside markdown. Two escapes, both needed: HTML so nothing becomes an element,
+# and a backslash before every character marked treats as syntax so nothing becomes a link,
+# an image, emphasis, a heading or a fence. The text renders exactly as written.
+function Format-Prose([string]$s) {
+    $html = $s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+    [regex]::Replace($html, '[\\`*_{}\[\]()#+!|~]', '\$0')
+}
+function Format-Title($i) { Format-Prose $i.title }
 function Format-Refs($list) {
     # Closed issues get a tick so a "blocked by" cell shows which blockers still matter.
     if (-not $list.Count) { return "—" }
@@ -387,7 +394,7 @@ if ($ready.Count) {
     $md.Add('| Issue | Title | Milestone | Priority | Unblocks |')
     $md.Add('|---|---|---|---|---|')
     foreach ($i in $ready) {
-        $ms = if ($i.milestone) { $milestoneByNumber[$i.milestone].title } else { '—' }
+        $ms = if ($i.milestone) { Format-Prose $milestoneByNumber[$i.milestone].title } else { '—' }
         $md.Add("| $(Format-IssueLink $i.number) | $(Format-Title $i) | $ms | $($i.priority ?? '—') | $(Format-Refs $i.openBlocking) |")
     }
 } elseif (@($issues.Values | Where-Object { $_.state -eq 'open' }).Count -eq 0) { $md.Add('Nothing is open. Everything is done.') }
@@ -402,7 +409,7 @@ foreach ($m in $milestones) {
     $open = @($m.issues | Where-Object { $issues[$_].state -eq 'open' }).Count
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
     $id = 'MS' + (Get-MilestoneOrder $m.title)
-    $label = "$($m.title -replace '"', '#quot;')<br/>$closed done · $open open"
+    $label = "$($m.title -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;')<br/>$closed done · $open open"
     $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } else { 'plain' }
     $md.Add("  $id[`"$label`"]:::$class")
     if ($prev) { $md.Add("  $prev --> $id") }
@@ -417,7 +424,7 @@ foreach ($m in $milestones) {
     $open = @($m.issues | Where-Object { $issues[$_].state -eq 'open' }).Count
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
     $rdy = @($m.issues | Where-Object { $issues[$_].ready }).Count
-    $md.Add("| [$($m.title)]($REPO_URL/milestone/$($m.number)) | $closed | $open | $rdy | [M$(Get-MilestoneOrder $m.title).md](M$(Get-MilestoneOrder $m.title).md) |")
+    $md.Add("| [$(Format-Prose $m.title)]($REPO_URL/milestone/$($m.number)) | $closed | $open | $rdy | [M$(Get-MilestoneOrder $m.title).md](M$(Get-MilestoneOrder $m.title).md) |")
 }
 $unscheduled = @($issues.Values | Where-Object { -not $_.milestone })
 if ($unscheduled.Count) {
@@ -436,7 +443,7 @@ if ($warnings.Count) {
     $md.Add('')
     $md.Add('## Warnings')
     $md.Add('')
-    foreach ($w in $warnings) { $md.Add("- $w") }
+    foreach ($w in $warnings) { $md.Add("- $(Format-Prose $w)") }
 }
 Save 'README.md' $md
 
@@ -452,12 +459,12 @@ $md.Add('')
 if ($current) {
     $groups = [ordered]@{ $current.title = @($current.issues) }
     if ($next) { $groups[$next.title] = @($next.issues) }
-    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label.')
+    $md.Add("The earliest milestone with open work is **$(Format-Prose $current.title)**" + $(if ($next) { ", followed by **$(Format-Prose $next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label.')
     $md.Add('')
     foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) }
     foreach ($title in $groups.Keys) {
         $md.Add('')
-        $md.Add("## $title")
+        $md.Add("## $(Format-Prose $title)")
         $md.Add('')
         foreach ($l in (Write-IssueTable $groups[$title])) { $md.Add($l) }
     }
@@ -478,13 +485,15 @@ $md.Add('Every milestone, every issue, every dependency. Green = done, blue = re
 $md.Add('')
 $groups = [ordered]@{}
 foreach ($m in $milestones) { if ($m.issues.Count) { $groups[$m.title] = @($m.issues) } }
+$unscheduledAll = @($issues.Values | Where-Object { -not $_.milestone } | ForEach-Object { $_.number })
+if ($unscheduledAll.Count) { $groups['No milestone'] = $unscheduledAll }
 if ($groups.Count) { foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) } } else { $md.Add('No issues yet.') }
 Save 'all.md' $md
 
 # M<n>.md — one per milestone
 foreach ($m in $milestones) {
     $md = [System.Collections.Generic.List[string]]::new()
-    $md.Add("# $($m.title)")
+    $md.Add("# $(Format-Prose $m.title)")
     $md.Add('')
     $md.Add($stamp)
     $md.Add('')

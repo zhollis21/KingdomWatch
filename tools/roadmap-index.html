@@ -14,10 +14,11 @@
   mermaid's dagre, and drawing from the data means the toggles simply change
   what goes into the graph. No build step, no framework.
 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.15/purify.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js"></script>
+<!-- Pinned with SRI: these run before any sanitiser exists, so a tampered CDN response must fail to load. Hashes from api.cdnjs.com/libraries/<lib>/<ver>?fields=sri -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js" integrity="sha512-kHavuYjOa82OKvUxD8j04s+kMIH84FmETnuIgj0yFyY9LWU10sXNwU54Iozpewat8VxAzH4aXiwTEZMRrpwfBw==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.15/purify.min.js" integrity="sha512-jeyPlk6E7VcWU2QTRw5UAe4iKLrWOJkyLc4GkOAOey1tOeTyxfTzrCY7p84VSer8/lRON5p236RGVeTErze9fA==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js" integrity="sha512-vnRdmX8ZxbU+IhA2gLhZqXkX1neJISG10xy0iP0WauuClu3AIMknxyDjYHEpEhi8fTZPyOCWgqUCnEafDB/jVQ==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js" integrity="sha512-1zKK2bG3QY2JaUPpfHZDUMe3dwBwFdCDwXQ01GrKSd+/l0hqPbF+aak66zYPUZtn+o2JYi1mjXAqy5mW04v3iA==" crossorigin="anonymous"></script>
 <style>
   :root { color-scheme: light dark;
     --bg: #fff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0969da; --chart-bg: #f6f8fa; }
@@ -71,7 +72,7 @@
   const scheme = matchMedia('(prefers-color-scheme: dark)'); let dark = scheme.matches;
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
-  const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
+  const page = () => { try { return decodeURIComponent(location.hash.slice(1)) || 'README.md'; } catch (e) { return 'README.md'; } };   // a malformed %-escape must not strand the page on "Loading"
   // Messages that carry anything from a URL or an error go through textContent, never innerHTML.
   const msg = (cls, text) => { const p = document.createElement('p'); p.className = cls; p.textContent = text; return p; };
   const filters = { done: document.getElementById('f-done'), stubs: document.getElementById('f-stubs') };
@@ -181,14 +182,21 @@
     const twoGroups = [cur, nxt].filter(Boolean).map(m => ({ title: m.title, issues: m.issues }));
     if (name === 'README.md') return [{ kind: 'overview' }, { kind: 'legend' }];
     if (name === 'next.md') return [{ kind: 'issues', groups: twoGroups }];
-    if (name === 'all.md') return [{ kind: 'issues', concentrate: true, groups: graph.milestones.filter(m => m.issues.length).map(m => ({ title: m.title, issues: m.issues })) }];
+    if (name === 'all.md') {
+      const groups = graph.milestones.filter(m => m.issues.length).map(m => ({ title: m.title, issues: m.issues }));
+      const unscheduled = graph.issues.filter(i => i.milestone === null).map(i => i.number);
+      if (unscheduled.length) groups.push({ title: 'No milestone', issues: unscheduled });
+      return [{ kind: 'issues', concentrate: true, groups }];
+    }
     const mm = /^M(\d+)\.md$/.exec(name); if (mm && ms(+mm[1])) { const m = ms(+mm[1]); return [{ kind: 'issues', groups: [{ title: m.title, issues: m.issues }] }]; }
     return [];
   }
 
   // ---- render -------------------------------------------------------------
   let viz = new Viz();
-  async function drawChart(spec, box) {
+  // Renders overlap: a slow Graphviz pass for an old page or toggle must not land on a newer one.
+  let generation = 0;
+  async function drawChart(spec, box, gen) {
     if (spec.kind === 'legend') { box.className = 'legend-box'; box.innerHTML = legendHtml(); return; }
     const o = { done: filters.done.checked, stubs: filters.stubs.checked, concentrate: !!spec.concentrate };
     const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
@@ -197,7 +205,7 @@
       const p = msg('empty', (done === all.length && all.length ? `All ${all.length} issues here are done` : 'Nothing to show') + ' — tick '); const b = document.createElement('b'); b.textContent = 'Show done issues'; p.append(b, ' to see them.');
       box.classList.add('small'); box.replaceChildren(p); return;
     }
-    try { const svg = await viz.renderSVGElement(dot); box.appendChild(svg); panZoom(box); }
+    try { const svg = await viz.renderSVGElement(dot); if (gen !== generation) return; box.appendChild(svg); panZoom(box); }
     catch (e) { viz = new Viz(); box.classList.add('small'); box.replaceChildren(msg('error', 'Chart failed: ' + e.message)); console.error(e, dot); }
   }
   function panZoom(box) {
@@ -230,10 +238,10 @@
   }
 
   async function render() {
-    const name = page();
+    const name = page(), gen = ++generation;
     for (const a of nav.querySelectorAll('a')) a.classList.toggle('current', a.getAttribute('href') === '#' + name);
     let md;
-    try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); }
+    try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); if (gen !== generation) return; }
     catch (e) { content.replaceChildren(msg('error', `Could not load ${name}: ${e.message}`)); return; }
     // Issue titles and milestone descriptions are anyone's text. The generator escapes them, and
     // the sink is sanitised regardless, so neither side has to trust the other to have done it.
@@ -255,7 +263,7 @@
       const box = document.createElement('div'); box.className = 'chart'; fences[k].parentElement.replaceWith(box);
       const spec = specs[k];
       if (!spec) { box.classList.add('small'); box.replaceChildren(msg('error', 'No chart definition for this page; graph.json may be missing.')); continue; }
-      await drawChart(spec, box);
+      await drawChart(spec, box, gen); if (gen !== generation) return;
       if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
     }
     window.scrollTo(0, 0);
