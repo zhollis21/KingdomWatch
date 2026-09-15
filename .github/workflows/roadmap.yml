@@ -1,0 +1,58 @@
+name: Roadmap
+
+# Regenerates docs/roadmap/ from issues, milestones and their "blocked by"
+# relationships (tools/Build-Roadmap.ps1), and commits the result to main.
+#
+# Relationship edits do not fire a webhook, so the nightly run is the
+# backstop for re-wired dependencies; everything else (open, close, label,
+# milestone) regenerates within a minute. Run it by hand with
+# `gh workflow run roadmap.yml`.
+#
+# Pushing to main from here needs GitHub Actions on the main ruleset's
+# bypass list; the token alone cannot get past the pull-request rule.
+
+on:
+  issues:
+    types: [opened, edited, deleted, transferred, closed, reopened, labeled, unlabeled, milestoned, demilestoned]
+  milestone:
+    types: [created, edited, deleted, closed, opened]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+# One regeneration at a time, and never cancel one that is mid-commit.
+concurrency:
+  group: roadmap
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    name: Regenerate roadmap
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build roadmap
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/Build-Roadmap.ps1 -SyncLabels
+
+      - name: Commit if changed
+        run: |
+          git add docs/roadmap
+          if git diff --cached --quiet; then
+            echo "Roadmap unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Regenerate roadmap"
+          git push origin HEAD:main

@@ -1,0 +1,1840 @@
+{
+  "repository": "zhollis21/KingdomWatch",
+  "currentMilestone": 2,
+  "ready": [
+    13,
+    16,
+    57,
+    15,
+    53,
+    20,
+    72,
+    31,
+    41
+  ],
+  "warnings": [],
+  "milestones": [
+    {
+      "number": 1,
+      "title": "M0 — Foundations",
+      "state": "open",
+      "open": 0,
+      "closed": 3,
+      "issues": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "number": 2,
+      "title": "M1 — Headless sim",
+      "state": "open",
+      "open": 9,
+      "closed": 13,
+      "issues": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        50,
+        51,
+        52,
+        53,
+        54,
+        57,
+        58,
+        59
+      ]
+    },
+    {
+      "number": 3,
+      "title": "M2 — Stress test",
+      "state": "open",
+      "open": 6,
+      "closed": 0,
+      "issues": [
+        18,
+        19,
+        20,
+        65,
+        72,
+        74
+      ]
+    },
+    {
+      "number": 4,
+      "title": "M3 — Living village",
+      "state": "open",
+      "open": 9,
+      "closed": 0,
+      "issues": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        68,
+        69,
+        73
+      ]
+    },
+    {
+      "number": 5,
+      "title": "M4 — Disruption",
+      "state": "open",
+      "open": 2,
+      "closed": 0,
+      "issues": [
+        27,
+        28
+      ]
+    },
+    {
+      "number": 6,
+      "title": "M5 — Powers and faith",
+      "state": "open",
+      "open": 5,
+      "closed": 0,
+      "issues": [
+        29,
+        30,
+        31,
+        32,
+        41
+      ]
+    },
+    {
+      "number": 7,
+      "title": "M6 — Worldgen and dynamics",
+      "state": "open",
+      "open": 5,
+      "closed": 0,
+      "issues": [
+        33,
+        34,
+        35,
+        36,
+        37
+      ]
+    },
+    {
+      "number": 8,
+      "title": "M7 — Society and politics",
+      "state": "open",
+      "open": 6,
+      "closed": 0,
+      "issues": [
+        38,
+        39,
+        40,
+        42,
+        43,
+        44
+      ]
+    },
+    {
+      "number": 9,
+      "title": "M8 — Naval",
+      "state": "open",
+      "open": 3,
+      "closed": 0,
+      "issues": [
+        45,
+        46,
+        47
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "number": 1,
+      "title": "Perspective prototype: 2D sprites vs orthographic 3D",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/1",
+      "milestone": 1,
+      "priority": "P0-blocker",
+      "labels": [
+        "design-question",
+        "P0-blocker"
+      ],
+      "blockedBy": [],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 2,
+      "title": "Selection/interaction prototype",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/2",
+      "milestone": 1,
+      "priority": "P1-high",
+      "labels": [
+        "design-question",
+        "P1-high"
+      ],
+      "blockedBy": [],
+      "foreignBlockers": [],
+      "blocking": [
+        32
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 3,
+      "title": "Baseline performance measurements",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/3",
+      "milestone": 1,
+      "priority": "P1-high",
+      "labels": [
+        "performance",
+        "P1-high"
+      ],
+      "blockedBy": [],
+      "foreignBlockers": [],
+      "blocking": [
+        20
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 4,
+      "title": "Simulation clock and deterministic event scheduler",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/4",
+      "milestone": 2,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        5,
+        50
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        8,
+        11,
+        12,
+        15,
+        51,
+        52,
+        53,
+        58,
+        59
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 5,
+      "title": "Entity model and identity: EntityId, EventId, PersonHandle, MobileGroup",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/5",
+      "milestone": 2,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        50
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        4,
+        6,
+        8,
+        12,
+        13,
+        16,
+        54
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 6,
+      "title": "Storage accessor layer (PersonStore)",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/6",
+      "milestone": 2,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        5
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        10
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 7,
+      "title": "Keyed deterministic RNG",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/7",
+      "milestone": 2,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        50
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        57
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 8,
+      "title": "Domain event layer and decision provenance",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/8",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4,
+        5
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        10,
+        15,
+        29,
+        43,
+        73,
+        74
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 9,
+      "title": "Households and lifecycle: family formation, kinship, death cascade, property",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/9",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        10,
+        51
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        22,
+        38,
+        40,
+        54,
+        68,
+        69
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 10,
+      "title": "Relationship model: four kinds and retention rules",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/10",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        6,
+        8
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        9,
+        36,
+        41
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 11,
+      "title": "Minimal demographic model: births and deaths",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/11",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4,
+        51
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        29
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 12,
+      "title": "Resource ledger authority and primitive recipe tier",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/12",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4,
+        5
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        13,
+        24,
+        51,
+        52,
+        53,
+        54
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 13,
+      "title": "WorldValidator and cross-platform determinism hash",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/13",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "tooling",
+        "P1-high"
+      ],
+      "blockedBy": [
+        5,
+        12,
+        58
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        33
+      ],
+      "related": [
+        72
+      ],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 14,
+      "title": "LOD equivalence tests",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/14",
+      "milestone": 2,
+      "priority": "P2-normal",
+      "labels": [
+        "tooling",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        17
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        17
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 15,
+      "title": "Safe save snapshot semantics",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/15",
+      "milestone": 2,
+      "priority": "P2-normal",
+      "labels": [
+        "architecture",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        4,
+        8
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        19,
+        42
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 16,
+      "title": "Traversal abstraction (basic)",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/16",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        5
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        23,
+        25,
+        27,
+        33,
+        35,
+        37,
+        45,
+        52,
+        54
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 17,
+      "title": "M1 vertical slice: two-band headless run",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/17",
+      "milestone": 2,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        9,
+        11,
+        13,
+        51,
+        52,
+        53,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        14,
+        18,
+        26,
+        33
+      ],
+      "related": [],
+      "openBlockers": [
+        13,
+        52,
+        53,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 18,
+      "title": "Android stress test scene",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/18",
+      "milestone": 3,
+      "priority": "P0-blocker",
+      "labels": [
+        "performance",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        17,
+        20,
+        72
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        19,
+        65
+      ],
+      "related": [],
+      "openBlockers": [
+        17,
+        20,
+        72
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 19,
+      "title": "Save size and cold load measurement",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/19",
+      "milestone": 3,
+      "priority": "P1-high",
+      "labels": [
+        "performance",
+        "P1-high"
+      ],
+      "blockedBy": [
+        15,
+        18
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        74
+      ],
+      "related": [],
+      "openBlockers": [
+        15,
+        18
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 20,
+      "title": "Go/no-go threshold for mobile",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/20",
+      "milestone": 3,
+      "priority": "P0-blocker",
+      "labels": [
+        "design-question",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        3
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        18
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 21,
+      "title": "Full daily schedule loop across a year",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/21",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        22,
+        23,
+        24,
+        25,
+        52,
+        53
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        28,
+        73
+      ],
+      "related": [],
+      "openBlockers": [
+        22,
+        23,
+        24,
+        25,
+        52,
+        53
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 22,
+      "title": "Skills, apprenticeship, and age stages",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/22",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        9,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        21,
+        38,
+        68
+      ],
+      "related": [],
+      "openBlockers": [
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 23,
+      "title": "Town planner (settlement layout AI)",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/23",
+      "milestone": 4,
+      "priority": "P0-blocker",
+      "labels": [
+        "feature",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        16,
+        52,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        21,
+        28,
+        30,
+        35,
+        69
+      ],
+      "related": [],
+      "openBlockers": [
+        16,
+        52,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 24,
+      "title": "Resource reservation system",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/24",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        12,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        21
+      ],
+      "related": [],
+      "openBlockers": [
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 25,
+      "title": "Movement and collision model",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/25",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "design-question",
+        "P1-high"
+      ],
+      "blockedBy": [
+        16
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        21
+      ],
+      "related": [
+        18
+      ],
+      "openBlockers": [
+        16
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 26,
+      "title": "Resource regeneration",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/26",
+      "milestone": 4,
+      "priority": "P2-normal",
+      "labels": [
+        "design-question",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        17,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        17,
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 27,
+      "title": "Raiders and predator threat system",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/27",
+      "milestone": 5,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        16,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        28
+      ],
+      "related": [],
+      "openBlockers": [
+        16,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 28,
+      "title": "Disruption loop: flee, muster, fight, recover, rebuild",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/28",
+      "milestone": 5,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        21,
+        23,
+        27
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        21,
+        23,
+        27
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 29,
+      "title": "Core god powers: lightning, heal, bless/inspire",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/29",
+      "milestone": 6,
+      "priority": "P0-blocker",
+      "labels": [
+        "feature",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        8,
+        11,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        30,
+        32
+      ],
+      "related": [
+        31
+      ],
+      "openBlockers": [
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 30,
+      "title": "Shrines, priests, and witnessed attribution",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/30",
+      "milestone": 6,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        23,
+        29,
+        31,
+        41
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        36
+      ],
+      "openBlockers": [
+        23,
+        29,
+        31,
+        41
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 31,
+      "title": "Faith depth decision",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/31",
+      "milestone": 6,
+      "priority": "P0-blocker",
+      "labels": [
+        "design-question",
+        "P0-blocker"
+      ],
+      "blockedBy": [],
+      "foreignBlockers": [],
+      "blocking": [
+        30
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 32,
+      "title": "Touchscreen power-use interaction loop",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/32",
+      "milestone": 6,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        2,
+        29,
+        73
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        29,
+        73
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 33,
+      "title": "Procedural map generation and sanity check",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/33",
+      "milestone": 7,
+      "priority": "P0-blocker",
+      "labels": [
+        "feature",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        13,
+        16,
+        17
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        34,
+        35,
+        45,
+        47
+      ],
+      "related": [],
+      "openBlockers": [
+        13,
+        16,
+        17
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 34,
+      "title": "Two-race homeland placement",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/34",
+      "milestone": 7,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        33,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        36,
+        39
+      ],
+      "related": [],
+      "openBlockers": [
+        33,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 35,
+      "title": "Founding, abandonment, and bridges",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/35",
+      "milestone": 7,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        16,
+        23,
+        33,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        36,
+        37,
+        39
+      ],
+      "related": [
+        39,
+        69
+      ],
+      "openBlockers": [
+        16,
+        23,
+        33,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 36,
+      "title": "Settlement attitudes and migration",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/36",
+      "milestone": 7,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        10,
+        34,
+        35
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        38,
+        40
+      ],
+      "related": [],
+      "openBlockers": [
+        34,
+        35
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 37,
+      "title": "Trade and economy toward 10 resources",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/37",
+      "milestone": 7,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        16,
+        35,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        40,
+        46
+      ],
+      "related": [
+        68
+      ],
+      "openBlockers": [
+        16,
+        35,
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 38,
+      "title": "Social and personal decision system",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/38",
+      "milestone": 8,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        9,
+        22,
+        36,
+        52
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        22,
+        36,
+        52
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 39,
+      "title": "Political model: polities, secession, succession",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/39",
+      "milestone": 8,
+      "priority": "P1-high",
+      "labels": [
+        "design-question",
+        "P1-high"
+      ],
+      "blockedBy": [
+        34,
+        35
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        38
+      ],
+      "openBlockers": [
+        34,
+        35
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 40,
+      "title": "Cultural drift and naming divergence",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/40",
+      "milestone": 8,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        9,
+        36,
+        37
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        47
+      ],
+      "related": [],
+      "openBlockers": [
+        36,
+        37
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 41,
+      "title": "Rumor propagation",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/41",
+      "milestone": 6,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        10
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        30
+      ],
+      "related": [
+        30,
+        37
+      ],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 42,
+      "title": "Save/load with versioning and migration",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/42",
+      "milestone": 8,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        15,
+        74
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        43
+      ],
+      "related": [
+        19
+      ],
+      "openBlockers": [
+        15,
+        74
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 43,
+      "title": "Offline progression / catch-up simulation",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/43",
+      "milestone": 8,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        8,
+        42
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        42
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 44,
+      "title": "Event feed follow lists and search",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/44",
+      "milestone": 8,
+      "priority": "P3-someday",
+      "labels": [
+        "feature",
+        "P3-someday"
+      ],
+      "blockedBy": [
+        73
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        73
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 45,
+      "title": "Boats and water traversal",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/45",
+      "milestone": 9,
+      "priority": "P0-blocker",
+      "labels": [
+        "feature",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        16,
+        33
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        46,
+        47
+      ],
+      "related": [],
+      "openBlockers": [
+        16,
+        33
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 46,
+      "title": "Cross-water trade and transport",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/46",
+      "milestone": 9,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        37,
+        45
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        37,
+        45
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 47,
+      "title": "Island archetype support",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/47",
+      "milestone": 9,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        33,
+        40,
+        45
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [],
+      "openBlockers": [
+        33,
+        40,
+        45
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 50,
+      "title": "Core, Core.Tests, and Harness are unscaffolded — no solution, no CI",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/50",
+      "milestone": 2,
+      "priority": "P0-blocker",
+      "labels": [
+        "tooling",
+        "P0-blocker"
+      ],
+      "blockedBy": [],
+      "foreignBlockers": [],
+      "blocking": [
+        4,
+        5,
+        7,
+        72
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 51,
+      "title": "Needs, food, and consumption: threshold-scheduled hunger and settlement food draw",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/51",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4,
+        12
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        9,
+        11,
+        17
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 52,
+      "title": "Job assignment and primitive work tasks",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/52",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4,
+        12,
+        16
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        21,
+        22,
+        23,
+        24,
+        26,
+        29,
+        37,
+        38
+      ],
+      "related": [],
+      "openBlockers": [
+        16
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 53,
+      "title": "Seasons and the year cycle",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/53",
+      "milestone": 2,
+      "priority": "P2-normal",
+      "labels": [
+        "feature",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        4,
+        12
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        21
+      ],
+      "related": [],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 54,
+      "title": "Nomadic band mode and the settling trigger",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/54",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        5,
+        9,
+        12,
+        16
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        17,
+        23,
+        27,
+        34,
+        35,
+        69
+      ],
+      "related": [
+        35
+      ],
+      "openBlockers": [
+        16
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 57,
+      "title": "Nothing detects RNG key collisions between different call sites",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/57",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "tooling",
+        "P1-high"
+      ],
+      "blockedBy": [
+        7
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        13
+      ],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 58,
+      "title": "Nothing measures harness throughput, which #13's seed fuzzing depends on",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/58",
+      "milestone": 2,
+      "priority": "P1-high",
+      "labels": [
+        "tooling",
+        "P1-high"
+      ],
+      "blockedBy": [
+        4
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        13,
+        59
+      ],
+      "related": [
+        13,
+        17
+      ],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 59,
+      "title": "Nothing enforces the zero-allocation tick loop the design doc commits to",
+      "state": "closed",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/59",
+      "milestone": 2,
+      "priority": "P2-normal",
+      "labels": [
+        "performance",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        4,
+        58
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        6,
+        18
+      ],
+      "openBlockers": [],
+      "ready": false,
+      "blocked": false
+    },
+    {
+      "number": 65,
+      "title": "Memories.WitnessDied walks every memory in the world on each death",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/65",
+      "milestone": 3,
+      "priority": "P3-someday",
+      "labels": [
+        "performance",
+        "P3-someday"
+      ],
+      "blockedBy": [
+        18
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        10
+      ],
+      "openBlockers": [
+        18
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 68,
+      "title": "Nothing represents personal property, so the death cascade has no wealth or tools to transfer",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/68",
+      "milestone": 4,
+      "priority": "P2-normal",
+      "labels": [
+        "architecture",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        9,
+        22
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        37
+      ],
+      "openBlockers": [
+        22
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 69,
+      "title": "Household formation has no housing stock behind it once a band settles",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/69",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "architecture",
+        "P1-high"
+      ],
+      "blockedBy": [
+        9,
+        23,
+        54
+      ],
+      "foreignBlockers": [],
+      "blocking": [],
+      "related": [
+        35
+      ],
+      "openBlockers": [
+        23,
+        54
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 72,
+      "title": "Core is not wired into the Unity project, so nothing can run the simulation on device",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/72",
+      "milestone": 3,
+      "priority": "P0-blocker",
+      "labels": [
+        "architecture",
+        "P0-blocker"
+      ],
+      "blockedBy": [
+        50
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        18,
+        73
+      ],
+      "related": [
+        13,
+        21
+      ],
+      "openBlockers": [],
+      "ready": true,
+      "blocked": false
+    },
+    {
+      "number": 73,
+      "title": "No issue builds the event feed that §16 calls the entire interface to what happened",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/73",
+      "milestone": 4,
+      "priority": "P1-high",
+      "labels": [
+        "feature",
+        "P1-high"
+      ],
+      "blockedBy": [
+        8,
+        21,
+        72
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        32,
+        44
+      ],
+      "related": [
+        32,
+        44
+      ],
+      "openBlockers": [
+        21,
+        72
+      ],
+      "ready": false,
+      "blocked": true
+    },
+    {
+      "number": 74,
+      "title": "History compaction has no owner; the journal grows unbounded and #42 builds on work that does not exist",
+      "state": "open",
+      "url": "https://github.com/zhollis21/KingdomWatch/issues/74",
+      "milestone": 3,
+      "priority": "P2-normal",
+      "labels": [
+        "architecture",
+        "P2-normal"
+      ],
+      "blockedBy": [
+        8,
+        19
+      ],
+      "foreignBlockers": [],
+      "blocking": [
+        42
+      ],
+      "related": [
+        15,
+        41,
+        65
+      ],
+      "openBlockers": [
+        19
+      ],
+      "ready": false,
+      "blocked": true
+    }
+  ]
+}

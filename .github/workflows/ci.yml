@@ -7,8 +7,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # The roadmap workflow commits generated docs to main; nothing to build.
+    paths-ignore: ['docs/roadmap/**']
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/roadmap/**']
 
 permissions:
   contents: read

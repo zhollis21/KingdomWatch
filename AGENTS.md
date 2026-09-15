@@ -4,8 +4,17 @@
 
 - Read `README.md` and `docs/design/kingdom-watch-plan-v7.1.md` (or its latest version) before making changes — the design doc explains what this game is and why.
 - **Treat the design doc the way `/kickoff` treats an issue:** a well-informed hypothesis from someone who had context you may lack — worth taking seriously, not worth adopting unexamined. It is a loose, living plan rather than a specification, and it is expected to be iterated on as real code teaches us things. Verify its claims against the code that actually exists; where the two disagree, work out which one is wrong instead of assuming it is the code. When a decision supersedes something the doc says, update the doc in the same change.
-- GitHub Issues and Milestones track the backlog (see `/milestones` — M0 through M8, matching the design doc's §19).
+- GitHub Issues and Milestones track the backlog (see `/milestones` — M0 through M8, matching the design doc's §19). `docs/roadmap/` is the generated view of it: `README.md` lists what is ready to pick up, `next.md` charts the current milestone and the one after, and `graph.json` is the same data for tools. Read `next.md` before choosing work; do not edit anything under `docs/roadmap/` by hand — a workflow regenerates it from GitHub.
 - Keep `README.md` and this file up to date when repository-wide decisions are made.
+
+## Issue dependencies
+
+Two kinds of edge between issues, and the roadmap reads nothing else:
+
+- **Blocked by** is GitHub's native relationship (the *Relationships* box in the issue sidebar, or `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -f issue_id=<database id>`). Record the *direct* dependency only — if #17 needs #52 and #52 needs #12, do not also link #17 to #12; readiness is computed transitively. An open issue is *ready* when everything it is blocked by is closed, and the `blocked` label is derived from that by the roadmap workflow, so never set it by hand.
+- **Related** is a single line in the body, exactly `Related: #N, #M`, for "these touch the same thing" without a hard ordering. It is drawn dotted.
+
+Prose such as "Depends on #4" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` set both kinds when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, `gh workflow run roadmap.yml` or wait for the nightly run.
 
 ## Repository Layout
 
@@ -110,6 +119,9 @@ The `tools/` directory (git-ignored except for the scripts themselves) contains 
 # Pull all open PR comments into a structured Markdown report
 pwsh tools/Get-OpenPrComments.ps1
 # Output: tools/pr-comments.md
+
+# Regenerate docs/roadmap/ from GitHub (read-only; the workflow adds -SyncLabels)
+pwsh tools/Build-Roadmap.ps1
 ```
 
 Requires `gh` CLI authenticated. See `.claude/skills/pr-feedback/SKILL.md` (`/pr-feedback`) for the full evaluation workflow.
