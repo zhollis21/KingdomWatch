@@ -7,13 +7,20 @@ name: Roadmap
 #
 # Relationship edits do not fire a webhook, so the nightly run is the
 # backstop for re-wired dependencies; everything else (open, close, label,
-# milestone) republishes within a minute or two. Run it by hand with
+# milestone) republishes within a minute or two, as does a change to the
+# generator, the viewer or this file landing on main. Run it by hand with
 # `gh workflow run roadmap.yml`.
 #
 # Pages must be enabled once in Settings > Pages with Source set to
 # "GitHub Actions"; until then the deploy job fails and nothing else does.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - tools/Build-Roadmap.ps1
+      - tools/roadmap-index.html
+      - .github/workflows/roadmap.yml
   issues:
     types: [opened, edited, deleted, transferred, closed, reopened, labeled, unlabeled, milestoned, demilestoned]
   milestone:
