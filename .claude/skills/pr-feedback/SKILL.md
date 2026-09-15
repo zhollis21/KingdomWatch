@@ -93,6 +93,46 @@ than a question apiece. Wait for the answer before implementing anything — do
 not silently fix a comment, and do not assume a comment is valid because a
 reviewer posted it.
 
+## Step 2b: Hunt for the siblings of every valid finding
+
+A reviewer's finding is one instance of a class. The reviewer cited the line
+it happened to notice, not every line the same reasoning applies to — and a
+fix that covers only the cited line leaves the rest of the class in place,
+now with a false sense that it was looked at.
+
+So for each finding you judge valid, before the overview goes to the user,
+name the class it belongs to and search the branch for other members — the
+siblings belong in the overview, so the one go-ahead covers them too:
+
+- **Name the class in one line.** Not "the overflow on line 282" but "any
+  arithmetic on a field the store accepts unbounded". Not "`BirthDue` doesn't
+  check its id" but "any handler that acts on an event without checking the
+  event is the one the state names". Not "the check runs before the crossing"
+  but "any two wake-ups that can share an instant and entity, in the order the
+  kind values put them".
+- **Enumerate, don't skim.** For an ordering class, list every kind that can
+  land on the same tick and walk each pair. For an overflow class, list every
+  multiplication and subtraction on the fields involved. For a stale-identity
+  class, list every handler and ask what a duplicate or stale event does to it.
+  For a hard-coded-constant class, `grep` for the literal across `Core`,
+  `Harness`, `Core.Tests` and the design doc, not just the file cited.
+- **Include the code the PR did not write.** The class rarely stops at the
+  diff. If a reviewer finds a year hard-coded in a file the PR touched, the
+  harness that has always hard-coded it is the same finding.
+
+Report the siblings alongside the original in the overview — "Copilot found X
+at A; the same class also lives at B and C; D looked like a member and is not,
+because …" — and fix them under the same go-ahead. A sibling that is a
+judgment call rather than open-and-shut goes to the user like any other real
+choice. Each fixed sibling gets its own test written first and seen to fail;
+a sibling nobody tested is a sibling nobody proved.
+
+This is where the review pays for itself. On #71, five of the six findings
+were single instances that generalised: one ordering finding led to a
+same-instant walk that found the postpartum gate reading the wrong child, and
+one hard-coded 365 led to two more in the harness and the soak test. None of
+those were in a comment.
+
 ## Step 3: Resolve threads and keep the PR current
 
 Don't leave handled comments open — the open-comment list should only ever show feedback you haven't dealt with yet.
@@ -125,6 +165,7 @@ Don't leave handled comments open — the open-comment list should only ever sho
 
 - Do not silently fix comments without presenting them to the user first
 - Evaluate reviewer comments independently — reviewers can be wrong
+- Every valid finding is a class, not a line: search the branch for its siblings before fixing it (Step 2b)
 - Skip threads already marked resolved unless the user asks to revisit them
 - Resolve each thread as you finish with it (fixed or agreed non-issue), and keep the PR description current
 - No AI attribution in replies, resolutions, or the PR description — see `AGENTS.md`
