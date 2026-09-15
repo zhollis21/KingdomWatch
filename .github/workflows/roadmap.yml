@@ -11,13 +11,14 @@ name: Roadmap
 # generator, the viewer or this file landing on main. Run it by hand with
 # `gh workflow run roadmap.yml`.
 #
-# A pull request that touches the tooling runs the generator as a check in
-# its own read-only job: no write token reaches PR-controlled code, no label
-# writes, no deploy, and the generated pages land in the job summary (which
-# renders mermaid) plus a downloadable artifact.
+# A pull request that touches the tooling runs this same job in full — label
+# sync and deploy included — so the change is exercised for real before it
+# merges. That is a deliberate choice for a single-maintainer repository:
+# the PR author already has write access, and a check that only pretends to
+# publish has failed to catch a publish that broke.
 #
 # Pages must be enabled once in Settings > Pages with Source set to
-# "GitHub Actions"; until then the deploy job fails and nothing else does.
+# "GitHub Actions"; until then the deploy step fails and nothing else does.
 
 on:
   push:
@@ -40,44 +41,17 @@ on:
     - cron: '17 4 * * *'
   workflow_dispatch:
 
-# Nothing by default; each job asks for exactly what it needs.
+# Nothing by default; the job asks for exactly what it needs.
 permissions: {}
 
-# One publish at a time, and never cancel one that is mid-deploy. PR checks
-# get their own group so they neither queue behind nor delay a publish.
+# One publish at a time, and never cancel one that is mid-deploy.
 concurrency:
-  group: roadmap-${{ github.event_name == 'pull_request' && github.head_ref || 'publish' }}
+  group: roadmap
   cancel-in-progress: false
 
 jobs:
-  check:
-    name: Generate roadmap (check)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build roadmap
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./tools/Build-Roadmap.ps1 -OutDir site
-
-      - name: Show the result in the job summary
-        shell: pwsh
-        run: Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: roadmap
-          path: site
-
   publish:
     name: Generate and publish roadmap
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,6 +69,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./tools/Build-Roadmap.ps1 -SyncLabels -OutDir site
+
+      - name: Show the result in the job summary
+        shell: pwsh
+        run: Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-pages-artifact@v3
         with:
