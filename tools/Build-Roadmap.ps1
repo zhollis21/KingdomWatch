@@ -217,7 +217,7 @@ foreach ($w in $warnings) { Write-Warning $w }
 if ($SyncLabels) {
     $changed = 0
     foreach ($i in $issues.Values) {
-        if ($i.state -ne 'open') { continue }
+        # Closed issues are never blocked, so the remove branch clears a label left behind by closing.
         $has = $i.labels -contains 'blocked'
         if ($i.blocked -and -not $has) {
             gh issue edit $i.number --repo "$OWNER/$REPO_NAME" --add-label blocked | Out-Null
@@ -325,6 +325,11 @@ function Format-Prose([string]$s) {
     $html = $s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
     [regex]::Replace($html, '[\\`*_{}\[\]()#+!|~]', '\$0')
 }
+function Format-Foreign($i) {
+    # Cross-repository blockers cannot be linked by number; name them so the cell explains a grey node.
+    if (-not $i.foreignBlockers.Count) { return '' }
+    ' · ' + (($i.foreignBlockers | ForEach-Object { Format-Prose $_ }) -join ', ') + ' (other repository)'
+}
 function Format-Title($i) { Format-Prose $i.title }
 function Format-Refs($list) {
     # Closed issues get a tick so a "blocked by" cell shows which blockers still matter.
@@ -339,7 +344,7 @@ function Write-IssueTable([int[]]$Numbers) {
     foreach ($n in ($Numbers | Sort-Object { Get-PriorityRank $issues[$_].priority }, { $_ })) {
         $i = $issues[$n]
         $status = if ($i.state -eq 'closed') { '✓ Done' } elseif ($i.ready) { '**Ready**' } else { 'Blocked' }
-        $out.Add("| $(Format-IssueLink $n) | $(Format-Title $i) | $($i.priority ?? '—') | $status | $(Format-Refs $i.blockedBy) | $(Format-Refs $i.blocking) |")
+        $out.Add("| $(Format-IssueLink $n) | $(Format-Title $i) | $($i.priority ?? '—') | $status | $(Format-Refs $i.blockedBy)$(Format-Foreign $i) | $(Format-Refs $i.blocking) |")
     }
     return $out
 }
@@ -398,7 +403,10 @@ if ($ready.Count) {
         $md.Add("| $(Format-IssueLink $i.number) | $(Format-Title $i) | $ms | $($i.priority ?? '—') | $(Format-Refs $i.openBlocking) |")
     }
 } elseif (@($issues.Values | Where-Object { $_.state -eq 'open' }).Count -eq 0) { $md.Add('Nothing is open. Everything is done.') }
-else { $md.Add('Nothing is ready: every open issue is blocked. Check the warnings below for a cycle.') }
+else {
+    $cycle = @($warnings | Where-Object { $_ -like 'Dependency cycle:*' }).Count -gt 0
+    $md.Add('Nothing is ready: every open issue is blocked.' + $(if ($cycle) { ' A dependency cycle in the warnings below is the likely cause.' } else { '' }))
+}
 $md.Add('')
 $md.Add('## Milestones')
 $md.Add('')

@@ -206,7 +206,7 @@
       box.classList.add('small'); box.replaceChildren(p); return;
     }
     try { const svg = await viz.renderSVGElement(dot); if (gen !== generation) return; box.appendChild(svg); panZoom(box); }
-    catch (e) { viz = new Viz(); box.classList.add('small'); box.replaceChildren(msg('error', 'Chart failed: ' + e.message)); console.error(e, dot); }
+    catch (e) { viz = new Viz(); console.error(e, dot); if (gen !== generation) return; box.classList.add('small'); box.replaceChildren(msg('error', 'Chart failed: ' + e.message)); }
   }
   function panZoom(box) {
     const svg = box.querySelector('svg'); if (!svg) return;
@@ -242,7 +242,7 @@
     for (const a of nav.querySelectorAll('a')) a.classList.toggle('current', a.getAttribute('href') === '#' + name);
     let md;
     try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); if (gen !== generation) return; }
-    catch (e) { content.replaceChildren(msg('error', `Could not load ${name}: ${e.message}`)); return; }
+    catch (e) { if (gen === generation) content.replaceChildren(msg('error', `Could not load ${name}: ${e.message}`)); return; }
     // Issue titles and milestone descriptions are anyone's text. The generator escapes them, and
     // the sink is sanitised regardless, so neither side has to trust the other to have done it.
     content.innerHTML = DOMPurify.sanitize(marked.parse(md));

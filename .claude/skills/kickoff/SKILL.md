@@ -54,7 +54,9 @@ Then from `docs/roadmap/graph.json` (`ready`, and each issue's `milestone`,
    unblocks nothing versus a P1 that unblocks nine) rather than silently
    picking one.
 3. **What is close to ready** — open issues whose only open blocker is on the
-   ready list, so the user can see what a pick unlocks next.
+   ready list, so the user can see what a pick unlocks next. An issue with a
+   non-empty `foreignBlockers` (a blocker in another repository) is never
+   close: its blocker cannot be read, so it is treated as open.
 4. **Warnings** from the graph, verbatim, if any: a cycle or a missing
    milestone is a decision waiting to be made.
 
