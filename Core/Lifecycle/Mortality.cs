@@ -103,6 +103,13 @@ namespace KingdomWatch.Core.Lifecycle
         /// </summary>
         public int YearlyChancePerMille(PersonHandle person)
         {
+            // Certain, and not merely frail: the check kills at zero without
+            // rolling, so that is what the year ahead holds.
+            if (_people.GetHealth(person) <= 0)
+            {
+                return PerMille;
+            }
+
             var now = _clock.Now;
             long chance = _settings.BaseMortalityPerMille(_people.GetAgeYears(person, now));
 

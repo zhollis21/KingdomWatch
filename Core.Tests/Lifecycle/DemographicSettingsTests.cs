@@ -31,6 +31,11 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Refused(new DemographicSettings { BirthCheckTicks = 0L });
                 Refused(new DemographicSettings { GestationTicks = -1L });
                 Refused(new DemographicSettings { PostpartumTicks = -1L });
+                Refused(new DemographicSettings { NewbornHealth = 0 });
+                Refused(new DemographicSettings { NewbornHealth = -1 });
+                Refused(new DemographicSettings { HealthFloor = 0 });
+                Refused(new DemographicSettings { HealthFloor = -1 });
+                Assert.That(() => new DemographicSettings { NewbornHealth = 1, HealthFloor = 1 }.Validate(), Throws.Nothing, "alive, and no frailty gate");
                 Assert.That(() => new DemographicSettings { PostpartumTicks = 0L }.Validate(), Throws.Nothing, "no recovery at all is a valid table");
                 Refused(new DemographicSettings { FrailtyMultiplier = 0 });
                 Refused(new DemographicSettings { HungerMultiplier = 0 });

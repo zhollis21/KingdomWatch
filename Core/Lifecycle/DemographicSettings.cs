@@ -86,13 +86,20 @@ namespace KingdomWatch.Core.Lifecycle
         /// </summary>
         public long PostpartumTicks { get; init; } = SimulationTime.TicksPerYear;
 
-        /// <summary>Health a child is born with.</summary>
+        /// <summary>
+        /// Health a child is born with. Positive: health at or below zero is
+        /// certain death at the next wake-up, and a child born there would
+        /// be a child born dead.
+        /// </summary>
         public short NewbornHealth { get; init; } = 100;
 
         /// <summary>
         /// Health below which a person is frail: they do not conceive, and
         /// their yearly death chance is multiplied by
-        /// <see cref="FrailtyMultiplier"/>.
+        /// <see cref="FrailtyMultiplier"/>. At least one, so that "at or
+        /// above the floor" always means alive: health at or below zero is
+        /// certain death, and no floor may admit it. One is the table with
+        /// no frailty gate.
         /// </summary>
         public short HealthFloor { get; init; } = 50;
 
@@ -160,6 +167,8 @@ namespace KingdomWatch.Core.Lifecycle
             RequirePositive(BirthCheckTicks, nameof(BirthCheckTicks));
             RequirePositive(GestationTicks, nameof(GestationTicks));
             RequireNonNegative(PostpartumTicks, nameof(PostpartumTicks));
+            RequirePositive(NewbornHealth, nameof(NewbornHealth));
+            RequirePositive(HealthFloor, nameof(HealthFloor));
             RequireMultiplier(FrailtyMultiplier, nameof(FrailtyMultiplier));
             RequireMultiplier(HungerMultiplier, nameof(HungerMultiplier));
 

@@ -188,9 +188,11 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             var hungry = w.NewPerson(30L, Sex.Male);
             var both = w.NewPerson(30L, Sex.Male);
             var atFloor = w.NewPerson(30L, Sex.Male);
+            var gone = w.NewPerson(30L, Sex.Male);
             w.People.SetHealth(frail, 49);
             w.People.SetHealth(both, 0);
             w.People.SetHealth(atFloor, 50);
+            w.People.SetHealth(gone, 0);
 
             // Past the grace period for those who have not eaten since tick
             // zero; the others are fed now.
@@ -198,6 +200,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             w.People.SetLastFedAt(well, w.Clock.Now);
             w.People.SetLastFedAt(frail, w.Clock.Now);
             w.People.SetLastFedAt(atFloor, w.Clock.Now);
+            w.People.SetLastFedAt(gone, w.Clock.Now);
 
             Assert.Multiple(() =>
             {
@@ -206,6 +209,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(w.Mortality.YearlyChancePerMille(frail), Is.EqualTo(300));
                 Assert.That(w.Mortality.YearlyChancePerMille(hungry), Is.EqualTo(400));
                 Assert.That(w.Mortality.YearlyChancePerMille(both), Is.EqualTo(1000), "1200 capped");
+                Assert.That(w.Mortality.YearlyChancePerMille(gone), Is.EqualTo(1000), "zero health is certain, not merely frail");
             });
         }
 
