@@ -320,7 +320,7 @@ function Write-IssueTable([int[]]$Numbers) {
     $out.Add('|---|---|---|---|---|---|')
     foreach ($n in ($Numbers | Sort-Object { Get-PriorityRank $issues[$_].priority }, { $_ })) {
         $i = $issues[$n]
-        $status = if ($i.state -eq 'closed') { '✓ done' } elseif ($i.ready) { '**ready**' } else { 'blocked' }
+        $status = if ($i.state -eq 'closed') { '✓ Done' } elseif ($i.ready) { '**Ready**' } else { 'Blocked' }
         $out.Add("| $(Format-IssueLink $n) | $(Format-Title $i) | $($i.priority ?? '—') | $status | $(Format-Refs $i.blockedBy) | $(Format-Refs $i.blocking) |")
     }
     return $out

@@ -54,13 +54,14 @@
   .legend .line { width: 34px; height: 0; border-radius: 0; border: 0; border-top: 2px solid #57606a; }
   .hint { color: var(--muted); font-size: .85em; margin: -12px 0 16px; }
   .error { color: #d1242f; }
+  .empty { color: var(--muted); font-style: italic; }
 </style>
 </head>
 <body>
 <nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b>
   <span class="filters" title="What the charts show">
-    <label><input type="checkbox" id="f-done" checked> show done issues</label>
-    <label><input type="checkbox" id="f-stubs" checked> chart blockers from other milestones</label>
+    <label><input type="checkbox" id="f-done"> Show done issues</label>
+    <label><input type="checkbox" id="f-stubs" checked> Chart blockers from other milestones</label>
   </span>
 </nav>
 <main id="content"><p><em>Loading…</em></p></main>
@@ -141,6 +142,7 @@
     }
     for (const s of stubs) d.push('  ' + nodeDot(byNumber.get(s), { stub: true }));
     d.push(...edges, '}');
+    if (k === 0) return null;   // nothing to draw: every issue in scope is hidden
     return d.join('\n');
   }
   function overviewDot() {
@@ -158,13 +160,13 @@
   function legendHtml() {
     const chip = (s, extra = '') => `<i style="background:${P[s][0]};border-color:${P[s][1]};${extra}"></i>`;
     return `<div class="legend">
-    <span>${chip('done')} done</span>
-    <span>${chip('ready')} ready to pick up</span>
-    <span>${chip('blocked')} blocked</span>
-    <span>${chip('blocked', `border-style:dashed;border-width:2px;border-color:${P.stub}`)} blocker in another milestone</span>
-    <span><i class="line" style="border-top-color:${P.edge}"></i> blocked by</span>
-    <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — priority is the label prefix and the border weight</span>
-    <span>tap a node to open the issue</span></div>`;
+    <span>${chip('done')} Done</span>
+    <span>${chip('ready')} Ready to pick up</span>
+    <span>${chip('blocked')} Blocked</span>
+    <span>${chip('blocked', `border-style:dashed;border-width:2px;border-color:${P.stub}`)} Blocker in another milestone</span>
+    <span><i class="line" style="border-top-color:${P.edge}"></i> Blocked by</span>
+    <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — Priority is the label prefix and the border weight</span>
+    <span>Tap a node to open the issue</span></div>`;
   }
 
   // Which charts a page's mermaid fences stand for, in order.
@@ -187,6 +189,10 @@
     if (spec.kind === 'legend') { box.className = 'legend-box'; box.innerHTML = legendHtml(); return; }
     const o = { done: filters.done.checked, stubs: filters.stubs.checked, concentrate: !!spec.concentrate };
     const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
+    if (dot === null) {
+      const all = spec.groups.flatMap(g => g.issues), done = all.filter(n => byNumber.get(n)?.state === 'closed').length;
+      box.classList.add('small'); box.innerHTML = `<p class="empty">${done === all.length && all.length ? `All ${all.length} issues here are done` : 'Nothing to show'} — tick <b>Show done issues</b> to see them.</p>`; return;
+    }
     try { const svg = await viz.renderSVGElement(dot); box.appendChild(svg); panZoom(box); }
     catch (e) { viz = new Viz(); box.classList.add('small'); box.innerHTML = `<p class="error">Chart failed: ${e.message}</p>`; console.error(e, dot); }
   }
@@ -213,7 +219,7 @@
     box.addEventListener('touchend', () => pinch = null);
     const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     const tools = document.createElement('div'); tools.className = 'tools';
-    for (const [label, fn] of [['−', () => { scale = Math.max(0.1, scale / 1.25); apply(); }], ['+', () => { scale = Math.min(4, scale * 1.25); apply(); }], ['fit', fit], ['1:1', () => { scale = 1; x = 8; y = 8; apply(); }]]) {
+    for (const [label, fn] of [['−', () => { scale = Math.max(0.1, scale / 1.25); apply(); }], ['+', () => { scale = Math.min(4, scale * 1.25); apply(); }], ['Fit', fit], ['1:1', () => { scale = 1; x = 8; y = 8; apply(); }]]) {
       const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', fn); b.addEventListener('pointerdown', e => e.stopPropagation()); tools.appendChild(b);
     }
     box.appendChild(tools); fit();
@@ -232,6 +238,9 @@
     if (!filters.done.checked) for (const tr of content.querySelectorAll('tbody tr')) {
       const m = /\/issues\/(\d+)$/.exec(tr.querySelector('td a')?.getAttribute('href') || ''); const i = m && byNumber.get(+m[1]);
       if (i && i.state === 'closed') tr.hidden = true;
+    }
+    for (const tb of content.querySelectorAll('tbody')) {
+      const rows = [...tb.rows]; if (rows.length && rows.every(r => r.hidden)) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = 99; td.className = 'empty'; td.textContent = `All ${rows.length} issues here are done — tick "Show done issues" to see them.`; }
     }
     for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
     const fences = [...content.querySelectorAll('pre > code.language-mermaid')], specs = chartsFor(name);
