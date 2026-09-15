@@ -11,9 +11,10 @@ name: Roadmap
 # generator, the viewer or this file landing on main. Run it by hand with
 # `gh workflow run roadmap.yml`.
 #
-# A pull request that touches the tooling runs the generator as a check:
-# no label writes, no deploy, and the generated pages land in the job
-# summary (which renders mermaid) plus a downloadable artifact.
+# A pull request that touches the tooling runs the generator as a check in
+# its own read-only job: no write token reaches PR-controlled code, no label
+# writes, no deploy, and the generated pages land in the job summary (which
+# renders mermaid) plus a downloadable artifact.
 #
 # Pages must be enabled once in Settings > Pages with Source set to
 # "GitHub Actions"; until then the deploy job fails and nothing else does.
@@ -39,11 +40,8 @@ on:
     - cron: '17 4 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
-  pages: write
-  id-token: write
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
 
 # One publish at a time, and never cancel one that is mid-deploy. PR checks
 # get their own group so they neither queue behind nor delay a publish.
@@ -52,9 +50,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Generate roadmap
+  check:
+    name: Generate roadmap (check)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -62,30 +63,41 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A check run must not write to issues; only a publish syncs labels.
-          SYNC: ${{ github.event_name != 'pull_request' }}
-        run: |
-          if ($env:SYNC -eq 'true') { ./tools/Build-Roadmap.ps1 -SyncLabels -OutDir site }
-          else { ./tools/Build-Roadmap.ps1 -OutDir site }
+        run: ./tools/Build-Roadmap.ps1 -OutDir site
 
       - name: Show the result in the job summary
-        if: github.event_name == 'pull_request'
         shell: pwsh
-        run: |
-          Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
+        run: Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roadmap
+          path: site
+
+  publish:
+    name: Generate and publish roadmap
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build roadmap and sync the blocked label
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/Build-Roadmap.ps1 -SyncLabels -OutDir site
 
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
-  deploy:
-    name: Publish to Pages
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - id: deployment
         uses: actions/deploy-pages@v4

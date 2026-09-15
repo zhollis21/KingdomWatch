@@ -139,7 +139,8 @@ $issues = [System.Collections.Generic.Dictionary[int, object]]::new()
 foreach ($n in $issueNodes) {
     $labels = @($n.labels.nodes.name)
     $number = [int]$n.number
-    $priority = @($labels | Where-Object { $PRIORITIES -contains $_ })[0]
+    # Highest priority wins if several labels are set; the warning below asks for one.
+    $priority = @($PRIORITIES | Where-Object { $labels -contains $_ })[0]
     $issues[$number] = [ordered]@{
         number = $number
         title = $n.title
@@ -151,6 +152,7 @@ foreach ($n in $issueNodes) {
         blockedBy = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -eq "$OWNER/$REPO_NAME" } | ForEach-Object { [int]$_.number } | Sort-Object)
         foreignBlockers = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -ne "$OWNER/$REPO_NAME" } | ForEach-Object { "$($_.repository.nameWithOwner)#$($_.number)" })
         blocking = [System.Collections.Generic.List[int]]::new()
+        openBlocking = @()
         openBlockers = @()
         ready = $false
         blocked = $false
@@ -170,14 +172,19 @@ foreach ($i in $issues.Values) {
     foreach ($x in $i.foreignBlockers) { $warnings.Add("#$($i.number) is blocked by $x in another repository; the roadmap ignores it.") }
     if (-not $i.milestone) { $warnings.Add("#$($i.number) has no milestone.") }
     if ($i.state -eq 'open' -and -not $i.priority) { $warnings.Add("#$($i.number) has no priority label.") }
+    $prioLabels = @($i.labels | Where-Object { $PRIORITIES -contains $_ })
+    if ($prioLabels.Count -gt 1) { $warnings.Add("#$($i.number) has $($prioLabels.Count) priority labels ($($prioLabels -join ', ')); using $($i.priority).") }
 }
 
 foreach ($i in $issues.Values) {
     # A blocker that was not fetched counts as open: better a false "blocked" than a false "ready".
     $i.openBlockers = @($i.blockedBy | Where-Object { -not $issues.ContainsKey($_) -or $issues[$_].state -eq 'open' })
-    $i.blocked = ($i.state -eq 'open') -and ($i.openBlockers.Count -gt 0)
-    $i.ready = ($i.state -eq 'open') -and ($i.openBlockers.Count -eq 0)
+    # A blocker in another repository cannot be looked up either, so it counts as open too.
+    $hasOpenBlocker = ($i.openBlockers.Count -gt 0) -or ($i.foreignBlockers.Count -gt 0)
+    $i.blocked = ($i.state -eq 'open') -and $hasOpenBlocker
+    $i.ready = ($i.state -eq 'open') -and -not $hasOpenBlocker
     $i.blocking = @($i.blocking | Sort-Object)
+    $i.openBlocking = @($i.blocking | Where-Object { $issues[$_].state -eq 'open' })
 }
 
 # Cycle detection over blocked-by. A cycle makes readiness meaningless for
@@ -307,7 +314,11 @@ function Write-Chart {
 
 
 function Format-IssueLink($n) { if ($issues.ContainsKey($n)) { "[#$n]($($issues[$n].url))" } else { "#$n" } }
-function Format-Title($i) { $i.title -replace '\|', '\|' }   # a pipe in a title would split the table cell
+# Titles and descriptions are untrusted text — anyone can open an issue — so HTML in them
+# is escaped before it reaches the site, and a fence in a description is neutralised because
+# the viewer pairs fences with charts by position.
+function Format-Prose([string]$s) { ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;') -replace '```', "'''" }
+function Format-Title($i) { (Format-Prose $i.title) -replace '\|', '\|' }   # a pipe would split the table cell
 function Format-Refs($list) {
     # Closed issues get a tick so a "blocked by" cell shows which blockers still matter.
     if (-not $list.Count) { return "—" }
@@ -377,9 +388,10 @@ if ($ready.Count) {
     $md.Add('|---|---|---|---|---|')
     foreach ($i in $ready) {
         $ms = if ($i.milestone) { $milestoneByNumber[$i.milestone].title } else { '—' }
-        $md.Add("| $(Format-IssueLink $i.number) | $(Format-Title $i) | $ms | $($i.priority ?? '—') | $(Format-Refs $i.blocking) |")
+        $md.Add("| $(Format-IssueLink $i.number) | $(Format-Title $i) | $ms | $($i.priority ?? '—') | $(Format-Refs $i.openBlocking) |")
     }
-} else { $md.Add('Nothing is ready: every open issue is blocked. Check the warnings below for a cycle.') }
+} elseif (@($issues.Values | Where-Object { $_.state -eq 'open' }).Count -eq 0) { $md.Add('Nothing is open. Everything is done.') }
+else { $md.Add('Nothing is ready: every open issue is blocked. Check the warnings below for a cycle.') }
 $md.Add('')
 $md.Add('## Milestones')
 $md.Add('')
@@ -428,7 +440,7 @@ if ($warnings.Count) {
 }
 Save 'README.md' $md
 
-# The static viewer: fetches the markdown above and renders it with mermaid.
+# The static viewer: fetches the markdown above, renders it with marked, and draws the charts with Graphviz from graph.json.
 Copy-Item (Join-Path $PSScriptRoot 'roadmap-index.html') (Join-Path $OutDir 'index.html') -Force
 
 # next.md — current + next milestone
@@ -476,7 +488,7 @@ foreach ($m in $milestones) {
     $md.Add('')
     $md.Add($stamp)
     $md.Add('')
-    if ($m.description) { $md.Add($m.description); $md.Add('') }
+    if ($m.description) { $md.Add((Format-Prose $m.description)); $md.Add('') }
     $md.Add("[Milestone on GitHub]($REPO_URL/milestone/$($m.number)) · [Roadmap](README.md)")
     $md.Add('')
     if ($m.issues.Count) {

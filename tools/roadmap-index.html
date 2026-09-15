@@ -15,6 +15,7 @@
   what goes into the graph. No build step, no framework.
 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.15/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js"></script>
 <style>
@@ -71,6 +72,8 @@
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
   const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
+  // Messages that carry anything from a URL or an error go through textContent, never innerHTML.
+  const msg = (cls, text) => { const p = document.createElement('p'); p.className = cls; p.textContent = text; return p; };
   const filters = { done: document.getElementById('f-done'), stubs: document.getElementById('f-stubs') };
   try { const saved = JSON.parse(localStorage.getItem('roadmap-filters') || '{}'); for (const k in filters) if (k in saved) filters[k].checked = saved[k]; } catch (e) { /* no storage: defaults */ }
   for (const k in filters) filters[k].addEventListener('change', () => { try { localStorage.setItem('roadmap-filters', JSON.stringify({ done: filters.done.checked, stubs: filters.stubs.checked })); } catch (e) { } render(); });
@@ -191,10 +194,11 @@
     const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
     if (dot === null) {
       const all = spec.groups.flatMap(g => g.issues), done = all.filter(n => byNumber.get(n)?.state === 'closed').length;
-      box.classList.add('small'); box.innerHTML = `<p class="empty">${done === all.length && all.length ? `All ${all.length} issues here are done` : 'Nothing to show'} — tick <b>Show done issues</b> to see them.</p>`; return;
+      const p = msg('empty', (done === all.length && all.length ? `All ${all.length} issues here are done` : 'Nothing to show') + ' — tick '); const b = document.createElement('b'); b.textContent = 'Show done issues'; p.append(b, ' to see them.');
+      box.classList.add('small'); box.replaceChildren(p); return;
     }
     try { const svg = await viz.renderSVGElement(dot); box.appendChild(svg); panZoom(box); }
-    catch (e) { viz = new Viz(); box.classList.add('small'); box.innerHTML = `<p class="error">Chart failed: ${e.message}</p>`; console.error(e, dot); }
+    catch (e) { viz = new Viz(); box.classList.add('small'); box.replaceChildren(msg('error', 'Chart failed: ' + e.message)); console.error(e, dot); }
   }
   function panZoom(box) {
     const svg = box.querySelector('svg'); if (!svg) return;
@@ -230,8 +234,10 @@
     for (const a of nav.querySelectorAll('a')) a.classList.toggle('current', a.getAttribute('href') === '#' + name);
     let md;
     try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); }
-    catch (e) { content.innerHTML = `<p class="error">Could not load ${name}: ${e.message}</p>`; return; }
-    content.innerHTML = marked.parse(md);
+    catch (e) { content.replaceChildren(msg('error', `Could not load ${name}: ${e.message}`)); return; }
+    // Issue titles and milestone descriptions are anyone's text. The generator escapes them, and
+    // the sink is sanitised regardless, so neither side has to trust the other to have done it.
+    content.innerHTML = DOMPurify.sanitize(marked.parse(md));
     document.title = (content.querySelector('h1')?.textContent || 'Roadmap') + ' · Kingdom Watch';
     for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
     // "show done" means the tables too: a row whose first cell links a closed issue goes with its node.
@@ -248,7 +254,7 @@
     for (let k = 0; k < fences.length; k++) {
       const box = document.createElement('div'); box.className = 'chart'; fences[k].parentElement.replaceWith(box);
       const spec = specs[k];
-      if (!spec) { box.classList.add('small'); box.innerHTML = '<p class="error">No chart definition for this page; graph.json may be missing.</p>'; continue; }
+      if (!spec) { box.classList.add('small'); box.replaceChildren(msg('error', 'No chart definition for this page; graph.json may be missing.')); continue; }
       await drawChart(spec, box);
       if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
     }

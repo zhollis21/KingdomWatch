@@ -43,13 +43,13 @@ pwsh tools/Build-Roadmap.ps1
 ```
 
 Then from `docs/roadmap/graph.json` (`ready`, and each issue's `milestone`,
-`priority`, `blocking`), write the brief — short enough to read on a phone:
+`priority`, `openBlocking`), write the brief — short enough to read on a phone:
 
 1. **The ready list**, grouped by milestone in order, priority first within
    each. One line per issue: number, title, priority, and what closing it
-   unblocks (`blocking`, counted and named if few).
+   unblocks (`openBlocking` — dependents still open; `blocking` includes closed ones and overstates it), counted and named if few.
 2. **A recommendation, with the reason.** Usually the ready issue in the
-   earliest milestone whose `blocking` list is longest — it is the one holding
+   earliest milestone whose `openBlocking` list is longest — it is the one holding
    the most other work back. Say when priority and fan-out disagree (a P0 that
    unblocks nothing versus a P1 that unblocks nine) rather than silently
    picking one.
@@ -160,7 +160,7 @@ What you're looking for is not only exact duplicates but **dependency order**,
 which is easier to miss and more expensive to get wrong. The recorded order is
 in the graph: run `pwsh tools/Build-Roadmap.ps1` (read-only against GitHub,
 writes the git-ignored `docs/roadmap/`) and read `graph.json` — each issue's
-`blockedBy`, `blocking` and `ready`. Read it
+`blockedBy`, `blocking`, `openBlocking` and `ready`. Read it
 before the search, then treat the search as a check on it: an issue the dig
 says this one depends on, or unblocks, that the graph does not list is a
 missing relationship, and fixing it is part of kickoff (see
