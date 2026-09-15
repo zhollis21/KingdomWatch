@@ -121,7 +121,7 @@
     const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
     const width = opts.stub ? 2 : (PRIORITY_WIDTH[i.priority] ?? 1);
     return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)} penwidth=${width}`
-      + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : ''))}];`;
+      + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : '') + (i.foreignBlockers?.length ? ' · blocked by ' + i.foreignBlockers.join(', ') + ' (other repository)' : ''))}];`;
   }
   // groups: [{title, issues:[numbers]}]
   function issuesDot(groups, o) {
