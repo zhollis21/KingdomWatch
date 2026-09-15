@@ -25,6 +25,8 @@
   nav b { margin-right: 8px; }
   nav a { color: var(--accent); text-decoration: none; white-space: nowrap; }
   nav a.current { font-weight: 600; text-decoration: underline; }
+  nav .filters { margin-left: auto; display: flex; gap: 10px; font-size: .9em; color: var(--muted); }
+  nav .filters label { display: flex; gap: 4px; align-items: center; cursor: pointer; white-space: nowrap; }
   main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
   main a { color: var(--accent); }
   h1 { font-size: 1.6em; margin: .6em 0 .3em; } h2 { font-size: 1.25em; margin: 1.4em 0 .4em; border-bottom: 1px solid var(--line); }
@@ -46,7 +48,13 @@
 </style>
 </head>
 <body>
-<nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b></nav>
+<nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b>
+  <span class="filters" title="What the charts show">
+    <label><input type="checkbox" id="f-done" checked> done</label>
+    <label><input type="checkbox" id="f-related" checked> related</label>
+    <label><input type="checkbox" id="f-stubs" checked> other milestones</label>
+  </span>
+</nav>
 <main id="content"><p><em>Loading…</em></p></main>
 <script>
 (async function () {
@@ -55,6 +63,9 @@
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
   const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
+  const filters = { done: document.getElementById('f-done'), related: document.getElementById('f-related'), stubs: document.getElementById('f-stubs') };
+  try { const saved = JSON.parse(localStorage.getItem('roadmap-filters') || '{}'); for (const k in filters) if (k in saved) filters[k].checked = saved[k]; } catch (e) { /* no storage: defaults */ }
+  for (const k in filters) filters[k].addEventListener('change', () => { try { localStorage.setItem('roadmap-filters', JSON.stringify({ done: filters.done.checked, related: filters.related.checked, stubs: filters.stubs.checked })); } catch (e) { } render(); });
 
   // Milestone links come from graph.json so the nav never goes stale.
   try {
@@ -63,6 +74,33 @@
     link('next.md', 'What is next'); link('next-by-priority.md', 'By priority');
     for (const m of graph.milestones) { const n = (m.title.match(/^M(\d+)/) || [])[1]; if (n !== undefined) link(`M${n}.md`, `M${n}`); }
   } catch (e) { /* nav without milestones is still usable */ }
+
+  // Trims a generated chart by the nav toggles. The generator's output is
+  // line-oriented — one node, edge or style per line — so this is a line
+  // filter, not a parser: drop hidden nodes and every line that names them,
+  // drop stubs nothing points at any more, then collapse emptied subgraphs.
+  function filterChart(src, o) {
+    const nodeRe = /^\s*(I\d+)\[.*\]:::(\w+)\s*$/, edgeRe = /^\s*(I\d+)\s*(-->|-\.-)\s*(I\d+)\s*$/, styleRe = /^\s*style (I\d+) (.*)$/;
+    const lines = src.split('\n'), stubs = new Set(), hidden = new Set();
+    for (const l of lines) { let m; if ((m = styleRe.exec(l)) && m[2].includes('stroke-dasharray')) stubs.add(m[1]); }
+    for (const l of lines) { const m = nodeRe.exec(l); if (!m) continue; if (!o.done && m[2] === 'done') hidden.add(m[1]); if (!o.stubs && stubs.has(m[1])) hidden.add(m[1]); }
+    const names = l => { const n = nodeRe.exec(l); if (n) return [n[1]]; const e = edgeRe.exec(l); if (e) return [e[1], e[3]]; const s = styleRe.exec(l); return s ? [s[1]] : []; };
+    let out = lines.filter(l => { const e = edgeRe.exec(l); if (e && !o.related && e[2] === '-.-') return false; return !names(l).some(n => hidden.has(n)); });
+    const referenced = new Set(); for (const l of out) { const e = edgeRe.exec(l); if (e) { referenced.add(e[1]); referenced.add(e[3]); } }
+    out = out.filter(l => !names(l).some(n => stubs.has(n) && !referenced.has(n)) || edgeRe.test(l));
+    for (let changed = true; changed;) {
+      changed = false; const kept = [];
+      for (let i = 0; i < out.length; i++) {
+        if (/^\s*subgraph /.test(out[i])) { let j = i + 1; if (/^\s*direction /.test(out[j] || '')) j++; if (/^\s*end\s*$/.test(out[j] || '')) { i = j; changed = true; continue; } }
+        kept.push(out[i]);
+      }
+      out = kept;
+    }
+    // A style line for something no longer on the chart (an emptied band) is a parse error.
+    const defined = new Set(); for (const l of out) { let m; if ((m = nodeRe.exec(l))) defined.add(m[1]); else if ((m = /^\s*subgraph (\S+?)\[/.exec(l))) defined.add(m[1]); }
+    out = out.filter(l => { const m = /^\s*style (\S+) /.exec(l); return !m || defined.has(m[1]); });
+    return out.join('\n');
+  }
 
   function panZoom(box) {
     const svg = box.querySelector('svg'); if (!svg) return;
@@ -103,7 +141,7 @@
     for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
     for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
     const fences = [...content.querySelectorAll('pre > code.language-mermaid')];
-    for (const c of fences) { const box = document.createElement('div'); box.className = 'chart'; const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = c.textContent; box.appendChild(pre); c.parentElement.replaceWith(box); }
+    for (const c of fences) { const box = document.createElement('div'); box.className = 'chart'; const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = filterChart(c.textContent, { done: filters.done.checked, related: filters.related.checked, stubs: filters.stubs.checked }); box.appendChild(pre); c.parentElement.replaceWith(box); }
     try { await mermaid.run({ nodes: content.querySelectorAll('pre.mermaid') }); } catch (e) { console.error(e); }
     for (const box of content.querySelectorAll('.chart')) panZoom(box);
     if (fences.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: another milestone. Solid arrows: blocked by. Dotted: related.'; content.querySelector('.chart').after(p); }

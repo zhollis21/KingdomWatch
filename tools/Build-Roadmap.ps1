@@ -72,6 +72,14 @@ $CLASSDEFS = @(
 )
 # Stubs for issues outside the chart keep their state fill and go dashed.
 $EXT_STYLE = 'stroke-dasharray:4 4'
+# Priority bands (the by-priority chart) take their outline from the label colours.
+$BAND_STYLES = @{
+    'P0-blocker' = 'fill:none,stroke:#b60205,stroke-width:3px'
+    'P1-high'    = 'fill:none,stroke:#d4532b,stroke-width:3px'
+    'P2-normal'  = 'fill:none,stroke:#b08800,stroke-width:3px'
+    'P3-someday' = 'fill:none,stroke:#8c959f,stroke-width:3px'
+    'none'       = 'fill:none,stroke:#8c959f,stroke-width:3px,stroke-dasharray:6 3'
+}
 
 # ---------------------------------------------------------------------------
 # Fetch
@@ -283,6 +291,7 @@ function Write-Chart {
     $out.Add('```mermaid')
     $out.Add("flowchart $Direction")
     $inScope = [System.Collections.Generic.HashSet[int]]::new()
+    $bandStyles = [System.Collections.Generic.List[string]]::new()
     foreach ($g in $Groups.Values) { foreach ($n in $g) { [void]$inScope.Add([int]$n) } }
 
     foreach ($title in $Groups.Keys) {
@@ -296,7 +305,9 @@ function Write-Chart {
                 $band = @($members | Where-Object { $issues[$_].priority -eq $p })
                 if (-not $band.Count) { continue }
                 $label = if ($p) { $p } else { 'no priority' }
-                $out.Add("    subgraph ${id}_$($label -replace '[^A-Za-z0-9]', '')[`"$label`"]")
+                $bandId = "${id}_$($label -replace '[^A-Za-z0-9]', '')"
+                $out.Add("    subgraph $bandId[`"$label`"]")
+                $bandStyles.Add("  style $bandId $($BAND_STYLES[$(if ($p) { $p } else { 'none' })])")
                 $out.Add("      direction $Direction")
                 foreach ($n in $band) { $out.Add("      I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
                 $out.Add('    end')
@@ -333,6 +344,7 @@ function Write-Chart {
     foreach ($e in $edges) { $out.Add($e) }
     foreach ($c in $CLASSDEFS) { $out.Add("  $c") }
     foreach ($s in ($stubs | Sort-Object)) { $out.Add("  style I$s $EXT_STYLE") }
+    foreach ($b in $bandStyles) { $out.Add($b) }
     $out.Add('```')
     return $out
 }
