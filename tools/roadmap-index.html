@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kingdom Watch roadmap</title>
+<!--
+  Static shell for the generated roadmap. tools/Build-Roadmap.ps1 copies this
+  file next to the markdown and graph.json it writes. The page fetches the
+  markdown for the hash (#next.md) and renders it with marked; the mermaid
+  fences in it exist for GitHub's own renderer (the PR job summary) and are
+  replaced here by charts laid out with Graphviz (viz.js) from graph.json —
+  dot handles layered dependency graphs with clusters far better than
+  mermaid's dagre, and drawing from the data means the toggles simply change
+  what goes into the graph. No build step, no framework.
+-->
+<!-- Pinned with SRI: these run before any sanitiser exists, so a tampered CDN response must fail to load. Hashes from api.cdnjs.com/libraries/<lib>/<ver>?fields=sri -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js" integrity="sha512-kHavuYjOa82OKvUxD8j04s+kMIH84FmETnuIgj0yFyY9LWU10sXNwU54Iozpewat8VxAzH4aXiwTEZMRrpwfBw==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.15/purify.min.js" integrity="sha512-jeyPlk6E7VcWU2QTRw5UAe4iKLrWOJkyLc4GkOAOey1tOeTyxfTzrCY7p84VSer8/lRON5p236RGVeTErze9fA==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js" integrity="sha512-vnRdmX8ZxbU+IhA2gLhZqXkX1neJISG10xy0iP0WauuClu3AIMknxyDjYHEpEhi8fTZPyOCWgqUCnEafDB/jVQ==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js" integrity="sha512-1zKK2bG3QY2JaUPpfHZDUMe3dwBwFdCDwXQ01GrKSd+/l0hqPbF+aak66zYPUZtn+o2JYi1mjXAqy5mW04v3iA==" crossorigin="anonymous"></script>
+<style>
+  :root { color-scheme: light dark;
+    --bg: #fff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0969da; --chart-bg: #f6f8fa; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --line: #30363d; --accent: #58a6ff; --chart-bg: #161b22; } }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  nav { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
+    padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  nav b { margin-right: 8px; }
+  nav a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+  nav a.current { font-weight: 600; text-decoration: underline; }
+  nav .filters { margin-left: auto; display: flex; gap: 10px; font-size: .9em; color: var(--muted); }
+  nav .filters label { display: flex; gap: 4px; align-items: center; cursor: pointer; white-space: nowrap; }
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
+  main a { color: var(--accent); }
+  h1 { font-size: 1.6em; margin: .6em 0 .3em; } h2 { font-size: 1.25em; margin: 1.4em 0 .4em; border-bottom: 1px solid var(--line); }
+  em { color: var(--muted); }
+  code { background: var(--chart-bg); padding: 1px 4px; border-radius: 4px; font-size: .9em; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; margin: 8px 0; min-width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--chart-bg); }
+  .chart { position: relative; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--chart-bg);
+    height: min(75vh, 720px); overflow: hidden; touch-action: none; cursor: grab; }
+  .chart.small { height: auto; overflow: auto; cursor: default; padding: 8px; }
+  .chart svg { max-width: none !important; transform-origin: 0 0; user-select: none; }
+  .chart svg a { cursor: pointer; }
+  .chart .tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
+  .chart button { font: inherit; font-size: .85em; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--bg); color: var(--fg); cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 16px; font-size: .9em; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; height: 16px; border-radius: 4px; border: 1.5px solid #8c959f; }
+  .legend .line { width: 34px; height: 0; border-radius: 0; border: 0; border-top: 2px solid #57606a; }
+  .hint { color: var(--muted); font-size: .85em; margin: -12px 0 16px; }
+  .error { color: #d1242f; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b>
+  <span class="filters" title="What the charts show">
+    <label><input type="checkbox" id="f-done"> Show done issues</label>
+    <label><input type="checkbox" id="f-stubs" checked> Chart blockers from other milestones</label>
+  </span>
+</nav>
+<main id="content"><p><em>Loading…</em></p></main>
+<script>
+(async function () {
+  const scheme = matchMedia('(prefers-color-scheme: dark)'); let dark = scheme.matches;
+  // GFM would turn a bare URL in an issue title into a live link. Untrusted text renders as written,
+  // so autolinked tokens (raw === text) go back to text; the generator's own [#N](url) links keep their label.
+  marked.use({ walkTokens(t) { if (t.type === 'link' && t.raw === t.text) { t.type = 'text'; t.text = t.raw; t.tokens = undefined; } } });
+  const content = document.getElementById('content');
+  const nav = document.getElementById('nav');
+  const page = () => { try { return decodeURIComponent(location.hash.slice(1)) || 'README.md'; } catch (e) { return 'README.md'; } };   // a malformed %-escape must not strand the page on "Loading"
+  // Messages that carry anything from a URL or an error go through textContent, never innerHTML.
+  const msg = (cls, text) => { const p = document.createElement('p'); p.className = cls; p.textContent = text; return p; };
+  const filters = { done: document.getElementById('f-done'), stubs: document.getElementById('f-stubs') };
+  try { const saved = JSON.parse(localStorage.getItem('roadmap-filters') || '{}'); for (const k in filters) if (k in saved) filters[k].checked = saved[k]; } catch (e) { /* no storage: defaults */ }
+  for (const k in filters) filters[k].addEventListener('change', () => { try { localStorage.setItem('roadmap-filters', JSON.stringify({ done: filters.done.checked, stubs: filters.stubs.checked })); } catch (e) { } render(); });
+
+  let graph = null, byNumber = new Map();
+  try {
+    graph = await fetch('graph.json', { cache: 'no-cache' }).then(r => r.json());
+    for (const i of graph.issues) byNumber.set(i.number, i);
+    const link = (href, text) => { const a = document.createElement('a'); a.href = '#' + href; a.textContent = text; nav.appendChild(a); };
+    link('next.md', 'What is next');
+    for (const m of graph.milestones) { const n = msNum(m); if (n !== null) link(`M${n}.md`, `M${n}`); }
+    link('all.md', 'Everything');
+  } catch (e) { console.error('graph.json', e); }
+  function msNum(m) { const x = /^M(\d+)/.exec(m.title); return x ? +x[1] : null; }
+
+  // ---- DOT ----------------------------------------------------------------
+  // Fill is state; the priority label rides on the node text and its border
+  // weight. Two palettes, because a fill that reads on white vanishes on
+  // #161b22 and vice versa; every fill/text pair is at least 4.5:1.
+  const PALETTES = {
+    light: { done: ['#1a7f37', '#116329', '#ffffff'], ready: ['#0969da', '#0550ae', '#ffffff'], blocked: ['#d0d7de', '#6e7781', '#1f2328'],
+             cluster: '#57606a', clusterText: '#1f2328', edge: '#57606a', stub: '#1f2328', plain: ['#ffffff', '#8c959f', '#1f2328'] },
+    dark:  { done: ['#238636', '#3fb950', '#ffffff'], ready: ['#1f6feb', '#58a6ff', '#ffffff'], blocked: ['#30363d', '#8b949e', '#e6edf3'],
+             cluster: '#8b949e', clusterText: '#e6edf3', edge: '#8b949e', stub: '#e6edf3', plain: ['#0d1117', '#8b949e', '#e6edf3'] },
+  };
+  const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
+  const PRIORITY_WIDTH = { 'P0-blocker': 3.5, 'P1-high': 2.2, 'P2-normal': 1.2, 'P3-someday': 0.6 };
+  let P = PALETTES[dark ? 'dark' : 'light'];
+  const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const stateOf = i => i.state === 'closed' ? 'done' : (i.ready ? 'ready' : 'blocked');
+  const prioShort = i => i.priority ? i.priority.split('-')[0] : null;
+  function wrap(text, width) {
+    const out = [], words = text.split(/\s+/); let line = '';
+    for (const w of words) { if (line && line.length + 1 + w.length > width) { out.push(line); line = w; } else line = line ? line + ' ' + w : w; }
+    if (line) out.push(line); return out;
+  }
+  function nodeDot(i, opts) {
+    const [fill, stateBorder, text] = P[stateOf(i)];
+    // A stub's border says "elsewhere", not priority: fixed weight, dashed, in the text colour so it cannot vanish into the fill.
+    const border = opts.stub ? P.stub : stateBorder;
+    const prefix = (prioShort(i) ? prioShort(i) + ' · ' : '') + (i.state === 'closed' ? '✓ ' : '');
+    const lines = wrap(prefix + '#' + i.number + ' ' + i.title, 30);
+    if (opts.stub) lines.push('from ' + (i.milestone ? graph.milestones.find(m => m.number === i.milestone).title : 'no milestone'));
+    const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
+    const width = opts.stub ? 2 : (PRIORITY_WIDTH[i.priority] ?? 1);
+    return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)} penwidth=${width}`
+      + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : '') + (i.foreignBlockers?.length ? ' · blocked by ' + i.foreignBlockers.join(', ') + ' (other repository)' : ''))}];`;
+  }
+  // groups: [{title, issues:[numbers]}]
+  function issuesDot(groups, o) {
+    const inScope = new Set(); for (const g of groups) for (const n of g.issues) inScope.add(n);
+    const shown = n => { const i = byNumber.get(n); return i && (o.done || i.state !== 'closed'); };
+    const d = [];
+    d.push('digraph {', `  rankdir=TB; newrank=true; compound=true; splines=true; nodesep=0.25; ranksep=0.45; bgcolor="transparent"; pad=0.2;${o.concentrate ? ' concentrate=true;' : ''}`,
+      `  graph [fontname="Helvetica" fontsize=13 fontcolor=${q(P.clusterText)} color=${q(P.cluster)} penwidth=1.2 labeljust="l"];`,
+      `  node [shape=box fontname="Helvetica" fontsize=11 margin="0.12,0.06"];`,
+      `  edge [color=${q(P.edge)} arrowsize=0.7 penwidth=1.1];`);
+    let k = 0;
+    for (const g of groups) {
+      const members = g.issues.filter(shown); if (!members.length) continue;
+      d.push(`  subgraph cluster_${k++} { label=${q(g.title)}; style="rounded"; margin=14;`);
+      for (const n of members) d.push('    ' + nodeDot(byNumber.get(n), {}));
+      d.push('  }');
+    }
+    const stubs = new Set(), edges = [];
+    for (const n of inScope) {
+      const i = byNumber.get(n); if (!shown(n)) continue;
+      for (const b of i.blockedBy) { if (!shown(b)) continue; if (!inScope.has(b)) { if (!o.stubs) continue; stubs.add(b); } edges.push(`  I${b} -> I${n};`); }
+    }
+    for (const s of stubs) d.push('  ' + nodeDot(byNumber.get(s), { stub: true }));
+    d.push(...edges, '}');
+    if (k === 0) return null;   // nothing to draw: every issue in scope is hidden
+    return d.join('\n');
+  }
+  function overviewDot() {
+    const d = ['digraph {', `  rankdir=LR; bgcolor="transparent"; pad=0.2; node [shape=box style="filled,rounded" fontname="Helvetica" fontsize=11]; edge [color=${q(P.edge)} arrowsize=0.7];`];
+    let prev = null;
+    for (const m of graph.milestones) {
+      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : 'plain');
+      const [fill, border, text] = P[s];
+      const id = 'M' + m.number, n = msNum(m);
+      d.push(`  ${id} [label=${q(m.title + '\n' + m.closed + ' done · ' + m.open + ' open')} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} penwidth=${s === 'ready' ? 2 : 1}` + (n === null ? '' : ` URL=${q('#M' + n + '.md')}`) + '];');
+      if (prev) d.push(`  ${prev} -> ${id};`); prev = id;
+    }
+    d.push('}'); return d.join('\n');
+  }
+  function legendHtml() {
+    const chip = (s, extra = '') => `<i style="background:${P[s][0]};border-color:${P[s][1]};${extra}"></i>`;
+    return `<div class="legend">
+    <span>${chip('done')} Done</span>
+    <span>${chip('ready')} Ready to pick up</span>
+    <span>${chip('blocked')} Blocked</span>
+    <span>${chip('blocked', `border-style:dashed;border-width:2px;border-color:${P.stub}`)} Blocker in another milestone</span>
+    <span><i class="line" style="border-top-color:${P.edge}"></i> Blocked by</span>
+    <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — Priority is the label prefix and the border weight</span>
+    <span>Tap a node to open the issue</span></div>`;
+  }
+
+  // Which charts a page's mermaid fences stand for, in order.
+  function chartsFor(name) {
+    if (!graph) return [];
+    const ms = n => graph.milestones.find(m => msNum(m) === n);
+    const cur = graph.milestones.find(m => m.number === graph.currentMilestone);
+    const nxt = cur ? graph.milestones[graph.milestones.indexOf(cur) + 1] : null;
+    const twoGroups = [cur, nxt].filter(Boolean).map(m => ({ title: m.title, issues: m.issues }));
+    if (name === 'README.md') return [{ kind: 'overview' }, { kind: 'legend' }];
+    if (name === 'next.md') return [{ kind: 'issues', groups: twoGroups }];
+    if (name === 'all.md') {
+      const groups = graph.milestones.filter(m => m.issues.length).map(m => ({ title: m.title, issues: m.issues }));
+      const unscheduled = graph.issues.filter(i => i.milestone === null).map(i => i.number);
+      if (unscheduled.length) groups.push({ title: 'No milestone', issues: unscheduled });
+      return [{ kind: 'issues', concentrate: true, groups }];
+    }
+    const mm = /^M(\d+)\.md$/.exec(name); if (mm && ms(+mm[1])) { const m = ms(+mm[1]); return [{ kind: 'issues', groups: [{ title: m.title, issues: m.issues }] }]; }
+    return [];
+  }
+
+  // ---- render -------------------------------------------------------------
+  let viz = new Viz();
+  // Renders overlap: a slow Graphviz pass for an old page or toggle must not land on a newer one.
+  let generation = 0;
+  async function drawChart(spec, box, gen) {
+    if (spec.kind === 'legend') { box.className = 'legend-box'; box.innerHTML = legendHtml(); return; }
+    const o = { done: filters.done.checked, stubs: filters.stubs.checked, concentrate: !!spec.concentrate };
+    const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
+    if (dot === null) {
+      const all = spec.groups.flatMap(g => g.issues), done = all.filter(n => byNumber.get(n)?.state === 'closed').length;
+      const p = msg('empty', (done === all.length && all.length ? `All ${all.length} issues here are done` : 'Nothing to show') + ' — tick '); const b = document.createElement('b'); b.textContent = 'Show done issues'; p.append(b, ' to see them.');
+      box.classList.add('small'); box.replaceChildren(p); return;
+    }
+    try { const svg = await viz.renderSVGElement(dot); if (gen !== generation) return; box.appendChild(svg); panZoom(box); }
+    catch (e) { viz = new Viz(); console.error(e, dot); if (gen !== generation) return; box.classList.add('small'); box.replaceChildren(msg('error', 'Chart failed: ' + e.message)); }
+  }
+  function panZoom(box) {
+    const svg = box.querySelector('svg'); if (!svg) return;
+    const w = parseFloat(svg.getAttribute('width')) || svg.viewBox.baseVal.width, h = parseFloat(svg.getAttribute('height')) || svg.viewBox.baseVal.height;
+    svg.setAttribute('width', w); svg.setAttribute('height', h);
+    if (h < 320 && w < box.clientWidth) { box.classList.add('small'); return; }   // the overview: just show it
+    let scale = Math.min(1, (box.clientWidth - 16) / w), x = 8, y = 8;
+    const apply = () => { svg.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
+    const fit = () => { scale = Math.min(1, (box.clientWidth - 16) / w); x = 8; y = 8; apply(); };
+    box.addEventListener('wheel', e => {
+      e.preventDefault(); const r = box.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      const f = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.1, scale * f));
+      x = px - (px - x) * (s / scale); y = py - (py - y) * (s / scale); scale = s; apply();
+    }, { passive: false });
+    let drag = null, pinch = null, moved = false;
+    box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); drag = { id: e.pointerId, x: e.clientX - x, y: e.clientY - y }; moved = false; });
+    box.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { x = e.clientX - drag.x; y = e.clientY - drag.y; moved = true; apply(); } });
+    box.addEventListener('pointerup', () => drag = null); box.addEventListener('pointercancel', () => drag = null);
+    svg.addEventListener('click', e => { if (moved) { e.preventDefault(); moved = false; } }, true);   // the click that ends a drag is not a tap; one-shot, so a keyboard activation afterwards still works
+    box.addEventListener('touchstart', e => { if (e.touches.length === 2) { drag = null; pinch = { d: dist(e), s: scale }; } }, { passive: true });
+    box.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { scale = Math.min(4, Math.max(0.1, pinch.s * dist(e) / pinch.d)); apply(); } }, { passive: true });
+    box.addEventListener('touchend', () => pinch = null);
+    const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    const tools = document.createElement('div'); tools.className = 'tools';
+    for (const [label, fn] of [['−', () => { scale = Math.max(0.1, scale / 1.25); apply(); }], ['+', () => { scale = Math.min(4, scale * 1.25); apply(); }], ['Fit', fit], ['1:1', () => { scale = 1; x = 8; y = 8; apply(); }]]) {
+      const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', fn); b.addEventListener('pointerdown', e => e.stopPropagation()); tools.appendChild(b);
+    }
+    box.appendChild(tools); fit();
+  }
+
+  async function render() {
+    const name = page(), gen = ++generation;
+    for (const a of nav.querySelectorAll('a')) a.classList.toggle('current', a.getAttribute('href') === '#' + name);
+    let md;
+    try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); if (gen !== generation) return; }
+    catch (e) { if (gen === generation) content.replaceChildren(msg('error', `Could not load ${name}: ${e.message}`)); return; }
+    // Issue titles and milestone descriptions are anyone's text. The generator escapes them, and
+    // the sink is sanitised regardless, so neither side has to trust the other to have done it.
+    content.innerHTML = DOMPurify.sanitize(marked.parse(md));
+    document.title = (content.querySelector('h1')?.textContent || 'Roadmap') + ' · Kingdom Watch';
+    for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
+    // "show done" means the tables too: a row whose first cell links a closed issue goes with its node.
+    if (!filters.done.checked) for (const tr of content.querySelectorAll('tbody tr')) {
+      const m = /\/issues\/(\d+)$/.exec(tr.querySelector('td a')?.getAttribute('href') || ''); const i = m && byNumber.get(+m[1]);
+      if (i && i.state === 'closed') tr.hidden = true;
+    }
+    for (const tb of content.querySelectorAll('tbody')) {
+      const rows = [...tb.rows]; if (rows.length && rows.every(r => r.hidden)) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = 99; td.className = 'empty'; td.textContent = `All ${rows.length} issues here are done — tick "Show done issues" to see them.`; }
+    }
+    for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
+    const fences = [...content.querySelectorAll('pre > code.language-mermaid')], specs = chartsFor(name);
+    let hinted = false;
+    for (let k = 0; k < fences.length; k++) {
+      const box = document.createElement('div'); box.className = 'chart'; fences[k].parentElement.replaceWith(box);
+      const spec = specs[k];
+      if (!spec) { box.classList.add('small'); box.replaceChildren(msg('error', 'No chart definition for this page; graph.json may be missing.')); continue; }
+      await drawChart(spec, box, gen); if (gen !== generation) return;
+      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
+    }
+    window.scrollTo(0, 0);
+  }
+  addEventListener('hashchange', render);
+  scheme.addEventListener('change', e => { dark = e.matches; P = PALETTES[dark ? 'dark' : 'light']; render(); });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -192,6 +192,11 @@ matter — take what applies and drop the rest:
 - **Constraints that must hold.** Contracts a fix can't break — determinism, the
   Core/Game boundary, or a decision recorded in §2 of the design doc.
 - **Milestone.** Which milestone this belongs to, if it's not obvious.
+- **Dependencies.** What this waits on, and what waits on it. Direct edges
+  only — see `AGENTS.md` § Issue dependencies. The dig usually surfaces the
+  candidates; the user confirms them. An issue with no blockers shows up as
+  *ready* on the roadmap the moment it is filed, so "nothing" is an answer that
+  has to be meant.
 - **Priority** — always. See Step 7.
 
 Stop when the remaining unknowns wouldn't change what a future reader does. Depth
@@ -232,7 +237,10 @@ reader to skim headings.
   nothing.
 - **`## Options`** — see below.
 - **`## Constraint`** — contracts a fix must not break.
-- **`## Related`** — other issues, with the relationship stated.
+- **`## Related`** — other issues, with the relationship stated in prose.
+  Hard dependencies do not live here as text — they become GitHub *blocked
+  by* relationships in Step 8, which the roadmap reads directly; the prose
+  is for the reader, and can say why.
 
 ### Stating the problem, not the fix
 
@@ -335,6 +343,31 @@ gh issue view <N> | head -40
 Report the URL and the labels set. If the body came out wrong, fix it with
 `gh issue edit <N> --body-file` immediately — before the user has to notice.
 
+Then wire the dependencies agreed in Step 5 as native relationships — the
+roadmap and the `blocked` label derive from these, not from prose:
+
+```bash
+# database id of the blocker, then the relationship; the chain stops at the first failure
+id=$(gh api repos/zhollis21/KingdomWatch/issues/<blocker> --jq .id) \
+  && gh api -X POST repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -F issue_id=$id
+```
+
+One call per blocker, direct dependencies only. Then read the relationships
+back and compare the list with what Step 5 agreed:
+
+```bash
+gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by --jq '[.[].number]'
+```
+
+**If any agreed blocker is missing, or the read-back fails, stop here** — fix
+the relationship, do not run the workflow. An issue with no blockers is
+published as *ready*, and a regeneration would make that public before anyone
+looked.
+
+Only once the list matches: relationship edits do not trigger the roadmap
+workflow, so finish with `gh workflow run roadmap.yml` (the issue-opened event
+already fired, but before the relationships existed).
+
 For a split from Step 4, file all of them, then edit the `## Related` sections to
 cross-link the real numbers once they exist.
 
@@ -360,10 +393,14 @@ comment and never get folded into the body. Then check:
    note which moved.
 3. **Is the body intact?** Shell-quoting damage takes many forms — confirm
    suspicious characters with `od -c` before assuming a substitution is safe.
-4. **Labels.** Missing priority, missing type, a `blocked` that may have quietly
-   unblocked.
-5. **Named blockers that have since closed.** Distinct from "already fixed" —
-   the deferral itself went stale even though the issue still looks accurate.
+4. **Labels.** Missing priority, missing type. Ignore `blocked` — the roadmap
+   workflow sets and clears it from the relationships, so a wrong value there
+   means a wrong relationship, which is the next check.
+5. **Relationships.** `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by`
+   against what the body says it depends on. Prose that names a dependency the
+   relationship list lacks is the common drift. Named blockers that have since
+   closed are a separate finding — the deferral itself went stale even though
+   the issue still looks accurate.
 6. **Title.** Does it state the problem or just name a topic?
 7. **Is a fix presented as settled?** Flag for reframing as options.
 8. **Decisions stranded in comments.** If a comment settles something the body

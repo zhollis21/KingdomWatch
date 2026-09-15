@@ -1,8 +1,8 @@
 ---
 name: kickoff
-description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
-argument-hint: "<issue number> [more issue numbers]"
-allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
+description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Also `/kickoff next` (or "what should I work on", "what''s next") for a brief on what is ready to pick up and which of it matters most, before any issue is named. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
+argument-hint: "<issue number> [more issue numbers] | next"
+allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Bash(pwsh *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
 ---
 
 # Kickoff
@@ -30,6 +30,39 @@ a chat window get re-derived at full price by the next person to open the issue:
 Both are deliberate. What it never does unattended is publish a judgement — that
 an issue is stale, or should be closed, or that one approach beats another. Those
 stay in the conversation where they can be argued with.
+
+---
+
+## `next` — what should I pick up?
+
+When the argument is `next` (or the user asks what to work on without naming an
+issue), the job is a brief, not a plan. Regenerate the graph and read it:
+
+```bash
+pwsh tools/Build-Roadmap.ps1
+```
+
+Then from `docs/roadmap/graph.json` (`ready`, and each issue's `milestone`,
+`priority`, `openBlocking`), write the brief — short enough to read on a phone:
+
+1. **The ready list**, grouped by milestone in order, priority first within
+   each. One line per issue: number, title, priority, and what closing it
+   unblocks (`openBlocking` — dependents still open; `blocking` includes closed ones and overstates it), counted and named if few.
+2. **A recommendation, with the reason.** Usually the ready issue in the
+   earliest milestone whose `openBlocking` list is longest — it is the one holding
+   the most other work back. Say when priority and fan-out disagree (a P0 that
+   unblocks nothing versus a P1 that unblocks nine) rather than silently
+   picking one.
+3. **What is close to ready** — open issues whose only open blocker is on the
+   ready list, so the user can see what a pick unlocks next. An issue with a
+   non-empty `foreignBlockers` (a blocker in another repository) is never
+   close: its blocker cannot be read, so it is treated as open.
+4. **Warnings** from the graph, verbatim, if any: a cycle or a missing
+   milestone is a decision waiting to be made.
+
+Then ask which one to kick off — and when they answer, carry on from Step 1
+with that number. The brief is derived from the same edges the roadmap draws,
+so if the user disagrees with it, the fix is a relationship, not a rerun.
 
 ---
 
@@ -126,10 +159,18 @@ gh issue list --state all --search "<topic>" --limit 8 --json number,title,state
 ```
 
 What you're looking for is not only exact duplicates but **dependency order**,
-which is easier to miss and more expensive to get wrong — this repo's milestone
-issues (M0–M8, see `gh issue list --milestone`) have real ordering dependencies
-between them even when nothing says so explicitly (design doc §20's "before
-M1/M3/M5/M7" lists are the fast way to check).
+which is easier to miss and more expensive to get wrong. The recorded order is
+in the graph: run `pwsh tools/Build-Roadmap.ps1` (read-only against GitHub,
+writes the git-ignored `docs/roadmap/`) and read `graph.json` — each issue's
+`blockedBy`, `blocking`, `openBlocking` and `ready`. Read it
+before the search, then treat the search as a check on it: an issue the dig
+says this one depends on, or unblocks, that the graph does not list is a
+missing relationship, and fixing it is part of kickoff (see
+`AGENTS.md` § Issue dependencies for how). Design doc §20's "before
+M1/M3/M5/M7" lists are the independent cross-check.
+
+If `ready` is false, stop and say so before anything else: the issue has an
+open blocker, and starting it anyway is a decision for the user, not a default.
 
 Report the relationship you actually found rather than rounding it to
 "duplicate": _blocks_, _overlaps in part_, _supersedes_, and _duplicates_ lead to
@@ -140,9 +181,10 @@ behaves a certain way, and the assumption is worth checking directly — it is
 where the highest-value findings hide, precisely because nobody wrote it down to
 be questioned.
 
-**External blockers.** For anything labeled `blocked`, or that depends on an open
-design question (design doc §21), confirm the blocker's current status rather
-than assuming.
+**External blockers.** For anything with an open blocker in the graph, or that
+depends on an open design question (design doc §21), confirm the blocker's
+current status rather than assuming. The `blocked` label is derived from the
+relationships by the roadmap workflow; it is a symptom, never the thing to fix.
 
 **Report before planning.** When you find staleness, stop and lay it out: what
 specifically changed, the commit / PR / doc that changed it, how much of the
@@ -245,7 +287,8 @@ The brief covers, in this order and briefly:
   builds on, with file paths.
 - **Where it fits** — which milestone, what depends on it, what it depends on,
   and which neighbouring issues will consume or feed it (the dependency order
-  from Step 2).
+  from Step 2). Say what closing this unblocks — that is usually the best
+  argument for doing it now, or for not.
 - **The decisions to make** — each one named, with the options and the tradeoff
   in a line or two apiece, and your recommendation. This is the list Step 3
   produced. If a decision has an obvious default and no real alternative, say
@@ -334,6 +377,13 @@ issue truthful, the comment keeps the history.
 This is safe to do without asking, because you are recording a decision the user
 just approved rather than one you reached on your own. If the plan contradicts
 nothing the issue states, change nothing.
+
+The same applies to the dependency graph. If the plan narrowed scope and pushed
+work into new issues (`/create-issue` files them and wires their
+relationships), or Step 2 found a dependency the graph lacks, record it now as a
+native *blocked by* relationship — direct edges only, per `AGENTS.md` § Issue
+dependencies — and run `gh workflow run roadmap.yml`, since relationship edits
+do not trigger the regeneration on their own.
 
 ---
 

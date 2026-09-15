@@ -1466,17 +1466,17 @@ Then choose perspective.
 
 **M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
-**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Measure save size and cold load. **Go/no-go for mobile.**
+**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). Measure save size and cold load, and design history compaction against those numbers (#74) rather than after M3–M7 have each shaped the journal. **Go/no-go for mobile.**
 
-**M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. Zoom in and out cleanly.
+**M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
 **M4 — one disruption.** Raiders and predators. Villagers flee, militia musters, fighting, burning, recovery, rebuilding.
 
-**M5 — god powers and faith.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Shrines, priests, witnessed attribution. Decide faith depth. Prove the loop on a touchscreen.
+**M5 — god powers and faith.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Shrines, priests, witnessed attribution, and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes). Decide faith depth. Prove the loop on a touchscreen.
 
 **M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward 10 resources.
 
-**M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence, rumor propagation. Save/load with versioning. Vertical slice.
+**M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence. Save/load with versioning. Vertical slice.
 
 **M8 — naval.** Boats, cross-water trade and transport, island archetype. *Largest single feature; the §12 traversal abstraction must exist from M1.*
 

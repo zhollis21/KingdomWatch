@@ -1,0 +1,104 @@
+name: Roadmap
+
+# Regenerates the roadmap from issues, milestones and their "blocked by"
+# relationships (tools/Build-Roadmap.ps1), syncs the derived `blocked` label,
+# and publishes the result to GitHub Pages. Nothing is committed, so the
+# branch ruleset on main never comes into it.
+#
+# Relationship edits do not fire a webhook, so the nightly run is the
+# backstop for re-wired dependencies; everything else (open, close, label,
+# milestone) republishes within a minute or two, as does a change to the
+# generator, the viewer or this file landing on main. Run it by hand with
+# `gh workflow run roadmap.yml`.
+#
+# A pull request that touches the tooling runs the generator as a check in
+# its own read-only job: no write token reaches PR-controlled code, no label
+# writes, no deploy, and the generated pages land in the job summary (which
+# renders mermaid) plus a downloadable artifact.
+#
+# Pages must be enabled once in Settings > Pages with Source set to
+# "GitHub Actions"; until then the deploy job fails and nothing else does.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/Build-Roadmap.ps1
+      - tools/roadmap-index.html
+      - .github/workflows/roadmap.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/Build-Roadmap.ps1
+      - tools/roadmap-index.html
+      - .github/workflows/roadmap.yml
+  issues:
+    types: [opened, edited, deleted, transferred, closed, reopened, labeled, unlabeled, milestoned, demilestoned]
+  milestone:
+    types: [created, edited, deleted, closed, opened]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+# One publish at a time, and never cancel one that is mid-deploy. PR checks
+# get their own group so they neither queue behind nor delay a publish.
+concurrency:
+  group: roadmap-${{ github.event_name == 'pull_request' && github.head_ref || 'publish' }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Generate roadmap (check)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build roadmap
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/Build-Roadmap.ps1 -OutDir site
+
+      - name: Show the result in the job summary
+        shell: pwsh
+        run: Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roadmap
+          path: site
+
+  publish:
+    name: Generate and publish roadmap
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build roadmap and sync the blocked label
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/Build-Roadmap.ps1 -SyncLabels -OutDir site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
