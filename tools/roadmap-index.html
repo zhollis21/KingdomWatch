@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kingdom Watch roadmap</title>
+<!--
+  Static shell for the generated roadmap. tools/Build-Roadmap.ps1 copies this
+  file next to the markdown it writes; the page fetches README.md, next.md or
+  M<n>.md from the hash (#next.md), renders it with marked, and hands the
+  ```mermaid fences to mermaid. Charts get wheel-zoom and drag so the big ones
+  are readable on a phone. No build step, no framework.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.15.0/mermaid.min.js"></script>
+<style>
+  :root { color-scheme: light dark;
+    --bg: #fff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0969da; --chart-bg: #f6f8fa; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --line: #30363d; --accent: #58a6ff; --chart-bg: #161b22; } }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  nav { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center;
+    padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  nav b { margin-right: 8px; }
+  nav a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+  nav a.current { font-weight: 600; text-decoration: underline; }
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
+  main a { color: var(--accent); }
+  h1 { font-size: 1.6em; margin: .6em 0 .3em; } h2 { font-size: 1.25em; margin: 1.4em 0 .4em; border-bottom: 1px solid var(--line); }
+  em { color: var(--muted); }
+  code { background: var(--chart-bg); padding: 1px 4px; border-radius: 4px; font-size: .9em; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; margin: 8px 0; min-width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--chart-bg); }
+  .chart { position: relative; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--chart-bg);
+    height: min(75vh, 720px); overflow: hidden; touch-action: none; cursor: grab; }
+  .chart.small { height: auto; overflow: auto; cursor: default; }
+  .chart svg { max-width: none !important; transform-origin: 0 0; user-select: none; }
+  .chart .tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
+  .chart button { font: inherit; font-size: .85em; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--bg); color: var(--fg); cursor: pointer; }
+  .hint { color: var(--muted); font-size: .85em; margin: -12px 0 16px; }
+  .error { color: #d1242f; }
+</style>
+</head>
+<body>
+<nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b></nav>
+<main id="content"><p><em>Loading…</em></p></main>
+<script>
+(async function () {
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default', flowchart: { useMaxWidth: false } });
+  const content = document.getElementById('content');
+  const nav = document.getElementById('nav');
+  const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
+
+  // Milestone links come from graph.json so the nav never goes stale.
+  try {
+    const graph = await fetch('graph.json').then(r => r.json());
+    const link = (href, text) => { const a = document.createElement('a'); a.href = '#' + href; a.textContent = text; nav.appendChild(a); };
+    link('next.md', 'What is next');
+    for (const m of graph.milestones) { const n = (m.title.match(/^M(\d+)/) || [])[1]; if (n !== undefined) link(`M${n}.md`, `M${n}`); }
+  } catch (e) { /* nav without milestones is still usable */ }
+
+  function panZoom(box) {
+    const svg = box.querySelector('svg'); if (!svg) return;
+    const w = svg.viewBox.baseVal.width || svg.getBBox().width, h = svg.viewBox.baseVal.height || svg.getBBox().height;
+    svg.setAttribute('width', w); svg.setAttribute('height', h);
+    if (h < 320 && w < box.clientWidth) { box.classList.add('small'); return; }   // legend, overview: just show it
+    let scale = Math.min(1, (box.clientWidth - 16) / w), x = 8, y = 8;
+    const apply = () => { svg.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
+    const fit = () => { scale = Math.min(1, (box.clientWidth - 16) / w); x = 8; y = 8; apply(); };
+    box.addEventListener('wheel', e => {
+      e.preventDefault(); const r = box.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      const f = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.1, scale * f));
+      x = px - (px - x) * (s / scale); y = py - (py - y) * (s / scale); scale = s; apply();
+    }, { passive: false });
+    let drag = null, pinch = null;
+    box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); drag = { id: e.pointerId, x: e.clientX - x, y: e.clientY - y }; });
+    box.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { x = e.clientX - drag.x; y = e.clientY - drag.y; apply(); } });
+    box.addEventListener('pointerup', () => drag = null); box.addEventListener('pointercancel', () => drag = null);
+    box.addEventListener('touchstart', e => { if (e.touches.length === 2) { drag = null; pinch = { d: dist(e), s: scale }; } }, { passive: true });
+    box.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { scale = Math.min(4, Math.max(0.1, pinch.s * dist(e) / pinch.d)); apply(); } }, { passive: true });
+    box.addEventListener('touchend', () => pinch = null);
+    const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    const tools = document.createElement('div'); tools.className = 'tools';
+    for (const [label, fn] of [['−', () => { scale = Math.max(0.1, scale / 1.25); apply(); }], ['+', () => { scale = Math.min(4, scale * 1.25); apply(); }], ['fit', fit], ['1:1', () => { scale = 1; x = 8; y = 8; apply(); }]]) {
+      const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', fn); b.addEventListener('pointerdown', e => e.stopPropagation()); tools.appendChild(b);
+    }
+    box.appendChild(tools); fit();
+  }
+
+  async function render() {
+    const name = page();
+    for (const a of nav.querySelectorAll('a')) a.classList.toggle('current', a.getAttribute('href') === '#' + name);
+    let md;
+    try { const r = await fetch(name, { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status + ' ' + r.statusText); md = await r.text(); }
+    catch (e) { content.innerHTML = `<p class="error">Could not load ${name}: ${e.message}</p>`; return; }
+    content.innerHTML = marked.parse(md);
+    document.title = (content.querySelector('h1')?.textContent || 'Roadmap') + ' · Kingdom Watch';
+    for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
+    for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
+    const fences = [...content.querySelectorAll('pre > code.language-mermaid')];
+    for (const c of fences) { const box = document.createElement('div'); box.className = 'chart'; const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = c.textContent; box.appendChild(pre); c.parentElement.replaceWith(box); }
+    try { await mermaid.run({ nodes: content.querySelectorAll('pre.mermaid') }); } catch (e) { console.error(e); }
+    for (const box of content.querySelectorAll('.chart')) panZoom(box);
+    if (fences.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan. Solid arrows: blocked by. Dotted: related. Bold outline: ready.'; content.querySelector('.chart').after(p); }
+    window.scrollTo(0, 0);
+  }
+  addEventListener('hashchange', render);
+  render();
+})();
+</script>
+</body>
+</html>

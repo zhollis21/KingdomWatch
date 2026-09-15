@@ -1,8 +1,8 @@
 ---
 name: kickoff
-description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
-argument-hint: "<issue number> [more issue numbers]"
-allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
+description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Also `/kickoff next` (or "what should I work on", "what''s next") for a brief on what is ready to pick up and which of it matters most, before any issue is named. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
+argument-hint: "<issue number> [more issue numbers] | next"
+allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Bash(pwsh *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
 ---
 
 # Kickoff
@@ -30,6 +30,37 @@ a chat window get re-derived at full price by the next person to open the issue:
 Both are deliberate. What it never does unattended is publish a judgement — that
 an issue is stale, or should be closed, or that one approach beats another. Those
 stay in the conversation where they can be argued with.
+
+---
+
+## `next` — what should I pick up?
+
+When the argument is `next` (or the user asks what to work on without naming an
+issue), the job is a brief, not a plan. Regenerate the graph and read it:
+
+```bash
+pwsh tools/Build-Roadmap.ps1
+```
+
+Then from `docs/roadmap/graph.json` (`ready`, and each issue's `milestone`,
+`priority`, `blocking`), write the brief — short enough to read on a phone:
+
+1. **The ready list**, grouped by milestone in order, priority first within
+   each. One line per issue: number, title, priority, and what closing it
+   unblocks (`blocking`, counted and named if few).
+2. **A recommendation, with the reason.** Usually the ready issue in the
+   earliest milestone whose `blocking` list is longest — it is the one holding
+   the most other work back. Say when priority and fan-out disagree (a P0 that
+   unblocks nothing versus a P1 that unblocks nine) rather than silently
+   picking one.
+3. **What is close to ready** — open issues whose only open blocker is on the
+   ready list, so the user can see what a pick unlocks next.
+4. **Warnings** from the graph, verbatim, if any: a cycle or a missing
+   milestone is a decision waiting to be made.
+
+Then ask which one to kick off — and when they answer, carry on from Step 1
+with that number. The brief is derived from the same edges the roadmap draws,
+so if the user disagrees with it, the fix is a relationship, not a rerun.
 
 ---
 
@@ -127,8 +158,9 @@ gh issue list --state all --search "<topic>" --limit 8 --json number,title,state
 
 What you're looking for is not only exact duplicates but **dependency order**,
 which is easier to miss and more expensive to get wrong. The recorded order is
-in `docs/roadmap/graph.json` — each issue's `blockedBy`, `blocking`, `related`
-and `ready` — and the same thing drawn is `docs/roadmap/next.md`. Read it
+in the graph: run `pwsh tools/Build-Roadmap.ps1` (read-only against GitHub,
+writes the git-ignored `docs/roadmap/`) and read `graph.json` — each issue's
+`blockedBy`, `blocking`, `related` and `ready`. Read it
 before the search, then treat the search as a check on it: an issue the dig
 says this one depends on, or unblocks, that the graph does not list is a
 missing relationship, and fixing it is part of kickoff (see

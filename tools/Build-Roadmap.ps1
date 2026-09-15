@@ -10,6 +10,11 @@
       docs/roadmap/README.md    ready-to-pick-up list + milestone overview
       docs/roadmap/next.md      the current milestone and the one after it
       docs/roadmap/M<n>.md      one chart per milestone
+      docs/roadmap/index.html   a static viewer for the above (tools/roadmap-index.html)
+
+    The output is git-ignored. The roadmap workflow publishes it to GitHub
+    Pages at https://zhollis21.github.io/KingdomWatch/ ; locally, run this and
+    open the markdown, or read graph.json directly.
 
     Readiness is derived, never stored: an open issue is ready when every
     issue it is blocked by is closed. Cross-milestone edges are drawn as
@@ -37,9 +42,10 @@
 
 .NOTES
     The workflow (.github/workflows/roadmap.yml) runs this on issue and
-    milestone events and nightly. Relationship edits do not fire an event, so
-    after re-wiring blocked-by links either wait for the nightly run or
-    `gh workflow run roadmap.yml`.
+    milestone events and nightly, then deploys the output to Pages. Nothing
+    is committed, so no branch rule is involved. Relationship edits do not
+    fire an event, so after re-wiring blocked-by links either wait for the
+    nightly run or `gh workflow run roadmap.yml`.
 #>
 [CmdletBinding()]
 param(
@@ -76,6 +82,7 @@ $gql = @'
 query($owner:String!, $name:String!, $after:String) {
   repository(owner:$owner, name:$name) {
     milestones(first:50, states:[OPEN, CLOSED]) {
+      pageInfo { hasNextPage }
       nodes { number title state description }
     }
     issues(first:100, after:$after, states:[OPEN, CLOSED],
@@ -83,9 +90,9 @@ query($owner:String!, $name:String!, $after:String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title state url body
-        labels(first:20) { nodes { name } }
+        labels(first:20) { pageInfo { hasNextPage } nodes { name } }
         milestone { number }
-        blockedBy(first:50) { nodes { number repository { nameWithOwner } } }
+        blockedBy(first:50) { pageInfo { hasNextPage } nodes { number repository { nameWithOwner } } }
       }
     }
   }
@@ -98,13 +105,22 @@ $after = $null
 do {
     $ghArgs = @('api', 'graphql', '-f', "query=$gql", '-f', "owner=$OWNER", '-f', "name=$REPO_NAME")
     if ($after) { $ghArgs += @('-f', "after=$after") }
-    $page = (& gh @ghArgs | ConvertFrom-Json).data.repository
+    $json = & gh @ghArgs
+    if ($LASTEXITCODE) { throw "gh api graphql failed with exit code $LASTEXITCODE." }
+    $page = ($json | ConvertFrom-Json).data.repository
+    if ($page.milestones.pageInfo.hasNextPage) { throw "More than 50 milestones; raise the page size in the query." }
     if (-not $milestoneNodes) { $milestoneNodes = $page.milestones.nodes }
     foreach ($n in $page.issues.nodes) { $issueNodes.Add($n) }
     $after = $page.issues.pageInfo.endCursor
 } while ($page.issues.pageInfo.hasNextPage)
 
 if ($issueNodes.Count -eq 0) { throw 'No issues fetched; refusing to write an empty roadmap.' }
+# The sub-connections are capped rather than paginated; an issue past a cap
+# would silently lose labels or blockers, and a wrong "ready" is worse than no roadmap.
+foreach ($n in $issueNodes) {
+    if ($n.labels.pageInfo.hasNextPage) { throw "#$($n.number) has more than 20 labels; raise the page size in the query." }
+    if ($n.blockedBy.pageInfo.hasNextPage) { throw "#$($n.number) is blocked by more than 50 issues; raise the page size in the query." }
+}
 
 # ---------------------------------------------------------------------------
 # Build the graph
@@ -169,7 +185,8 @@ foreach ($i in $issues.Values) {
 }
 
 foreach ($i in $issues.Values) {
-    $i.openBlockers = @($i.blockedBy | Where-Object { $issues.ContainsKey($_) -and $issues[$_].state -eq 'open' })
+    # A blocker that was not fetched counts as open: better a false "blocked" than a false "ready".
+    $i.openBlockers = @($i.blockedBy | Where-Object { -not $issues.ContainsKey($_) -or $issues[$_].state -eq 'open' })
     $i.blocked = ($i.state -eq 'open') -and ($i.openBlockers.Count -gt 0)
     $i.ready = ($i.state -eq 'open') -and ($i.openBlockers.Count -eq 0)
     $i.blocking = @($i.blocking | Sort-Object)
@@ -206,10 +223,12 @@ if ($SyncLabels) {
         $has = $i.labels -contains 'blocked'
         if ($i.blocked -and -not $has) {
             gh issue edit $i.number --repo "$OWNER/$REPO_NAME" --add-label blocked | Out-Null
+            if ($LASTEXITCODE) { throw "Adding the blocked label to #$($i.number) failed with exit code $LASTEXITCODE." }
             $i.labels = @($i.labels) + 'blocked'; $changed++
         }
         elseif (-not $i.blocked -and $has) {
             gh issue edit $i.number --repo "$OWNER/$REPO_NAME" --remove-label blocked | Out-Null
+            if ($LASTEXITCODE) { throw "Removing the blocked label from #$($i.number) failed with exit code $LASTEXITCODE." }
             $i.labels = @($i.labels | Where-Object { $_ -ne 'blocked' }); $changed++
         }
     }
@@ -338,7 +357,7 @@ $legend = @(
     '  L9[" "] -.- L10["dotted: related"]:::none'
 ) + ($CLASSDEFS | ForEach-Object { "  $_" }) + @("  style L5 $READY_STYLE", '```')
 
-$stamp = "_Generated by ``tools/Build-Roadmap.ps1`` from GitHub issues. Do not edit by hand; the commit date is the generation date._"
+$stamp = "_Generated by ``tools/Build-Roadmap.ps1`` from GitHub issues. Do not edit by hand._"
 
 # ---------------------------------------------------------------------------
 # Write
@@ -429,6 +448,9 @@ if ($warnings.Count) {
 }
 Save 'README.md' $md
 
+# The static viewer: fetches the markdown above and renders it with mermaid.
+Copy-Item (Join-Path $PSScriptRoot 'roadmap-index.html') (Join-Path $OutDir 'index.html') -Force
+
 # next.md — current + next milestone
 $md = [System.Collections.Generic.List[string]]::new()
 $md.Add('# What is next')
@@ -447,7 +469,11 @@ if ($current) {
         $md.Add('')
         foreach ($l in (Write-IssueTable $groups[$title])) { $md.Add($l) }
     }
-} else { $md.Add('Every milestone is closed.') }
+} else {
+    $md.Add('No milestone has open work.')
+    $open = @($unscheduled | Where-Object { $_.state -eq 'open' })
+    if ($open.Count) { $md.Add(''); $md.Add("Open issues with no milestone: $(Format-Refs $open.number)") }
+}
 Save 'next.md' $md
 
 # M<n>.md — one per milestone
@@ -469,7 +495,7 @@ foreach ($m in $milestones) {
 }
 
 # Remove pages for milestones that no longer exist.
-$keep = @('README.md', 'next.md', 'graph.json') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
+$keep = @('README.md', 'next.md', 'graph.json', 'index.html') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
 Get-ChildItem $OutDir -File | Where-Object { $_.Name -match "^M[0-9]+[.]md$" -and $keep -notcontains $_.Name } | Remove-Item
 
 Write-Host "Wrote $($keep.Count) files to $OutDir ($($issues.Count) issues, $($ready.Count) ready, $($warnings.Count) warnings)."
