@@ -60,7 +60,7 @@
   try {
     const graph = await fetch('graph.json').then(r => r.json());
     const link = (href, text) => { const a = document.createElement('a'); a.href = '#' + href; a.textContent = text; nav.appendChild(a); };
-    link('next.md', 'What is next');
+    link('next.md', 'What is next'); link('next-by-priority.md', 'By priority');
     for (const m of graph.milestones) { const n = (m.title.match(/^M(\d+)/) || [])[1]; if (n !== undefined) link(`M${n}.md`, `M${n}`); }
   } catch (e) { /* nav without milestones is still usable */ }
 
@@ -106,7 +106,7 @@
     for (const c of fences) { const box = document.createElement('div'); box.className = 'chart'; const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = c.textContent; box.appendChild(pre); c.parentElement.replaceWith(box); }
     try { await mermaid.run({ nodes: content.querySelectorAll('pre.mermaid') }); } catch (e) { console.error(e); }
     for (const box of content.querySelectorAll('.chart')) panZoom(box);
-    if (fences.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan. Solid arrows: blocked by. Dotted: related. Bold outline: ready.'; content.querySelector('.chart').after(p); }
+    if (fences.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: another milestone. Solid arrows: blocked by. Dotted: related.'; content.querySelector('.chart').after(p); }
     window.scrollTo(0, 0);
   }
   addEventListener('hashchange', render);

@@ -61,19 +61,17 @@ $OWNER = 'zhollis21'
 $REPO_NAME = 'KingdomWatch'
 $REPO_URL = "https://github.com/$OWNER/$REPO_NAME"
 
-# Fill colours follow the priority labels so the chart and the issue list
-# agree. Done overrides priority: the only work you choose between is open.
+# Fill colours are state — done, ready, blocked — because that is the question
+# the chart answers; priority is in the tables (and in the by-priority chart).
 $PRIORITIES = @('P0-blocker', 'P1-high', 'P2-normal', 'P3-someday')
 $CLASSDEFS = @(
-    'classDef p0 fill:#b60205,color:#fff,stroke:#8c0000'
-    'classDef p1 fill:#e99695,color:#000,stroke:#c66'
-    'classDef p2 fill:#fef2c0,color:#000,stroke:#d4b106'
-    'classDef p3 fill:#ededed,color:#000,stroke:#bbb'
-    'classDef none fill:#fff,color:#000,stroke:#999'
     'classDef done fill:#2da44e,color:#fff,stroke:#1a7f37'
-    'classDef ext fill:#fff,color:#666,stroke:#999,stroke-dasharray:4 4'
+    'classDef ready fill:#ddf4ff,color:#000,stroke:#0969da,stroke-width:2px'
+    'classDef blocked fill:#eaeef2,color:#000,stroke:#8c959f'
+    'classDef plain fill:#fff,color:#000,stroke:#999'
 )
-$READY_STYLE = 'stroke:#0969da,stroke-width:4px'
+# Stubs for issues outside the chart keep their state fill and go dashed.
+$EXT_STYLE = 'stroke-dasharray:4 4'
 
 # ---------------------------------------------------------------------------
 # Fetch
@@ -249,24 +247,23 @@ $next = if ($current) { $milestones[$milestones.IndexOf($current) + 1] } else { 
 # Mermaid
 # ---------------------------------------------------------------------------
 function Format-Label([object]$i) {
-    # Wrap long titles; mermaid renders <br/> inside quoted labels.
-    $words = $i.title -split '\s+'
+    # Wrap long titles; mermaid renders <br/> inside quoted labels, so the
+    # title is escaped before the breaks go in.
+    $safeTitle = $i.title -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;'
+    $words = $safeTitle -split '\s+'
     $lines = [System.Collections.Generic.List[string]]::new(); $line = ''
     foreach ($w in $words) {
         if ($line.Length -gt 0 -and ($line.Length + 1 + $w.Length) -gt 28) { $lines.Add($line); $line = $w }
         else { $line = if ($line) { "$line $w" } else { $w } }
     }
     if ($line) { $lines.Add($line) }
-    $text = ($lines -join '<br/>') -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;'
+    $text = $lines -join '<br/>'
     $tick = if ($i.state -eq 'closed') { '✓ ' } else { '' }
     "$tick#$($i.number) $text"
 }
 
 function Get-NodeClass([object]$i) {
-    if ($i.state -eq 'closed') { return 'done' }
-    switch ($i.priority) {
-        'P0-blocker' { 'p0' } 'P1-high' { 'p1' } 'P2-normal' { 'p2' } 'P3-someday' { 'p3' } default { 'none' }
-    }
+    if ($i.state -eq 'closed') { 'done' } elseif ($i.ready) { 'ready' } else { 'blocked' }
 }
 
 function Write-Chart {
@@ -277,8 +274,11 @@ function Write-Chart {
       what the group waits on or relates to. What it unblocks elsewhere is
       left to the tables: #16 alone fans out to nine later issues, and
       drawing that spreads the chart until nothing is readable.
+
+      -ByPriority nests a subgraph per priority inside each group, so the
+      chart reads as priority bands; edges cross bands freely.
     #>
-    param([System.Collections.Specialized.OrderedDictionary]$Groups, [string]$Direction = 'TD')
+    param([System.Collections.Specialized.OrderedDictionary]$Groups, [string]$Direction = 'TD', [switch]$ByPriority)
     $out = [System.Collections.Generic.List[string]]::new()
     $out.Add('```mermaid')
     $out.Add("flowchart $Direction")
@@ -290,9 +290,19 @@ function Write-Chart {
         $id = 'MS' + ($title -replace '[^A-Za-z0-9]', '')
         $out.Add("  subgraph $id[`"$safe`"]")
         $out.Add("    direction $Direction")
-        foreach ($n in ($Groups[$title] | Sort-Object)) {
-            $i = $issues[$n]
-            $out.Add("    I$n[`"$(Format-Label $i)`"]:::$(Get-NodeClass $i)")
+        $members = @($Groups[$title] | Sort-Object)
+        if ($ByPriority) {
+            foreach ($p in ($PRIORITIES + @($null))) {
+                $band = @($members | Where-Object { $issues[$_].priority -eq $p })
+                if (-not $band.Count) { continue }
+                $label = if ($p) { $p } else { 'no priority' }
+                $out.Add("    subgraph ${id}_$($label -replace '[^A-Za-z0-9]', '')[`"$label`"]")
+                $out.Add("      direction $Direction")
+                foreach ($n in $band) { $out.Add("      I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
+                $out.Add('    end')
+            }
+        } else {
+            foreach ($n in $members) { $out.Add("    I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
         }
         $out.Add('  end')
     }
@@ -318,14 +328,15 @@ function Write-Chart {
     foreach ($s in ($stubs | Sort-Object)) {
         $i = $issues[$s]
         $ms = if ($i.milestone) { ($milestoneByNumber[$i.milestone].title -split ' ')[0] } else { 'unscheduled' }
-        $out.Add("  I$s[`"$(Format-Label $i)<br/><i>$ms</i>`"]:::ext")
+        $out.Add("  I$s[`"$(Format-Label $i)<br/><i>$ms</i>`"]:::$(Get-NodeClass $i)")
     }
     foreach ($e in $edges) { $out.Add($e) }
     foreach ($c in $CLASSDEFS) { $out.Add("  $c") }
-    foreach ($n in $inScope) { if ($issues[$n].ready) { $out.Add("  style I$n $READY_STYLE") } }
+    foreach ($s in ($stubs | Sort-Object)) { $out.Add("  style I$s $EXT_STYLE") }
     $out.Add('```')
     return $out
 }
+
 
 function Format-IssueLink($n) { if ($issues.ContainsKey($n)) { "[#$n]($($issues[$n].url))" } else { "#$n" } }
 function Format-Title($i) { $i.title -replace '\|', '\|' }   # a pipe in a title would split the table cell
@@ -350,12 +361,10 @@ function Write-IssueTable([int[]]$Numbers) {
 $legend = @(
     '```mermaid'
     'flowchart LR'
-    '  L0["P0-blocker"]:::p0 --> L1["P1-high"]:::p1 --> L2["P2-normal"]:::p2 --> L3["P3-someday"]:::p3'
-    '  L4["✓ done"]:::done -.- L5["ready to pick up"]:::p2'
-    '  L6["other milestone<br/><i>M9</i>"]:::ext'
-    '  L7[" "] --> L8["solid: blocked by"]:::none'
-    '  L9[" "] -.- L10["dotted: related"]:::none'
-) + ($CLASSDEFS | ForEach-Object { "  $_" }) + @("  style L5 $READY_STYLE", '```')
+    '  L0["✓ done"]:::done --> L1["ready to pick up"]:::ready --> L2["blocked"]:::blocked'
+    '  L3["other milestone<br/><i>M9</i>"]:::blocked -.- L4["dotted: related"]:::plain'
+    '  L5["solid: blocked by"]:::plain --> L6[" "]:::plain'
+) + ($CLASSDEFS | ForEach-Object { "  $_" }) + @("  style L3 $EXT_STYLE", '```')
 
 $stamp = "_Generated by ``tools/Build-Roadmap.ps1`` from GitHub issues. Do not edit by hand._"
 
@@ -414,13 +423,12 @@ foreach ($m in $milestones) {
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
     $id = 'MS' + (Get-MilestoneOrder $m.title)
     $label = "$($m.title -replace '"', '#quot;')<br/>$closed done · $open open"
-    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'p2' } else { 'none' }
+    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } else { 'plain' }
     $md.Add("  $id[`"$label`"]:::$class")
     if ($prev) { $md.Add("  $prev --> $id") }
     $prev = $id
 }
 foreach ($c in $CLASSDEFS) { $md.Add("  $c") }
-if ($current) { $md.Add("  style MS$(Get-MilestoneOrder $current.title) $READY_STYLE") }
 $md.Add('```')
 $md.Add('')
 $md.Add('| Milestone | Done | Open | Ready | Chart |')
@@ -460,7 +468,7 @@ $md.Add('')
 if ($current) {
     $groups = [ordered]@{ $current.title = @($current.issues) }
     if ($next) { $groups[$next.title] = @($next.issues) }
-    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Bold outline = ready.')
+    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked. The same chart [grouped by priority](next-by-priority.md).')
     $md.Add('')
     foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) }
     foreach ($title in $groups.Keys) {
@@ -475,6 +483,19 @@ if ($current) {
     if ($open.Count) { $md.Add(''); $md.Add("Open issues with no milestone: $(Format-Refs $open.number)") }
 }
 Save 'next.md' $md
+
+# next-by-priority.md — the same two milestones with a band per priority
+$md = [System.Collections.Generic.List[string]]::new()
+$md.Add('# What is next, by priority')
+$md.Add('')
+$md.Add($stamp)
+$md.Add('')
+if ($current) {
+    $md.Add("Same issues as [What is next](next.md), with each milestone split into priority bands. Green = done, blue = ready to pick up, grey = blocked.")
+    $md.Add('')
+    foreach ($l in (Write-Chart $groups 'TD' -ByPriority)) { $md.Add($l) }
+} else { $md.Add('No milestone has open work.') }
+Save 'next-by-priority.md' $md
 
 # M<n>.md — one per milestone
 foreach ($m in $milestones) {
@@ -495,7 +516,7 @@ foreach ($m in $milestones) {
 }
 
 # Remove pages for milestones that no longer exist.
-$keep = @('README.md', 'next.md', 'graph.json', 'index.html') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
+$keep = @('README.md', 'next.md', 'next-by-priority.md', 'graph.json', 'index.html') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
 Get-ChildItem $OutDir -File | Where-Object { $_.Name -match "^M[0-9]+[.]md$" -and $keep -notcontains $_.Name } | Remove-Item
 
 Write-Host "Wrote $($keep.Count) files to $OutDir ($($issues.Count) issues, $($ready.Count) ready, $($warnings.Count) warnings)."
