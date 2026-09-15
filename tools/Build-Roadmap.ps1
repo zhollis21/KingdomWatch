@@ -295,7 +295,7 @@ function Write-Chart {
 
     $edges = [System.Collections.Generic.List[string]]::new()
     $stubs = [System.Collections.Generic.HashSet[int]]::new()
-    foreach ($n in $inScope) {
+    foreach ($n in ($inScope | Sort-Object)) {   # a HashSet has no enumeration-order contract; the output must be byte-stable
         $i = $issues[$n]
         foreach ($b in $i.blockedBy) {
             if (-not $issues.ContainsKey($b)) { continue }
@@ -323,7 +323,10 @@ function Format-IssueLink($n) { if ($issues.ContainsKey($n)) { "[#$n]($($issues[
 # an image, emphasis, a heading or a fence. The text renders exactly as written.
 function Format-Prose([string]$s) {
     $html = $s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
-    [regex]::Replace($html, '[\\`*_{}\[\]()#+!|~]', '\$0')
+    $escaped = [regex]::Replace($html, '[\\`*_{}\[\]()#+!|~]', '\$0')
+    # GFM autolinks bare URLs and e-mail addresses with no syntax to escape; breaking the shape
+    # with an entity renders the same text and matches no autolinker, in the site or the job summary.
+    $escaped -replace '://', '&#58;//' -replace '(?i)www\.', 'www&#46;' -replace '@', '&#64;'
 }
 function Format-Foreign($i) {
     # Cross-repository blockers cannot be linked by number; name them so the cell explains a grey node.
