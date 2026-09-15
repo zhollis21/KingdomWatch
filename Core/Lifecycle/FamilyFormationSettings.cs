@@ -11,11 +11,10 @@ namespace KingdomWatch.Core.Lifecycle
     public readonly struct FamilyFormationSettings
     {
         /// <summary>
-        /// A year of days. A placeholder in the <see cref="Data.PrimitiveTier"/>
-        /// sense: plausible, not tuned, and not yet the year the seasons
-        /// (#53) will define.
+        /// One year. A placeholder in the <see cref="Data.PrimitiveTier"/>
+        /// sense: plausible, not tuned.
         /// </summary>
-        public const long DefaultMourningTicks = 365L * SimulationTime.TicksPerDay;
+        public const long DefaultMourningTicks = SimulationTime.TicksPerYear;
 
         /// <summary>
         /// Remarriage after a year, first cousins refused. The conservative

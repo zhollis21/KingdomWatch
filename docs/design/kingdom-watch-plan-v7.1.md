@@ -167,7 +167,7 @@ Compression:
 
 **Built at #4.** One tick is one simulated second: fine enough for the hunger
 crossing at 17:42 and the walk from 10:00 to 10:12 below, and for the finer
-positions stepped detail needs at M3. Two hundred years is about 6.3e9 ticks, so
+positions stepped detail needs at M3. Two hundred years is about 2.1e9 ticks, so
 a signed 64-bit count is nowhere near a limit.
 
 Threshold crossings share the one queue rather than forming a second input to
@@ -286,12 +286,14 @@ Aldric ate at 08:00 · current consumption
 
 ### Time scales
 
-At ~8 real minutes per game-day, one game-year is ~48.7 real hours at 1×. So:
+**A year is 120 days** — four seasons of thirty (#11; the season split itself is #53's). Decided ahead of seasons because ages needed a year first, and shorter than Earth's on purpose: a game year is watched at compression, every daily event is one the simulation dispatches, so a 200-year run is 24,000 days rather than 73,000, and "the 7th day of spring" is a date the chronicle can print without months. Day-scale numbers — gestation, the hunger grace period — are tuned to feel right against that year, not to match a calendar. The original figures below assumed ~365 days; the table is recomputed.
+
+At ~8 real minutes per game-day, one game-year is ~16 real hours at 1×. So:
 
 | Speed | 1 year | 100 years |
 |---|---|---|
-| 1000× | 2.9 min | 4.9 hours |
-| 10,000× | 17.5 sec | 29 min |
+| 1000× | 58 sec | 1.6 hours |
+| 10,000× | 5.8 sec | 9.6 min |
 
 **1000× is not centuries speed.** The ladder needs to reach 10,000× or beyond:
 
@@ -424,6 +426,8 @@ public struct PersonRecord
     public Sex           Sex;         // #9: fixed at birth
     public byte          BirthCulture, Assimilation;
     public SimulationTime LastFedAt;   // #51: hunger integrates from here
+    public long          BornTick;    // #11: negative for founders; age is now - this, never ticked
+    public EventId       PregnancyDue; // #11: the pending BirthDue, or None
     public EntityId      Household;   // #9: None for nobody's; see below
     // skills indexed separately: [personIndex * skillCount + skillId]
     // Job (JobId) is deferred — see below
@@ -433,6 +437,8 @@ public struct PersonRecord
 `Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints, and the `Job` field is deliberately absent as of #6. `JobId` does not exist yet and its shape is not settled — #52 describes recipes as data rather than code, which may make a job reference a data-table lookup rather than a handle at all. Guessing it now means dependent code gets written against it before #52 makes its own design decision. Adding it later is a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`.
 
 `Household` is an `EntityId`, not the `HouseholdHandle` this section originally sketched (#9). Households are a few hundred plain objects in a registry rather than a recycled-slot store, so there is no generation to check, and a durable id that is never reused already makes a reference to a dissolved household fail loudly on lookup. The registry (`Households`, §6) is the only writer of the field, which is what keeps it and the household's member list agreeing. `PersonStore` also gained the reverse lookup, `TryGetHandle(EntityId)`: relationships are keyed by durable id because they outlive the people in them, so anything acting on kin gets ids back and needs handles to do anything with them.
+
+`BornTick` is a raw `long` rather than a `SimulationTime` because that type refuses to be negative and worldgen seeds people who were forty before tick zero (#11). Age is the distance from it to now, computed when asked and never ticked; `AgeStage` is a reading of it that `Aging` (§6) refreshes at each boundary, kept as a field because every system branches on the stage far more often than anyone crosses one. `PregnancyDue` names the pending `BirthDue` event rather than keeping a due date of its own, so the record and the queue cannot disagree about whether someone is pregnant; the death cascade cancels the one and clears the other together.
 
 **Dense records now; split measured hot fields into parallel arrays only if M2 says so.**
 
@@ -594,6 +600,8 @@ Adolescent maps directly onto apprenticeship. No childhood simulator needed — 
 
 *Performance note:* ~500 children add to the stepped tier when visible. Budget for it.
 
+As built (#11), the boundaries are birthdays in `DemographicSettings` — child at 3, adolescent at 12, adult at 16, elder at 55, placeholders — and `Aging` books one `AgeStageDue` per boundary per lifetime on the exact tick, at which the stage becomes whatever the age says. Advancing through the stages was going to be #22's (M3) and moved here because #17's population-stability run is meaningless if nobody born in it ever grows up; the adolescent-to-apprenticeship mapping stays with #22.
+
 ### Family formation
 
 Partner eligibility checks age, race fertility compatibility, existing partnership, kinship, settlement distance, and relationship.
@@ -610,7 +618,7 @@ Harness test: mating-pool viability over 500 years, flagging any settlement wher
 
 **Widows and widowers may remarry** after a mourning period. Culture can modulate its length. This matters demographically — in a 1,650-person world, blocking remarriage wastes fertile adults.
 
-As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evaluate(a, b)` answers "may these two?" with a `PartnerRefusal` — same person, not adult, same sex, already partnered, mourning, kinship banned, cousin taboo, no home — and `Partner(a, b, reasons)` does "they do": publishes `MarriageFormed` with the caller's reasons, records the partnership against that event, forms a household in a newly claimed home and moves both in with any dependent children of theirs, dissolving a household left empty. Choosing *who* pairs off is the social decision system's (#38) and the only place randomness enters. A refusal is a reason rather than a bool so the decision system can tell "wrong" from "early". Three of the inputs above are not checked because they do not exist yet: race fertility (#34), settlement distance (#54) and the relationship between the two (#38 weighs it before asking). The mourning period and the cousin taboo are `FamilyFormationSettings` until culture exists to own them (#40). Both people must be in the genealogy — founders with no parents — or kinship cannot be checked and the genealogy throws rather than guess. `AgeStage` became an enum here (Infant, Child, Adolescent, Adult, Elder) because eligibility and adoption both branch on it; advancing people through it is #22's. `Sex` was added to the record for the same reason: children have a mother and a father.
+As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evaluate(a, b)` answers "may these two?" with a `PartnerRefusal` — same person, not adult, same sex, already partnered, mourning, kinship banned, cousin taboo, no home — and `Partner(a, b, reasons)` does "they do": publishes `MarriageFormed` with the caller's reasons, records the partnership against that event, forms a household in a newly claimed home and moves both in with any dependent children of theirs, dissolving a household left empty. Choosing *who* pairs off is the social decision system's (#38) and the only place randomness enters. A refusal is a reason rather than a bool so the decision system can tell "wrong" from "early". Three of the inputs above are not checked because they do not exist yet: race fertility (#34), settlement distance (#54) and the relationship between the two (#38 weighs it before asking). The mourning period and the cousin taboo are `FamilyFormationSettings` until culture exists to own them (#40). Both people must be in the genealogy — founders with no parents — or kinship cannot be checked and the genealogy throws rather than guess. `AgeStage` became an enum here (Infant, Child, Adolescent, Adult, Elder) because eligibility and adoption both branch on it; advancing people through it became #11's. `Sex` was added to the record for the same reason: children have a mother and a father.
 
 ### Property
 
@@ -678,6 +686,14 @@ Nutrition and health modifiers
 **Do not poll mortality.** `every second: roll chance of dying` is exactly the pattern the scheduler exists to replace. Evaluate mortality at sensible age and health intervals; let starvation and injury raise their own threshold events (§4).
 
 Human and elf life tables are tuning. The mechanism is not.
+
+As built (#11), the mechanism is three systems under `Core/Lifecycle/`, each owning its scheduled kinds the way `Hunger` owns `MealDue`, and one table, `DemographicSettings`, holding every number — one instance per race, so the elf table (#34) is a second instance and not a second system.
+
+- **`Fertility`** — `BirthCheck` per household every ten days (the kind §4 reserved). The first woman in the household of fertile age (16–45) whose active partner is a living man in the same household conceives with a keyed chance, if she is not already pregnant, has not given birth within the postpartum period (a year, read off her youngest living child), has eaten within the hunger grace period and is not below the health floor — the nutrition and health modifiers, as gates. The postpartum gate is load-bearing: a delivery and a check share an instant whenever gestation is a multiple of the check interval, and the delivery runs first, so without it she would conceive the day she gave birth. Conception books `BirthDue` at term (90 days) and writes its id to the mother's record: **the pregnancy is the pending event**, which §17 already names as a future commitment a save keeps. At term the child is added at the mother's position, in her household and her band, recorded in the genealogy with both parents, and announced last with `PersonBorn`. Race fertility compatibility waits for #34; who the couple is remains #9's rules and #38's choice. Households arrive by subscribing to `HouseholdFormed`; a check that finds its household dissolved books no successor.
+- **`Mortality`** — `MortalityCheck` per person once a year, on their birthday, rolling the year just lived — so the first birthday rolls infancy's first year, the maximum birthday is the one nobody survives, the table's "chance per year" means what it says, and deaths spread across the calendar instead of landing on one day. The base chance is the stage's rate until the soft lifespan (70), then a straight line to certainty at the maximum (100); being below the health floor or unfed past the grace period multiplies it. Starving to death is not a roll: the meal that takes health to zero raises `StarvationCritical` for the same instant in the lifecycle phase, and `Mortality` answers it with `Deaths.Die` — the phase model doing exactly what §4 built it for, since the meal's loop over the table must not be the thing removing people from it. Reasons are read off the age: `OldAge` past the soft lifespan, `Illness` before it, `Starved` for the crossing.
+- **`Aging`** — above, under Age stages.
+
+Two things worth knowing. People reach `Aging` and `Mortality` only through `PersonBorn` — subscribe, book the first wake-up — so worldgen announces founders at tick zero the same way a birth announces a child, and there is one way in. And a wake-up that comes due for the dead is ignored rather than cancelled: durable ids are never reused, so there is nobody it could wrongly touch, and the one pending event that *is* cancelled is the pregnancy, because the record points at it. Health never recovers yet (#51 damages it and nothing heals it), so the health modifier on mortality is permanent for anyone who has ever starved; that is a gap in hunger, not in mortality, and is noted there.
 
 ### Population equilibrium
 

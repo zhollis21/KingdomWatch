@@ -125,7 +125,7 @@ namespace KingdomWatch.Core.Tests.Performance
             var soak = NewSoak();
 
             var stopwatch = Stopwatch.StartNew();
-            soak.RunDays(ThroughputYears * 365L);
+            soak.RunDays(ThroughputYears * SimulationTime.DaysPerYear);
             stopwatch.Stop();
 
             var simYearsPerSecond = ThroughputYears / stopwatch.Elapsed.TotalSeconds;

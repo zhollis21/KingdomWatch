@@ -12,12 +12,12 @@ namespace KingdomWatch.Core.Lifecycle
     /// in one place and one order, whoever decided the person should die.
     /// </summary>
     /// <remarks>
-    /// **Deciding a death is not this class's job.** The mortality model
-    /// (#11) rolls it, starvation and injury raise it; each of them calls
-    /// <see cref="Die"/>, and the world after the call is consistent: the
-    /// event is published, the partnership ended, memories pruned, the
-    /// household adjusted, the band's roster shortened and the storage slot
-    /// freed.
+    /// **Deciding a death is not this class's job.** <see cref="Mortality"/>
+    /// rolls it and answers starvation; injury (M4) will raise its own. Each
+    /// calls <see cref="Die"/>, and the world after the call is consistent: the
+    /// event is published, the partnership ended, memories pruned, a
+    /// pregnancy cancelled, the household adjusted, the band's roster
+    /// shortened and the storage slot freed.
     ///
     /// **One synchronous operation, not a chain of reactions.** Section 4's
     /// phase model exists so that REACTIONS to a death - succession, a job
@@ -129,10 +129,28 @@ namespace KingdomWatch.Core.Lifecycle
 
             _memories.WitnessDied(id);
 
+            EndPregnancy(person);
             LeaveHousehold(person);
             LeaveGroup(person);
 
             _people.Remove(person);
+        }
+
+        // A pregnancy dies with the mother. The record and the queue name
+        // the same event, so both are cleared here, together: Fertility
+        // would ignore a birth due for the dead, but a cancelled event is
+        // one the queue never has to carry and a save never has to keep.
+        private void EndPregnancy(PersonHandle person)
+        {
+            var due = _people.GetPregnancyDue(person);
+
+            if (due.IsNone)
+            {
+                return;
+            }
+
+            _bus.Clock.Cancel(due);
+            _people.SetPregnancyDue(person, EventId.None);
         }
 
         // Out of the household; then, if nobody grown is left, the dependents

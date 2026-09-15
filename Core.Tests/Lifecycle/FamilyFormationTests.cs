@@ -34,7 +34,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Assert.Multiple(() =>
             {
                 Assert.That(() => new FamilyFormationSettings(-1L, true), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(FamilyFormationSettings.Default.MourningTicks, Is.EqualTo(365L * SimulationTime.TicksPerDay));
+                Assert.That(FamilyFormationSettings.Default.MourningTicks, Is.EqualTo(SimulationTime.TicksPerYear));
                 Assert.That(FamilyFormationSettings.Default.FirstCousinsPermitted, Is.False);
             });
         }
@@ -237,9 +237,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         {
             var w = new HouseholdWorld();
             var recorded = w.NewPerson(AgeStage.Adult, Sex.Female);
-            var unrecorded = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Male, 0, 0, default);
-            var unrecordedChild = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Child, Sex.Male, 0, 0, default);
-            var unrecordedWoman = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Female, 0, 0, default);
+            var unrecorded = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Male, 0, 0, default, 0L);
+            var unrecordedChild = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Child, Sex.Male, 0, 0, default, 0L);
+            var unrecordedWoman = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Adult, Sex.Female, 0, 0, default, 0L);
 
             Assert.Multiple(() =>
             {

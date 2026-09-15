@@ -25,7 +25,7 @@ namespace KingdomWatch.Harness
         // Section 18's peak stepped-agent count for one focused settlement.
         private const int DefaultEntities = 300;
 
-        private const long DaysPerYear = 365L;
+        private const long DaysPerYear = SimulationTime.DaysPerYear;
 
         private static int Main(string[] args)
         {

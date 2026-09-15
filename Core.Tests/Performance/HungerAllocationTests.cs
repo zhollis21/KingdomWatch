@@ -17,6 +17,13 @@ namespace KingdomWatch.Core.Tests.Performance
     public sealed class HungerAllocationTests
     {
         private const int WellFed = 60;
+
+        private sealed class Ignore : IScheduledEventHandler
+        {
+            public void Handle(ScheduledEvent scheduled, SimulationClock clock)
+            {
+            }
+        }
         private const int Starving = 45;
 
         [Test]
@@ -33,6 +40,10 @@ namespace KingdomWatch.Core.Tests.Performance
             var router = new ScheduledEventRouter();
             var hunger = new Hunger(bus, people);
             router.Register(ScheduledEventKind.MealDue, hunger);
+            // The starving band reaches zero health in the warm-up, which
+            // raises a crossing for Mortality; here nobody dies, so a no-op
+            // answers it and the crossing costs what it costs.
+            router.Register(ScheduledEventKind.StarvationCritical, new Ignore());
 
             var fed = NewBand(ids, people, WellFed, food: WellFed * Hunger.DailyRation * 100);
             var starving = NewBand(ids, people, Starving, food: Starving * Hunger.DailyRation * 10);
@@ -71,7 +82,7 @@ namespace KingdomWatch.Core.Tests.Performance
             {
                 // Every stage, so all three sittings run in the measured span.
                 var stage = (AgeStage)(1 + (i % 5));
-                band.AddMember(people.Add(ids.Next(EntityKind.Person), default, 100, stage, Sex.Female, 0, 0, SimulationTime.Zero));
+                band.AddMember(people.Add(ids.Next(EntityKind.Person), default, 100, stage, Sex.Female, 0, 0, SimulationTime.Zero, 0L));
             }
 
             band.SharedSupplies.Gather(ResourceKind.Food, food);

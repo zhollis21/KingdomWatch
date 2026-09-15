@@ -338,7 +338,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         {
             var w = new HouseholdWorld();
             var home = w.NewCouple(out var mum, out var dad);
-            var stray = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Child, Sex.Male, 0, 0, default);
+            var stray = w.People.Add(w.Ids.Next(EntityKind.Person), default, 100, AgeStage.Child, Sex.Male, 0, 0, default, 0L);
             w.Households.Join(home, stray);
 
             w.Deaths.Die(dad, Reasons.None);

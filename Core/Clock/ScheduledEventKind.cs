@@ -39,7 +39,10 @@ namespace KingdomWatch.Core.Clock
         /// <summary>A person's current task has run to its end time.</summary>
         TaskCompleted = 1,
 
-        /// <summary>A household's periodic chance of conceiving comes due.</summary>
+        /// <summary>
+        /// A household's periodic chance of conceiving comes due. Owned by
+        /// <see cref="Lifecycle.Fertility"/>.
+        /// </summary>
         BirthCheck = 2,
 
         /// <summary>A person's low-frequency personal decision pass comes due.</summary>
@@ -50,5 +53,27 @@ namespace KingdomWatch.Core.Clock
         /// its ledger. Owned by <see cref="Needs.Hunger"/>.
         /// </summary>
         MealDue = 4,
+        /// <summary>
+        /// A person's age reaches the next stage boundary. Owned by
+        /// <see cref="Lifecycle.Aging"/>.
+        /// </summary>
+        AgeStageDue = 5,
+        /// <summary>
+        /// A person's yearly roll against the life table comes due, on their
+        /// birthday. Owned by <see cref="Lifecycle.Mortality"/>.
+        /// </summary>
+        MortalityCheck = 6,
+        /// <summary>
+        /// A missed meal has taken a person's health to zero. Raised by
+        /// <see cref="Needs.Hunger"/> at the meal that does it, for the same
+        /// instant in the lifecycle phase; answered by
+        /// <see cref="Lifecycle.Mortality"/>.
+        /// </summary>
+        StarvationCritical = 7,
+        /// <summary>
+        /// A pregnancy reaches term. Owned by <see cref="Lifecycle.Fertility"/>;
+        /// the mother's record names the pending one.
+        /// </summary>
+        BirthDue = 8,
     }
 }

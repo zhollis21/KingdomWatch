@@ -17,7 +17,7 @@ namespace KingdomWatch.Core.Clock
     /// a hunger crossing at 17:42 and walks Aldric from home at 10:00 to the
     /// forest at 10:12. It also leaves room under the stepped detail that
     /// arrives at M3, where visible agents need finer positions than a minute.
-    /// Two hundred years is about 6.3e9 ticks, so a signed 64-bit count is not
+    /// Two hundred years is about 2.1e9 ticks, so a signed 64-bit count is not
     /// remotely close to a limit.
     ///
     /// A struct rather than a bare long because the unit is the thing that gets
@@ -28,8 +28,14 @@ namespace KingdomWatch.Core.Clock
     /// plain longs: they are signed, they are not points on the clock, and
     /// giving them their own type would buy nothing today.
     ///
-    /// Days per year is deliberately absent. The calendar belongs to seasons
-    /// (issue #53), which is where a year first means something.
+    /// A year is 120 days: four seasons of thirty (#11, decided ahead of #53
+    /// because ages needed a year before seasons did). Shorter than Earth's on
+    /// purpose - a game year is something the player watches at compression,
+    /// and every daily event is one the simulation has to dispatch, so a
+    /// 200-year run is 24,000 days rather than 73,000. Day-scale numbers
+    /// (gestation, a hunger grace period) are tuned to feel right against
+    /// that year, not to match a calendar. The season split on top of it
+    /// is #53's. See docs/design/kingdom-watch-plan-v7.1.md section 4.
     /// </remarks>
     public readonly struct SimulationTime : IEquatable<SimulationTime>, IComparable<SimulationTime>
     {
@@ -37,6 +43,8 @@ namespace KingdomWatch.Core.Clock
         public const long TicksPerMinute = 60L * TicksPerSecond;
         public const long TicksPerHour = 60L * TicksPerMinute;
         public const long TicksPerDay = 24L * TicksPerHour;
+        public const long DaysPerYear = 120L;
+        public const long TicksPerYear = DaysPerYear * TicksPerDay;
 
         /// <summary>The start of the world. Equal to <c>default</c>.</summary>
         public static readonly SimulationTime Zero = default;
@@ -61,6 +69,9 @@ namespace KingdomWatch.Core.Clock
         /// <summary>Ticks elapsed within <see cref="DayNumber"/>.</summary>
         public long TickOfDay => Ticks % TicksPerDay;
 
+        /// <summary>Whole years elapsed. Year 0 is the first year.</summary>
+        public long YearNumber => Ticks / TicksPerYear;
+
         public static SimulationTime FromSeconds(long seconds) =>
             new SimulationTime(Scale(seconds, TicksPerSecond, nameof(seconds)));
 
@@ -72,6 +83,9 @@ namespace KingdomWatch.Core.Clock
 
         public static SimulationTime FromDays(long days) =>
             new SimulationTime(Scale(days, TicksPerDay, nameof(days)));
+
+        public static SimulationTime FromYears(long years) =>
+            new SimulationTime(Scale(years, TicksPerYear, nameof(years)));
 
         /// <summary>
         /// This time plus a duration in ticks. Negative durations are allowed
