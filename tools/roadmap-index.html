@@ -60,13 +60,13 @@
 <nav id="nav"><b><a href="#README.md">Kingdom Watch roadmap</a></b>
   <span class="filters" title="What the charts show">
     <label><input type="checkbox" id="f-done" checked> done</label>
-    <label><input type="checkbox" id="f-stubs" checked> other milestones</label>
+    <label><input type="checkbox" id="f-stubs" checked> blockers from other milestones</label>
   </span>
 </nav>
 <main id="content"><p><em>Loading…</em></p></main>
 <script>
 (async function () {
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const scheme = matchMedia('(prefers-color-scheme: dark)'); let dark = scheme.matches;
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
   const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
@@ -79,58 +79,58 @@
     graph = await fetch('graph.json', { cache: 'no-cache' }).then(r => r.json());
     for (const i of graph.issues) byNumber.set(i.number, i);
     const link = (href, text) => { const a = document.createElement('a'); a.href = '#' + href; a.textContent = text; nav.appendChild(a); };
-    link('next.md', 'What is next'); link('next-by-priority.md', 'By priority');
+    link('next.md', 'What is next');
     for (const m of graph.milestones) { const n = msNum(m); if (n !== null) link(`M${n}.md`, `M${n}`); }
+    link('all.md', 'Everything');
   } catch (e) { console.error('graph.json', e); }
   function msNum(m) { const x = /^M(\d+)/.exec(m.title); return x ? +x[1] : null; }
   const msShort = m => m.title.split(' ')[0];
 
   // ---- DOT ----------------------------------------------------------------
-  const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
-  const STATE = {   // fill, border, text
-    done:    ['#2da44e', '#1a7f37', '#ffffff'],
-    ready:   ['#ddf4ff', '#0969da', '#000000'],
-    blocked: ['#eaeef2', '#8c959f', '#000000'],
+  // Fill is state; the priority label rides on the node text and its border
+  // weight. Two palettes, because a fill that reads on white vanishes on
+  // #161b22 and vice versa; every fill/text pair is at least 4.5:1.
+  const PALETTES = {
+    light: { done: ['#1a7f37', '#116329', '#ffffff'], ready: ['#0969da', '#0550ae', '#ffffff'], blocked: ['#d0d7de', '#6e7781', '#1f2328'],
+             cluster: '#57606a', clusterText: '#1f2328', edge: '#57606a', plain: ['#ffffff', '#8c959f', '#1f2328'] },
+    dark:  { done: ['#238636', '#3fb950', '#ffffff'], ready: ['#1f6feb', '#58a6ff', '#ffffff'], blocked: ['#30363d', '#8b949e', '#e6edf3'],
+             cluster: '#8b949e', clusterText: '#e6edf3', edge: '#8b949e', plain: ['#0d1117', '#8b949e', '#e6edf3'] },
   };
-  const BAND = { 'P0-blocker': '#b60205', 'P1-high': '#d4532b', 'P2-normal': '#b08800', 'P3-someday': '#8c959f', none: '#8c959f' };
-  const fg = dark ? '#e6edf3' : '#1f2328', edgeColor = dark ? '#8b949e' : '#57606a';
+  const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
+  const PRIORITY_WIDTH = { 'P0-blocker': 3.5, 'P1-high': 2.2, 'P2-normal': 1.2, 'P3-someday': 0.6 };
+  let P = PALETTES[dark ? 'dark' : 'light'];
   const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
   const stateOf = i => i.state === 'closed' ? 'done' : (i.ready ? 'ready' : 'blocked');
+  const prioShort = i => i.priority ? i.priority.split('-')[0] : null;
   function wrap(text, width) {
     const out = [], words = text.split(/\s+/); let line = '';
     for (const w of words) { if (line && line.length + 1 + w.length > width) { out.push(line); line = w; } else line = line ? line + ' ' + w : w; }
     if (line) out.push(line); return out;
   }
   function nodeDot(i, opts) {
-    const [fill, border, text] = STATE[stateOf(i)];
-    const lines = wrap((i.state === 'closed' ? '✓ ' : '') + '#' + i.number + ' ' + i.title, 30);
+    const [fill, border, text] = P[stateOf(i)];
+    const prefix = (prioShort(i) ? prioShort(i) + ' · ' : '') + (i.state === 'closed' ? '✓ ' : '');
+    const lines = wrap(prefix + '#' + i.number + ' ' + i.title, 30);
     if (opts.stub) lines.push('(' + (i.milestone ? msShort(graph.milestones.find(m => m.number === i.milestone)) : 'unscheduled') + ')');
     const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
-    return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)}`
-      + (opts.stub ? '' : ` penwidth=${stateOf(i) === 'ready' ? 2 : 1}`)
+    const width = PRIORITY_WIDTH[i.priority] ?? 1;
+    return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)} penwidth=${width}`
       + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : ''))}];`;
   }
-  // groups: [{title, issues:[numbers]}]; bands: split each group by priority
+  // groups: [{title, issues:[numbers]}]
   function issuesDot(groups, o) {
     const inScope = new Set(); for (const g of groups) for (const n of g.issues) inScope.add(n);
     const shown = n => { const i = byNumber.get(n); return i && (o.done || i.state !== 'closed'); };
     const d = [];
-    d.push('digraph {', `  rankdir=${o.rankdir || 'TB'}; newrank=true; compound=true; splines=true; nodesep=0.25; ranksep=0.45; bgcolor="transparent"; pad=0.2;`,
-      `  graph [fontname="Helvetica" fontsize=13 fontcolor=${q(fg)} color="#8c959f" penwidth=1.2 labeljust="l"];`,
+    d.push('digraph {', `  rankdir=TB; newrank=true; compound=true; splines=true; nodesep=0.25; ranksep=0.45; bgcolor="transparent"; pad=0.2;${o.concentrate ? ' concentrate=true;' : ''}`,
+      `  graph [fontname="Helvetica" fontsize=13 fontcolor=${q(P.clusterText)} color=${q(P.cluster)} penwidth=1.2 labeljust="l"];`,
       `  node [shape=box fontname="Helvetica" fontsize=11 margin="0.12,0.06"];`,
-      `  edge [color=${q(edgeColor)} arrowsize=0.7 penwidth=1.1];`);
+      `  edge [color=${q(P.edge)} arrowsize=0.7 penwidth=1.1];`);
     let k = 0;
     for (const g of groups) {
       const members = g.issues.filter(shown); if (!members.length) continue;
       d.push(`  subgraph cluster_${k++} { label=${q(g.title)}; style="rounded"; margin=14;`);
-      if (o.bands) {
-        for (const p of [...PRIORITIES, null]) {
-          const band = members.filter(n => (byNumber.get(n).priority || null) === p); if (!band.length) continue;
-          d.push(`    subgraph cluster_${k++} { label=${q(p || 'no priority')}; color=${q(BAND[p || 'none'])}; penwidth=2.5; style=${q(p ? 'rounded' : 'rounded,dashed')}; margin=10;`);
-          for (const n of band) d.push('      ' + nodeDot(byNumber.get(n), {}));
-          d.push('    }');
-        }
-      } else for (const n of members) d.push('    ' + nodeDot(byNumber.get(n), {}));
+      for (const n of members) d.push('    ' + nodeDot(byNumber.get(n), {}));
       d.push('  }');
     }
     const stubs = new Set(), edges = [];
@@ -143,24 +143,28 @@
     return d.join('\n');
   }
   function overviewDot() {
-    const d = ['digraph {', `  rankdir=LR; bgcolor="transparent"; pad=0.2; node [shape=box style="filled,rounded" fontname="Helvetica" fontsize=11]; edge [color=${q(edgeColor)} arrowsize=0.7];`];
+    const d = ['digraph {', `  rankdir=LR; bgcolor="transparent"; pad=0.2; node [shape=box style="filled,rounded" fontname="Helvetica" fontsize=11]; edge [color=${q(P.edge)} arrowsize=0.7];`];
     let prev = null;
     for (const m of graph.milestones) {
-      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : null);
-      const [fill, border, text] = s ? STATE[s] : ['#ffffff', '#8c959f', '#000000'];
+      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : 'plain');
+      const [fill, border, text] = P[s];
       const id = 'M' + m.number, n = msNum(m);
       d.push(`  ${id} [label=${q(m.title + '\n' + m.closed + ' done · ' + m.open + ' open')} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} penwidth=${s === 'ready' ? 2 : 1}` + (n === null ? '' : ` URL=${q('#M' + n + '.md')}`) + '];');
       if (prev) d.push(`  ${prev} -> ${id};`); prev = id;
     }
     d.push('}'); return d.join('\n');
   }
-  const legendHtml = () => `<div class="legend">
-    <span><i style="background:#2da44e;border-color:#1a7f37"></i> done</span>
-    <span><i style="background:#ddf4ff;border-color:#0969da;border-width:2px"></i> ready to pick up</span>
-    <span><i style="background:#eaeef2"></i> blocked</span>
-    <span><i style="background:#eaeef2;border-style:dashed"></i> other milestone</span>
-    <span><i class="line"></i> blocked by</span>
+  function legendHtml() {
+    const chip = (s, extra = '') => `<i style="background:${P[s][0]};border-color:${P[s][1]};${extra}"></i>`;
+    return `<div class="legend">
+    <span>${chip('done')} done</span>
+    <span>${chip('ready')} ready to pick up</span>
+    <span>${chip('blocked')} blocked</span>
+    <span>${chip('blocked', 'border-style:dashed')} blocker in another milestone</span>
+    <span><i class="line" style="border-top-color:${P.edge}"></i> blocked by</span>
+    <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — priority is the label prefix and the border weight</span>
     <span>tap a node to open the issue</span></div>`;
+  }
 
   // Which charts a page's mermaid fences stand for, in order.
   function chartsFor(name) {
@@ -171,7 +175,7 @@
     const twoGroups = [cur, nxt].filter(Boolean).map(m => ({ title: m.title, issues: m.issues }));
     if (name === 'README.md') return [{ kind: 'overview' }, { kind: 'legend' }];
     if (name === 'next.md') return [{ kind: 'issues', groups: twoGroups }];
-    if (name === 'next-by-priority.md') return [{ kind: 'issues', groups: twoGroups, bands: true }];
+    if (name === 'all.md') return [{ kind: 'issues', concentrate: true, groups: graph.milestones.filter(m => m.issues.length).map(m => ({ title: m.title, issues: m.issues })) }];
     const mm = /^M(\d+)\.md$/.exec(name); if (mm && ms(+mm[1])) { const m = ms(+mm[1]); return [{ kind: 'issues', groups: [{ title: m.title, issues: m.issues }] }]; }
     return [];
   }
@@ -180,7 +184,7 @@
   let viz = new Viz();
   async function drawChart(spec, box) {
     if (spec.kind === 'legend') { box.className = 'legend-box'; box.innerHTML = legendHtml(); return; }
-    const o = { done: filters.done.checked, stubs: filters.stubs.checked, bands: !!spec.bands };
+    const o = { done: filters.done.checked, stubs: filters.stubs.checked, concentrate: !!spec.concentrate };
     const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
     try { const svg = await viz.renderSVGElement(dot); box.appendChild(svg); panZoom(box); }
     catch (e) { viz = new Viz(); box.classList.add('small'); box.innerHTML = `<p class="error">Chart failed: ${e.message}</p>`; console.error(e, dot); }
@@ -231,11 +235,12 @@
       const spec = specs[k];
       if (!spec) { box.classList.add('small'); box.innerHTML = '<p class="error">No chart definition for this page; graph.json may be missing.</p>'; continue; }
       await drawChart(spec, box);
-      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: another milestone. Arrows: blocked by.'; box.after(p); }
+      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
     }
     window.scrollTo(0, 0);
   }
   addEventListener('hashchange', render);
+  scheme.addEventListener('change', e => { dark = e.matches; P = PALETTES[dark ? 'dark' : 'light']; render(); });
   render();
 })();
 </script>

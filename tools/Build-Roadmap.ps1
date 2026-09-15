@@ -60,7 +60,7 @@ $REPO_NAME = 'KingdomWatch'
 $REPO_URL = "https://github.com/$OWNER/$REPO_NAME"
 
 # Fill colours are state — done, ready, blocked — because that is the question
-# the chart answers; priority is in the tables (and in the by-priority chart).
+# the chart answers; priority is a label prefix (P0–P3) and, on the site, border weight.
 $PRIORITIES = @('P0-blocker', 'P1-high', 'P2-normal', 'P3-someday')
 $CLASSDEFS = @(
     'classDef done fill:#2da44e,color:#fff,stroke:#1a7f37'
@@ -70,14 +70,6 @@ $CLASSDEFS = @(
 )
 # Stubs for issues outside the chart keep their state fill and go dashed.
 $EXT_STYLE = 'stroke-dasharray:4 4'
-# Priority bands (the by-priority chart) take their outline from the label colours.
-$BAND_STYLES = @{
-    'P0-blocker' = 'fill:none,stroke:#b60205,stroke-width:3px'
-    'P1-high'    = 'fill:none,stroke:#d4532b,stroke-width:3px'
-    'P2-normal'  = 'fill:none,stroke:#b08800,stroke-width:3px'
-    'P3-someday' = 'fill:none,stroke:#8c959f,stroke-width:3px'
-    'none'       = 'fill:none,stroke:#8c959f,stroke-width:3px,stroke-dasharray:6 3'
-}
 
 # ---------------------------------------------------------------------------
 # Fetch
@@ -257,7 +249,8 @@ function Format-Label([object]$i) {
     if ($line) { $lines.Add($line) }
     $text = $lines -join '<br/>'
     $tick = if ($i.state -eq 'closed') { '✓ ' } else { '' }
-    "$tick#$($i.number) $text"
+    $prio = if ($i.priority) { ($i.priority -split '-')[0] + ' · ' } else { '' }
+    "$prio$tick#$($i.number) $text"
 }
 
 function Get-NodeClass([object]$i) {
@@ -269,19 +262,15 @@ function Write-Chart {
       Emits a flowchart for a set of "groups" (milestone title -> issue
       numbers). Issues outside every group that an in-scope edge touches are
       drawn once as dashed stubs, labelled with their milestone — but only
-      what the group waits on or relates to. What it unblocks elsewhere is
+      what the group waits on. What it unblocks elsewhere is
       left to the tables: #16 alone fans out to nine later issues, and
       drawing that spreads the chart until nothing is readable.
-
-      -ByPriority nests a subgraph per priority inside each group, so the
-      chart reads as priority bands; edges cross bands freely.
     #>
-    param([System.Collections.Specialized.OrderedDictionary]$Groups, [string]$Direction = 'TD', [switch]$ByPriority)
+    param([System.Collections.Specialized.OrderedDictionary]$Groups, [string]$Direction = 'TD')
     $out = [System.Collections.Generic.List[string]]::new()
     $out.Add('```mermaid')
     $out.Add("flowchart $Direction")
     $inScope = [System.Collections.Generic.HashSet[int]]::new()
-    $bandStyles = [System.Collections.Generic.List[string]]::new()
     foreach ($g in $Groups.Values) { foreach ($n in $g) { [void]$inScope.Add([int]$n) } }
 
     foreach ($title in $Groups.Keys) {
@@ -290,21 +279,7 @@ function Write-Chart {
         $out.Add("  subgraph $id[`"$safe`"]")
         $out.Add("    direction $Direction")
         $members = @($Groups[$title] | Sort-Object)
-        if ($ByPriority) {
-            foreach ($p in ($PRIORITIES + @($null))) {
-                $band = @($members | Where-Object { $issues[$_].priority -eq $p })
-                if (-not $band.Count) { continue }
-                $label = if ($p) { $p } else { 'no priority' }
-                $bandId = "${id}_$($label -replace '[^A-Za-z0-9]', '')"
-                $out.Add("    subgraph $bandId[`"$label`"]")
-                $bandStyles.Add("  style $bandId $($BAND_STYLES[$(if ($p) { $p } else { 'none' })])")
-                $out.Add("      direction $Direction")
-                foreach ($n in $band) { $out.Add("      I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
-                $out.Add('    end')
-            }
-        } else {
-            foreach ($n in $members) { $out.Add("    I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
-        }
+        foreach ($n in $members) { $out.Add("    I$n[`"$(Format-Label $issues[$n])`"]:::$(Get-NodeClass $issues[$n])") }
         $out.Add('  end')
     }
 
@@ -326,7 +301,6 @@ function Write-Chart {
     foreach ($e in $edges) { $out.Add($e) }
     foreach ($c in $CLASSDEFS) { $out.Add("  $c") }
     foreach ($s in ($stubs | Sort-Object)) { $out.Add("  style I$s $EXT_STYLE") }
-    foreach ($b in $bandStyles) { $out.Add($b) }
     $out.Add('```')
     return $out
 }
@@ -442,6 +416,10 @@ $md.Add('')
 $md.Add('## Legend')
 $md.Add('')
 foreach ($l in $legend) { $md.Add($l) }
+$md.Add('')
+$md.Add('## Everything')
+$md.Add('')
+$md.Add('[The whole picture](all.md) — every milestone on one chart.')
 if ($warnings.Count) {
     $md.Add('')
     $md.Add('## Warnings')
@@ -462,7 +440,7 @@ $md.Add('')
 if ($current) {
     $groups = [ordered]@{ $current.title = @($current.issues) }
     if ($next) { $groups[$next.title] = @($next.issues) }
-    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked. The same chart [grouped by priority](next-by-priority.md).')
+    $md.Add("The earliest milestone with open work is **$($current.title)**" + $(if ($next) { ", followed by **$($next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label.')
     $md.Add('')
     foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) }
     foreach ($title in $groups.Keys) {
@@ -478,18 +456,18 @@ if ($current) {
 }
 Save 'next.md' $md
 
-# next-by-priority.md — the same two milestones with a band per priority
+# all.md — every milestone on one chart
 $md = [System.Collections.Generic.List[string]]::new()
-$md.Add('# What is next, by priority')
+$md.Add('# The whole picture')
 $md.Add('')
 $md.Add($stamp)
 $md.Add('')
-if ($current) {
-    $md.Add("Same issues as [What is next](next.md), with each milestone split into priority bands. Green = done, blue = ready to pick up, grey = blocked.")
-    $md.Add('')
-    foreach ($l in (Write-Chart $groups 'TD' -ByPriority)) { $md.Add($l) }
-} else { $md.Add('No milestone has open work.') }
-Save 'next-by-priority.md' $md
+$md.Add('Every milestone, every issue, every dependency. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label. Milestone pages have the tables.')
+$md.Add('')
+$groups = [ordered]@{}
+foreach ($m in $milestones) { if ($m.issues.Count) { $groups[$m.title] = @($m.issues) } }
+if ($groups.Count) { foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) } } else { $md.Add('No issues yet.') }
+Save 'all.md' $md
 
 # M<n>.md — one per milestone
 foreach ($m in $milestones) {
@@ -510,7 +488,7 @@ foreach ($m in $milestones) {
 }
 
 # Remove pages for milestones that no longer exist.
-$keep = @('README.md', 'next.md', 'next-by-priority.md', 'graph.json', 'index.html') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
+$keep = @('README.md', 'next.md', 'all.md', 'graph.json', 'index.html') + @($milestones | ForEach-Object { "M$(Get-MilestoneOrder $_.title).md" })
 Get-ChildItem $OutDir -File | Where-Object { $_.Name -match "^M[0-9]+[.]md$" -and $keep -notcontains $_.Name } | Remove-Item
 
 Write-Host "Wrote $($keep.Count) files to $OutDir ($($issues.Count) issues, $($ready.Count) ready, $($warnings.Count) warnings)."
