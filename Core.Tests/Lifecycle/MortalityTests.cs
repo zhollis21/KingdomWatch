@@ -356,6 +356,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(deaths[0].PrimaryEntity, Is.EqualTo(id));
                 Assert.That(deaths[0].Reasons.Contains(ReasonCode.OldAge), Is.True);
                 Assert.That(deaths[0].Time, Is.GreaterThan(start).And.LessThanOrEqualTo(start.Plus(SimulationTime.TicksPerYear)));
+                Assert.That(
+                    deaths[0].Time.Ticks % SimulationTime.TicksPerYear,
+                    Is.EqualTo(FloorMod(PersonStore.EarliestBornTick, SimulationTime.TicksPerYear)),
+                    "on the birthday, not merely within the year");
             });
         }
 
@@ -433,6 +437,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             return ticks;
         }
+
+        // The remainder in [0, modulus) whatever the sign of the value, as
+        // a birthday is: C# keeps the dividend's sign.
+        private static long FloorMod(long value, long modulus) => ((value % modulus) + modulus) % modulus;
 
         private static ReasonCode ReasonFor(List<DomainEvent> deaths, EntityId person)
         {
