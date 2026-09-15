@@ -167,7 +167,7 @@ Compression:
 
 **Built at #4.** One tick is one simulated second: fine enough for the hunger
 crossing at 17:42 and the walk from 10:00 to 10:12 below, and for the finer
-positions stepped detail needs at M3. Two hundred years is about 6.3e9 ticks, so
+positions stepped detail needs at M3. Two hundred years is about 2.1e9 ticks, so
 a signed 64-bit count is nowhere near a limit.
 
 Threshold crossings share the one queue rather than forming a second input to

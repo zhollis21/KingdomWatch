@@ -32,6 +32,14 @@ namespace KingdomWatch.Core.Lifecycle
     /// </remarks>
     public sealed class DemographicSettings
     {
+        /// <summary>
+        /// The largest year any field may hold. A million years of ticks is
+        /// still a thousandth of the clock's range, so a boundary converted to
+        /// ticks cannot overflow, and the only overflow left - a birthday past
+        /// the last representable instant - is the one the systems guard for.
+        /// </summary>
+        public const long MaxYears = 1_000_000L;
+
         /// <summary>The human table. See the type's remarks.</summary>
         public static readonly DemographicSettings Default = new DemographicSettings();
 
@@ -131,8 +139,9 @@ namespace KingdomWatch.Core.Lifecycle
         public int HungerMultiplier { get; init; } = 3;
 
         /// <summary>
-        /// Throws if the table is inconsistent: boundaries out of order, a
-        /// chance outside per mille, a lifespan before the last stage. Called
+        /// Throws if the table is inconsistent: boundaries out of order or
+        /// past <see cref="MaxYears"/>, a chance outside per mille, a
+        /// multiplier that could overflow, a lifespan before the last stage. Called
         /// by each system that reads the table, once, at construction.
         /// </summary>
         public void Validate()
@@ -143,14 +152,16 @@ namespace KingdomWatch.Core.Lifecycle
             RequireAscending(AdultAtYears, ElderAtYears, nameof(ElderAtYears));
             RequireAscending(ElderAtYears, SoftLifespanYears, nameof(SoftLifespanYears));
             RequireAscending(SoftLifespanYears, MaxLifespanYears, nameof(MaxLifespanYears));
+            RequireAscending(MaxLifespanYears, MaxYears + 1L, nameof(MaxLifespanYears));
             RequireAscending(0L, FertileFromYears, nameof(FertileFromYears));
             RequireAscending(FertileFromYears, FertileUntilYears, nameof(FertileUntilYears));
+            RequireAscending(FertileUntilYears, MaxYears + 1L, nameof(FertileUntilYears));
 
             RequirePositive(BirthCheckTicks, nameof(BirthCheckTicks));
             RequirePositive(GestationTicks, nameof(GestationTicks));
             RequireNonNegative(PostpartumTicks, nameof(PostpartumTicks));
-            RequirePositive(FrailtyMultiplier, nameof(FrailtyMultiplier));
-            RequirePositive(HungerMultiplier, nameof(HungerMultiplier));
+            RequireMultiplier(FrailtyMultiplier, nameof(FrailtyMultiplier));
+            RequireMultiplier(HungerMultiplier, nameof(HungerMultiplier));
 
             RequirePerMille(ConceptionPerMille, nameof(ConceptionPerMille));
             RequirePerMille(InfantMortalityPerMille, nameof(InfantMortalityPerMille));
@@ -278,6 +289,17 @@ namespace KingdomWatch.Core.Lifecycle
             if (value <= 0L)
             {
                 throw new ArgumentOutOfRangeException(name, value, name + " must be positive.");
+            }
+        }
+
+        // One to a thousand: a multiplier of a thousand takes any base rate
+        // to certainty, so nothing larger means anything, and bounding it is
+        // what keeps the product of two of them inside a long.
+        private static void RequireMultiplier(int value, string name)
+        {
+            if (value < 1 || value > 1000)
+            {
+                throw new ArgumentOutOfRangeException(name, value, name + " is a multiplier from 1 to 1000.");
             }
         }
 

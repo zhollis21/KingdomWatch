@@ -210,6 +210,46 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_fatal_meal_on_a_birthday_is_still_a_starvation_death()
+        {
+            // Meals, checks and birthdays all fall on day boundaries, so the
+            // meal that takes someone to zero can share an instant with their
+            // yearly check - and the check sorts first. Zero health is
+            // certain death whichever wake-up finds it, and it reads as
+            // starvation, not as the illness the roll would otherwise name.
+            var settings = new DemographicSettings
+            {
+                AdultMortalityPerMille = 1000,
+                ConceptionPerMille = 0,
+            };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewStarvingBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            var id = w.IdOf(person);
+
+            // Damage starts at the day-3 meal; the birthday is day 120, so
+            // 118 meals of damage land exactly on it.
+            var birthday = w.BirthdayOf(person, 31L);
+            Assert.That(birthday, Is.EqualTo(SimulationTime.FromDays(120L)));
+            w.People.SetHealth(person, (short)(118 * Hunger.StarvationDamagePerMeal));
+
+            w.AdvanceTo(birthday.Plus(-1L));
+            var justBefore = w.People.GetHealth(person);
+            w.Advance(1L);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(justBefore, Is.EqualTo(Hunger.StarvationDamagePerMeal));
+                Assert.That(deaths, Has.Count.EqualTo(1));
+                Assert.That(deaths[0].Time, Is.EqualTo(birthday));
+                Assert.That(ReasonFor(deaths, id), Is.EqualTo(ReasonCode.Starved), "not Illness");
+            });
+        }
+
+        [Test]
         public void Starving_to_zero_health_is_death_at_that_meal_with_the_reason_starved()
         {
             var w = new DemographicWorld(Immortal(), 1UL);

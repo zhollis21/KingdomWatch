@@ -86,6 +86,28 @@ namespace KingdomWatch.Core.Tests.Data
         }
 
         [Test]
+        public void A_birth_older_than_the_clock_can_measure_is_refused()
+        {
+            // now - BornTick is the age; a birth further back than half the
+            // range would overflow it before the clock reached the same
+            // distance forward. The bound itself is accepted.
+            var ids = new IdAllocator();
+            var store = new PersonStore();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, AgeStage.Adult, Sex.Male, 0, 0, default, PersonStore.EarliestBornTick - 1L),
+                    Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => store.Add(ids.Next(EntityKind.Person), default, 1, AgeStage.Adult, Sex.Male, 0, 0, default, PersonStore.EarliestBornTick),
+                    Throws.Nothing);
+                Assert.That(store.Count, Is.EqualTo(1), "a refused Add must not consume a slot");
+                Assert.That(PersonStore.EarliestBornTick, Is.EqualTo(-(long.MaxValue / 2L)));
+            });
+        }
+
+        [Test]
         public void The_first_occupant_of_a_slot_is_generation_one()
         {
             var ids = new IdAllocator();
@@ -568,7 +590,7 @@ namespace KingdomWatch.Core.Tests.Data
                 byte.MaxValue,
                 byte.MaxValue,
                 new SimulationTime(long.MaxValue),
-                long.MinValue);
+                PersonStore.EarliestBornTick);
             var opposite = store.Add(
                 ids.Next(EntityKind.Person), default, short.MaxValue, AgeStage.Infant, Sex.Female, 0, 0, default, 0L);
 
@@ -582,7 +604,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetBirthCulture(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetAssimilation(extreme), Is.EqualTo(byte.MaxValue));
                 Assert.That(store.GetLastFedAt(extreme), Is.EqualTo(new SimulationTime(long.MaxValue)));
-                Assert.That(store.GetBornTick(extreme), Is.EqualTo(long.MinValue));
+                Assert.That(store.GetBornTick(extreme), Is.EqualTo(PersonStore.EarliestBornTick));
                 Assert.That(store.GetHealth(opposite), Is.EqualTo(short.MaxValue));
             });
         }

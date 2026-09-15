@@ -17,7 +17,7 @@ namespace KingdomWatch.Core.Clock
     /// a hunger crossing at 17:42 and walks Aldric from home at 10:00 to the
     /// forest at 10:12. It also leaves room under the stepped detail that
     /// arrives at M3, where visible agents need finer positions than a minute.
-    /// Two hundred years is about 6.3e9 ticks, so a signed 64-bit count is not
+    /// Two hundred years is about 2.1e9 ticks, so a signed 64-bit count is not
     /// remotely close to a limit.
     ///
     /// A struct rather than a bare long because the unit is the thing that gets

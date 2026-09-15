@@ -452,6 +452,40 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_birth_due_that_is_not_the_pregnancy_the_record_names_is_ignored()
+        {
+            // The record and the queue name the same event, and a delivery
+            // is only that event: a stale or duplicate BirthDue - a queue
+            // rebuilt from a save that disagrees with the store - must not
+            // produce a child, whether the mother is pregnant with another
+            // or not pregnant at all.
+            var w = new DemographicWorld(Certain(), 1UL);
+            var band = w.NewBand();
+            w.NewCouple(out var wife, out var husband);
+            band.AddMember(wife);
+            band.AddMember(husband);
+            var wifeId = w.IdOf(wife);
+            var husbandId = w.IdOf(husband);
+
+            w.Clock.Schedule(w.Clock.Now.Plus(1L), Fertility.Phase, ScheduledEventKind.BirthDue, wifeId, husbandId);
+            w.Advance(1L);
+            var bornToNobodyPregnant = w.People.Count;
+
+            w.Advance(Check - 1L);
+            var due = w.People.GetPregnancyDue(wife);
+            w.Clock.Schedule(w.Clock.Now.Plus(1L), Fertility.Phase, ScheduledEventKind.BirthDue, wifeId, husbandId);
+            w.Advance(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bornToNobodyPregnant, Is.EqualTo(2), "not pregnant: no child");
+                Assert.That(w.People.Count, Is.EqualTo(2), "pregnant with another: no child");
+                Assert.That(w.People.GetPregnancyDue(wife), Is.EqualTo(due), "and the real pregnancy is untouched");
+                Assert.That(w.Clock.Cancel(due), Is.True, "still queued");
+            });
+        }
+
+        [Test]
         public void A_birth_that_comes_due_for_a_dead_mother_is_ignored()
         {
             // The cascade cancels the event, so this is booked by hand: the

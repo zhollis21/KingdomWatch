@@ -165,6 +165,17 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
+            // Zero health is certain death whichever wake-up finds it. The
+            // meal that took them there shares this instant when it falls on
+            // a birthday - meals and birthdays both land on day boundaries -
+            // and this check sorts before the crossing it raised, so the roll
+            // would otherwise name an illness for what was starvation.
+            if (_people.GetHealth(person) <= 0)
+            {
+                _deaths.Die(person, new Reasons(ReasonCode.Starved));
+                return;
+            }
+
             var now = _clock.Now;
             var chance = YearlyChancePerMille(person);
 

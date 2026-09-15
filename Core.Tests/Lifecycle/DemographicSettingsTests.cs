@@ -1,4 +1,5 @@
 using System;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Lifecycle;
 using NUnit.Framework;
@@ -33,6 +34,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(() => new DemographicSettings { PostpartumTicks = 0L }.Validate(), Throws.Nothing, "no recovery at all is a valid table");
                 Refused(new DemographicSettings { FrailtyMultiplier = 0 });
                 Refused(new DemographicSettings { HungerMultiplier = 0 });
+                Refused(new DemographicSettings { FrailtyMultiplier = 1001 });
+                Refused(new DemographicSettings { HungerMultiplier = 1001 });
+                Assert.That(() => new DemographicSettings { FrailtyMultiplier = 1000, HungerMultiplier = 1000 }.Validate(), Throws.Nothing);
+                Refused(new DemographicSettings { SoftLifespanYears = DemographicSettings.MaxYears, MaxLifespanYears = DemographicSettings.MaxYears + 1L });
+                Refused(new DemographicSettings { FertileUntilYears = DemographicSettings.MaxYears + 1L });
+                Assert.That(() => new DemographicSettings { SoftLifespanYears = DemographicSettings.MaxYears - 1L, MaxLifespanYears = DemographicSettings.MaxYears, FertileUntilYears = DemographicSettings.MaxYears }.Validate(), Throws.Nothing);
+                Assert.That(DemographicSettings.MaxYears * SimulationTime.TicksPerYear, Is.LessThan(long.MaxValue / 1000L), "a boundary in ticks stays far inside the clock");
                 Refused(new DemographicSettings { ConceptionPerMille = 1001 });
                 Refused(new DemographicSettings { InfantMortalityPerMille = -1 });
                 Refused(new DemographicSettings { ChildMortalityPerMille = 1001 });

@@ -65,6 +65,15 @@ namespace KingdomWatch.Core.Data
     {
         private const int InitialCapacity = 16;
 
+        /// <summary>
+        /// The earliest birth <see cref="Add"/> accepts: half the clock's range
+        /// before it started. Age is <c>now - BornTick</c>, and a birth further
+        /// back would overflow that subtraction before the clock itself had
+        /// run the same distance forward - some 146 billion years, which is
+        /// not a founder, it is a corrupted field.
+        /// </summary>
+        public const long EarliestBornTick = -(long.MaxValue / 2L);
+
         // Slots [0, _slotCount) have been allocated at some point; the array
         // may be longer. A slot is occupied unless its record's Id is None.
         private PersonRecord[] _people = Array.Empty<PersonRecord>();
@@ -148,6 +157,12 @@ namespace KingdomWatch.Core.Data
             if (!EnumGuard.IsDefined(DefinedSexes, (int)sex) || sex == Sex.None)
             {
                 throw new ArgumentOutOfRangeException(nameof(sex), sex, "Not a defined Sex, or None.");
+            }
+
+            if (bornTick < EarliestBornTick)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(bornTick), bornTick, "Born before the clock can measure an age from; see EarliestBornTick.");
             }
 
             var handle = ClaimSlot();

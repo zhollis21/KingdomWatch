@@ -190,8 +190,8 @@ namespace KingdomWatch.Core.Tests.Clock
         public void Two_hundred_years_is_nowhere_near_the_limit()
         {
             // The reason a long is enough: section 4's 200-year harness runs
-            // are about 6.3e9 ticks, nine orders of magnitude inside the range.
-            var twoHundredYears = SimulationTime.FromDays(200L * 365L);
+            // are about 2.1e9 ticks, nine orders of magnitude inside the range.
+            var twoHundredYears = SimulationTime.FromYears(200L);
 
             Assert.That(twoHundredYears.Ticks, Is.LessThan(long.MaxValue / 1_000_000L));
         }

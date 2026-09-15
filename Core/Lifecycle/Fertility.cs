@@ -50,8 +50,10 @@ namespace KingdomWatch.Core.Lifecycle
     /// pregnancy. Section 17 names birth due dates among the future
     /// commitments a save keeps, and a due date kept separately could
     /// disagree with the queue. The death cascade cancels the event and
-    /// clears the field together, which is why a birth that comes due for
-    /// a dead mother should never happen - and is ignored if it does.
+    /// clears the field together. A delivery is that one event and no other:
+    /// a due for a dead mother, or one the record does not name - stale,
+    /// duplicated, rebuilt from a save that disagrees with the store - is
+    /// ignored.
     ///
     /// **Households arrive through
     /// <see cref="DomainEventKind.HouseholdFormed"/>**, which
@@ -165,7 +167,7 @@ namespace KingdomWatch.Core.Lifecycle
                     Check(scheduled.PrimaryEntity);
                     break;
                 case ScheduledEventKind.BirthDue:
-                    GiveBirth(scheduled.PrimaryEntity, scheduled.SecondaryEntity);
+                    GiveBirth(scheduled.Id, scheduled.PrimaryEntity, scheduled.SecondaryEntity);
                     break;
                 default:
                     throw new InvalidOperationException(
@@ -281,9 +283,12 @@ namespace KingdomWatch.Core.Lifecycle
             _people.SetPregnancyDue(mother, due);
         }
 
-        private void GiveBirth(EntityId motherId, EntityId fatherId)
+        // A delivery is the one event the record names, and nothing else:
+        // a due that is not hers - stale, duplicated, rebuilt from a save
+        // that disagrees with the store - bears no child.
+        private void GiveBirth(EventId due, EntityId motherId, EntityId fatherId)
         {
-            if (!_people.TryGetHandle(motherId, out var mother))
+            if (!_people.TryGetHandle(motherId, out var mother) || _people.GetPregnancyDue(mother) != due)
             {
                 return;
             }
