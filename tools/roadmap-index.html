@@ -6,13 +6,17 @@
 <title>Kingdom Watch roadmap</title>
 <!--
   Static shell for the generated roadmap. tools/Build-Roadmap.ps1 copies this
-  file next to the markdown it writes; the page fetches README.md, next.md or
-  M<n>.md from the hash (#next.md), renders it with marked, and hands the
-  ```mermaid fences to mermaid. Charts get wheel-zoom and drag so the big ones
-  are readable on a phone. No build step, no framework.
+  file next to the markdown and graph.json it writes. The page fetches the
+  markdown for the hash (#next.md) and renders it with marked; the mermaid
+  fences in it exist for GitHub's own renderer (the PR job summary) and are
+  replaced here by charts laid out with Graphviz (viz.js) from graph.json —
+  dot handles layered dependency graphs with clusters far better than
+  mermaid's dagre, and drawing from the data means the toggles simply change
+  what goes into the graph. No build step, no framework.
 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.0.13/lib/marked.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.15.0/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/viz.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/viz.js/2.1.2/full.render.js"></script>
 <style>
   :root { color-scheme: light dark;
     --bg: #fff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --accent: #0969da; --chart-bg: #f6f8fa; }
@@ -38,11 +42,16 @@
   th { background: var(--chart-bg); }
   .chart { position: relative; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--chart-bg);
     height: min(75vh, 720px); overflow: hidden; touch-action: none; cursor: grab; }
-  .chart.small { height: auto; overflow: auto; cursor: default; }
+  .chart.small { height: auto; overflow: auto; cursor: default; padding: 8px; }
   .chart svg { max-width: none !important; transform-origin: 0 0; user-select: none; }
+  .chart svg a { cursor: pointer; }
   .chart .tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
   .chart button { font: inherit; font-size: .85em; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px;
     background: var(--bg); color: var(--fg); cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 16px; font-size: .9em; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; height: 16px; border-radius: 4px; border: 1.5px solid #8c959f; }
+  .legend .line { width: 34px; height: 0; border-radius: 0; border: 0; border-top: 2px solid #57606a; }
   .hint { color: var(--muted); font-size: .85em; margin: -12px 0 16px; }
   .error { color: #d1242f; }
 </style>
@@ -59,7 +68,6 @@
 <script>
 (async function () {
   const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default', flowchart: { useMaxWidth: false } });
   const content = document.getElementById('content');
   const nav = document.getElementById('nav');
   const page = () => decodeURIComponent(location.hash.slice(1)) || 'README.md';
@@ -67,46 +75,127 @@
   try { const saved = JSON.parse(localStorage.getItem('roadmap-filters') || '{}'); for (const k in filters) if (k in saved) filters[k].checked = saved[k]; } catch (e) { /* no storage: defaults */ }
   for (const k in filters) filters[k].addEventListener('change', () => { try { localStorage.setItem('roadmap-filters', JSON.stringify({ done: filters.done.checked, related: filters.related.checked, stubs: filters.stubs.checked })); } catch (e) { } render(); });
 
-  // Milestone links come from graph.json so the nav never goes stale.
+  let graph = null, byNumber = new Map();
   try {
-    const graph = await fetch('graph.json').then(r => r.json());
+    graph = await fetch('graph.json', { cache: 'no-cache' }).then(r => r.json());
+    for (const i of graph.issues) byNumber.set(i.number, i);
     const link = (href, text) => { const a = document.createElement('a'); a.href = '#' + href; a.textContent = text; nav.appendChild(a); };
     link('next.md', 'What is next'); link('next-by-priority.md', 'By priority');
-    for (const m of graph.milestones) { const n = (m.title.match(/^M(\d+)/) || [])[1]; if (n !== undefined) link(`M${n}.md`, `M${n}`); }
-  } catch (e) { /* nav without milestones is still usable */ }
+    for (const m of graph.milestones) { const n = msNum(m); if (n !== null) link(`M${n}.md`, `M${n}`); }
+  } catch (e) { console.error('graph.json', e); }
+  function msNum(m) { const x = /^M(\d+)/.exec(m.title); return x ? +x[1] : null; }
+  const msShort = m => m.title.split(' ')[0];
 
-  // Trims a generated chart by the nav toggles. The generator's output is
-  // line-oriented — one node, edge or style per line — so this is a line
-  // filter, not a parser: drop hidden nodes and every line that names them,
-  // drop stubs nothing points at any more, then collapse emptied subgraphs.
-  function filterChart(src, o) {
-    const nodeRe = /^\s*(I\d+)\[.*\]:::(\w+)\s*$/, edgeRe = /^\s*(I\d+)\s*(-->|-\.-)\s*(I\d+)\s*$/, styleRe = /^\s*style (I\d+) (.*)$/;
-    const lines = src.split('\n'), stubs = new Set(), hidden = new Set();
-    for (const l of lines) { let m; if ((m = styleRe.exec(l)) && m[2].includes('stroke-dasharray')) stubs.add(m[1]); }
-    for (const l of lines) { const m = nodeRe.exec(l); if (!m) continue; if (!o.done && m[2] === 'done') hidden.add(m[1]); if (!o.stubs && stubs.has(m[1])) hidden.add(m[1]); }
-    const names = l => { const n = nodeRe.exec(l); if (n) return [n[1]]; const e = edgeRe.exec(l); if (e) return [e[1], e[3]]; const s = styleRe.exec(l); return s ? [s[1]] : []; };
-    let out = lines.filter(l => { const e = edgeRe.exec(l); if (e && !o.related && e[2] === '-.-') return false; return !names(l).some(n => hidden.has(n)); });
-    const referenced = new Set(); for (const l of out) { const e = edgeRe.exec(l); if (e) { referenced.add(e[1]); referenced.add(e[3]); } }
-    out = out.filter(l => !names(l).some(n => stubs.has(n) && !referenced.has(n)) || edgeRe.test(l));
-    for (let changed = true; changed;) {
-      changed = false; const kept = [];
-      for (let i = 0; i < out.length; i++) {
-        if (/^\s*subgraph /.test(out[i])) { let j = i + 1; if (/^\s*direction /.test(out[j] || '')) j++; if (/^\s*end\s*$/.test(out[j] || '')) { i = j; changed = true; continue; } }
-        kept.push(out[i]);
-      }
-      out = kept;
+  // ---- DOT ----------------------------------------------------------------
+  const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
+  const STATE = {   // fill, border, text
+    done:    ['#2da44e', '#1a7f37', '#ffffff'],
+    ready:   ['#ddf4ff', '#0969da', '#000000'],
+    blocked: ['#eaeef2', '#8c959f', '#000000'],
+  };
+  const BAND = { 'P0-blocker': '#b60205', 'P1-high': '#d4532b', 'P2-normal': '#b08800', 'P3-someday': '#8c959f', none: '#8c959f' };
+  const fg = dark ? '#e6edf3' : '#1f2328', edgeColor = dark ? '#8b949e' : '#57606a';
+  const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const stateOf = i => i.state === 'closed' ? 'done' : (i.ready ? 'ready' : 'blocked');
+  function wrap(text, width) {
+    const out = [], words = text.split(/\s+/); let line = '';
+    for (const w of words) { if (line && line.length + 1 + w.length > width) { out.push(line); line = w; } else line = line ? line + ' ' + w : w; }
+    if (line) out.push(line); return out;
+  }
+  function nodeDot(i, opts) {
+    const [fill, border, text] = STATE[stateOf(i)];
+    const lines = wrap((i.state === 'closed' ? '✓ ' : '') + '#' + i.number + ' ' + i.title, 30);
+    if (opts.stub) lines.push('(' + (i.milestone ? msShort(graph.milestones.find(m => m.number === i.milestone)) : 'unscheduled') + ')');
+    const style = 'filled,rounded' + (opts.stub ? ',dashed' : '');
+    return `I${i.number} [label=${q(lines.join('\n'))} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} style=${q(style)}`
+      + (opts.stub ? '' : ` penwidth=${stateOf(i) === 'ready' ? 2 : 1}`)
+      + ` URL=${q(i.url)} target="_blank" tooltip=${q('#' + i.number + ' ' + i.title + (i.priority ? ' · ' + i.priority : ''))}];`;
+  }
+  // groups: [{title, issues:[numbers]}]; bands: split each group by priority
+  function issuesDot(groups, o) {
+    const inScope = new Set(); for (const g of groups) for (const n of g.issues) inScope.add(n);
+    const shown = n => { const i = byNumber.get(n); return i && (o.done || i.state !== 'closed'); };
+    const d = [];
+    d.push('digraph {', `  rankdir=${o.rankdir || 'TB'}; newrank=true; compound=true; splines=true; nodesep=0.25; ranksep=0.45; bgcolor="transparent"; pad=0.2;`,
+      `  graph [fontname="Helvetica" fontsize=13 fontcolor=${q(fg)} color="#8c959f" penwidth=1.2 labeljust="l"];`,
+      `  node [shape=box fontname="Helvetica" fontsize=11 margin="0.12,0.06"];`,
+      `  edge [color=${q(edgeColor)} arrowsize=0.7 penwidth=1.1];`);
+    let k = 0;
+    for (const g of groups) {
+      const members = g.issues.filter(shown); if (!members.length) continue;
+      d.push(`  subgraph cluster_${k++} { label=${q(g.title)}; style="rounded"; margin=14;`);
+      if (o.bands) {
+        for (const p of [...PRIORITIES, null]) {
+          const band = members.filter(n => (byNumber.get(n).priority || null) === p); if (!band.length) continue;
+          d.push(`    subgraph cluster_${k++} { label=${q(p || 'no priority')}; color=${q(BAND[p || 'none'])}; penwidth=2.5; style=${q(p ? 'rounded' : 'rounded,dashed')}; margin=10;`);
+          for (const n of band) d.push('      ' + nodeDot(byNumber.get(n), {}));
+          d.push('    }');
+        }
+      } else for (const n of members) d.push('    ' + nodeDot(byNumber.get(n), {}));
+      d.push('  }');
     }
-    // A style line for something no longer on the chart (an emptied band) is a parse error.
-    const defined = new Set(); for (const l of out) { let m; if ((m = nodeRe.exec(l))) defined.add(m[1]); else if ((m = /^\s*subgraph (\S+?)\[/.exec(l))) defined.add(m[1]); }
-    out = out.filter(l => { const m = /^\s*style (\S+) /.exec(l); return !m || defined.has(m[1]); });
-    return out.join('\n');
+    const stubs = new Set(), edges = [], seen = new Set();
+    for (const n of inScope) {
+      const i = byNumber.get(n); if (!shown(n)) continue;
+      for (const b of i.blockedBy) { if (!shown(b)) continue; if (!inScope.has(b)) { if (!o.stubs) continue; stubs.add(b); } edges.push(`  I${b} -> I${n};`); }
+      if (o.related) for (const r of i.related) {
+        if (!shown(r)) continue; const key = Math.min(n, r) + '-' + Math.max(n, r); if (seen.has(key)) continue; seen.add(key);
+        if (!inScope.has(r)) { if (!o.stubs) continue; stubs.add(r); } edges.push(`  I${n} -> I${r} [style=dotted arrowhead=none constraint=false];`);
+      }
+    }
+    for (const s of stubs) d.push('  ' + nodeDot(byNumber.get(s), { stub: true }));
+    d.push(...edges, '}');
+    return d.join('\n');
+  }
+  function overviewDot() {
+    const d = ['digraph {', `  rankdir=LR; bgcolor="transparent"; pad=0.2; node [shape=box style="filled,rounded" fontname="Helvetica" fontsize=11]; edge [color=${q(edgeColor)} arrowsize=0.7];`];
+    let prev = null;
+    for (const m of graph.milestones) {
+      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : null);
+      const [fill, border, text] = s ? STATE[s] : ['#ffffff', '#8c959f', '#000000'];
+      const id = 'M' + m.number, n = msNum(m);
+      d.push(`  ${id} [label=${q(m.title + '\n' + m.closed + ' done · ' + m.open + ' open')} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} penwidth=${s === 'ready' ? 2 : 1}` + (n === null ? '' : ` URL=${q('#M' + n + '.md')}`) + '];');
+      if (prev) d.push(`  ${prev} -> ${id};`); prev = id;
+    }
+    d.push('}'); return d.join('\n');
+  }
+  const legendHtml = () => `<div class="legend">
+    <span><i style="background:#2da44e;border-color:#1a7f37"></i> done</span>
+    <span><i style="background:#ddf4ff;border-color:#0969da;border-width:2px"></i> ready to pick up</span>
+    <span><i style="background:#eaeef2"></i> blocked</span>
+    <span><i style="background:#eaeef2;border-style:dashed"></i> other milestone</span>
+    <span><i class="line"></i> blocked by</span>
+    <span><i class="line" style="border-top-style:dotted"></i> related</span>
+    <span>tap a node to open the issue</span></div>`;
+
+  // Which charts a page's mermaid fences stand for, in order.
+  function chartsFor(name) {
+    if (!graph) return [];
+    const ms = n => graph.milestones.find(m => msNum(m) === n);
+    const cur = graph.milestones.find(m => m.number === graph.currentMilestone);
+    const nxt = cur ? graph.milestones[graph.milestones.indexOf(cur) + 1] : null;
+    const twoGroups = [cur, nxt].filter(Boolean).map(m => ({ title: m.title, issues: m.issues }));
+    if (name === 'README.md') return [{ kind: 'overview' }, { kind: 'legend' }];
+    if (name === 'next.md') return [{ kind: 'issues', groups: twoGroups }];
+    if (name === 'next-by-priority.md') return [{ kind: 'issues', groups: twoGroups, bands: true }];
+    const mm = /^M(\d+)\.md$/.exec(name); if (mm && ms(+mm[1])) { const m = ms(+mm[1]); return [{ kind: 'issues', groups: [{ title: m.title, issues: m.issues }] }]; }
+    return [];
   }
 
+  // ---- render -------------------------------------------------------------
+  let viz = new Viz();
+  async function drawChart(spec, box) {
+    if (spec.kind === 'legend') { box.className = 'legend-box'; box.innerHTML = legendHtml(); return; }
+    const o = { done: filters.done.checked, related: filters.related.checked, stubs: filters.stubs.checked, bands: !!spec.bands };
+    const dot = spec.kind === 'overview' ? overviewDot() : issuesDot(spec.groups, o);
+    try { const svg = await viz.renderSVGElement(dot); box.appendChild(svg); panZoom(box); }
+    catch (e) { viz = new Viz(); box.classList.add('small'); box.innerHTML = `<p class="error">Chart failed: ${e.message}</p>`; console.error(e, dot); }
+  }
   function panZoom(box) {
     const svg = box.querySelector('svg'); if (!svg) return;
-    const w = svg.viewBox.baseVal.width || svg.getBBox().width, h = svg.viewBox.baseVal.height || svg.getBBox().height;
+    const w = parseFloat(svg.getAttribute('width')) || svg.viewBox.baseVal.width, h = parseFloat(svg.getAttribute('height')) || svg.viewBox.baseVal.height;
     svg.setAttribute('width', w); svg.setAttribute('height', h);
-    if (h < 320 && w < box.clientWidth) { box.classList.add('small'); return; }   // legend, overview: just show it
+    if (h < 320 && w < box.clientWidth) { box.classList.add('small'); return; }   // the overview: just show it
     let scale = Math.min(1, (box.clientWidth - 16) / w), x = 8, y = 8;
     const apply = () => { svg.style.transform = `translate(${x}px, ${y}px) scale(${scale})`; };
     const fit = () => { scale = Math.min(1, (box.clientWidth - 16) / w); x = 8; y = 8; apply(); };
@@ -115,10 +204,11 @@
       const f = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.1, scale * f));
       x = px - (px - x) * (s / scale); y = py - (py - y) * (s / scale); scale = s; apply();
     }, { passive: false });
-    let drag = null, pinch = null;
-    box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); drag = { id: e.pointerId, x: e.clientX - x, y: e.clientY - y }; });
-    box.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { x = e.clientX - drag.x; y = e.clientY - drag.y; apply(); } });
+    let drag = null, pinch = null, moved = false;
+    box.addEventListener('pointerdown', e => { box.setPointerCapture(e.pointerId); drag = { id: e.pointerId, x: e.clientX - x, y: e.clientY - y }; moved = false; });
+    box.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { x = e.clientX - drag.x; y = e.clientY - drag.y; moved = true; apply(); } });
     box.addEventListener('pointerup', () => drag = null); box.addEventListener('pointercancel', () => drag = null);
+    svg.addEventListener('click', e => { if (moved) e.preventDefault(); }, true);   // a drag that ends on a node is not a tap
     box.addEventListener('touchstart', e => { if (e.touches.length === 2) { drag = null; pinch = { d: dist(e), s: scale }; } }, { passive: true });
     box.addEventListener('touchmove', e => { if (pinch && e.touches.length === 2) { scale = Math.min(4, Math.max(0.1, pinch.s * dist(e) / pinch.d)); apply(); } }, { passive: true });
     box.addEventListener('touchend', () => pinch = null);
@@ -140,11 +230,15 @@
     document.title = (content.querySelector('h1')?.textContent || 'Roadmap') + ' · Kingdom Watch';
     for (const t of content.querySelectorAll('table')) { const w = document.createElement('div'); w.className = 'table-wrap'; t.replaceWith(w); w.appendChild(t); }
     for (const a of content.querySelectorAll('a[href$=".md"]')) { const h = a.getAttribute('href'); if (!/^https?:/.test(h)) a.href = '#' + h; }
-    const fences = [...content.querySelectorAll('pre > code.language-mermaid')];
-    for (const c of fences) { const box = document.createElement('div'); box.className = 'chart'; const pre = document.createElement('pre'); pre.className = 'mermaid'; pre.textContent = filterChart(c.textContent, { done: filters.done.checked, related: filters.related.checked, stubs: filters.stubs.checked }); box.appendChild(pre); c.parentElement.replaceWith(box); }
-    try { await mermaid.run({ nodes: content.querySelectorAll('pre.mermaid') }); } catch (e) { console.error(e); }
-    for (const box of content.querySelectorAll('.chart')) panZoom(box);
-    if (fences.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: another milestone. Solid arrows: blocked by. Dotted: related.'; content.querySelector('.chart').after(p); }
+    const fences = [...content.querySelectorAll('pre > code.language-mermaid')], specs = chartsFor(name);
+    let hinted = false;
+    for (let k = 0; k < fences.length; k++) {
+      const box = document.createElement('div'); box.className = 'chart'; fences[k].parentElement.replaceWith(box);
+      const spec = specs[k];
+      if (!spec) { box.classList.add('small'); box.innerHTML = '<p class="error">No chart definition for this page; graph.json may be missing.</p>'; continue; }
+      await drawChart(spec, box);
+      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: another milestone. Solid arrows: blocked by. Dotted: related.'; box.after(p); }
+    }
     window.scrollTo(0, 0);
   }
   addEventListener('hashchange', render);
