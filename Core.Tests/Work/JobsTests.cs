@@ -684,6 +684,33 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_pass_run_off_hour_on_the_worlds_last_evening_still_books_the_last_dawn()
+        {
+            // At 20:00 on the day before the world's last, the next dawn is
+            // ten hours off and representable. A guard that asks for a whole
+            // day of clock left would drop it.
+            var w = new WorkWorld();
+            var band = new MobileGroup(
+                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+            var end = new SimulationTime(long.MaxValue);
+            var lastDawn = new SimulationTime(end.Ticks - end.TickOfDay + Jobs.Dawn);
+            var evening = lastDawn.Plus(-10L * SimulationTime.TicksPerHour);
+            w.Clock.AdvanceTo(evening, w.Router);
+            w.Jobs.Track(band);
+
+            w.Jobs.Handle(
+                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
+                w.Clock);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(2), "the tracked dawn and the hand-run pass's successor");
+                Assert.That(w.Clock.AdvanceTo(lastDawn, w.Router), Is.EqualTo(2), "both at the last dawn");
+                Assert.That(w.Clock.ScheduledCount, Is.Zero, "and no tomorrow to book");
+            });
+        }
+
+        [Test]
         public void A_band_off_the_map_cannot_be_given_sites()
         {
             var w = new WorkWorld();

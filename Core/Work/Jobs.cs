@@ -183,7 +183,7 @@ namespace KingdomWatch.Core.Work
 
             // Booked before recorded, as Hunger does: the booking is the one
             // thing here that can be refused.
-            _clock.Schedule(NextDawn(_clock.Now), Phase, ScheduledEventKind.WorkDayDue, group.Id, EntityId.None);
+            _clock.Schedule(_clock.Now.Plus(TicksUntilDawn(_clock.Now)), Phase, ScheduledEventKind.WorkDayDue, group.Id, EntityId.None);
             _tracked.Add(new Tracked(group, JobKindCount));
         }
 
@@ -362,10 +362,15 @@ namespace KingdomWatch.Core.Work
             // The next dawn, not a day from now: the handler is callable at
             // any hour, and a pass run at another one would otherwise drag
             // the daily pass to that hour for good. The stream ends with time
-            // itself, as Hunger's does.
-            if (_clock.Now.Ticks <= long.MaxValue - SimulationTime.TicksPerDay)
+            // itself, as Hunger's does - measured to the dawn in question,
+            // which from an off-hour pass on the world's last evening is
+            // nearer than a day.
+            var now = _clock.Now;
+            var untilDawn = TicksUntilDawn(now);
+
+            if (untilDawn <= long.MaxValue - now.Ticks)
             {
-                _clock.Schedule(NextDawn(_clock.Now), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
+                _clock.Schedule(now.Plus(untilDawn), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
             }
         }
 
@@ -586,14 +591,16 @@ namespace KingdomWatch.Core.Work
             return slot.Route[forward ? step : last - step];
         }
 
-        // The first dawn strictly after now: a band tracked at dawn itself
-        // starts tomorrow, since the instant is already being dispatched or
-        // about to be. Plus, so that a dawn past the end of time is refused
-        // the way any other booking past it is.
-        private static SimulationTime NextDawn(SimulationTime now)
+        // Ticks to the first dawn strictly after now: a band tracked at dawn
+        // itself starts tomorrow, since the instant is already being
+        // dispatched or about to be. A delta rather than an instant so the
+        // caller can ask whether the clock has room for it; Track does not
+        // ask, and lets Plus refuse a dawn past the end of time the way any
+        // other booking past it is refused.
+        private static long TicksUntilDawn(SimulationTime now)
         {
             var sinceDawn = now.TickOfDay - Dawn;
-            return now.Plus(sinceDawn < 0L ? -sinceDawn : SimulationTime.TicksPerDay - sinceDawn);
+            return sinceDawn < 0L ? -sinceDawn : SimulationTime.TicksPerDay - sinceDawn;
         }
 
         // How long the work day has left, and never past the end of time:
