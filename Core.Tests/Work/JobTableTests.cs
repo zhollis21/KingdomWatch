@@ -34,6 +34,17 @@ namespace KingdomWatch.Core.Tests.Work
             });
         }
 
+        [Test]
+        public void None_and_undefined_terrain_are_refused_rather_than_unworkable()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => JobTable.WorksOn(JobKind.Forager, TerrainKind.None), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => JobTable.WorksOn(JobKind.Forager, (TerrainKind)255), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => JobTable.WorksOn(JobKind.StoneGatherer, (TerrainKind)6), Throws.TypeOf<System.ArgumentOutOfRangeException>(), "one past the last");
+            });
+        }
+
         [TestCase(JobKind.Forager, TerrainKind.Plains, true)]
         [TestCase(JobKind.Forager, TerrainKind.Forest, true)]
         [TestCase(JobKind.Forager, TerrainKind.Hills, false)]

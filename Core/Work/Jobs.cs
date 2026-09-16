@@ -302,7 +302,7 @@ namespace KingdomWatch.Core.Work
             if (!ReferenceEquals(clock, _clock))
             {
                 throw new InvalidOperationException(
-                    "Jobs schedules on one clock, but was dispatched by another.");
+                    "Jobs is bound to the clock its tasks are booked on, but was dispatched by a different one.");
             }
 
             switch (scheduled.Kind)
@@ -311,7 +311,7 @@ namespace KingdomWatch.Core.Work
                     WorkDay(scheduled.PrimaryEntity);
                     break;
                 case ScheduledEventKind.TaskCompleted:
-                    Complete(scheduled.PrimaryEntity);
+                    Complete(scheduled.Id, scheduled.PrimaryEntity);
                     break;
                 default:
                     throw new InvalidOperationException(
@@ -362,16 +362,29 @@ namespace KingdomWatch.Core.Work
         }
 
         // The worker is home: deliver, then pick again if the day allows.
-        private void Complete(EntityId workerId)
+        private void Complete(EventId completion, EntityId workerId)
         {
             if (!_people.TryGetHandle(workerId, out var worker) || !(SlotOf(worker) is Slot slot))
             {
                 throw new InvalidOperationException(
                     ScheduledEventKind.TaskCompleted + " came due for " + workerId
-                    + ", who has no task; the death cascade cancels a dead worker's.");
+                    + ", who has no task. The death cascade cancels a dead worker's completion,"
+                    + " so this one was booked by something other than Jobs.");
             }
 
             var task = slot.Task;
+
+            // The task names the completion it booked, and only that one
+            // finishes it: a duplicate, or one rebuilt from a save that
+            // disagrees with the task, would otherwise deliver early and
+            // leave the real completion to arrive for nobody.
+            if (completion != task.Completion)
+            {
+                throw new InvalidOperationException(
+                    ScheduledEventKind.TaskCompleted + " " + completion + " came due for " + workerId
+                    + ", whose task is waiting on " + task.Completion + ".");
+            }
+
             var tracked = TrackedFor(task.Holder);
 
             // Gathering has no inputs in process, so completing is a Gather;
@@ -419,8 +432,7 @@ namespace KingdomWatch.Core.Work
 
         // The first job in priority order that is needed, has a site, and
         // whose task would end by dusk. Need counts what is on its way home:
-        // a member's job is set exactly while they are on a task, so those on
-        // a job are those about to deliver its output.
+        // everyone with a task is about to deliver its output.
         private JobKind ChooseJob(Tracked tracked, long ticksUntilDusk)
         {
             var members = tracked.Group.Members;
@@ -437,7 +449,13 @@ namespace KingdomWatch.Core.Work
                 }
 
                 living++;
-                _onDuty[(int)_people.GetJob(member)]++;
+
+                // From the task, not the record: the records Job is a mirror
+                // the bulk span can write, and this count must not be.
+                if (SlotOf(member) is Slot slot)
+                {
+                    _onDuty[(int)slot.Task.Job]++;
+                }
             }
 
             for (var i = 0; i < Priority.Count; i++)

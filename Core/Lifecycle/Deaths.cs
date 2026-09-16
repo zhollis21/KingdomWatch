@@ -42,9 +42,9 @@ namespace KingdomWatch.Core.Lifecycle
     /// **Tasks and the job are vacated before the person leaves anything**
     /// (#52): the pending completion is cancelled and any inputs in process
     /// return to the band's ledger before they leave the household and the
-    /// band, so nothing later in the cascade sees a worker mid-task. Reposting
-    /// the job is nobody's step: the next free hand sees the shortfall (see
-    /// <see cref="Jobs"/>).
+    /// band, so nothing later in the cascade sees a worker mid-task. Section
+    /// 6's "work manager reposts it" happens implicitly rather than as a step:
+    /// the next free hand sees the shortfall (see <see cref="Jobs"/>).
     ///
     /// **What is not here, and where it is.** Cancelling reservations (#24),
     /// breaking an apprenticeship and passing on a master's tools (#22), and

@@ -48,7 +48,11 @@ namespace KingdomWatch.Core.Tests.Work
                 // Legs that together wrap the clock are not.
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, long.MaxValue, 1L, 0L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 1L, 1L, long.MaxValue - 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 1L, 1L, long.MaxValue - 2L, Home, Forest, Completion), Throws.Nothing, "the largest task the clock can hold");
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, SimulationTime.Zero, 1L, 1L, long.MaxValue - 2L, Home, Forest, Completion), Throws.Nothing, "the largest task the clock can hold");
+                // Legs that fit the clock but not the clock after the start are not either.
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, new SimulationTime(1L), 1L, 1L, long.MaxValue - 2L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, new SimulationTime(long.MaxValue - 1L), 0L, 1L, 0L, Home, Forest, Completion), Throws.Nothing, "ending on the last instant");
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, new SimulationTime(long.MaxValue), 0L, 1L, 0L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>(), "ending one past it");
             });
         }
 

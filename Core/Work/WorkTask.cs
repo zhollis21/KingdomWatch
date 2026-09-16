@@ -99,12 +99,15 @@ namespace KingdomWatch.Core.Work
                 throw new ArgumentException("A task is booked before it is recorded.", nameof(completion));
             }
 
-            // The three legs are summed by End and PhaseAt; a sum that wraps
-            // would put the end before the start.
-            if (travelTicks > long.MaxValue - workTicks || travelTicks + workTicks > long.MaxValue - returnTicks)
+            // The three legs are summed by End and PhaseAt, and End adds them
+            // to the start: a task whose end the clock cannot represent is
+            // refused here rather than by End, later.
+            if (travelTicks > long.MaxValue - workTicks
+                || travelTicks + workTicks > long.MaxValue - returnTicks
+                || travelTicks + workTicks + returnTicks > long.MaxValue - start.Ticks)
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(returnTicks), returnTicks, "The three legs together overflow the clock.");
+                    nameof(returnTicks), returnTicks, "The task would end past the end of time.");
             }
 
             Worker = worker;

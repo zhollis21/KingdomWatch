@@ -706,6 +706,50 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_completion_that_is_not_the_tasks_own_is_a_wiring_bug()
+        {
+            // The task names the completion it booked. One for the same
+            // worker with another id - a duplicate, or one rebuilt from a
+            // save that disagrees - must not finish the task early.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var worker = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(worker);
+            w.Clock.Schedule(
+                w.Now.Plus(10L), Jobs.Phase, ScheduledEventKind.TaskCompleted, w.People.GetId(worker), EntityId.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Advance(10L), Throws.InvalidOperationException);
+                Assert.That(w.Jobs.TaskOf(worker).Completion, Is.EqualTo(task.Completion), "the task is untouched");
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Food).Gathered, Is.Zero, "nothing was delivered early");
+            });
+        }
+
+        [Test]
+        public void The_pick_counts_tasks_not_the_job_field()
+        {
+            // The record's Job is a mirror anyone can write through the bulk
+            // span. Three people draw nine a day and have 87 in store - nine
+            // days, one forage short of the target. A phantom Forager on a
+            // child must not be counted as that forage, and an undefined
+            // value must not break the pick.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 87);
+            var adult = w.Join(band, 30L);
+            var child = w.Join(band, 8L);
+            var other = w.Join(band, 9L);
+            var records = w.People.RecordSpan();
+            records[child.Index].Job = JobKind.Forager;
+            records[other.Index].Job = (JobKind)200;
+
+            w.AdvanceToDawn();
+
+            Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Forager), "87 + nothing on its way = nine days");
+        }
+
+        [Test]
         public void A_completion_for_the_dead_is_a_wiring_bug_too()
         {
             // The cascade cancels a dead worker's completion, so one arriving

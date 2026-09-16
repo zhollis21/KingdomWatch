@@ -6,7 +6,7 @@ namespace KingdomWatch.Core.Work
 {
     /// <summary>
     /// What each <see cref="JobKind"/> does: the recipe it runs and the
-    /// terrain it runs it on. Data, in the section 9 sense - a job is a row
+    /// terrain it runs on. Data, in the section 9 sense - a job is a row
     /// here, and adding one is adding a row, not a branch in
     /// <see cref="Jobs"/>.
     /// </summary>
@@ -22,6 +22,7 @@ namespace KingdomWatch.Core.Work
     public static class JobTable
     {
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(JobKind));
+        private static readonly bool[] DefinedTerrain = EnumGuard.BuildMask(typeof(TerrainKind));
 
         /// <summary>The recipe one task of this job runs.</summary>
         /// <exception cref="ArgumentOutOfRangeException">
@@ -44,10 +45,18 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>Whether this job can be worked on a cell of this terrain.</summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a defined job, or <see cref="JobKind.None"/>.
+        /// Not a defined job, or <see cref="JobKind.None"/>; or not a defined
+        /// terrain, or <see cref="TerrainKind.None"/> - the same contract as
+        /// <see cref="TerrainRules"/>, so a corrupted cell is named rather
+        /// than treated as one nothing works on.
         /// </exception>
         public static bool WorksOn(JobKind job, TerrainKind terrain)
         {
+            if (!EnumGuard.IsDefined(DefinedTerrain, (int)terrain) || terrain == TerrainKind.None)
+            {
+                throw new ArgumentOutOfRangeException(nameof(terrain), terrain, "Not a defined TerrainKind, or None.");
+            }
+
             switch (job)
             {
                 case JobKind.Forager:
