@@ -711,6 +711,30 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_pass_run_before_dawn_puts_nobody_to_work()
+        {
+            // The window is dawn to dusk at both ends: a pass run by hand at
+            // 05:00 finds sites and books the dawn, but starts no task.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var adult = w.Join(band, 30L);
+            w.AdvanceTo(SimulationTime.FromHours(5L));
+
+            w.Jobs.Handle(
+                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
+                w.Clock);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.True, "sites are found regardless");
+                Assert.That(w.Jobs.HasTask(adult), Is.False, "but nobody sets out before dawn");
+            });
+
+            w.AdvanceTo(SimulationTime.FromHours(6L));
+            Assert.That(w.Jobs.HasTask(adult), Is.True);
+        }
+
+        [Test]
         public void A_band_off_the_map_cannot_be_given_sites()
         {
             var w = new WorkWorld();

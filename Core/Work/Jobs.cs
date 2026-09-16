@@ -462,7 +462,7 @@ namespace KingdomWatch.Core.Work
 
                 living++;
 
-                // From the task, not the record: the records Job is a mirror
+                // From the task, not the record: the record's Job is a mirror
                 // the bulk span can write, and this count must not be.
                 if (SlotOf(member) is Slot slot)
                 {
@@ -603,11 +603,14 @@ namespace KingdomWatch.Core.Work
             return sinceDawn < 0L ? -sinceDawn : SimulationTime.TicksPerDay - sinceDawn;
         }
 
-        // How long the work day has left, and never past the end of time:
-        // the world's last day ends at 15:30, so a task that would run to
-        // dusk there is one the clock could not book.
+        // How long the work day has left: nothing before dawn - a pass run by
+        // hand at five starts nobody - and never past the end of time, since
+        // the world's last day ends at 15:30 and a task that would run to
+        // dusk there is one the clock could not book. This is the window,
+        // at both ends; every task has a positive duration, so a zero here
+        // fits nothing.
         private static long TicksUntilDusk(SimulationTime now) =>
-            Math.Min(Dusk - now.TickOfDay, long.MaxValue - now.Ticks);
+            now.TickOfDay < Dawn ? 0L : Math.Min(Dusk - now.TickOfDay, long.MaxValue - now.Ticks);
 
         private Slot? SlotOf(PersonHandle person)
         {

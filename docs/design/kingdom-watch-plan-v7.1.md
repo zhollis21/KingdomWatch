@@ -432,11 +432,11 @@ public struct PersonRecord
     public EventId       PregnancyDue; // #11: the pending BirthDue, or None
     public EntityId      Household;   // #9: None for nobody's; see below
     // skills indexed separately: [personIndex * skillCount + skillId]
-    // Job (JobId) is deferred — see below
+    public JobKind       Job;         // #52: the job they are on, set while they have a task
 }
 ```
 
-`Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints, and the `Job` field is deliberately absent as of #6. `JobId` does not exist yet and its shape is not settled — #52 describes recipes as data rather than code, which may make a job reference a data-table lookup rather than a handle at all. Guessing it now means dependent code gets written against it before #52 makes its own design decision. Adding it later is a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`.
+`Position` is the `WorldPosition` used everywhere else rather than a loose pair of ints. The sketch's `JobId` became `JobKind Job` at #52 — a role rather than a handle, because a job is a row in `JobTable` (the recipe it runs, the terrain it runs on) and not an entity with a lifetime. It was left out of #6 until that issue could make the call, and adding it then was a field plus an accessor pair, which is the entire point of storage living behind `PersonStore`. `Jobs` alone writes it, exactly while the person has a task; the death cascade clears it; and nothing in `Jobs` reads it back, since the bulk span can write it — the on-duty count comes from the tasks themselves, and the field is a mirror for readers and the validator.
 
 `Household` is an `EntityId`, not the `HouseholdHandle` this section originally sketched (#9). Households are a few hundred plain objects in a registry rather than a recycled-slot store, so there is no generation to check, and a durable id that is never reused already makes a reference to a dissolved household fail loudly on lookup. The registry (`Households`, §6) is the only writer of the field, which is what keeps it and the household's member list agreeing. `PersonStore` also gained the reverse lookup, `TryGetHandle(EntityId)`: relationships are keyed by durable id because they outlive the people in them, so anything acting on kin gets ids back and needs handles to do anything with them.
 

@@ -25,8 +25,8 @@ namespace KingdomWatch.Core.Work
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(JobKind));
         private static readonly bool[] DefinedTerrain = EnumGuard.BuildMask(typeof(TerrainKind));
 
-        // WorksOn as a mask per job, built once, for the pathfinders nearest
-        // search. Indexed by JobKind; Nones slot is an empty mask nobody asks for.
+        // WorksOn as a mask per job, built once, for the pathfinder's nearest
+        // search. Indexed by JobKind; None's slot is an empty mask nobody asks for.
         private static readonly bool[][] TerrainByJob = BuildTerrainMasks();
 
         /// <summary>The recipe one task of this job runs.</summary>
