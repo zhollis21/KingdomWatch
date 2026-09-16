@@ -5,6 +5,8 @@ using KingdomWatch.Core.Events;
 using KingdomWatch.Core.History;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Work;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Lifecycle
@@ -19,6 +21,11 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         internal HouseholdWorld(FamilyFormationSettings settings, IHousing housing)
+            : this(settings, housing, new TerrainGrid(8, 8, TerrainKind.Plains))
+        {
+        }
+
+        internal HouseholdWorld(FamilyFormationSettings settings, IHousing housing, TerrainGrid grid)
         {
             Ids = new IdAllocator();
             Clock = new SimulationClock(Ids);
@@ -32,7 +39,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Housing = housing;
             Households = new Households(Bus, People, housing);
             Family = new FamilyFormation(Bus, People, Genealogy, Partnerships, Households, settings);
-            Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households);
+            // The default map is a patch of plains: enough for the cascade to
+            // have a Jobs to vacate through. Fixtures that need people to walk
+            // somewhere pass their own (Work.WorkWorld).
+            Grid = grid;
+            Pathfinder = new Pathfinder(Grid, TerrainRules.Default);
+            Jobs = new Jobs(Clock, People, Pathfinder);
+            Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households, Jobs);
         }
 
         internal IdAllocator Ids { get; }
@@ -56,6 +69,12 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal Households Households { get; }
 
         internal FamilyFormation Family { get; }
+
+        internal TerrainGrid Grid { get; }
+
+        internal Pathfinder Pathfinder { get; }
+
+        internal Jobs Jobs { get; }
 
         internal Deaths Deaths { get; }
 

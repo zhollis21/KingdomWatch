@@ -16,12 +16,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Deaths(null!, w.People, w.Genealogy, w.Partnerships, w.Memories, w.Households), Throws.ArgumentNullException);
-                Assert.That(() => new Deaths(w.Bus, null!, w.Genealogy, w.Partnerships, w.Memories, w.Households), Throws.ArgumentNullException);
-                Assert.That(() => new Deaths(w.Bus, w.People, null!, w.Partnerships, w.Memories, w.Households), Throws.ArgumentNullException);
-                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, null!, w.Memories, w.Households), Throws.ArgumentNullException);
-                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, w.Partnerships, null!, w.Households), Throws.ArgumentNullException);
-                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, w.Partnerships, w.Memories, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(null!, w.People, w.Genealogy, w.Partnerships, w.Memories, w.Households, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, null!, w.Genealogy, w.Partnerships, w.Memories, w.Households, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, w.People, null!, w.Partnerships, w.Memories, w.Households, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, null!, w.Memories, w.Households, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, w.Partnerships, null!, w.Households, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, w.Partnerships, w.Memories, null!, w.Jobs), Throws.ArgumentNullException);
+                Assert.That(() => new Deaths(w.Bus, w.People, w.Genealogy, w.Partnerships, w.Memories, w.Households, null!), Throws.ArgumentNullException);
             });
         }
 

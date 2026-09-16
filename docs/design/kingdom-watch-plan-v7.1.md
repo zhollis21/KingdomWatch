@@ -253,6 +253,8 @@ startTime · endTime · origin · destination · task phase · coarse route
 
 This is central to the zoom-anywhere promise.
 
+**Built at #52.** A task is a `WorkTask` on the worker: start, the three legs as durations (out, work, back), origin, destination, and the id of the one `TaskCompleted` booked for its end. The phase is arithmetic over those (`PhaseAt`), not a field — a stored phase is one more thing that can disagree with the clock. The coarse route *is* stored, beside the task in `Jobs`, copied from the band's site route when the worker sets out: the pathfinder is deterministic, so it could be recomputed from the endpoints, but a grid that changes mid-task (a bridge, one day) would then put someone on the far side of a river they never crossed. `Jobs.PositionAt(person, t)` is the reconstruction: the route cell reached by the fraction of the leg elapsed, or the destination while working. Nothing calls it before M3; it exists so the state proves sufficient now, when the check is cheap.
+
 ### Cadence: two different clocks
 
 A single "Hz" column was wrong. At 1× one game-day is ~8 real minutes, which is 180 game-seconds per real second — so "needs at 1 simulated Hz" would mean 297,000 needs updates per real second across 1,650 people, and "diplomacy every 10–60 simulated seconds" would run diplomacy several times per *real* second.
@@ -650,7 +652,7 @@ The decisions on top of that:
 
 As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
 
-Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. The steps that act on things not yet built join the cascade when they are: tasks and the job (#52), reservations (#24), apprenticeship and a master's tools (#22), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. Reposting is nobody's step — the next free hand sees the shortfall (§12). The steps that act on things not yet built join the cascade when they are: reservations (#24), apprenticeship and a master's tools (#22), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 
@@ -775,6 +777,8 @@ recipe: iron_tools
 ```
 
 Start at 3–4 for M1, expand toward 10 by M6. Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (spoilage, weight) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; stone tools and hide clothing wait, since tools may be personal property (§6) rather than stock and hides have no source until hunting exists.
+
+**As of #52, people gather them.** A `JobKind` — Forager, Woodcutter, StoneGatherer — is a row in `JobTable`: the recipe it runs and the terrain it runs on (plains or forest, forest, hills). A band's living adults and elders work, tierless and at full output, inside a dawn-to-dusk window (06:00–18:00, placeholders): a worker picks a job when free — at dawn and at each completion — and starts one task of it, at the band's nearest reachable site for that job, if the task would end by dusk. Need is three thresholds read live: forage while food, counting what is on its way home, covers fewer than ten days; then wood and stone to a stock cap; then idle. The window is #21's daily schedule in miniature and the thresholds are #23's town planner in miniature; both replace their part without touching the other. Elders' reduced work and adolescents' assistance are #22's, with the skill tiers they belong to.
 
 ### Technology is a capability graph, not a tree
 
@@ -980,6 +984,8 @@ One constraint holds in every case: **shrines cost real resources.** A settlemen
 ### Hierarchical job assignment
 
 The work manager decides need (`8 lumberjacks, 4 miners, 12 farmers, 3 builders`); citizens choose among posted jobs, weighted by skill. An order of magnitude cheaper than per-citizen utility AI and far easier to debug.
+
+**As built (#52), for bands.** "Decide need" is three thresholds on the band's ledger, and "choose" is the first job in a fixed priority — food, wood, stone — that is needed, has a reachable site, and fits before dusk; skill weighting waits for skills (#22). The choice is made when the person is free rather than once a day, so a band whose food is covered by noon sends its afternoon hands to wood. Nothing is stored between picks: how many are on a job is a scan of the members, and what they will bring home counts toward the threshold so a round of pickers cannot all fill the same gap. The town planner (#23) replaces the thresholds with a plan; the choosing stays.
 
 ### Buildings emerge from systems, not thresholds
 

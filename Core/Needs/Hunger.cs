@@ -67,9 +67,11 @@ namespace KingdomWatch.Core.Needs
     /// that makes compression trustworthy today. A predicted crossing on top
     /// would need re-predicting on every gather and transfer, and the ledger
     /// has no change notification to drive that - so it would silently go
-    /// stale. <see cref="DaysOfFood"/> is the same number as a query, for job
-    /// assignment (#52), the settling trigger (#54) and, eventually, the house
-    /// tooltip section 6 warns about. The predicted event can arrive with the
+    /// stale. <see cref="DaysOfFood"/> is the same number as a query, for the
+    /// settling trigger (#54) and, eventually, the house tooltip section 6
+    /// warns about; job assignment (<see cref="Work.Jobs"/>) does the same
+    /// arithmetic with what its foragers are bringing home added in. The
+    /// predicted event can arrive with the
     /// first thing that aggregates meals over more than a day.
     ///
     /// The numbers are placeholders in the <see cref="PrimitiveTier"/> sense:

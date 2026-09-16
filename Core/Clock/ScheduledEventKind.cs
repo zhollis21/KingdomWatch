@@ -36,7 +36,10 @@ namespace KingdomWatch.Core.Clock
         /// <summary>Not a valid kind. Guards against a defaulted field.</summary>
         None = 0,
 
-        /// <summary>A person's current task has run to its end time.</summary>
+        /// <summary>
+        /// A person's current task has run to its end time: they are home
+        /// with the output. Owned by <see cref="Work.Jobs"/>.
+        /// </summary>
         TaskCompleted = 1,
 
         /// <summary>
@@ -75,5 +78,10 @@ namespace KingdomWatch.Core.Clock
         /// the mother's record names the pending one.
         /// </summary>
         BirthDue = 8,
+        /// <summary>
+        /// A band's work day begins: its free workers pick jobs and set out.
+        /// Owned by <see cref="Work.Jobs"/>.
+        /// </summary>
+        WorkDayDue = 9,
     }
 }

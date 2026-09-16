@@ -100,6 +100,9 @@ namespace KingdomWatch.Core.Traversal
             Array.Fill(_heapSlot, -1);
         }
 
+        /// <summary>The grid routes are found on, for a caller choosing where to route to.</summary>
+        public TerrainGrid Grid => _grid;
+
         /// <summary>Whether a mover with these transports may stand on this cell.</summary>
         public bool IsPassable(WorldPosition position, Transport mover)
         {

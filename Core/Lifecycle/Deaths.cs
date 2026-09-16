@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Work;
 
 namespace KingdomWatch.Core.Lifecycle
 {
@@ -16,8 +17,8 @@ namespace KingdomWatch.Core.Lifecycle
     /// rolls it and answers starvation; injury (M4) will raise its own. Each
     /// calls <see cref="Die"/>, and the world after the call is consistent: the
     /// event is published, the partnership ended, memories pruned, a
-    /// pregnancy cancelled, the household adjusted, the band's roster
-    /// shortened and the storage slot freed.
+    /// pregnancy cancelled, the task and job vacated, the household
+    /// adjusted, the band's roster shortened and the storage slot freed.
     ///
     /// **One synchronous operation, not a chain of reactions.** Section 4's
     /// phase model exists so that REACTIONS to a death - succession, a job
@@ -38,11 +39,18 @@ namespace KingdomWatch.Core.Lifecycle
     /// The relationship stores are called directly rather than subscribing,
     /// as section 6 records: bus subscribers listen, they do not mutate.
     ///
-    /// **What is not here, and where it is.** Cancelling tasks and vacating
-    /// the job (#52), cancelling reservations (#24), breaking an
-    /// apprenticeship and passing on a master's tools (#22), and folding
-    /// personal wealth into the household (#68) each join this cascade when
-    /// the thing they act on exists. A step is added here, not subscribed.
+    /// **Tasks and the job are vacated before the person leaves anything**
+    /// (#52): the pending completion is cancelled and any inputs in process
+    /// return to the band's ledger before they leave the household and the
+    /// band, so nothing later in the cascade sees a worker mid-task. Reposting
+    /// the job is nobody's step: the next free hand sees the shortfall (see
+    /// <see cref="Jobs"/>).
+    ///
+    /// **What is not here, and where it is.** Cancelling reservations (#24),
+    /// breaking an apprenticeship and passing on a master's tools (#22), and
+    /// folding personal wealth into the household (#68) each join this
+    /// cascade when the thing they act on exists. A step is added here, not
+    /// subscribed.
     ///
     /// Allocation-free after <see cref="Track"/>: genealogy walks are over
     /// spans, membership changes are list removals, and publishing is the
@@ -56,6 +64,7 @@ namespace KingdomWatch.Core.Lifecycle
         private readonly Partnerships _partnerships;
         private readonly Memories _memories;
         private readonly Households _households;
+        private readonly Jobs _jobs;
 
         // The bands a dead person may need striking from. Nothing on the
         // record says which group holds someone - spatial presence is #54's
@@ -68,7 +77,8 @@ namespace KingdomWatch.Core.Lifecycle
             Genealogy genealogy,
             Partnerships partnerships,
             Memories memories,
-            Households households)
+            Households households,
+            Jobs jobs)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
@@ -76,6 +86,7 @@ namespace KingdomWatch.Core.Lifecycle
             _partnerships = partnerships ?? throw new ArgumentNullException(nameof(partnerships));
             _memories = memories ?? throw new ArgumentNullException(nameof(memories));
             _households = households ?? throw new ArgumentNullException(nameof(households));
+            _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
         }
 
         /// <summary>How many groups the cascade will strike the dead from.</summary>
@@ -130,6 +141,7 @@ namespace KingdomWatch.Core.Lifecycle
             _memories.WitnessDied(id);
 
             EndPregnancy(person);
+            _jobs.Vacate(person);
             LeaveHousehold(person);
             LeaveGroup(person);
 

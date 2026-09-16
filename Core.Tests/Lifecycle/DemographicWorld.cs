@@ -7,6 +7,7 @@ using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
+using KingdomWatch.Core.Traversal;
 
 namespace KingdomWatch.Core.Tests.Lifecycle
 {
@@ -26,8 +27,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         internal DemographicWorld(DemographicSettings settings, ulong seed)
+            : this(settings, seed, new TerrainGrid(8, 8, TerrainKind.Plains))
         {
-            Base = new HouseholdWorld();
+        }
+
+        internal DemographicWorld(DemographicSettings settings, ulong seed, TerrainGrid grid)
+        {
+            Base = new HouseholdWorld(FamilyFormationSettings.Default, new CampSpace(), grid);
             Settings = settings;
             Rng = new DeterministicRng(seed);
             Aging = new Aging(Bus, People, settings);

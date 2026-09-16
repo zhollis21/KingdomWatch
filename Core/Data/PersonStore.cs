@@ -336,6 +336,19 @@ namespace KingdomWatch.Core.Data
         internal void SetHousehold(PersonHandle handle, EntityId value) =>
             _people[SlotFor(handle)].Household = value;
 
+        public JobKind GetJob(PersonHandle handle) => _people[SlotFor(handle)].Job;
+
+        /// <summary>
+        /// Records the job a person is on. Internal, and called by
+        /// <see cref="Work.Jobs"/> alone, for the reason
+        /// <see cref="SetHousehold"/> is: the field says "on a task", and only
+        /// the system that holds the task can keep that true. Jobs writes
+        /// only kinds from its table and <see cref="JobKind.None"/>, which is
+        /// what idleness is, so there is no guard here for a test to reach.
+        /// </summary>
+        internal void SetJob(PersonHandle handle, JobKind value) =>
+            _people[SlotFor(handle)].Job = value;
+
         /// <summary>
         /// The bulk path: every allocated slot in slot order, which is stable
         /// and so safe to iterate in the simulation.
