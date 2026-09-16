@@ -46,6 +46,9 @@ namespace KingdomWatch.Core.Traversal
     public sealed class Pathfinder
     {
         private const int StraightCost = 10;
+
+        // How many slots a terrain mask must have: one per value up to the last.
+        private static readonly int DefinedTerrainKinds = EnumGuard.BuildMask(typeof(TerrainKind)).Length;
         private const int DiagonalCost = 14;
 
         // Orthogonal first, then diagonal; a fixed order is part of the
@@ -228,50 +231,144 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                _closed[current] = true;
-                var position = _grid.PositionAt(current);
-
-                for (var i = 0; i < Neighbours.Length; i++)
-                {
-                    var (dx, dy, stepCost) = Neighbours[i];
-                    var next = new WorldPosition(position.X + dx, position.Y + dy);
-
-                    if (!_grid.Contains(next))
-                    {
-                        continue;
-                    }
-
-                    var nextIndex = _grid.IndexOf(next);
-
-                    if (_closed[nextIndex] || !Passable(nextIndex, mover))
-                    {
-                        continue;
-                    }
-
-                    // No cutting corners: both cells a diagonal passes between
-                    // must be open, or a one-cell river is crossable at a bend.
-                    if (stepCost == DiagonalCost
-                        && (!Passable(_grid.IndexOf(new WorldPosition(position.X + dx, position.Y)), mover)
-                            || !Passable(_grid.IndexOf(new WorldPosition(position.X, position.Y + dy)), mover)))
-                    {
-                        continue;
-                    }
-
-                    // Long, not int: a step is at most 14 * MaxCost and a route at
-                    // most CellCount steps, which an int cannot promise to hold.
-                    var tentative = _gScore[current] + ((long)stepCost * _rules[_grid.KindAt(nextIndex)].Cost);
-
-                    if (_seen[nextIndex] && tentative >= _gScore[nextIndex])
-                    {
-                        continue;
-                    }
-
-                    Open(nextIndex, tentative, current, Heuristic(next, to));
-                }
+                Expand(current, mover, to, from, int.MaxValue);
             }
 
             return false;
         }
+
+        /// <summary>
+        /// Finds the cheapest cell to reach, among those whose terrain the
+        /// mask accepts, within a box <paramref name="radius"/> cells around
+        /// <paramref name="from"/>. On success the route from
+        /// <paramref name="from"/> to that cell is written into
+        /// <paramref name="route"/> and <paramref name="cost"/> is its total;
+        /// the origin itself counts, as a route of one cell at no cost. When
+        /// the origin is impassable, or nothing accepted is reachable inside
+        /// the box, returns false with the route cleared and the cost zero.
+        /// </summary>
+        /// <remarks>
+        /// One search, however many candidates: Dijkstra from the origin
+        /// settles cells in cost order, so the first settled cell the mask
+        /// accepts is the cheapest one there is, and the search never runs
+        /// past it. A ring scan with a route query per candidate would run a
+        /// full failed search for every matching cell nothing connects to.
+        /// Ties fall to the lower cell index, as every ordering here does.
+        /// </remarks>
+        /// <param name="acceptable">
+        /// Indexed by <see cref="TerrainKind"/>; true for a kind that counts as
+        /// found. Must cover every defined kind.
+        /// </param>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius is negative, or the mover has
+        /// no defined transport.
+        /// </exception>
+        public bool TryFindNearest(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            int radius,
+            List<WorldPosition> route,
+            out long cost)
+        {
+            if (route is null)
+            {
+                throw new ArgumentNullException(nameof(route));
+            }
+
+            if (acceptable.Length < DefinedTerrainKinds)
+            {
+                throw new ArgumentException(
+                    "The mask covers " + acceptable.Length + " kinds; TerrainKind has " + DefinedTerrainKinds + ".",
+                    nameof(acceptable));
+            }
+
+            if (radius < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
+            }
+
+            TransportGuard.RequireMover(mover);
+            var start = _grid.IndexOf(from);
+
+            route.Clear();
+            cost = 0;
+
+            if (!Passable(start, mover))
+            {
+                return false;
+            }
+
+            BeginSearch();
+            Open(start, 0, start, 0);
+
+            while (_heapCount > 0)
+            {
+                var current = PopCheapest();
+
+                if (acceptable[(int)_grid.KindAt(current)])
+                {
+                    cost = _gScore[current];
+                    WriteRoute(start, current, route);
+                    return true;
+                }
+
+                Expand(current, mover, null, from, radius);
+            }
+
+            return false;
+        }
+
+        // Closes a cell and opens its neighbours: eight-way, no cutting
+        // corners, each priced by the cell it enters, with the heuristic
+        // toward the goal when there is one - without, the search is
+        // Dijkstra - and nothing opened outside the box.
+        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius)
+        {
+            _closed[current] = true;
+            var position = _grid.PositionAt(current);
+
+            for (var i = 0; i < Neighbours.Length; i++)
+            {
+                var (dx, dy, stepCost) = Neighbours[i];
+                var next = new WorldPosition(position.X + dx, position.Y + dy);
+
+                if (!_grid.Contains(next)
+                    || Math.Abs(next.X - origin.X) > radius
+                    || Math.Abs(next.Y - origin.Y) > radius)
+                {
+                    continue;
+                }
+
+                var nextIndex = _grid.IndexOf(next);
+
+                if (_closed[nextIndex] || !Passable(nextIndex, mover))
+                {
+                    continue;
+                }
+
+                // No cutting corners: both cells a diagonal passes between
+                // must be open, or a one-cell river is crossable at a bend.
+                if (stepCost == DiagonalCost
+                    && (!Passable(_grid.IndexOf(new WorldPosition(position.X + dx, position.Y)), mover)
+                        || !Passable(_grid.IndexOf(new WorldPosition(position.X, position.Y + dy)), mover)))
+                {
+                    continue;
+                }
+
+                // Long, not int: a step is at most 14 * MaxCost and a route at
+                // most CellCount steps, which an int cannot promise to hold.
+                var tentative = _gScore[current] + ((long)stepCost * _rules[_grid.KindAt(nextIndex)].Cost);
+
+                if (_seen[nextIndex] && tentative >= _gScore[nextIndex])
+                {
+                    continue;
+                }
+
+                Open(nextIndex, tentative, current, goal is WorldPosition target ? Heuristic(next, target) : 0L);
+            }
+        }
+
 
         // The mask directly rather than TerrainRule.Admits: the mover was
         // validated once at entry, and this runs for every neighbour of every

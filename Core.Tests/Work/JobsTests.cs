@@ -658,6 +658,32 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_pass_run_off_hour_books_its_successor_at_dawn_not_a_day_later()
+        {
+            // Only work-day events on this queue: a band tracked at 07:00
+            // has its first pass booked for 06:00 tomorrow. A pass run by
+            // hand at 07:00 must book tomorrow's dawn as well, not 07:00
+            // tomorrow - or the daily pass drifts to whatever hour it ran.
+            var w = new WorkWorld();
+            var band = new MobileGroup(
+                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+            w.Clock.AdvanceTo(SimulationTime.FromHours(7L), w.Router);
+            w.Jobs.Track(band);
+            w.Jobs.Handle(
+                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
+                w.Clock);
+
+            var atDawn = w.Clock.AdvanceTo(SimulationTime.FromHours(6L).Plus(SimulationTime.TicksPerDay), w.Router);
+            var byMorning = w.Clock.AdvanceTo(SimulationTime.FromHours(7L).Plus(SimulationTime.TicksPerDay), w.Router);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(atDawn, Is.EqualTo(2), "both passes land on dawn");
+                Assert.That(byMorning, Is.Zero, "and nothing at seven");
+            });
+        }
+
+        [Test]
         public void A_band_off_the_map_cannot_be_given_sites()
         {
             var w = new WorkWorld();

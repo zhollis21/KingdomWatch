@@ -432,6 +432,142 @@ namespace KingdomWatch.Core.Tests.Traversal
             });
         }
 
+        // A mask over TerrainKind: which cells count as "found".
+        private static bool[] Wanting(params TerrainKind[] kinds)
+        {
+            var mask = new bool[(int)TerrainKind.DeepWater + 1];
+
+            foreach (var kind in kinds)
+            {
+                mask[(int)kind] = true;
+            }
+
+            return mask;
+        }
+
+        private static (bool Found, long Cost, List<WorldPosition> Route) Nearest(
+            Pathfinder finder, WorldPosition from, bool[] wanted, int radius = 16, Transport mover = Transport.Foot)
+        {
+            var route = new List<WorldPosition>();
+            var found = finder.TryFindNearest(from, mover, wanted, radius, route, out var cost);
+            return (found, cost, route);
+        }
+
+        [Test]
+        public void The_nearest_site_is_the_cheapest_to_reach_not_the_fewest_cells_away()
+        {
+            // With hills at the maximum cost, the forest two cells away sits
+            // behind a wall of them and costs 760 by the way round; the
+            // forest three cells away costs 540 over plains. Rings would
+            // pick the first; the search picks the second.
+            var grid = Map(
+                ".hf.",
+                ".hh.",
+                "...f");
+            var rules = new TerrainRules(
+                (TerrainKind.Plains, new TerrainRule(10, Transport.Foot)),
+                (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
+                (TerrainKind.Hills, new TerrainRule(TerrainRule.MaxCost, Transport.Foot)),
+                (TerrainKind.SmallRiver, TerrainRule.Impassable),
+                (TerrainKind.DeepWater, TerrainRule.Impassable));
+            var finder = new Pathfinder(grid, rules);
+
+            var (found, cost, route) = Nearest(finder, Origin, Wanting(TerrainKind.Forest));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(route[^1], Is.EqualTo(new WorldPosition(3, 2)));
+                Assert.That(cost, Is.EqualTo(540L));
+                Assert.That(route[0], Is.EqualTo(Origin));
+                Assert.That(finder.CostOfRoute(route, Transport.Foot), Is.EqualTo(cost), "the route is priced the way the search priced it");
+            });
+        }
+
+        [Test]
+        public void A_site_underfoot_is_a_route_of_one_cell_at_no_cost()
+        {
+            var finder = new Pathfinder(Map("f."), TerrainRules.Default);
+
+            var (found, cost, route) = Nearest(finder, Origin, Wanting(TerrainKind.Forest));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(cost, Is.Zero);
+                Assert.That(route, Is.EqualTo(new[] { Origin }));
+            });
+        }
+
+        [Test]
+        public void Equal_cost_sites_are_settled_by_cell_index()
+        {
+            // East and south are both one straight step onto forest; the
+            // lower index - the row above - wins, on every platform.
+            var finder = new Pathfinder(Map(".f", "f."), TerrainRules.Default);
+
+            var (_, cost, route) = Nearest(finder, Origin, Wanting(TerrainKind.Forest));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cost, Is.EqualTo(200L));
+                Assert.That(route[^1], Is.EqualTo(new WorldPosition(1, 0)));
+            });
+        }
+
+        [Test]
+        public void The_radius_bounds_the_search_as_a_box_around_the_origin()
+        {
+            var grid = new TerrainGrid(12, 3, TerrainKind.Plains);
+            grid.Set(new WorldPosition(4, 1), TerrainKind.Forest);
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var from = new WorldPosition(0, 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Nearest(finder, from, Wanting(TerrainKind.Forest), radius: 4).Found, Is.True, "on the edge of the box");
+                Assert.That(Nearest(finder, from, Wanting(TerrainKind.Forest), radius: 3).Found, Is.False, "one past it");
+                Assert.That(Nearest(finder, from, Wanting(TerrainKind.Forest), radius: 0).Found, Is.False, "only underfoot");
+                Assert.That(Nearest(finder, from, Wanting(TerrainKind.Plains), radius: 0).Found, Is.True);
+            });
+        }
+
+        [Test]
+        public void A_site_nothing_connects_to_is_not_found_and_neither_is_one_from_nowhere()
+        {
+            var finder = new Pathfinder(Map("..~f", "..~.", "..~."), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                var (found, cost, route) = Nearest(finder, Origin, Wanting(TerrainKind.Forest));
+                Assert.That(found, Is.False, "across the river");
+                Assert.That(cost, Is.Zero);
+                Assert.That(route, Is.Empty);
+                Assert.That(Nearest(finder, new WorldPosition(2, 0), Wanting(TerrainKind.Plains)).Found, Is.False, "standing in the river");
+                Assert.That(Nearest(finder, Origin, Wanting(TerrainKind.Hills)).Found, Is.False, "nothing of the kind");
+            });
+        }
+
+        [Test]
+        public void The_nearest_search_refuses_what_it_cannot_search()
+        {
+            var finder = new Pathfinder(Map(".."), TerrainRules.Default);
+            var route = new List<WorldPosition> { new WorldPosition(9, 9) };
+            var forest = Wanting(TerrainKind.Forest);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => finder.TryFindNearest(Origin, Transport.Foot, forest, 1, null!, out _), Throws.ArgumentNullException);
+                Assert.That(() => finder.TryFindNearest(Origin, Transport.Foot, new bool[2], 1, route, out _), Throws.ArgumentException, "a mask too short to cover every kind");
+                Assert.That(() => finder.TryFindNearest(Origin, Transport.Foot, forest, -1, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.TryFindNearest(new WorldPosition(5, 0), Transport.Foot, forest, 1, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>(), "off the map");
+                Assert.That(() => finder.TryFindNearest(Origin, Transport.None, forest, 1, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.TryFindNearest(Origin, (Transport)4, forest, 1, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(finder.TryFindNearest(Origin, Transport.Foot, forest, 1, route, out _), Is.False);
+                Assert.That(route, Is.Empty, "cleared even when nothing is found");
+            });
+        }
+
         [Test]
         public void Is_passable_reads_the_table_for_a_cell()
         {

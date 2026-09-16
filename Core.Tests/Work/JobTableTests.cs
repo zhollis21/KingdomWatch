@@ -45,6 +45,28 @@ namespace KingdomWatch.Core.Tests.Work
             });
         }
 
+        [Test]
+        public void The_terrain_mask_agrees_with_WorksOn_for_every_defined_kind()
+        {
+            foreach (var job in new[] { JobKind.Forager, JobKind.Woodcutter, JobKind.StoneGatherer })
+            {
+                var mask = JobTable.Terrain(job);
+                Assert.That(mask.Length, Is.EqualTo((int)TerrainKind.DeepWater + 1), job.ToString());
+                Assert.That(mask[(int)TerrainKind.None], Is.False, job + " on None");
+
+                for (var kind = TerrainKind.Plains; kind <= TerrainKind.DeepWater; kind++)
+                {
+                    Assert.That(mask[(int)kind], Is.EqualTo(JobTable.WorksOn(job, kind)), job + " on " + kind);
+                }
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => JobTable.Terrain(JobKind.None).Length, Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => JobTable.Terrain((JobKind)200).Length, Throws.TypeOf<System.ArgumentOutOfRangeException>());
+            });
+        }
+
         [TestCase(JobKind.Forager, TerrainKind.Plains, true)]
         [TestCase(JobKind.Forager, TerrainKind.Forest, true)]
         [TestCase(JobKind.Forager, TerrainKind.Hills, false)]

@@ -168,6 +168,13 @@ namespace KingdomWatch.Core.Work
         /// </summary>
         public TaskPhase PhaseAt(SimulationTime now)
         {
+            // The sentinel's zero legs would otherwise read as a return leg
+            // ending at tick zero.
+            if (IsNone)
+            {
+                return TaskPhase.None;
+            }
+
             var elapsed = Start.TicksUntil(now);
 
             if (elapsed < 0L)

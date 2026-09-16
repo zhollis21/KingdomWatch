@@ -6,9 +6,10 @@ namespace KingdomWatch.Core.Work
 {
     /// <summary>
     /// What each <see cref="JobKind"/> does: the recipe it runs and the
-    /// terrain it runs on. Data, in the section 9 sense - a job is a row
-    /// here, and adding one is adding a row, not a branch in
-    /// <see cref="Jobs"/>.
+    /// terrain it runs on. Data, in the section 9 sense: adding a job is a
+    /// case here for what it does and where, and a need rule in
+    /// <see cref="Jobs"/> for when the band wants it - the two things a job
+    /// is, kept apart.
     /// </summary>
     /// <remarks>
     /// Every M1 job is a gathering recipe from <see cref="PrimitiveTier"/>,
@@ -23,6 +24,10 @@ namespace KingdomWatch.Core.Work
     {
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(JobKind));
         private static readonly bool[] DefinedTerrain = EnumGuard.BuildMask(typeof(TerrainKind));
+
+        // WorksOn as a mask per job, built once, for the pathfinders nearest
+        // search. Indexed by JobKind; Nones slot is an empty mask nobody asks for.
+        private static readonly bool[][] TerrainByJob = BuildTerrainMasks();
 
         /// <summary>The recipe one task of this job runs.</summary>
         /// <exception cref="ArgumentOutOfRangeException">
@@ -70,9 +75,49 @@ namespace KingdomWatch.Core.Work
             }
         }
 
+        /// <summary>
+        /// The terrain this job works on, as a mask indexed by
+        /// <see cref="TerrainKind"/>: what <see cref="WorksOn"/> answers, in
+        /// the shape <see cref="Traversal.Pathfinder.TryFindNearest"/> takes.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Not a defined job, or <see cref="JobKind.None"/>.
+        /// </exception>
+        public static ReadOnlySpan<bool> Terrain(JobKind job)
+        {
+            if (!IsJob(job))
+            {
+                throw NotAJob(job);
+            }
+
+            return TerrainByJob[(int)job];
+        }
+
         /// <summary>Whether this is a job a person can hold: defined, and not None.</summary>
         public static bool IsJob(JobKind job) =>
             EnumGuard.IsDefined(DefinedKinds, (int)job) && job != JobKind.None;
+
+        private static bool[][] BuildTerrainMasks()
+        {
+            var masks = new bool[DefinedKinds.Length][];
+
+            for (var job = 0; job < masks.Length; job++)
+            {
+                masks[job] = new bool[DefinedTerrain.Length];
+
+                if (!IsJob((JobKind)job))
+                {
+                    continue;
+                }
+
+                for (var terrain = 1; terrain < DefinedTerrain.Length; terrain++)
+                {
+                    masks[job][terrain] = DefinedTerrain[terrain] && WorksOn((JobKind)job, (TerrainKind)terrain);
+                }
+            }
+
+            return masks;
+        }
 
         private static ArgumentOutOfRangeException NotAJob(JobKind job) =>
             new ArgumentOutOfRangeException(nameof(job), job, "Not a defined JobKind, or None.");

@@ -49,15 +49,16 @@ namespace KingdomWatch.Core.Work
     /// that a grid change mid-task (a bridge, one day) cannot put someone on
     /// the far side of a river they never crossed.
     ///
-    /// **Sites are per band, per job, found at dawn.** The nearest cell the
-    /// job works on that a route reaches - rings outward from the band's
-    /// position, cheapest route within the first ring that has one - so
-    /// every worker on a job walks the same route to the same cell. That
-    /// is a few A* per band per job per day rather than one per task, and
-    /// it is placeholder in the
-    /// <see cref="PrimitiveTier"/> sense: sites are infinite and identical
-    /// until #26 makes them neither. A band that moves (#54) calls
-    /// <see cref="RefreshSites"/>; otherwise the dawn pass does.
+    /// **Sites are per band, per job, found at dawn.** The cheapest cell the
+    /// job works on that a route reaches within <see cref="MaxSiteRadius"/>
+    /// - one bounded search per job (<see cref="Pathfinder.TryFindNearest"/>),
+    /// however many candidates there are and whether or not any of them
+    /// connect - so every worker on a job walks the same route to the same
+    /// cell. Three searches per band per day rather than one per task, and
+    /// placeholder in the <see cref="PrimitiveTier"/> sense: sites are
+    /// infinite and identical until #26 makes them neither. A band that
+    /// moves (#54) calls <see cref="RefreshSites"/>; otherwise the dawn pass
+    /// does.
     ///
     /// **Who works:** the living adults and elders of a band, tierless and at
     /// full output. Section 6's reduced work for elders is a tier effect and
@@ -358,11 +359,13 @@ namespace KingdomWatch.Core.Work
                 TryStart(tracked, member);
             }
 
-            // The stream ends with time itself, as Hunger's does.
+            // The next dawn, not a day from now: the handler is callable at
+            // any hour, and a pass run at another one would otherwise drag
+            // the daily pass to that hour for good. The stream ends with time
+            // itself, as Hunger's does.
             if (_clock.Now.Ticks <= long.MaxValue - SimulationTime.TicksPerDay)
             {
-                _clock.Schedule(
-                    _clock.Now.Plus(SimulationTime.TicksPerDay), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
+                _clock.Schedule(NextDawn(_clock.Now), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
             }
         }
 
@@ -533,62 +536,28 @@ namespace KingdomWatch.Core.Work
             return expected;
         }
 
-        // The nearest cell the job works on that a route reaches: rings
-        // outward from the band, and within the first ring that has one, the
-        // cheapest route - a diagonal neighbour is in the same ring as a
-        // straight one and costs more to reach. Each ring is scanned in a
-        // fixed row-then-column order and a tie keeps the first, so the same
-        // map gives the same site on every platform. A matching cell nothing
-        // connects to costs a failed search and is skipped.
+        // The cheapest cell the job works on that a route reaches, within
+        // MaxSiteRadius of the band: one bounded search whatever the terrain
+        // looks like, since the pathfinder settles cells in cost order and
+        // stops at the first the job accepts. The way home is the same cells
+        // in the other order, and costs what they cost entered from that
+        // side - the camp cell instead of the site cell, at the least.
         private void FindSite(WorldPosition from, JobKind job, Site site)
         {
-            site.Reachable = false;
+            site.Reachable = _pathfinder.TryFindNearest(
+                from, Mover, JobTable.Terrain(job), MaxSiteRadius, site.Route, out var cost);
 
-            for (var radius = 0; radius <= MaxSiteRadius; radius++)
+            if (!site.Reachable)
             {
-                for (var dy = -radius; dy <= radius; dy++)
-                {
-                    for (var dx = -radius; dx <= radius; dx++)
-                    {
-                        if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != radius)
-                        {
-                            continue;
-                        }
-
-                        var cell = new WorldPosition(from.X + dx, from.Y + dy);
-
-                        if (!_grid.Contains(cell) || !JobTable.WorksOn(job, _grid[cell]))
-                        {
-                            continue;
-                        }
-
-                        if (!_pathfinder.TryFindRoute(from, cell, Mover, _scratchRoute, out var cost)
-                            || (site.Reachable && cost >= site.Cost))
-                        {
-                            continue;
-                        }
-
-                        site.Reachable = true;
-                        site.Destination = cell;
-                        site.Cost = cost;
-                        site.Route.Clear();
-                        site.Route.AddRange(_scratchRoute);
-
-                        // The way home is the same cells in the other order, and
-                        // costs what they cost entered from that side: the camp
-                        // cell instead of the site cell, at the least.
-                        _scratchRoute.Reverse();
-                        site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
-                    }
-                }
-
-                if (site.Reachable)
-                {
-                    return;
-                }
+                return;
             }
 
-            site.Route.Clear();
+            site.Destination = site.Route[site.Route.Count - 1];
+            site.Cost = cost;
+            _scratchRoute.Clear();
+            _scratchRoute.AddRange(site.Route);
+            _scratchRoute.Reverse();
+            site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
         }
 
         // Out, work, and back - the back leg priced on its own, since the
@@ -605,6 +574,14 @@ namespace KingdomWatch.Core.Work
 
             // A leg of no length is a route of one cell: origin and
             // destination coincide, and the worker is on it.
+            //
+            // Plain 64-bit arithmetic: elapsed is at most the leg, the leg is
+            // the route's cost times TicksPerCostUnit, and a route's cost is
+            // at most 14 * TerrainRule.MaxCost per cell - so the product
+            // exceeds a long only past some 800 million cells, a grid whose
+            // search arrays alone run to tens of gigabytes. A wider multiply
+            // here would be a guard nothing can exercise, the stance the
+            // ledger takes on its flow counters.
             var step = leg == 0L ? last : (int)(elapsed * last / leg);
             return slot.Route[forward ? step : last - step];
         }

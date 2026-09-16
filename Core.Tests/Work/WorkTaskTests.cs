@@ -71,6 +71,16 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void No_task_is_in_no_phase_at_any_instant()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(WorkTask.None.PhaseAt(SimulationTime.Zero), Is.EqualTo(TaskPhase.None), "the sentinel's zero legs are not a return leg");
+                Assert.That(WorkTask.None.PhaseAt(new SimulationTime(1L)), Is.EqualTo(TaskPhase.None));
+            });
+        }
+
+        [Test]
         public void End_is_the_start_plus_the_three_legs()
         {
             Assert.That(Sample().End, Is.EqualTo(Start.Plus(2000L)));
