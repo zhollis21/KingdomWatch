@@ -69,9 +69,12 @@ namespace KingdomWatch.Core.Work
                 throw new ArgumentException("A task needs a worker.", nameof(worker));
             }
 
-            if (holder.IsNone)
+            // Kind, not just None: a holder is looked up among the bands, and
+            // a person's id there would fail at delivery, hours later.
+            if (holder.Kind != EntityKind.MobileGroup)
             {
-                throw new ArgumentException("A task needs a holder to deliver to.", nameof(holder));
+                throw new ArgumentException(
+                    "A task delivers to a MobileGroup, not " + holder + ".", nameof(holder));
             }
 
             if (!JobTable.IsJob(job))

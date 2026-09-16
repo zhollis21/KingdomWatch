@@ -260,6 +260,11 @@ namespace KingdomWatch.Core.Work
         {
             var tracked = TrackedFor(group);
 
+            // The grids own off-map contract, up front: a scan from far off the
+            // map touches no cell the pathfinder could refuse, and would record
+            // no sites for a band that then idles without a word.
+            _grid.IndexOf(tracked.Group.Position);
+
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
@@ -410,8 +415,7 @@ namespace KingdomWatch.Core.Work
 
             var site = SiteOf(tracked, job);
             var recipe = JobTable.Recipe(job);
-            var travel = site.Cost * TicksPerCostUnit;
-            var end = now.Plus(travel + recipe.Duration + travel);
+            var end = now.Plus(TripTicks(site, recipe));
 
             // Inputs first: BeginRecipe refuses before it moves anything, and
             // a booking for an instant after now cannot be refused, so
@@ -423,7 +427,7 @@ namespace KingdomWatch.Core.Work
 
             var slot = SlotFor(worker.Index);
             slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, travel, recipe.Duration, travel,
+                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, recipe.Duration, site.ReturnCost * TicksPerCostUnit,
                 tracked.Group.Position, site.Destination, completion);
             slot.CopyRoute(site.Route);
             _people.SetJob(worker, job);
@@ -468,10 +472,7 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                var recipe = JobTable.Recipe(job);
-                var travel = site.Cost * TicksPerCostUnit;
-
-                if (travel + recipe.Duration + travel > ticksUntilDusk)
+                if (TripTicks(site, JobTable.Recipe(job)) > ticksUntilDusk)
                 {
                     continue;
                 }
@@ -572,6 +573,12 @@ namespace KingdomWatch.Core.Work
                         site.Cost = cost;
                         site.Route.Clear();
                         site.Route.AddRange(_scratchRoute);
+
+                        // The way home is the same cells in the other order, and
+                        // costs what they cost entered from that side: the camp
+                        // cell instead of the site cell, at the least.
+                        _scratchRoute.Reverse();
+                        site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
                     }
                 }
 
@@ -583,6 +590,11 @@ namespace KingdomWatch.Core.Work
 
             site.Route.Clear();
         }
+
+        // Out, work, and back - the back leg priced on its own, since the
+        // cells entered walking home are not the cells entered walking out.
+        private static long TripTicks(Site site, Recipe recipe) =>
+            (site.Cost * TicksPerCostUnit) + recipe.Duration + (site.ReturnCost * TicksPerCostUnit);
 
         private bool IsWorker(PersonHandle member) =>
             _people.IsAlive(member) && Works(_people.GetAgeStage(member));
@@ -709,6 +721,8 @@ namespace KingdomWatch.Core.Work
             public WorldPosition Destination { get; set; }
 
             public long Cost { get; set; }
+
+            public long ReturnCost { get; set; }
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
         }

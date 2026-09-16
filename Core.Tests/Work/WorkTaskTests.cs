@@ -37,6 +37,7 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(() => new WorkTask(PersonHandle.None, Band, JobKind.Forager, Start, 1L, 1L, 1L, Home, Forest, Completion), Throws.ArgumentException);
                 Assert.That(() => new WorkTask(Worker, EntityId.None, JobKind.Forager, Start, 1L, 1L, 1L, Home, Forest, Completion), Throws.ArgumentException);
+                Assert.That(() => new WorkTask(Worker, new EntityId(EntityKind.Person, 7UL), JobKind.Forager, Start, 1L, 1L, 1L, Home, Forest, Completion), Throws.ArgumentException, "a holder is a band, not a person");
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.None, Start, 1L, 1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new WorkTask(Worker, Band, (JobKind)200, Start, 1L, 1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, -1L, 1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());

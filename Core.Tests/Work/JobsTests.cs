@@ -154,12 +154,14 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Woodcutter), "food covered, wood short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToForest));
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack), "the way home enters plains only");
 
             band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodCap);
             w.Advance(SimulationTime.TicksPerDay);
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.StoneGatherer), "wood capped, stone short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.StoneGatherer), Is.EqualTo(WorkWorld.HillsCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToHills));
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack));
 
             band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
             w.Advance(SimulationTime.TicksPerDay);
@@ -313,7 +315,8 @@ namespace KingdomWatch.Core.Tests.Work
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
-            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(100L));
+            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(100L), "out onto plains");
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L), "back up the hill");
 
             w.AdvanceTo(w.Today(Jobs.Dusk));
 
@@ -659,6 +662,19 @@ namespace KingdomWatch.Core.Tests.Work
         {
             var w = new WorkWorld();
             var band = w.NewBand(new WorldPosition(-1, 0), 0);
+            w.Join(band, 30L);
+
+            Assert.That(() => w.AdvanceToDawn(), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void A_band_far_off_the_map_is_refused_not_left_siteless()
+        {
+            // Too far out for the scan to touch any cell the pathfinder could
+            // refuse: without a check up front, the pass would record no
+            // sites and the band would idle forever without a word.
+            var w = new WorkWorld();
+            var band = w.NewBand(new WorldPosition(-100, -100), 0);
             w.Join(band, 30L);
 
             Assert.That(() => w.AdvanceToDawn(), Throws.TypeOf<ArgumentOutOfRangeException>());

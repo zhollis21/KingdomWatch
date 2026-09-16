@@ -376,6 +376,63 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_route_is_priced_by_the_cells_it_enters_so_the_way_back_can_differ()
+        {
+            // Out: three plains and a forest entered, 500. Back: three plains
+            // and the plains start cell, 400. The cost of a walk depends on
+            // which end you start from.
+            var grid = Map("....f");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var (found, cost, route) = Find(grid, Origin, new WorldPosition(4, 0));
+            var back = new List<WorldPosition>(route);
+            back.Reverse();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(finder.CostOfRoute(route, Transport.Foot), Is.EqualTo(cost), "pricing the route the search found gives the search's cost");
+                Assert.That(cost, Is.EqualTo(500L));
+                Assert.That(finder.CostOfRoute(back, Transport.Foot), Is.EqualTo(400L));
+            });
+        }
+
+        [Test]
+        public void A_diagonal_step_in_a_route_is_priced_at_fourteen()
+        {
+            var finder = new Pathfinder(Map("..", ".."), TerrainRules.Default);
+            var route = new[] { Origin, new WorldPosition(1, 1) };
+
+            Assert.That(finder.CostOfRoute(route, Transport.Foot), Is.EqualTo(140L));
+        }
+
+        [Test]
+        public void A_route_of_one_cell_costs_nothing_to_walk()
+        {
+            var finder = new Pathfinder(Map("."), TerrainRules.Default);
+
+            Assert.That(finder.CostOfRoute(new[] { Origin }, Transport.Foot), Is.Zero);
+        }
+
+        [Test]
+        public void Pricing_refuses_a_route_that_is_not_a_walk()
+        {
+            var finder = new Pathfinder(Map("..~.", "...W", "..W."), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => finder.CostOfRoute(null!, Transport.Foot), Throws.ArgumentNullException);
+                Assert.That(() => finder.CostOfRoute(Array.Empty<WorldPosition>(), Transport.Foot), Throws.ArgumentException, "no cells");
+                Assert.That(() => finder.CostOfRoute(new[] { Origin, new WorldPosition(3, 0) }, Transport.Foot), Throws.ArgumentException, "a jump");
+                Assert.That(() => finder.CostOfRoute(new[] { Origin, Origin }, Transport.Foot), Throws.ArgumentException, "standing still is not a step");
+                Assert.That(() => finder.CostOfRoute(new[] { new WorldPosition(1, 0), new WorldPosition(2, 0) }, Transport.Foot), Throws.ArgumentException, "into a river");
+                Assert.That(() => finder.CostOfRoute(new[] { new WorldPosition(2, 0), new WorldPosition(3, 0) }, Transport.Foot), Throws.ArgumentException, "out of a river");
+                Assert.That(() => finder.CostOfRoute(new[] { new WorldPosition(3, 1), new WorldPosition(2, 2) }, Transport.Boat), Throws.ArgumentException, "a diagonal cutting a corner past land, by boat");                Assert.That(() => finder.CostOfRoute(new[] { Origin, new WorldPosition(9, 0) }, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>(), "off the map");
+                Assert.That(() => finder.CostOfRoute(new[] { Origin, new WorldPosition(1, 0) }, Transport.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.CostOfRoute(new[] { Origin, new WorldPosition(1, 0) }, (Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
         public void Is_passable_reads_the_table_for_a_cell()
         {
             var finder = new Pathfinder(Map(".~W"), TerrainRules.Default);

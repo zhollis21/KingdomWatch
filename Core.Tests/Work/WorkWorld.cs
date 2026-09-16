@@ -29,6 +29,9 @@ namespace KingdomWatch.Core.Tests.Work
         internal const long TicksToForest = 3L * 100L + 200L;
         internal const long TicksToHills = 3L * 100L + 300L;
 
+        // Home enters three plains and the plains camp cell, whichever the site.
+        internal const long TicksBack = 4L * 100L;
+
         internal WorkWorld()
             : this(1UL, DefaultMap())
         {
