@@ -633,104 +633,27 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_pass_run_while_workers_are_out_leaves_them_out()
+        public void A_work_day_that_is_not_the_bands_own_is_a_wiring_bug()
         {
-            // No task outlives dusk, so no dawn finds one; but the handler is
-            // callable at any hour, and a pass then must not book a second
-            // task over a worker's first.
+            // The band names the dawn it booked, as a task names its
+            // completion. Any other WorkDayDue - one scheduled by hand, or
+            // rebuilt from a save that disagrees - would run a second pass
+            // and book a second stream, doubling every dawn from then on.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, 0);
             var adult = w.Join(band, 30L);
-            w.AdvanceToDawn();
-            var task = w.Jobs.TaskOf(adult);
-            w.Advance(SimulationTime.TicksPerHour);
             var pending = w.Clock.ScheduledCount;
-
-            w.Jobs.Handle(
-                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
-                w.Clock);
+            w.Clock.Schedule(w.Now.Plus(10L), Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None);
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Jobs.TaskOf(adult).Completion, Is.EqualTo(task.Completion), "the same task");
-                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending + 1), "only the pass's own successor was booked");
-            });
-        }
-
-        [Test]
-        public void A_pass_run_off_hour_books_its_successor_at_dawn_not_a_day_later()
-        {
-            // Only work-day events on this queue: a band tracked at 07:00
-            // has its first pass booked for 06:00 tomorrow. A pass run by
-            // hand at 07:00 must book tomorrow's dawn as well, not 07:00
-            // tomorrow - or the daily pass drifts to whatever hour it ran.
-            var w = new WorkWorld();
-            var band = new MobileGroup(
-                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-            w.Clock.AdvanceTo(SimulationTime.FromHours(7L), w.Router);
-            w.Jobs.Track(band);
-            w.Jobs.Handle(
-                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
-                w.Clock);
-
-            var atDawn = w.Clock.AdvanceTo(SimulationTime.FromHours(6L).Plus(SimulationTime.TicksPerDay), w.Router);
-            var byMorning = w.Clock.AdvanceTo(SimulationTime.FromHours(7L).Plus(SimulationTime.TicksPerDay), w.Router);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(atDawn, Is.EqualTo(2), "both passes land on dawn");
-                Assert.That(byMorning, Is.Zero, "and nothing at seven");
-            });
-        }
-
-        [Test]
-        public void A_pass_run_off_hour_on_the_worlds_last_evening_still_books_the_last_dawn()
-        {
-            // At 20:00 on the day before the world's last, the next dawn is
-            // ten hours off and representable. A guard that asks for a whole
-            // day of clock left would drop it.
-            var w = new WorkWorld();
-            var band = new MobileGroup(
-                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-            var end = new SimulationTime(long.MaxValue);
-            var lastDawn = new SimulationTime(end.Ticks - end.TickOfDay + Jobs.Dawn);
-            var evening = lastDawn.Plus(-10L * SimulationTime.TicksPerHour);
-            w.Clock.AdvanceTo(evening, w.Router);
-            w.Jobs.Track(band);
-
-            w.Jobs.Handle(
-                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
-                w.Clock);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(2), "the tracked dawn and the hand-run pass's successor");
-                Assert.That(w.Clock.AdvanceTo(lastDawn, w.Router), Is.EqualTo(2), "both at the last dawn");
-                Assert.That(w.Clock.ScheduledCount, Is.Zero, "and no tomorrow to book");
-            });
-        }
-
-        [Test]
-        public void A_pass_run_before_dawn_puts_nobody_to_work()
-        {
-            // The window is dawn to dusk at both ends: a pass run by hand at
-            // 05:00 finds sites and books the dawn, but starts no task.
-            var w = new WorkWorld();
-            var band = w.NewBand(WorkWorld.Camp, 0);
-            var adult = w.Join(band, 30L);
-            w.AdvanceTo(SimulationTime.FromHours(5L));
-
-            w.Jobs.Handle(
-                new ScheduledEvent(new EventId(999UL), w.Now, Jobs.Phase, ScheduledEventKind.WorkDayDue, band.Id, EntityId.None),
-                w.Clock);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.True, "sites are found regardless");
-                Assert.That(w.Jobs.HasTask(adult), Is.False, "but nobody sets out before dawn");
+                Assert.That(() => w.Advance(10L), Throws.InvalidOperationException);
+                Assert.That(w.Jobs.HasTask(adult), Is.False, "the foreign pass assigned nothing");
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "and booked nothing");
             });
 
-            w.AdvanceTo(SimulationTime.FromHours(6L));
+            // The band's own stream is untouched.
+            w.AdvanceToDawn();
             Assert.That(w.Jobs.HasTask(adult), Is.True);
         }
 

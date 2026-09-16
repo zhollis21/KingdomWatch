@@ -73,6 +73,14 @@ namespace KingdomWatch.Core.Work
     /// untracked holder. Reposting is implicit: the next picker sees the
     /// shortfall.
     ///
+    /// **The state names its events.** A task records the completion it
+    /// booked and a band records the dawn it booked, and only those run:
+    /// any other <see cref="ScheduledEventKind.TaskCompleted"/> or
+    /// <see cref="ScheduledEventKind.WorkDayDue"/> - a duplicate, or one
+    /// rebuilt from a save that disagrees - throws rather than delivering
+    /// early or starting a second daily stream. Nothing but this class
+    /// books either kind, so there is nothing else it could mean.
+    ///
     /// No domain events: a task is a few hours of one person's day, and
     /// thousands a day would drown the journal. The chronicle reads the
     /// ledger's flows. No randomness either - every choice is a function
@@ -183,8 +191,9 @@ namespace KingdomWatch.Core.Work
 
             // Booked before recorded, as Hunger does: the booking is the one
             // thing here that can be refused.
-            _clock.Schedule(_clock.Now.Plus(TicksUntilDawn(_clock.Now)), Phase, ScheduledEventKind.WorkDayDue, group.Id, EntityId.None);
-            _tracked.Add(new Tracked(group, JobKindCount));
+            var dawn = _clock.Schedule(
+                _clock.Now.Plus(TicksUntilDawn(_clock.Now)), Phase, ScheduledEventKind.WorkDayDue, group.Id, EntityId.None);
+            _tracked.Add(new Tracked(group, JobKindCount) { PendingDawn = dawn });
         }
 
         /// <summary>Whether this person is on a task.</summary>
@@ -314,7 +323,7 @@ namespace KingdomWatch.Core.Work
             switch (scheduled.Kind)
             {
                 case ScheduledEventKind.WorkDayDue:
-                    WorkDay(scheduled.PrimaryEntity);
+                    WorkDay(scheduled.Id, scheduled.PrimaryEntity);
                     break;
                 case ScheduledEventKind.TaskCompleted:
                     Complete(scheduled.Id, scheduled.PrimaryEntity);
@@ -328,7 +337,7 @@ namespace KingdomWatch.Core.Work
 
         // Dawn: sites from where the band stands today, then every free
         // worker picks, in member order.
-        private void WorkDay(EntityId holder)
+        private void WorkDay(EventId dawn, EntityId holder)
         {
             var index = IndexOf(holder);
 
@@ -339,6 +348,20 @@ namespace KingdomWatch.Core.Work
             }
 
             var tracked = _tracked[index];
+
+            // The band names the dawn it booked, and only that one runs the
+            // pass - the rule a task applies to its completion. Any other
+            // WorkDayDue would run a second pass and book a second stream,
+            // doubling every dawn from then on; and because only the stream
+            // runs passes, a pass always runs at dawn.
+            if (dawn != tracked.PendingDawn)
+            {
+                throw new InvalidOperationException(
+                    ScheduledEventKind.WorkDayDue + " " + dawn + " came due for " + holder
+                    + ", whose next work day is " + tracked.PendingDawn + ".");
+            }
+
+            tracked.PendingDawn = EventId.None;
             RefreshSites(tracked.Group);
 
             var members = tracked.Group.Members;
@@ -348,10 +371,9 @@ namespace KingdomWatch.Core.Work
                 var member = members[i];
 
                 // Membership lags death until the cascade strikes the dead
-                // from the band. No task outlives dusk, so nobody has one at
-                // dawn; a pass run at any other hour leaves those out working
-                // rather than booking a second task over the first.
-                if (!IsWorker(member) || HasTask(member))
+                // from the band. Nobody has a task at dawn: no task outlives
+                // dusk, and only the stream runs a pass.
+                if (!IsWorker(member))
                 {
                     continue;
                 }
@@ -359,18 +381,16 @@ namespace KingdomWatch.Core.Work
                 TryStart(tracked, member);
             }
 
-            // The next dawn, not a day from now: the handler is callable at
-            // any hour, and a pass run at another one would otherwise drag
-            // the daily pass to that hour for good. The stream ends with time
-            // itself, as Hunger's does - measured to the dawn in question,
-            // which from an off-hour pass on the world's last evening is
-            // nearer than a day.
+            // The stream ends with time itself, as Hunger's does: a dawn with
+            // no tomorrow to book into books nothing, and the band's pending
+            // dawn stays None.
             var now = _clock.Now;
             var untilDawn = TicksUntilDawn(now);
 
             if (untilDawn <= long.MaxValue - now.Ticks)
             {
-                _clock.Schedule(now.Plus(untilDawn), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
+                tracked.PendingDawn = _clock.Schedule(
+                    now.Plus(untilDawn), Phase, ScheduledEventKind.WorkDayDue, holder, EntityId.None);
             }
         }
 
@@ -603,14 +623,13 @@ namespace KingdomWatch.Core.Work
             return sinceDawn < 0L ? -sinceDawn : SimulationTime.TicksPerDay - sinceDawn;
         }
 
-        // How long the work day has left: nothing before dawn - a pass run by
-        // hand at five starts nobody - and never past the end of time, since
-        // the world's last day ends at 15:30 and a task that would run to
-        // dusk there is one the clock could not book. This is the window,
-        // at both ends; every task has a positive duration, so a zero here
-        // fits nothing.
+        // How long the work day has left, and never past the end of time:
+        // the world's last day ends at 15:30, so a task that would run to
+        // dusk there is one the clock could not book. Nothing runs before
+        // dawn - only the stream runs a pass, and it runs at dawn - so the
+        // window needs no lower edge here.
         private static long TicksUntilDusk(SimulationTime now) =>
-            now.TickOfDay < Dawn ? 0L : Math.Min(Dusk - now.TickOfDay, long.MaxValue - now.Ticks);
+            Math.Min(Dusk - now.TickOfDay, long.MaxValue - now.Ticks);
 
         private Slot? SlotOf(PersonHandle person)
         {
@@ -699,6 +718,9 @@ namespace KingdomWatch.Core.Work
             public MobileGroup Group { get; }
 
             public Site[] Sites { get; }
+
+            /// <summary>The WorkDayDue booked for this band's next dawn; None when the world ends first.</summary>
+            public EventId PendingDawn { get; set; }
         }
 
         private sealed class Site
