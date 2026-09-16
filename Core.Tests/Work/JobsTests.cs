@@ -258,6 +258,38 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_band_that_moved_since_dawn_picks_from_where_it_stands()
+        {
+            // Sites are found from the band's position at dawn. If the band
+            // has moved by the time someone picks, a task built from those
+            // sites would start at the new camp and walk a route from the
+            // old one; the pick refreshes first instead.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var first = w.Jobs.TaskOf(adult);
+            Assert.That(first.Origin, Is.EqualTo(WorkWorld.Camp));
+
+            var newCamp = new WorldPosition(6, 3);
+            band.Position = newCamp;
+            w.AdvanceTo(first.End);
+
+            var next = w.Jobs.TaskOf(adult);
+            var route = w.Jobs.RouteOf(adult).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(next.Origin, Is.EqualTo(newCamp));
+                Assert.That(route[0], Is.EqualTo(newCamp), "the route starts where the worker does");
+                Assert.That(next.Destination, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(route.Length, Is.EqualTo(2), "one step from the new camp to the forest");
+                Assert.That(next.TravelTicks, Is.EqualTo(200L));
+                Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
+            });
+        }
+
+        [Test]
         public void A_completed_task_delivers_to_the_ledger_and_the_next_begins()
         {
             var w = new WorkWorld();

@@ -37,8 +37,9 @@ namespace KingdomWatch.Core.Work
     /// schedule - eat, work, socialise, sleep - and exists so that a forager
     /// makes two or three trips a day rather than six around the clock,
     /// which is what keeps hunger a constraint. Someone idle at dawn stays
-    /// idle until the next dawn; nothing wakes them mid-day, because the
-    /// meal that could create a shortfall lands before dawn.
+    /// idle until the next dawn: nothing wakes them mid-day, so a shortfall
+    /// that opens after the pass - a meal lands whenever the holder's stream
+    /// was started, not necessarily before dawn - waits for the next one.
     ///
     /// **A task is section 4's scheduled task.** <see cref="WorkTask"/>
     /// holds the start, the three legs, the origin and the destination; the
@@ -56,9 +57,11 @@ namespace KingdomWatch.Core.Work
     /// connect - so every worker on a job walks the same route to the same
     /// cell. Three searches per band per day rather than one per task, and
     /// placeholder in the <see cref="PrimitiveTier"/> sense: sites are
-    /// infinite and identical until #26 makes them neither. A band that
-    /// moves (#54) calls <see cref="RefreshSites"/>; otherwise the dawn pass
-    /// does.
+    /// infinite and identical until #26 makes them neither. Sites remember
+    /// where they were found from, and a pick made from anywhere else finds
+    /// them again first - so a band that moves (#54) need not tell anyone;
+    /// <see cref="RefreshSites"/> is there for a caller that wants the new
+    /// sites before the next pick.
     ///
     /// **Who works:** the living adults and elders of a band, tierless and at
     /// full output. Section 6's reduced work for elders is a tier effect and
@@ -270,16 +273,25 @@ namespace KingdomWatch.Core.Work
         {
             var tracked = TrackedFor(group);
 
-            // The grids own off-map contract, up front: a scan from far off the
-            // map touches no cell the pathfinder could refuse, and would record
-            // no sites for a band that then idles without a word.
-            _grid.IndexOf(tracked.Group.Position);
+            RefreshSites(tracked);
+        }
+
+        private void RefreshSites(Tracked tracked)
+        {
+            var from = tracked.Group.Position;
+
+            // The grid's own off-map contract, up front: a search from far off
+            // the map touches no cell the pathfinder could refuse, and would
+            // record no sites for a band that then idles without a word.
+            _grid.IndexOf(from);
 
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                FindSite(tracked.Group.Position, job, SiteOf(tracked, job));
+                FindSite(from, job, SiteOf(tracked, job));
             }
+
+            tracked.SitesFrom = from;
         }
 
         /// <summary>
@@ -362,7 +374,7 @@ namespace KingdomWatch.Core.Work
             }
 
             tracked.PendingDawn = EventId.None;
-            RefreshSites(tracked.Group);
+            RefreshSites(tracked);
 
             var members = tracked.Group.Members;
 
@@ -433,6 +445,16 @@ namespace KingdomWatch.Core.Work
         // them idle when nothing is needed, reachable and short enough.
         private bool TryStart(Tracked tracked, PersonHandle worker)
         {
+            // Sites were found from wherever the band stood at dawn. A band
+            // that has moved since (#54) picks from where it stands now, or a
+            // task would start at the new camp and walk a route from the old
+            // one; refreshing here keeps that a fact rather than a contract
+            // the mover has to remember.
+            if (tracked.SitesFrom != tracked.Group.Position)
+            {
+                RefreshSites(tracked);
+            }
+
             var now = _clock.Now;
             var job = ChooseJob(tracked, TicksUntilDusk(now));
 
@@ -721,6 +743,13 @@ namespace KingdomWatch.Core.Work
 
             /// <summary>The WorkDayDue booked for this band's next dawn; None when the world ends first.</summary>
             public EventId PendingDawn { get; set; }
+
+            /// <summary>
+            /// Where the band stood when its sites were found. Every pick
+            /// follows a pass or a task, so sites have always been found by
+            /// the time this is compared.
+            /// </summary>
+            public WorldPosition SitesFrom { get; set; }
         }
 
         private sealed class Site
