@@ -41,5 +41,7 @@ namespace KingdomWatch.Core.Rng
         Mortality = 4,
         /// <summary>The sex of a newborn (#11).</summary>
         ChildSex = 5,
+        /// <summary>Terrain laid down by the placeholder map (#16); #33 subdivides it.</summary>
+        WorldGen = 6,
     }
 }
