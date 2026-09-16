@@ -80,10 +80,10 @@ namespace KingdomWatch.Core.Tests.Traversal
             Assert.Multiple(() =>
             {
                 Assert.That(() => TerrainRules.Default[TerrainKind.None], Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => TerrainRules.Default[(TerrainKind)999], Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => TerrainRules.Default[(TerrainKind)(-1)], Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default[(TerrainKind)255], Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default[(TerrainKind)6], Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => TerrainRules.Default.IsPassable(TerrainKind.None, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => TerrainRules.Default.IsPassable((TerrainKind)999, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default.IsPassable((TerrainKind)255, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 
@@ -119,7 +119,7 @@ namespace KingdomWatch.Core.Tests.Traversal
             Assert.Multiple(() =>
             {
                 Assert.That(
-                    () => new TerrainRules(((TerrainKind)999, new TerrainRule(10, Transport.Foot))),
+                    () => new TerrainRules(((TerrainKind)255, new TerrainRule(10, Transport.Foot))),
                     Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(
                     () => new TerrainRules((TerrainKind.None, new TerrainRule(10, Transport.Foot))),
@@ -161,6 +161,27 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(() => new TerrainRule(10, (Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new TerrainRule(10, Transport.Foot | (Transport)8), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new TerrainRule(10, Transport.Foot | Transport.Boat), Throws.Nothing);
+            });
+        }
+
+        [Test]
+        public void Admits_and_is_passable_refuse_a_mover_with_no_defined_transport()
+        {
+            // A bare mask test would answer None with "not admitted" and an
+            // undefined bit with whatever the defined bits say; both are
+            // caller bugs, and every public entry taking a mover refuses them.
+            var rule = new TerrainRule(10, Transport.Foot);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => rule.Admits(Transport.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => rule.Admits((Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => rule.Admits(Transport.Foot | (Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => rule.Admits((Transport)(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRule.Impassable.Admits(Transport.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default.IsPassable(TerrainKind.Plains, Transport.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default.IsPassable(TerrainKind.Plains, Transport.Foot | (Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default.IsPassable(TerrainKind.Plains, (Transport)(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 

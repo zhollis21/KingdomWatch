@@ -92,9 +92,9 @@ namespace KingdomWatch.Core.Tests.Traversal
             Assert.Multiple(() =>
             {
                 Assert.That(() => new TerrainGrid(2, 2, TerrainKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => new TerrainGrid(2, 2, (TerrainKind)999), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => new TerrainGrid(2, 2, (TerrainKind)255), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => grid.Set(default, TerrainKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => grid.Set(default, (TerrainKind)(-1)), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => grid.Set(default, (TerrainKind)6), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 
@@ -108,6 +108,14 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(() => new TerrainGrid(-1, 1, TerrainKind.Plains), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new TerrainGrid(1, 1, TerrainKind.Plains), Throws.Nothing);
             });
+        }
+
+        [Test]
+        public void A_cell_is_one_byte()
+        {
+            // The grid is the largest thing in the world, and the dense
+            // representation the remarks promise depends on the enum's width.
+            Assert.That(Enum.GetUnderlyingType(typeof(TerrainKind)), Is.EqualTo(typeof(byte)));
         }
 
         [Test]

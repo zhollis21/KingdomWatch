@@ -14,6 +14,20 @@ namespace KingdomWatch.Core.Traversal
 
         internal static bool IsDefined(Transport value) => (value & ~AllBits) == 0;
 
+        /// <summary>
+        /// Rejects a mover that could not move: no transport at all, or a bit
+        /// that names none. Every public entry point taking a mover goes
+        /// through here so they all refuse the same things.
+        /// </summary>
+        internal static void RequireMover(Transport mover)
+        {
+            if (mover == Transport.None || !IsDefined(mover))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(mover), mover, "A mover needs at least one defined Transport.");
+            }
+        }
+
         private static Transport CollectBits()
         {
             var all = Transport.None;

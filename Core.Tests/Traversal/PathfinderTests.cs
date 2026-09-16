@@ -38,7 +38,7 @@ namespace KingdomWatch.Core.Tests.Traversal
             return grid;
         }
 
-        private static (bool Found, int Cost, List<WorldPosition> Route) Find(
+        private static (bool Found, long Cost, List<WorldPosition> Route) Find(
             TerrainGrid grid, WorldPosition from, WorldPosition to, Transport mover = Transport.Foot)
         {
             var route = new List<WorldPosition>();
@@ -333,6 +333,34 @@ namespace KingdomWatch.Core.Tests.Traversal
                     Assert.That(grid[route[i]], Is.Not.EqualTo(TerrainKind.SmallRiver), "step " + i);
                 });
             }
+        }
+
+        [Test]
+        public void A_route_cost_beyond_an_int_is_summed_correctly()
+        {
+            // 220,000 cells of a max-cost kind in a strip: 219,999 steps at
+            // 10 * 1000 is 2.2 billion, past int.MaxValue. The grid only bounds
+            // its cell count, so the sum has to be a long.
+            const int length = 220_000;
+            var rules = new TerrainRules(
+                (TerrainKind.Plains, new TerrainRule(TerrainRule.MaxCost, Transport.Foot)),
+                (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
+                (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+                (TerrainKind.SmallRiver, TerrainRule.Impassable),
+                (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat)));
+            var grid = new TerrainGrid(length, 1, TerrainKind.Plains);
+            var route = new List<WorldPosition>();
+
+            var found = new Pathfinder(grid, rules).TryFindRoute(
+                Origin, new WorldPosition(length - 1, 0), Transport.Foot, route, out var cost);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(cost, Is.EqualTo((length - 1) * 10L * TerrainRule.MaxCost));
+                Assert.That(cost, Is.GreaterThan(int.MaxValue));
+                Assert.That(route, Has.Count.EqualTo(length));
+            });
         }
 
         [Test]

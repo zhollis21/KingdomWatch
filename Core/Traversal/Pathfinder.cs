@@ -10,7 +10,9 @@ namespace KingdomWatch.Core.Traversal
     /// table. Section 12's "grid A* locally".
     /// </summary>
     /// <remarks>
-    /// **What comes out is a cost and a coarse route.** The cost is what a
+    /// **What comes out is a cost and a coarse route.** The cost is a long,
+    /// summed without overflow for any grid that fits in memory (see
+    /// <see cref="TerrainRule.MaxCost"/>), and is what a
     /// band or a task converts into travel time at its own speed (#54, #52);
     /// the route is the cell list section 4 wants kept in task state so the
     /// stepped simulation can place someone partway through a walk. Nothing
@@ -35,9 +37,9 @@ namespace KingdomWatch.Core.Traversal
     /// is a binary heap with decrease-key, so a cell is in it at most once
     /// and the heap never outgrows the grid.
     ///
-    /// The region graph and per-tick request cap section 12 also names are
-    /// deferred to the issues with a caller for them (#23, #25); they sit on
-    /// top of this rather than replacing it.
+    /// Section 12 also names a region graph and a per-tick request cap. Both
+    /// are deferred to the issues with a caller for them (#23, #25), and
+    /// they sit on top of this rather than replacing it.
     /// </remarks>
     public sealed class Pathfinder
     {
@@ -67,7 +69,7 @@ namespace KingdomWatch.Core.Traversal
         // _touched so the next query can reset exactly those and no others.
         private readonly bool[] _seen;
         private readonly bool[] _closed;
-        private readonly int[] _gScore;
+        private readonly long[] _gScore;
         private readonly int[] _cameFrom;
         private readonly int[] _touched;
         private int _touchedCount;
@@ -76,8 +78,8 @@ namespace KingdomWatch.Core.Traversal
         // not present) so a cheaper path found later can move it up.
         private readonly int[] _heap;
         private readonly int[] _heapSlot;
-        private readonly int[] _fScore;
-        private readonly int[] _hScore;
+        private readonly long[] _fScore;
+        private readonly long[] _hScore;
         private int _heapCount;
 
         public Pathfinder(TerrainGrid grid, TerrainRules rules)
@@ -88,20 +90,20 @@ namespace KingdomWatch.Core.Traversal
             var cells = grid.CellCount;
             _seen = new bool[cells];
             _closed = new bool[cells];
-            _gScore = new int[cells];
+            _gScore = new long[cells];
             _cameFrom = new int[cells];
             _touched = new int[cells];
             _heap = new int[cells];
             _heapSlot = new int[cells];
-            _fScore = new int[cells];
-            _hScore = new int[cells];
+            _fScore = new long[cells];
+            _hScore = new long[cells];
             Array.Fill(_heapSlot, -1);
         }
 
         /// <summary>Whether a mover with these transports may stand on this cell.</summary>
         public bool IsPassable(WorldPosition position, Transport mover)
         {
-            RequireMover(mover);
+            TransportGuard.RequireMover(mover);
             return _rules.IsPassable(_grid[position], mover);
         }
 
@@ -117,14 +119,14 @@ namespace KingdomWatch.Core.Traversal
         /// Either position is off the map, or the mover has no defined transport.
         /// </exception>
         public bool TryFindRoute(
-            WorldPosition from, WorldPosition to, Transport mover, List<WorldPosition> route, out int cost)
+            WorldPosition from, WorldPosition to, Transport mover, List<WorldPosition> route, out long cost)
         {
             if (route is null)
             {
                 throw new ArgumentNullException(nameof(route));
             }
 
-            RequireMover(mover);
+            TransportGuard.RequireMover(mover);
             var start = _grid.IndexOf(from);
             var goal = _grid.IndexOf(to);
 
@@ -179,7 +181,9 @@ namespace KingdomWatch.Core.Traversal
                         continue;
                     }
 
-                    var tentative = _gScore[current] + (stepCost * _rules[_grid.KindAt(nextIndex)].Cost);
+                    // Long, not int: a step is at most 14 * MaxCost and a route at
+                    // most CellCount steps, which an int cannot promise to hold.
+                    var tentative = _gScore[current] + ((long)stepCost * _rules[_grid.KindAt(nextIndex)].Cost);
 
                     if (_seen[nextIndex] && tentative >= _gScore[nextIndex])
                     {
@@ -193,29 +197,23 @@ namespace KingdomWatch.Core.Traversal
             return false;
         }
 
-        private static void RequireMover(Transport mover)
-        {
-            if (mover == Transport.None || !TransportGuard.IsDefined(mover))
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(mover), mover, "A mover needs at least one defined Transport.");
-            }
-        }
-
-        private bool Passable(int index, Transport mover) => _rules[_grid.KindAt(index)].Admits(mover);
+        // The mask directly rather than TerrainRule.Admits: the mover was
+        // validated once at entry, and this runs for every neighbour of every
+        // cell a query expands.
+        private bool Passable(int index, Transport mover) => (_rules[_grid.KindAt(index)].Allowed & mover) != 0;
 
         /// <summary>
         /// Octile distance scaled by the cheapest cell in the table: the
         /// least any route could cost, so A* never overestimates.
         /// </summary>
-        private int Heuristic(WorldPosition a, WorldPosition b)
+        private long Heuristic(WorldPosition a, WorldPosition b)
         {
             var dx = Math.Abs(a.X - b.X);
             var dy = Math.Abs(a.Y - b.Y);
             var diagonal = Math.Min(dx, dy);
             var straight = Math.Max(dx, dy) - diagonal;
 
-            return ((diagonal * DiagonalCost) + (straight * StraightCost)) * _rules.CheapestCost;
+            return (((long)diagonal * DiagonalCost) + ((long)straight * StraightCost)) * _rules.CheapestCost;
         }
 
         private void BeginSearch()
@@ -232,7 +230,7 @@ namespace KingdomWatch.Core.Traversal
             _heapCount = 0;
         }
 
-        private void Open(int cell, int gScore, int cameFrom, int heuristic)
+        private void Open(int cell, long gScore, int cameFrom, long heuristic)
         {
             _gScore[cell] = gScore;
             _cameFrom[cell] = cameFrom;

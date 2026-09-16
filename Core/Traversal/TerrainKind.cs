@@ -16,10 +16,11 @@ namespace KingdomWatch.Core.Traversal
     /// through <see cref="TerrainRules"/>, never by code that asks "is this
     /// water?".
     ///
-    /// Values are explicit and must never be renumbered: they are written into
-    /// saves. Append new kinds at the end.
+    /// One byte, because there is one of these per cell and the grid is the
+    /// largest thing in the world. Values are explicit and must never be
+    /// renumbered: they are written into saves. Append new kinds at the end.
     /// </remarks>
-    public enum TerrainKind
+    public enum TerrainKind : byte
     {
         /// <summary>Not a valid kind. Guards against a defaulted cell.</summary>
         None = 0,

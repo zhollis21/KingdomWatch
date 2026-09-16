@@ -18,10 +18,10 @@ namespace KingdomWatch.Core.Traversal
     /// state, so a cell that admits nobody cannot carry a cost that some code
     /// path might read as if it did.
     ///
-    /// Costs are capped at <see cref="MaxCost"/> so that a route total fits in
-    /// an int without checking every addition: at 14 per diagonal step, a
-    /// route would have to enter over 150,000 cells at the cap to overflow,
-    /// which is longer than any map this game will draw has cells across it.
+    /// Costs are capped at <see cref="MaxCost"/> so that a route total cannot
+    /// overflow the long the pathfinder sums it in: 14 per diagonal step, times
+    /// the cap, times every cell a grid can hold (an int's worth) is about
+    /// 3 x 10^13, well inside a long, so no addition needs checking.
     /// </remarks>
     public readonly struct TerrainRule : IEquatable<TerrainRule>
     {
@@ -63,8 +63,17 @@ namespace KingdomWatch.Core.Traversal
 
         public bool IsImpassable => Allowed == Transport.None;
 
-        /// <summary>Whether a mover with these transports may enter.</summary>
-        public bool Admits(Transport mover) => (Allowed & mover) != 0;
+        /// <summary>
+        /// Whether a mover with these transports may enter. Throws for a mover
+        /// with no defined transport: a bare mask test would report None as
+        /// "not admitted" and an undefined bit as whatever the defined bits
+        /// say, and both are caller bugs rather than answers.
+        /// </summary>
+        public bool Admits(Transport mover)
+        {
+            TransportGuard.RequireMover(mover);
+            return (Allowed & mover) != 0;
+        }
 
         public bool Equals(TerrainRule other) => Cost == other.Cost && Allowed == other.Allowed;
 
