@@ -65,13 +65,19 @@ namespace KingdomWatch.Core.Work
     ///
     /// **A task starts and ends where the band stood when it started.** The
     /// worker walks out from the band's position and back to it, and that
-    /// origin is the task's, not the band's live one - so a band that moves
-    /// while workers are out leaves them at the old camp when they return,
-    /// and their next task sets out from wherever the band is by then. What
-    /// a moving band does about people out working - wait for them, recall
-    /// them through <see cref="Vacate"/>, or let them catch up - is the
-    /// movement's decision (#54), not this class's; nothing here reads or
-    /// writes a person's own position, because nothing moves one yet.
+    /// origin is the task's, not the band's live one - so a band that moved
+    /// while workers were out would leave them at the old camp when they
+    /// return. <see cref="Nomadic.NomadicBands"/> never does: its council
+    /// sits at first light, before this pass, and a band with a
+    /// <see cref="ICommunity.Destination"/> at dawn starts nobody - everyone
+    /// walks with the band, and tomorrow's pass finds sites from the new
+    /// camp. Nothing here reads or writes a person's own position, because
+    /// nothing moves one step by step yet (#25).
+    ///
+    /// **Bands and settlements alike.** What is tracked is an
+    /// <see cref="ICommunity"/>: a settlement works exactly as a band does,
+    /// from a position that happens never to change. The settlement-wide
+    /// plan that will replace "decide need" is #23's.
     ///
     /// **Who works:** the living adults and elders of a band, tierless and at
     /// full output. Section 6's reduced work for elders is a tier effect and
@@ -189,7 +195,7 @@ namespace KingdomWatch.Core.Work
         /// Refuses a band already tracked - two passes a day would assign
         /// twice.
         /// </summary>
-        public void Track(MobileGroup group)
+        public void Track(ICommunity group)
         {
             if (group is null)
             {
@@ -207,6 +213,32 @@ namespace KingdomWatch.Core.Work
             var dawn = _clock.Schedule(
                 _clock.Now.Plus(TicksUntilDawn(_clock.Now)), Phase, ScheduledEventKind.WorkDayDue, group.Id, EntityId.None);
             _tracked.Add(new Tracked(group, JobKindCount) { PendingDawn = dawn });
+        }
+
+        /// <summary>
+        /// Stops a band working: its pending dawn is cancelled and the
+        /// stream ends. Refuses a band with anyone out on a task, because a
+        /// completion would then arrive for a holder nobody tracks - untrack
+        /// at first light or after dusk, when nobody is. A band that has
+        /// settled (#54) hands its people to the settlement, which is
+        /// tracked in its place.
+        /// </summary>
+        public void Untrack(ICommunity group)
+        {
+            var tracked = TrackedFor(group);
+            var members = tracked.Group.Members;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (HasTask(members[i]))
+                {
+                    throw new InvalidOperationException(
+                        group.Id + " cannot be untracked while " + members[i] + " is out on a task.");
+                }
+            }
+
+            _clock.Cancel(tracked.PendingDawn);
+            _tracked.RemoveAt(IndexOf(group.Id));
         }
 
         /// <summary>Whether this person is on a task.</summary>
@@ -259,10 +291,10 @@ namespace KingdomWatch.Core.Work
         }
 
         /// <summary>Whether the band has somewhere reachable to work this job, as of its last site refresh.</summary>
-        public bool HasSite(MobileGroup group, JobKind job) => SiteOf(TrackedFor(group), job).Reachable;
+        public bool HasSite(ICommunity group, JobKind job) => SiteOf(TrackedFor(group), job).Reachable;
 
         /// <summary>Where the band works this job. Throws if it has nowhere.</summary>
-        public WorldPosition SiteFor(MobileGroup group, JobKind job)
+        public WorldPosition SiteFor(ICommunity group, JobKind job)
         {
             var site = SiteOf(TrackedFor(group), job);
 
@@ -279,7 +311,7 @@ namespace KingdomWatch.Core.Work
         /// pass does this; a band that moves between dawns does it itself.
         /// Tasks under way keep the route they left with.
         /// </summary>
-        public void RefreshSites(MobileGroup group)
+        public void RefreshSites(ICommunity group)
         {
             var tracked = TrackedFor(group);
 
@@ -384,23 +416,31 @@ namespace KingdomWatch.Core.Work
             }
 
             tracked.PendingDawn = EventId.None;
-            RefreshSites(tracked);
 
-            var members = tracked.Group.Members;
-
-            for (var i = 0; i < members.Count; i++)
+            // A moving day: the band's council (#54) set a destination before
+            // this pass, and everyone walks with the band rather than out
+            // from a camp it is leaving. Sites are found again tomorrow,
+            // from wherever it arrived.
+            if (tracked.Group.Destination is null)
             {
-                var member = members[i];
+                RefreshSites(tracked);
 
-                // Membership lags death until the cascade strikes the dead
-                // from the band. Nobody has a task at dawn: no task outlives
-                // dusk, and only the stream runs a pass.
-                if (!IsWorker(member))
+                var members = tracked.Group.Members;
+
+                for (var i = 0; i < members.Count; i++)
                 {
-                    continue;
-                }
+                    var member = members[i];
 
-                TryStart(tracked, member);
+                    // Membership lags death until the cascade strikes the dead
+                    // from the band. Nobody has a task at dawn: no task outlives
+                    // dusk, and only the stream runs a pass.
+                    if (!IsWorker(member))
+                    {
+                        continue;
+                    }
+
+                    TryStart(tracked, member);
+                }
             }
 
             // The stream ends with time itself, as Hunger's does: a dawn with
@@ -697,7 +737,7 @@ namespace KingdomWatch.Core.Work
             return tracked.Sites[(int)job];
         }
 
-        private Tracked TrackedFor(MobileGroup group)
+        private Tracked TrackedFor(ICommunity group)
         {
             if (group is null)
             {
@@ -736,7 +776,7 @@ namespace KingdomWatch.Core.Work
         // with an unused slot for None.
         private sealed class Tracked
         {
-            public Tracked(MobileGroup group, int jobKinds)
+            public Tracked(ICommunity group, int jobKinds)
             {
                 Group = group;
                 Sites = new Site[jobKinds];
@@ -747,7 +787,7 @@ namespace KingdomWatch.Core.Work
                 }
             }
 
-            public MobileGroup Group { get; }
+            public ICommunity Group { get; }
 
             public Site[] Sites { get; }
 

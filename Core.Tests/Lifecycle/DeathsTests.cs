@@ -41,6 +41,31 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void An_untracked_group_keeps_its_dead_and_refuses_a_second_untrack()
+        {
+            // Untracked, the group is no longer the cascade's to strike from:
+            // a band handed to a settlement (#54) keeps nothing, but a group
+            // untracked by mistake would silently keep the dead listed, so
+            // the test pins that the removal is the tracker's alone.
+            var w = new HouseholdWorld();
+            var band = w.NewBand();
+            var person = w.NewPerson(AgeStage.Adult, Sex.Male);
+            band.AddMember(person);
+
+            w.Deaths.Untrack(band);
+            w.Deaths.Die(person, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Deaths.TrackedCount, Is.Zero);
+                Assert.That(band.Members, Is.EqualTo(new[] { person }), "nobody strikes the dead from an untracked group");
+                Assert.That(() => w.Deaths.Untrack(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Deaths.Untrack(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Deaths.Track(band), Throws.Nothing, "and can be tracked afresh");
+            });
+        }
+
+        [Test]
         public void Dying_announces_with_the_callers_reasons_and_frees_the_slot()
         {
             var w = new HouseholdWorld();

@@ -31,11 +31,10 @@ namespace KingdomWatch.Core.Needs
     /// is the distance from that to now, evaluated when a meal finds them
     /// unfed. Nobody's hunger is ticked.
     ///
-    /// **The holder is a <see cref="MobileGroup"/>** because that is the only
-    /// thing with a ledger. Settlements (#54) do not exist yet; when they do,
-    /// the draw moves to whatever holds the ledger. Households (#9) have food
-    /// ACCESS rather than food - section 6 - so they do not hold a ledger of
-    /// their own and the draw does not go through them.
+    /// **The holder is an <see cref="ICommunity"/>** - a band or a settlement
+    /// - because that is what has a ledger. Households (#9) have food ACCESS
+    /// rather than food - section 6 - so they do not hold a ledger of their
+    /// own and the draw does not go through them.
     ///
     /// **Shortfall feeds the young first.** When the ledger cannot cover
     /// everyone, the table is served in three sittings - dependents (infants,
@@ -67,9 +66,10 @@ namespace KingdomWatch.Core.Needs
     /// that makes compression trustworthy today. A predicted crossing on top
     /// would need re-predicting on every gather and transfer, and the ledger
     /// has no change notification to drive that - so it would silently go
-    /// stale. <see cref="DaysOfFood"/> is the same number as a query, for the
-    /// settling trigger (#54) and, eventually, the house tooltip section 6
-    /// warns about; job assignment (<see cref="Work.Jobs"/>) does the same
+    /// stale. <see cref="DaysOfFood"/> is the same number as a query, for
+    /// the house tooltip section 6 warns about and whatever else asks - the
+    /// settling trigger (#54) turned out to read size and land, not food;
+    /// job assignment (<see cref="Work.Jobs"/>) does the same
     /// arithmetic with what its foragers are bringing home added in. The
     /// predicted event can arrive with the
     /// first thing that aggregates meals over more than a day.
@@ -143,7 +143,7 @@ namespace KingdomWatch.Core.Needs
         /// Refuses a holder already tracked - two meal streams on one ledger
         /// would draw twice a day.
         /// </summary>
-        public void Track(MobileGroup group)
+        public void Track(ICommunity group)
         {
             if (group is null)
             {
@@ -161,12 +161,25 @@ namespace KingdomWatch.Core.Needs
             // one thing here that can be refused, and a holder recorded
             // without a meal stream would refuse to be tracked again and go
             // unfed for good.
-            ScheduleMeal(group.Id);
-            _tracked.Add(new Tracked(group));
+            var meal = ScheduleMeal(group.Id);
+            _tracked.Add(new Tracked(group) { PendingMeal = meal });
+        }
+
+        /// <summary>
+        /// Stops feeding a holder: its pending meal is cancelled and the
+        /// stream ends. A band that has settled (#54) hands its people and
+        /// food to the settlement, which is tracked in its place. Throws when
+        /// the holder was never tracked.
+        /// </summary>
+        public void Untrack(ICommunity group)
+        {
+            var index = IndexOf(TrackedFor(group).Group.Id);
+            _clock.Cancel(_tracked[index].PendingMeal);
+            _tracked.RemoveAt(index);
         }
 
         /// <summary>Whether a tracked holder's last meal left someone unfed.</summary>
-        public bool IsInFamine(MobileGroup group) => TrackedFor(group).InFamine;
+        public bool IsInFamine(ICommunity group) => TrackedFor(group).InFamine;
 
         /// <summary>
         /// Whole days the holder's available food covers at the current
@@ -178,7 +191,7 @@ namespace KingdomWatch.Core.Needs
         /// only, because the dead do not eat and their handles may still be in
         /// the group until the death cascade (Lifecycle.Deaths) removes them.
         /// </remarks>
-        public int DaysOfFood(MobileGroup group)
+        public int DaysOfFood(ICommunity group)
         {
             var tracked = TrackedFor(group);
             var living = 0;
@@ -228,7 +241,21 @@ namespace KingdomWatch.Core.Needs
                     scheduled + " came due for a holder Hunger is not tracking.");
             }
 
-            ServeMeal(_tracked[index], clock.Now);
+            var tracked = _tracked[index];
+
+            // The holder names the meal it booked, and only that one is
+            // served - the rule Jobs applies to its dawn. Any other MealDue
+            // would draw a second ration and book a second stream, doubling
+            // every meal from then on (#80).
+            if (scheduled.Id != tracked.PendingMeal)
+            {
+                throw new InvalidOperationException(
+                    scheduled + " came due for " + scheduled.PrimaryEntity
+                    + ", whose next meal is " + tracked.PendingMeal + ".");
+            }
+
+            tracked.PendingMeal = EventId.None;
+            ServeMeal(tracked, clock.Now);
 
             // The stream ends with time itself. A meal due within one interval
             // of the last representable instant has no tomorrow to book into,
@@ -236,7 +263,7 @@ namespace KingdomWatch.Core.Needs
             // AdvanceTo unable to reach the end of the world.
             if (clock.Now.Ticks <= long.MaxValue - MealInterval)
             {
-                ScheduleMeal(scheduled.PrimaryEntity);
+                tracked.PendingMeal = ScheduleMeal(scheduled.PrimaryEntity);
             }
         }
 
@@ -357,11 +384,11 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
-        private void ScheduleMeal(EntityId holder) =>
+        private EventId ScheduleMeal(EntityId holder) =>
             _clock.Schedule(
                 _clock.Now.Plus(MealInterval), MealPhase, ScheduledEventKind.MealDue, holder, EntityId.None);
 
-        private Tracked TrackedFor(MobileGroup group)
+        private Tracked TrackedFor(ICommunity group)
         {
             if (group is null)
             {
@@ -404,14 +431,19 @@ namespace KingdomWatch.Core.Needs
         // through the list without a copy-back.
         private sealed class Tracked
         {
-            public Tracked(MobileGroup group)
+            public Tracked(ICommunity group)
             {
                 Group = group;
             }
 
-            public MobileGroup Group { get; }
+            public ICommunity Group { get; }
 
             public bool InFamine { get; set; }
+
+            // The meal this holder booked, so that no other MealDue is served
+            // and Untrack can cancel it. None only while a meal is being
+            // served, or when the stream has reached the end of time.
+            public EventId PendingMeal { get; set; }
         }
     }
 }

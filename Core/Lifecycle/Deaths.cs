@@ -66,10 +66,10 @@ namespace KingdomWatch.Core.Lifecycle
         private readonly Households _households;
         private readonly Jobs _jobs;
 
-        // The bands a dead person may need striking from. Nothing on the
-        // record says which group holds someone - spatial presence is #54's
-        // to model - so the cascade scans the few it is told about.
-        private readonly List<MobileGroup> _groups = new List<MobileGroup>();
+        // The communities a dead person may need striking from. Nothing on
+        // the record says which one holds someone, so the cascade scans the
+        // few it is told about.
+        private readonly List<ICommunity> _groups = new List<ICommunity>();
 
         public Deaths(
             DomainEventBus bus,
@@ -89,30 +89,63 @@ namespace KingdomWatch.Core.Lifecycle
             _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
         }
 
-        /// <summary>How many groups the cascade will strike the dead from.</summary>
+        /// <summary>How many communities the cascade will strike the dead from.</summary>
         public int TrackedCount => _groups.Count;
 
         /// <summary>
-        /// Registers a group whose members may die. Refuses one already
-        /// tracked - a person is in one group, and finding them twice would
-        /// mean the same group listed twice.
+        /// Registers a community whose members may die. Refuses one already
+        /// tracked - a person is in one community, and finding them twice
+        /// would mean the same one listed twice.
         /// </summary>
-        public void Track(MobileGroup group)
+        public void Track(ICommunity group)
         {
             if (group is null)
             {
                 throw new ArgumentNullException(nameof(group));
             }
 
-            for (var i = 0; i < _groups.Count; i++)
+            if (IndexOf(group.Id) >= 0)
             {
-                if (_groups[i].Id == group.Id)
-                {
-                    throw new InvalidOperationException(group.Id + " is already tracked.");
-                }
+                throw new InvalidOperationException(group.Id + " is already tracked.");
             }
 
             _groups.Add(group);
+        }
+
+        /// <summary>
+        /// Stops striking the dead from a community: a band that has settled
+        /// (#54) hands its people to the settlement, which is tracked in its
+        /// place. Throws when it was never tracked, since untracking nothing
+        /// is a wiring bug at the caller.
+        /// </summary>
+        public void Untrack(ICommunity group)
+        {
+            if (group is null)
+            {
+                throw new ArgumentNullException(nameof(group));
+            }
+
+            var index = IndexOf(group.Id);
+
+            if (index < 0)
+            {
+                throw new InvalidOperationException(group.Id + " is not tracked by Deaths.");
+            }
+
+            _groups.RemoveAt(index);
+        }
+
+        private int IndexOf(EntityId community)
+        {
+            for (var i = 0; i < _groups.Count; i++)
+            {
+                if (_groups[i].Id == community)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         /// <summary>
@@ -355,10 +388,11 @@ namespace KingdomWatch.Core.Lifecycle
                 }
 
                 // Who leads next is the band's (#54) or the polity's (#39)
-                // decision; a dead leader is simply no leader.
-                if (group.Leader == person)
+                // decision; a dead leader is simply no leader. Only a band
+                // has one: a settlement's ruler is the polity's, and M7's.
+                if (group is MobileGroup band && band.Leader == person)
                 {
-                    group.Leader = PersonHandle.None;
+                    band.Leader = PersonHandle.None;
                 }
 
                 return;

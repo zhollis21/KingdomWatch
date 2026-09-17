@@ -83,5 +83,24 @@ namespace KingdomWatch.Core.Clock
         /// Owned by <see cref="Work.Jobs"/>.
         /// </summary>
         WorkDayDue = 9,
+        /// <summary>
+        /// A band's council sits at first light: settle, move, or stay.
+        /// Owned by <see cref="Nomadic.NomadicBands"/>; the band names the
+        /// pending one. Numerically after <see cref="WorkDayDue"/>, which
+        /// does not matter: the council sits an hour before dawn.
+        /// </summary>
+        CouncilDue = 10,
+        /// <summary>
+        /// A travelling band reaches its destination and makes camp. Owned
+        /// by <see cref="Nomadic.NomadicBands"/>; the band names the pending
+        /// one.
+        /// </summary>
+        BandArrival = 11,
+        /// <summary>
+        /// A community's yearly pairing-off. Owned by
+        /// <see cref="Lifecycle.Matchmaking"/>; the community names the
+        /// pending one.
+        /// </summary>
+        CourtshipDue = 12,
     }
 }

@@ -27,8 +27,14 @@ namespace KingdomWatch.Core.Data
     /// storage rules in section 5 are aimed at the roughly 1,650 people, and
     /// there are six of these at launch. If it ever needs a store it should
     /// follow PersonStore's pattern (issue #6).
+    ///
+    /// An <see cref="ICommunity"/>, as a settlement is: the systems that feed,
+    /// work, breed and bury a population see that and nothing more, which is
+    /// what lets a band settle (#54) by handing its people and stock to a
+    /// <see cref="Settlements.Settlement"/> without any of them noticing the
+    /// type change.
     /// </remarks>
-    public sealed class MobileGroup
+    public sealed class MobileGroup : ICommunity
     {
         // A List, never a HashSet or Dictionary. Systems iterate members and act
         // on them, so iteration order is part of the determinism contract -
