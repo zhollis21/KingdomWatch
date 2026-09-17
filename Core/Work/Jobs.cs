@@ -63,6 +63,16 @@ namespace KingdomWatch.Core.Work
     /// <see cref="RefreshSites"/> is there for a caller that wants the new
     /// sites before the next pick.
     ///
+    /// **A task starts and ends where the band stood when it started.** The
+    /// worker walks out from the band's position and back to it, and that
+    /// origin is the task's, not the band's live one - so a band that moves
+    /// while workers are out leaves them at the old camp when they return,
+    /// and their next task sets out from wherever the band is by then. What
+    /// a moving band does about people out working - wait for them, recall
+    /// them through <see cref="Vacate"/>, or let them catch up - is the
+    /// movement's decision (#54), not this class's; nothing here reads or
+    /// writes a person's own position, because nothing moves one yet.
+    ///
     /// **Who works:** the living adults and elders of a band, tierless and at
     /// full output. Section 6's reduced work for elders is a tier effect and
     /// arrives with #22's skills; adolescents' work assistance is #22's

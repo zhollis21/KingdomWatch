@@ -263,7 +263,10 @@ namespace KingdomWatch.Core.Tests.Work
             // Sites are found from the band's position at dawn. If the band
             // has moved by the time someone picks, a task built from those
             // sites would start at the new camp and walk a route from the
-            // old one; the pick refreshes first instead.
+            // old one; the pick refreshes first instead. The worker came home
+            // to the old camp - a task ends where it started - and what a
+            // moving band does about that is #54's; here, the next task sets
+            // out from wherever the band is.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             var adult = w.Join(band, 30L);
