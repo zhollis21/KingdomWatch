@@ -22,14 +22,13 @@ namespace KingdomWatch.Core.Data
     /// records in place through the array indexer, and the accessors that do it
     /// are what systems see instead of this type.
     ///
-    /// Section 5 also lists a Job field here. It is absent for now: JobId does
-    /// not exist until #52 and its shape is not settled - #52 describes recipes
-    /// as data rather than code, which may make a job reference a data-table
-    /// lookup rather than a handle at all. A placeholder guessed now would have
-    /// dependent code written against it before that issue makes its own
-    /// design decision. Same reasoning as MobileGroup deferring SharedSupplies
-    /// to #12. Adding it later is a field plus an accessor pair, which is the
-    /// whole point of storage living behind PersonStore.
+    /// Section 5's JobId became <see cref="Job"/>, a <see cref="JobKind"/>
+    /// (#52): a role rather than a handle, because a job is a row in a table
+    /// (<see cref="Work.JobTable"/>) and not an entity with a lifetime. It was
+    /// deferred from #6 until that issue could make the call - the same
+    /// reasoning as MobileGroup deferring SharedSupplies to #12 - and adding
+    /// it was the field plus an accessor pair, which is the whole point of
+    /// storage living behind PersonStore.
     ///
     /// <see cref="Household"/> is an <see cref="EntityId"/> rather than the
     /// HouseholdHandle section 5 sketched. Households are a few hundred plain
@@ -143,5 +142,12 @@ namespace KingdomWatch.Core.Data
         /// store's, and the validator (#13) is what catches both.
         /// </summary>
         public EntityId Household;
+
+        /// <summary>
+        /// The job the person is on. Written by <see cref="Work.Jobs"/> alone,
+        /// and set exactly while they have a task, so it reads as "on duty
+        /// as"; the death cascade clears it.
+        /// </summary>
+        public JobKind Job;
     }
 }
