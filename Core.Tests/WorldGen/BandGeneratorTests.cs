@@ -148,6 +148,66 @@ namespace KingdomWatch.Core.Tests.WorldGen
         }
 
         [Test]
+        public void Everyone_is_announced_once_the_whole_band_exists()
+        {
+            // A subscriber to PersonBorn sees a person who fully exists, the
+            // way Fertility announces a birth after placing the child: in the
+            // genealogy, and in the household the band was generated with -
+            // thirty is eight couples and fourteen children, no singles.
+            var w = new DemographicWorld();
+            var witness = new Witness(w);
+            w.Bus.Subscribe(witness);
+
+            var band = w.Generator.Generate(30, Here);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(witness.Seen, Is.EqualTo(30));
+                Assert.That(witness.NotRecorded, Is.Zero, "announced before the genealogy knew them");
+                Assert.That(witness.Unhoused, Is.Zero, "announced before their household stood");
+                Assert.That(witness.WholeAt, Is.EqualTo(30), "announced before the band was whole");
+            });
+        }
+
+        private sealed class Witness : IDomainEventSubscriber
+        {
+            private readonly DemographicWorld _w;
+
+            internal Witness(DemographicWorld w)
+            {
+                _w = w;
+            }
+
+            internal int Seen { get; private set; }
+
+            internal int NotRecorded { get; private set; }
+
+            internal int Unhoused { get; private set; }
+
+            private int BandSize { get; set; } = int.MaxValue;
+
+            // People.Count is the band: nothing else exists in this world.
+            // Its lowest value at an announcement is how whole the band was
+            // when the first person was announced.
+            internal int WholeAt => BandSize;
+
+            public void On(in DomainEvent published)
+            {
+                if (published.Kind != DomainEventKind.PersonBorn)
+                {
+                    return;
+                }
+
+                Seen++;
+                Assert.That(_w.People.TryGetHandle(published.PrimaryEntity, out var person), Is.True);
+
+                NotRecorded += _w.Genealogy.IsRecorded(published.PrimaryEntity) ? 0 : 1;
+                Unhoused += _w.Households.Of(person) is null ? 1 : 0;
+                BandSize = System.Math.Min(BandSize, _w.People.Count);
+            }
+        }
+
+        [Test]
         public void Everyone_stands_with_the_band_fed_and_whole()
         {
             var w = new DemographicWorld();
@@ -188,6 +248,10 @@ namespace KingdomWatch.Core.Tests.WorldGen
                 Assert.That(w.People.GetAgeYears(band.Leader, now), Is.EqualTo(oldest));
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(45 * Hunger.DailyRation * Jobs.FoodTargetDays));
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(BandGenerator.StartingWood));
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Food).Opening, Is.EqualTo(45L * Hunger.DailyRation * Jobs.FoodTargetDays), "opening stock, not production");
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Wood).Opening, Is.EqualTo((long)BandGenerator.StartingWood));
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Food).Gathered, Is.Zero, "nobody has worked yet");
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Wood).Gathered, Is.Zero);
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Stone), Is.Zero);
                 Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
             });

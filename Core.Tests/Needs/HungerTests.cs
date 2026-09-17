@@ -655,6 +655,26 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void A_holder_tracked_in_famine_ends_it_without_having_started_it()
+        {
+            // A settlement founded during a band's famine (#54): the famine
+            // was announced under the band's name, and the settlement's
+            // first full table closes it - without a second start.
+            var world = new World();
+            var band = world.NewBand(2, 30);
+
+            world.Hunger.Track(band, inFamine: true);
+            Assert.That(world.Hunger.IsInFamine(band), Is.True);
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Hunger.IsInFamine(band), Is.False);
+                Assert.That(world.Published(), Is.EqualTo(new[] { DomainEventKind.FamineEnded }));
+            });
+        }
+
+        [Test]
         public void Untracking_cancels_the_pending_meal_and_stops_the_stream()
         {
             var world = new World();

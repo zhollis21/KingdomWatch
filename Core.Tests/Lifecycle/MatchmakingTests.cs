@@ -51,7 +51,12 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(Matchmaking.ChancePerMille(-1L), Is.EqualTo(Matchmaking.ChancePerMille(1L)), "a gap has no sign");
                 Assert.That(Matchmaking.ChancePerMille(8L), Is.EqualTo(Matchmaking.FloorChancePerMille));
                 Assert.That(Matchmaking.ChancePerMille(40L), Is.EqualTo(Matchmaking.FloorChancePerMille));
+                // The extremes of the type: a product that wrapped would put
+                // the chance above the base or below the floor, and the
+                // absolute value of the minimum does not exist.
                 Assert.That(Matchmaking.ChancePerMille(long.MaxValue), Is.EqualTo(Matchmaking.FloorChancePerMille), "no overflow");
+                Assert.That(Matchmaking.ChancePerMille(long.MaxValue / Matchmaking.PerYearOfGapPerMille + 1L), Is.EqualTo(Matchmaking.FloorChancePerMille), "the first gap whose product wraps");
+                Assert.That(Matchmaking.ChancePerMille(long.MinValue), Is.EqualTo(Matchmaking.FloorChancePerMille), "no absolute value to take");
                 Assert.That(Matchmaking.ChancePerMille(long.MinValue + 1L), Is.EqualTo(Matchmaking.FloorChancePerMille));
             });
         }

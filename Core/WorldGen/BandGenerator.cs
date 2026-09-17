@@ -189,8 +189,24 @@ namespace KingdomWatch.Core.WorldGen
             }
 
             band.Leader = OldestAdult(band);
-            band.SharedSupplies.Gather(ResourceKind.Food, size * Hunger.DailyRation * Jobs.FoodTargetDays);
-            band.SharedSupplies.Gather(ResourceKind.Wood, StartingWood);
+
+            // Opening stock, not production: the chronicle reads the flows,
+            // and nobody has gathered anything yet.
+            band.SharedSupplies.Open(ResourceKind.Food, size * Hunger.DailyRation * Jobs.FoodTargetDays);
+            band.SharedSupplies.Open(ResourceKind.Wood, StartingWood);
+
+            // Announced last, once the whole band exists - in the store, the
+            // genealogy, the band and its household - the way a birth is
+            // announced after the child is placed, so a subscriber to
+            // PersonBorn sees people who fully exist.
+            var members = band.Members;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                var id = _people.GetId(members[i]);
+                _bus.Publish(DomainEventKind.PersonBorn, id, _genealogy.Parents(id).Mother);
+            }
+
             return band;
         }
 
@@ -211,8 +227,7 @@ namespace KingdomWatch.Core.WorldGen
             return Add(band, age, sex, _people.GetId(mother), _people.GetId(father));
         }
 
-        // Added, recorded, placed, and announced last - the order a birth
-        // uses, so that PersonBorn's subscribers see someone who fully exists.
+        // Added, recorded and placed; announced by Generate once everyone is.
         private PersonHandle Add(MobileGroup band, long ageYears, Sex sex, EntityId mother, EntityId father)
         {
             var now = _clock.Now;
@@ -222,7 +237,6 @@ namespace KingdomWatch.Core.WorldGen
                 now.Ticks - ageYears * SimulationTime.TicksPerYear);
             _genealogy.Record(id, mother, father);
             band.AddMember(person);
-            _bus.Publish(DomainEventKind.PersonBorn, id, mother);
             return person;
         }
 

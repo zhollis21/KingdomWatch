@@ -186,6 +186,10 @@ namespace KingdomWatch.Core.Work
         /// <summary>How many bands have work days scheduled.</summary>
         public int TrackedCount => _tracked.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>Whether people at this stage take jobs: adults and elders.</summary>
         public static bool Works(AgeStage stage) => stage == AgeStage.Adult || stage == AgeStage.Elder;
 

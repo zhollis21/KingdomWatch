@@ -73,13 +73,17 @@ namespace KingdomWatch.Core.Tests.Nomadic
         }
 
         [Test]
-        public void Tracking_refuses_null_a_second_time_another_purpose_and_off_the_map()
+        public void Tracking_refuses_null_a_second_time_another_purpose_off_the_map_and_on_the_road()
         {
             var w = new WorkWorld();
             var band = w.NewWanderingBand(WorkWorld.Camp, 0);
             var ids = w.Demographics.Base.Ids;
             var army = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.Army, WorkWorld.Camp);
             var lost = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, new WorldPosition(-1, 0));
+            var travelling = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp)
+            {
+                Destination = new WorldPosition(3, 3),
+            };
             var pending = w.Clock.ScheduledCount;
 
             Assert.Multiple(() =>
@@ -88,6 +92,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(() => w.Nomads.Track(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Nomads.Track(army), Throws.ArgumentException);
                 Assert.That(() => w.Nomads.Track(lost), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Nomads.Track(travelling), Throws.InvalidOperationException, "no arrival to book for a move nobody here decided");
                 Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "nothing refused booked anything");
                 Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1));
             });
@@ -113,6 +118,85 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(() => w.Nomads.PressureOf(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Nomads.DaysAtCamp(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Nomads.Track(band), Throws.Nothing, "and can be tracked afresh");
+            });
+        }
+
+        [Test]
+        public void Untracking_a_band_on_the_road_cancels_the_arrival_and_the_move()
+        {
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(new WorldPosition(14, 8), WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.Not.Null);
+            var pending = w.Clock.ScheduledCount;
+
+            w.Nomads.Untrack(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Destination, Is.Null, "the move is abandoned");
+                Assert.That(band.Position, Is.EqualTo(new WorldPosition(14, 8)), "where it was");
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending - 2), "the arrival and the next council");
+                Assert.That(() => w.AdvanceTo(w.Today(Jobs.Dusk)), Throws.Nothing);
+                Assert.That(() => w.Nomads.Track(band), Throws.Nothing, "at rest, so trackable again");
+            });
+        }
+
+        [Test]
+        public void The_dead_still_listed_do_not_walk()
+        {
+            // Deaths was never told about this band, so a dead member stays
+            // listed; the arrival moves the living and leaves the dead where
+            // they fell, as the council counts only the living.
+            var w = new WorkWorld();
+            var start = new WorldPosition(14, 8);
+            var band = new MobileGroup(
+                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, start);
+            w.Nomads.Track(band);
+            var adults = w.JoinAdults(band, 2);
+            w.Deaths.Die(adults[1], Reasons.None);
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.Not.Null);
+
+            Assert.That(() => w.AdvanceTo(w.Today(Jobs.Dusk)), Throws.Nothing);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Position, Is.Not.EqualTo(start));
+                Assert.That(w.People.GetPosition(adults[0]), Is.EqualTo(band.Position));
+                Assert.That(band.Members, Has.Count.EqualTo(2), "the dead handle is still listed");
+            });
+        }
+
+        [Test]
+        public void A_refused_founding_leaves_the_band_wandering()
+        {
+            // Founding preflights every tracker and refuses before touching
+            // anything; a band the world forgot to put on one of them is a
+            // wiring bug, and the council must not have dropped the band
+            // before finding out.
+            var w = new WorkWorld();
+            var band = new MobileGroup(
+                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+            w.Deaths.Track(band);
+            w.Hunger.Track(band);
+            w.Jobs.Track(band);
+            w.Nomads.Track(band);
+            w.JoinAdults(band, 60);
+            band.SharedSupplies.Gather(ResourceKind.Food, WorkWorld.PlentifulFood(60) * 4);
+            var councils = (NomadicBands.SettlingPressure + 59) / 60;
+
+            Assert.That(() => w.AdvanceTo(w.Now.Plus((councils + 60) * Day)), Throws.InvalidOperationException, "Fertility and Matchmaking never had it");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1), "still wandering");
+                Assert.That(w.Founding.All, Is.Empty);
+                Assert.That(band.Members, Has.Count.GreaterThan(0), "nobody moved");
+                Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
             });
         }
 
@@ -256,8 +340,8 @@ namespace KingdomWatch.Core.Tests.Nomadic
             var adults = w.JoinAdults(band, 60);
             var councilsToSettle = (NomadicBands.SettlingPressure + 59) / 60;
 
-            // A little past, since a death along the way slows the pressure.
-            w.AdvanceTo(w.Now.Plus((councilsToSettle + 10) * Day));
+            // Well past, since every death along the way slows the pressure.
+            w.AdvanceTo(w.Now.Plus((councilsToSettle + 60) * Day));
 
             Assert.Multiple(() =>
             {
@@ -291,7 +375,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             w.JoinAdults(band, 60);
             var councilsToPressure = (NomadicBands.SettlingPressure + 59) / 60;
 
-            w.AdvanceTo(w.Now.Plus((councilsToPressure + 10) * Day));
+            w.AdvanceTo(w.Now.Plus((councilsToPressure + 60) * Day));
 
             Assert.Multiple(() =>
             {

@@ -120,6 +120,10 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>How many communities a newborn may be placed in.</summary>
         public int TrackedCount => _groups.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>
         /// Registers a community whose members may give birth. Refuses one
         /// already tracked, as <see cref="Deaths.Track"/> does.

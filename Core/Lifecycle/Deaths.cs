@@ -92,6 +92,10 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>How many communities the cascade will strike the dead from.</summary>
         public int TrackedCount => _groups.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>
         /// Registers a community whose members may die. Refuses one already
         /// tracked - a person is in one community, and finding them twice

@@ -95,15 +95,29 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>How many communities pair off.</summary>
         public int TrackedCount => _tracked.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>
         /// The chance, per mille, that two people this many years apart
         /// marry in a year they are both eligible and considered.
         /// </summary>
         public static int ChancePerMille(long ageGapYears)
         {
-            var gap = Math.Abs(ageGapYears);
-            var reduction = Math.Min(gap * PerYearOfGapPerMille, (long)BaseChancePerMille);
-            return Math.Max(FloorChancePerMille, BaseChancePerMille - (int)reduction);
+            // Compared before it is multiplied, so a gap at the ends of the
+            // type - where the product would wrap, and where the minimum
+            // has no absolute value - reads as "large" rather than as
+            // arithmetic.
+            const long GapAtFloor = BaseChancePerMille / PerYearOfGapPerMille;
+
+            if (ageGapYears >= GapAtFloor || ageGapYears <= -GapAtFloor)
+            {
+                return FloorChancePerMille;
+            }
+
+            var reduction = (int)(Math.Abs(ageGapYears) * PerYearOfGapPerMille);
+            return Math.Max(FloorChancePerMille, BaseChancePerMille - reduction);
         }
 
         /// <summary>

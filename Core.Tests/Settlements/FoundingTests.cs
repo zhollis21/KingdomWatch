@@ -1,3 +1,4 @@
+using System;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
@@ -42,6 +43,8 @@ namespace KingdomWatch.Core.Tests.Settlements
             var adults = w.JoinAdults(band, 4);
             var before = w.Demographics.Journal.Count;
 
+            band.Leader = adults[2];
+
             var settlement = w.Founding.Found(band, Why);
 
             Assert.Multiple(() =>
@@ -50,6 +53,7 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(settlement.Position, Is.EqualTo(WorkWorld.Camp));
                 Assert.That(settlement.Members, Is.EqualTo(adults), "same people, same order");
                 Assert.That(band.Members, Is.Empty);
+                Assert.That(band.Leader, Is.EqualTo(PersonHandle.None), "a band with nobody in it leads nobody");
                 Assert.That(settlement.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(30));
                 Assert.That(settlement.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(7));
                 Assert.That(settlement.SharedSupplies.Available(ResourceKind.Stone), Is.EqualTo(2));
@@ -111,6 +115,36 @@ namespace KingdomWatch.Core.Tests.Settlements
         }
 
         [Test]
+        public void A_famine_carries_over_to_the_settlement_and_ends_once()
+        {
+            // A band that settles hungry is a hungry settlement: the famine
+            // the chronicle opened under the band's name closes under the
+            // settlement's, and is not opened a second time.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            w.Join(band, 8L);
+            w.Join(band, 10L);
+            w.AdvanceTo(w.Now.Plus(Day));
+            Assert.That(w.Hunger.IsInFamine(band), Is.True, "no food, nobody old enough to forage, first meal missed");
+            Assert.That(w.Count(DomainEventKind.FamineStarted), Is.EqualTo(1));
+
+            var settlement = w.Founding.Found(band, Why);
+
+            Assert.That(w.Hunger.IsInFamine(settlement), Is.True, "still hungry under the new name");
+
+            settlement.SharedSupplies.Gather(ResourceKind.Food, WorkWorld.PlentifulFood(2));
+            w.AdvanceTo(w.Now.Plus(Day));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Hunger.IsInFamine(settlement), Is.False);
+                Assert.That(w.Count(DomainEventKind.FamineStarted), Is.EqualTo(1), "opened once");
+                Assert.That(w.Count(DomainEventKind.FamineEnded), Is.EqualTo(1), "closed once");
+                Assert.That(w.Demographics.Published(DomainEventKind.FamineEnded)[0].PrimaryEntity, Is.EqualTo(settlement.Id));
+            });
+        }
+
+        [Test]
         public void A_settlement_can_be_worked_from_and_found_again_no_more()
         {
             var w = new WorkWorld();
@@ -147,6 +181,55 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Demographics.Matchmaking.TrackedCount, Is.EqualTo(1));
             });
+        }
+
+        [Test]
+        public void Founding_refuses_a_band_missing_from_any_tracker_before_touching_anything()
+        {
+            // Five trackers, five ways to be missing from one. Each refusal
+            // leaves every other tracker holding the band, so a retry after
+            // the wiring is fixed can succeed.
+            var w = new WorkWorld();
+            var d = w.Demographics;
+
+            var trackers = new Action<MobileGroup>[]
+            {
+                b => w.Jobs.Track(b),
+                b => w.Deaths.Track(b),
+                b => d.Fertility.Track(b),
+                b => w.Hunger.Track(b),
+                b => d.Matchmaking.Track(b),
+            };
+
+            for (var missing = 0; missing < trackers.Length; missing++)
+            {
+                var band = new MobileGroup(
+                    d.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+                w.JoinAdults(band, 1);
+
+                for (var t = 0; t < trackers.Length; t++)
+                {
+                    if (t != missing)
+                    {
+                        trackers[t](band);
+                    }
+                }
+
+                var tracked = w.Jobs.TrackedCount + w.Deaths.TrackedCount + d.Fertility.TrackedCount
+                    + w.Hunger.TrackedCount + d.Matchmaking.TrackedCount;
+
+                Assert.That(() => w.Founding.Found(band, Why), Throws.InvalidOperationException, "tracker " + missing + " missing");
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(
+                        w.Jobs.TrackedCount + w.Deaths.TrackedCount + d.Fertility.TrackedCount
+                        + w.Hunger.TrackedCount + d.Matchmaking.TrackedCount,
+                        Is.EqualTo(tracked), "nothing untracked when tracker " + missing + " was missing");
+                    Assert.That(band.Members, Has.Count.EqualTo(1), "nobody moved when tracker " + missing + " was missing");
+                    Assert.That(w.Founding.All, Is.Empty);
+                });
+            }
         }
 
         [Test]

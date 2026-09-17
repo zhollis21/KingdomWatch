@@ -137,13 +137,25 @@ namespace KingdomWatch.Core.Needs
         /// <summary>How many holders have meals scheduled.</summary>
         public int TrackedCount => _tracked.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>
         /// Starts feeding a holder: its first meal is booked one
         /// <see cref="MealInterval"/> from now, and each meal books the next.
         /// Refuses a holder already tracked - two meal streams on one ledger
         /// would draw twice a day.
         /// </summary>
-        public void Track(ICommunity group)
+        public void Track(ICommunity group) => Track(group, inFamine: false);
+
+        /// <summary>
+        /// The same, for a holder that takes over a table already short: a
+        /// band that settles in a famine (#54) is a settlement in that
+        /// famine, and the chronicle closes it under the new name rather
+        /// than opening it twice.
+        /// </summary>
+        public void Track(ICommunity group, bool inFamine)
         {
             if (group is null)
             {
@@ -162,7 +174,7 @@ namespace KingdomWatch.Core.Needs
             // without a meal stream would refuse to be tracked again and go
             // unfed for good.
             var meal = ScheduleMeal(group.Id);
-            _tracked.Add(new Tracked(group) { PendingMeal = meal });
+            _tracked.Add(new Tracked(group) { PendingMeal = meal, InFamine = inFamine });
         }
 
         /// <summary>

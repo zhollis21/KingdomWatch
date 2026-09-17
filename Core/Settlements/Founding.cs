@@ -39,7 +39,10 @@ namespace KingdomWatch.Core.Settlements
     /// there - is #35's, and this is the half it will call once the party
     /// arrives. What the band gets as a settlement is exactly what it had as
     /// a band: <see cref="Lifecycle.CampSpace"/> still houses its
-    /// households, so nothing but food bounds its growth until #69.
+    /// households, so nothing but food bounds its growth until #69. A
+    /// famine carries over too: a band that settles hungry is a hungry
+    /// settlement, and the chronicle closes the famine under the new name
+    /// rather than opening a second one.
     ///
     /// Founding allocates - a settlement is a new entity, like a person -
     /// and happens a handful of times a game.
@@ -101,12 +104,14 @@ namespace KingdomWatch.Core.Settlements
             }
 
             RequireStockAtRest(band);
+            RequireTrackedEverywhere(band);
 
             // The band leaves every tracker before its members leave it:
             // Jobs refuses a band with anyone out on a task, and can only
             // tell while the members are still listed. Jobs goes first
-            // because it is the one that can refuse, and a refusal must
-            // leave the band on every tracker it was on.
+            // because it is the one refusal the preflight above does not
+            // cover, and a refusal must leave the band on every tracker.
+            var inFamine = _hunger.IsInFamine(band);
             _jobs.Untrack(band);
             _deaths.Untrack(band);
             _fertility.Untrack(band);
@@ -117,13 +122,15 @@ namespace KingdomWatch.Core.Settlements
 
             // Members, then stock, then the trackers: the first meal or dawn
             // the settlement books should find its people and food already
-            // there.
+            // there. A band with nobody in it leads nobody.
             while (band.Members.Count > 0)
             {
                 var member = band.Members[0];
                 band.RemoveMember(member);
                 settlement.AddMember(member);
             }
+
+            band.Leader = PersonHandle.None;
 
             for (var kind = 1; kind < DefinedKinds.Length; kind++)
             {
@@ -142,7 +149,7 @@ namespace KingdomWatch.Core.Settlements
 
             _deaths.Track(settlement);
             _fertility.Track(settlement);
-            _hunger.Track(settlement);
+            _hunger.Track(settlement, inFamine);
             _jobs.Track(settlement);
             _matchmaking.Track(settlement);
 
@@ -151,6 +158,19 @@ namespace KingdomWatch.Core.Settlements
             _bus.Publish(DomainEventKind.SettlementFounded, settlement.Id, band.Id, reasons);
             _settlements.Add(settlement);
             return settlement;
+        }
+
+        // Every tracker must know the band before any of them lets it go,
+        // or a "not tracked" from the third would leave the first two
+        // already done with it and a retry unable to succeed.
+        private void RequireTrackedEverywhere(MobileGroup band)
+        {
+            if (!_jobs.IsTracked(band) || !_deaths.IsTracked(band) || !_fertility.IsTracked(band)
+                || !_hunger.IsTracked(band) || !_matchmaking.IsTracked(band))
+            {
+                throw new InvalidOperationException(
+                    band.Id + " is not on every tracker a settlement takes over from; founding hands over all five or none.");
+            }
         }
 
         private static void RequireStockAtRest(MobileGroup band)

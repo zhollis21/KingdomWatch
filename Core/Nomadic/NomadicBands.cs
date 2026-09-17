@@ -56,10 +56,13 @@ namespace KingdomWatch.Core.Nomadic
     /// route costed into a travel time, one arrival event - is what #35's
     /// founding parties and M4's armies reuse.
     ///
-    /// **A band sees its whole hop box.** Nothing in the design has fog of
-    /// war or scouting, and <see cref="Jobs"/> already finds the nearest
-    /// forest without anyone looking; the council knowing what is within a
-    /// day's walk is the same assumption.
+    /// **A band sees its whole hop box, for now.** Section 12's bounded map
+    /// knowledge says a community picks places among the cells it knows;
+    /// that map is #81's, and until it exists the council reads the grid
+    /// directly, as <see cref="Jobs"/> finds the nearest forest without
+    /// anyone looking. #81 replaces the candidate scan and the land check
+    /// with reads of the band's known cells; the council, the scoring and
+    /// the arrival stay.
     ///
     /// **Camps embody wood.** Making camp takes up to <see cref="CampWood"/>
     /// from the band's stock and embodies it - section 9's temporary camp,
@@ -171,6 +174,15 @@ namespace KingdomWatch.Core.Nomadic
                 throw new InvalidOperationException(band.Id + " is already tracked; two councils would decide twice.");
             }
 
+            // A move is decided at a council and booked as an arrival here;
+            // a band already on the road decided it somewhere else, and
+            // there is no arrival to book for it.
+            if (band.Destination is object)
+            {
+                throw new InvalidOperationException(
+                    band.Id + " is on its way to " + band.Destination + "; a band is tracked at rest.");
+            }
+
             // The grid's own off-map contract, up front, as Jobs does.
             _grid.IndexOf(band.Position);
 
@@ -275,11 +287,15 @@ namespace KingdomWatch.Core.Nomadic
 
             if (tracked.Pressure >= SettlingPressure && CanSettleAt(band.Position))
             {
-                // Founding takes the band off every other tracker; this is
-                // its own. Dropped before founding so that a throw in the
-                // handover cannot leave a settled band with a council booked.
-                Drop(index);
+                // Founding takes the band off every other tracker, and
+                // refuses before touching anything if it cannot; this is
+                // its own, dropped once the handover has happened. No
+                // council is booked at this point - the one that sat is
+                // spent and the next is booked below - so a refusal leaves
+                // the band tracked with nothing pending, and the throw
+                // stops the run where the wiring bug is.
                 _founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+                Drop(index);
                 return;
             }
 
@@ -333,9 +349,14 @@ namespace KingdomWatch.Core.Nomadic
 
             var members = band.Members;
 
+            // Membership lags death until the cascade strikes the dead from
+            // the band; the living walk, the dead have no position to set.
             for (var i = 0; i < members.Count; i++)
             {
-                _people.SetPosition(members[i], destination);
+                if (_people.IsAlive(members[i]))
+                {
+                    _people.SetPosition(members[i], destination);
+                }
             }
 
             PitchCamp(tracked);
@@ -471,6 +492,10 @@ namespace KingdomWatch.Core.Nomadic
             return since < 0L ? -since : SimulationTime.TicksPerDay - since;
         }
 
+        // Off the list, with nothing pending and nothing under way: a band
+        // dropped mid-move abandons it and stays at the camp it left from,
+        // since a destination with no arrival booked would be a road with no
+        // end.
         private void Drop(int index)
         {
             var tracked = _tracked[index];
@@ -483,6 +508,7 @@ namespace KingdomWatch.Core.Nomadic
             if (!tracked.PendingArrival.IsNone)
             {
                 _clock.Cancel(tracked.PendingArrival);
+                tracked.Band.Destination = null;
             }
 
             _tracked.RemoveAt(index);
