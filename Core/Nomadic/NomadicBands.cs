@@ -365,6 +365,7 @@ namespace KingdomWatch.Core.Nomadic
             if (TryChooseCamp(tracked, out var next, out var travel))
             {
                 band.Destination = next;
+                tracked.Booked = next;
                 var departure = now.Plus(Jobs.Dawn - FirstLight);
                 tracked.PendingArrival = _clock.Schedule(
                     departure.Plus(travel), Phase, ScheduledEventKind.BandArrival, band.Id, EntityId.None);
@@ -385,11 +386,14 @@ namespace KingdomWatch.Core.Nomadic
             var band = tracked.Band;
 
             // Destination is the band's own field, so a caller could have
-            // cleared it under a booked arrival; that is the wiring bug this
-            // catches.
-            if (!(band.Destination is WorldPosition destination))
+            // cleared or changed it under a booked arrival. The route and the
+            // travel time were costed to the cell the council chose, and a
+            // band landing anywhere else walked a road nobody priced: the
+            // state names its destination as it names its event.
+            if (!(band.Destination is WorldPosition destination) || destination != tracked.Booked)
             {
-                throw new InvalidOperationException(band.Id + " arrived with nowhere it was going.");
+                throw new InvalidOperationException(
+                    band.Id + " arrived at " + (band.Destination?.ToString() ?? "nowhere") + ", but the council sent it to " + tracked.Booked + ".");
             }
 
             band.Position = destination;
@@ -639,6 +643,10 @@ namespace KingdomWatch.Core.Nomadic
             public EventId PendingCouncil { get; set; }
 
             public EventId PendingArrival { get; set; }
+
+            // Where the pending arrival was booked to. Meaningful only while
+            // one is pending.
+            public WorldPosition Booked { get; set; }
         }
     }
 }

@@ -663,6 +663,27 @@ namespace KingdomWatch.Core.Tests.Nomadic
         }
 
         [Test]
+        public void An_arrival_whose_destination_was_changed_underneath_it_is_a_wiring_bug()
+        {
+            // The route and the travel time were costed to the cell the
+            // council chose; a band that lands somewhere else walked a road
+            // nobody priced. The state names its destination as it names
+            // its event.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(new WorldPosition(14, 8), WorkWorld.PlentifulFood(1));
+            var adult = w.JoinAdults(band, 1)[0];
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            var booked = band.Destination;
+            Assert.That(booked, Is.Not.Null);
+
+            band.Destination = new WorldPosition(15, 15);
+
+            Assert.That(() => w.AdvanceTo(w.Today(Jobs.Dusk)), Throws.InvalidOperationException);
+            Assert.That(band.Position, Is.EqualTo(new WorldPosition(14, 8)), "nobody moved");
+            Assert.That(w.People.GetPosition(adult), Is.EqualTo(new WorldPosition(14, 8)));
+        }
+
+        [Test]
         public void The_stream_ends_with_time_itself()
         {
             // The last representable instant is 15:30:07 on its day, so its

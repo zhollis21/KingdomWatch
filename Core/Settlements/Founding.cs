@@ -111,6 +111,16 @@ namespace KingdomWatch.Core.Settlements
             RequireStockAtRest(band);
             RequireTrackedEverywhere(band);
 
+            // Jobs refuses to track a community standing where nobody can,
+            // and a band's position is its own to set after tracking - so
+            // the settlement's ground is checked here, before the band has
+            // left any tracker, rather than found wanting at the last step.
+            if (!_jobs.CanStandAt(band.Position))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(band), band.Position, "Nobody can stand on that cell; a settlement there could not be worked from.");
+            }
+
             // Every stream the settlement will book has to fit before the
             // end of time, or Track would throw after the band had already
             // been emptied. Checked here, before anything moves, for the

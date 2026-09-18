@@ -247,6 +247,14 @@ namespace KingdomWatch.Core.Work
             _tracked.RemoveAt(IndexOf(group.Id));
         }
 
+        /// <summary>
+        /// Whether a community could be tracked standing here: on the map,
+        /// on a cell the mover can stand on. What <see cref="Track"/> and
+        /// every dawn require, as a question - for <see cref="Settlements.Founding"/>
+        /// to ask before it moves anyone.
+        /// </summary>
+        public bool CanStandAt(WorldPosition at) => _grid.Contains(at) && _pathfinder.IsPassable(at, Mover);
+
         /// <summary>Whether this person is on a task.</summary>
         public bool HasTask(PersonHandle person) => SlotOf(person) is object;
 
@@ -694,7 +702,11 @@ namespace KingdomWatch.Core.Work
         // since Position is the community's own to set.
         private void RequireStandable(WorldPosition at)
         {
-            if (!_pathfinder.IsPassable(at, Mover))
+            // The indexer throws for off the map, which is the refusal the
+            // grid owns; only a cell on the map nobody can stand on is ours.
+            _grid.IndexOf(at);
+
+            if (!CanStandAt(at))
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(at), at, "Nobody can stand on that cell; no site would ever be reachable from it.");

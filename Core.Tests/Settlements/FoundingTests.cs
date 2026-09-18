@@ -263,6 +263,33 @@ namespace KingdomWatch.Core.Tests.Settlements
         }
 
         [Test]
+        public void Founding_refuses_a_band_standing_where_nobody_can_before_touching_anything()
+        {
+            // Tracked on the plains, then moved into the river by whoever
+            // owns its position: Jobs would refuse to track the settlement
+            // there, so founding refuses first, with the band still whole
+            // and on every tracker.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            w.JoinAdults(band, 2);
+            band.Position = new WorldPosition(WorkWorld.RiverColumn, 5);
+
+            Assert.That(() => w.Founding.Found(band, Why), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Members, Has.Count.EqualTo(2), "nobody moved");
+                Assert.That(w.Founding.All, Is.Empty);
+                Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1), "still on every tracker");
+                Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Jobs.CanStandAt(WorkWorld.Camp), Is.True);
+                Assert.That(w.Jobs.CanStandAt(new WorldPosition(WorkWorld.RiverColumn, 5)), Is.False);
+                Assert.That(w.Jobs.CanStandAt(new WorldPosition(-1, 0)), Is.False, "off the map is nowhere to stand either");
+            });
+        }
+
+        [Test]
         public void Founding_refuses_stock_that_is_reserved_carried_or_in_process()
         {
             var w = new WorkWorld();
