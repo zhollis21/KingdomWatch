@@ -87,7 +87,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
         }
 
         [Test]
-        public void Tracking_refuses_null_a_second_time_another_purpose_off_the_map_and_on_the_road()
+        public void Tracking_refuses_null_a_second_time_another_purpose_off_the_map_on_the_road_and_in_the_water()
         {
             var w = new WorkWorld();
             var band = w.NewWanderingBand(WorkWorld.Camp, 0);
@@ -98,6 +98,8 @@ namespace KingdomWatch.Core.Tests.Nomadic
             {
                 Destination = new WorldPosition(3, 3),
             };
+            var inTheRiver = new MobileGroup(
+                ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, new WorldPosition(WorkWorld.RiverColumn, 4));
             var pending = w.Clock.ScheduledCount;
 
             Assert.Multiple(() =>
@@ -107,6 +109,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(() => w.Nomads.Track(army), Throws.ArgumentException);
                 Assert.That(() => w.Nomads.Track(lost), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => w.Nomads.Track(travelling), Throws.InvalidOperationException, "no arrival to book for a move nobody here decided");
+                Assert.That(() => w.Nomads.Track(inTheRiver), Throws.TypeOf<ArgumentOutOfRangeException>(), "nowhere its feet can stand: no route or site would ever be found from there");
                 Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "nothing refused booked anything");
                 Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1));
             });

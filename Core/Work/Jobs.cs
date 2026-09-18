@@ -212,6 +212,8 @@ namespace KingdomWatch.Core.Work
                     group.Id + " is already tracked; a second work day would assign twice.");
             }
 
+            RequireStandable(group.Position);
+
             // Booked before recorded, as Hunger does: the booking is the one
             // thing here that can be refused.
             var dawn = _clock.Schedule(
@@ -326,10 +328,7 @@ namespace KingdomWatch.Core.Work
         {
             var from = tracked.Group.Position;
 
-            // The grid's own off-map contract, up front: a search from far off
-            // the map touches no cell the pathfinder could refuse, and would
-            // record no sites for a band that then idles without a word.
-            _grid.IndexOf(from);
+            RequireStandable(from);
 
             for (var i = 0; i < Priority.Count; i++)
             {
@@ -685,6 +684,21 @@ namespace KingdomWatch.Core.Work
             // ledger takes on its flow counters.
             var step = leg == 0L ? last : (int)(elapsed * last / leg);
             return slot.Route[forward ? step : last - step];
+        }
+
+        // Off the map is the grid's refusal (the indexer throws); a cell the
+        // mover cannot stand on is this one. No site is reachable from such
+        // an origin - a search from there touches no cell the pathfinder
+        // could refuse - so a community there would idle at every dawn
+        // without a word. Checked when tracked and again at every refresh,
+        // since Position is the community's own to set.
+        private void RequireStandable(WorldPosition at)
+        {
+            if (!_pathfinder.IsPassable(at, Mover))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(at), at, "Nobody can stand on that cell; no site would ever be reachable from it.");
+            }
         }
 
         // Ticks to the first dawn strictly after now: a band tracked at dawn

@@ -190,8 +190,11 @@ namespace KingdomWatch.Core.Nomadic
                     band.Id + " is on its way to " + band.Destination + "; a band is tracked at rest.");
             }
 
-            // The grid's own off-map contract, up front, as Jobs does.
-            _grid.IndexOf(band.Position);
+            // Off the map is the grid's refusal; a cell the band's feet cannot
+            // stand on is this one. Every route and site search rejects such
+            // an origin, so a band tracked there could never move or settle
+            // and its councils would sit forever with nothing to decide.
+            RequireStandable(band.Position);
 
             // Booked before recorded, as Hunger does.
             var council = _clock.Schedule(
@@ -529,6 +532,15 @@ namespace KingdomWatch.Core.Nomadic
             }
 
             return living;
+        }
+
+        private void RequireStandable(WorldPosition at)
+        {
+            if (!_pathfinder.IsPassable(at, Jobs.Mover))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(at), at, "Nobody can stand on that cell; no route or site would ever be found from it.");
+            }
         }
 
         // Ticks from now to the next occurrence of a tick of day, never zero.
