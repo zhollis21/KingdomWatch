@@ -634,6 +634,80 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void Only_the_meal_the_holder_booked_is_served()
+        {
+            // A second MealDue for a tracked holder - one scheduled by
+            // mistake, or rebuilt from a save that disagrees - must not run
+            // and book its own successor, or the holder eats twice a day
+            // from then on (#80).
+            var world = new World();
+            var band = world.NewBand(1, 30);
+            world.Hunger.Track(band);
+            world.Clock.Schedule(
+                SimulationTime.FromDays(1L).Plus(1L), Hunger.MealPhase, ScheduledEventKind.MealDue, band.Id, EntityId.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => world.RunDays(1L), Throws.Nothing, "the booked meal runs");
+                Assert.That(() => world.Clock.AdvanceTo(world.Clock.Now.Plus(1L), world.Router), Throws.InvalidOperationException);
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(30 - Hunger.DailyRation), "one ration drawn");
+            });
+        }
+
+        [Test]
+        public void A_holder_tracked_in_famine_ends_it_without_having_started_it()
+        {
+            // A settlement founded during a band's famine (#54): the famine
+            // was announced under the band's name, and the settlement's
+            // first full table closes it - without a second start.
+            var world = new World();
+            var band = world.NewBand(2, 30);
+
+            world.Hunger.Track(band, inFamine: true);
+            Assert.That(world.Hunger.IsInFamine(band), Is.True);
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Hunger.IsInFamine(band), Is.False);
+                Assert.That(world.Published(), Is.EqualTo(new[] { DomainEventKind.FamineEnded }));
+            });
+        }
+
+        [Test]
+        public void Untracking_cancels_the_pending_meal_and_stops_the_stream()
+        {
+            var world = new World();
+            var band = world.NewBand(1, 30);
+            world.Hunger.Track(band);
+            world.RunDays(1L);
+
+            world.Hunger.Untrack(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Hunger.TrackedCount, Is.Zero);
+                Assert.That(world.Clock.ScheduledCount, Is.Zero, "the next meal is cancelled");
+                Assert.That(() => world.RunDays(5L), Throws.Nothing);
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(30 - Hunger.DailyRation), "nobody eats after");
+                Assert.That(() => world.Hunger.Track(band), Throws.Nothing, "and can be tracked afresh");
+            });
+        }
+
+        [Test]
+        public void Untracking_refuses_null_and_a_holder_it_does_not_track()
+        {
+            var world = new World();
+            var band = world.NewBand(1, 3);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => world.Hunger.Untrack(null!), Throws.ArgumentNullException);
+                Assert.That(() => world.Hunger.Untrack(band), Throws.InvalidOperationException);
+            });
+        }
+
+        [Test]
         public void Handle_refuses_a_clock_other_than_its_bus_s()
         {
             // The clock is derived from the bus, so the only way to reach

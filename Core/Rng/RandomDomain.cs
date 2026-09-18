@@ -43,5 +43,11 @@ namespace KingdomWatch.Core.Rng
         ChildSex = 5,
         /// <summary>Terrain laid down by the placeholder map (#16); #33 subdivides it.</summary>
         WorldGen = 6,
+        /// <summary>Which of the equally good camps a band walks to next (#54).</summary>
+        Wandering = 7,
+        /// <summary>Whether two eligible people marry this year (#54's placeholder for #38).</summary>
+        Courtship = 8,
+        /// <summary>A starting band's ages and sexes (#54); terrain stays with WorldGen.</summary>
+        BandGeneration = 9,
     }
 }

@@ -57,5 +57,13 @@ namespace KingdomWatch.Core.Events
         /// opened.
         /// </summary>
         HouseholdDissolved = 14,
+
+        /// <summary>
+        /// A band made camp: when <see cref="Nomadic.NomadicBands"/> starts
+        /// tracking it, and at the end of every move. Published by
+        /// <see cref="Nomadic.NomadicBands"/> alone; the first one is section
+        /// 9's "first camp" milestone.
+        /// </summary>
+        CampPitched = 15,
     }
 }

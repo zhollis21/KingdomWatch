@@ -64,10 +64,10 @@ namespace KingdomWatch.Core.Lifecycle
     /// book.
     ///
     /// **Where the child lands.** In the mother's household, at the mother's
-    /// position, in the mother's band - the bands are handed in through
-    /// <see cref="Track"/> and scanned for her, as <see cref="Deaths"/>
-    /// does, because nothing on a record says which group holds someone
-    /// until #54 models presence. Culture is the mother's for now; what a
+    /// position, in the mother's community - band or settlement, handed in
+    /// through <see cref="Track"/> and scanned for her, as
+    /// <see cref="Deaths"/> does, because nothing on a record says which
+    /// one holds someone. Culture is the mother's for now; what a
     /// newborn inherits is #40's. The child is announced last, once every
     /// store that will be asked about them can answer, so a subscriber to
     /// PersonBorn - <see cref="Aging"/>, <see cref="Mortality"/> - books
@@ -94,8 +94,8 @@ namespace KingdomWatch.Core.Lifecycle
         private readonly DeterministicRng _rng;
         private readonly DemographicSettings _settings;
 
-        // The bands a newborn may need adding to. See the type's remarks.
-        private readonly List<MobileGroup> _groups = new List<MobileGroup>();
+        // The communities a newborn may need adding to. See the type's remarks.
+        private readonly List<ICommunity> _groups = new List<ICommunity>();
 
         public Fertility(
             DomainEventBus bus,
@@ -117,29 +117,66 @@ namespace KingdomWatch.Core.Lifecycle
             _clock = bus.Clock;
         }
 
-        /// <summary>How many groups a newborn may be placed in.</summary>
+        /// <summary>How many communities a newborn may be placed in.</summary>
         public int TrackedCount => _groups.Count;
 
+        /// <summary>Whether this community is tracked here.</summary>
+        public bool IsTracked(ICommunity community) =>
+            IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
+
         /// <summary>
-        /// Registers a group whose members may give birth. Refuses one
+        /// Registers a community whose members may give birth. Refuses one
         /// already tracked, as <see cref="Deaths.Track"/> does.
         /// </summary>
-        public void Track(MobileGroup group)
+        public void Track(ICommunity group)
         {
             if (group is null)
             {
                 throw new ArgumentNullException(nameof(group));
             }
 
-            for (var i = 0; i < _groups.Count; i++)
+            if (IndexOf(group.Id) >= 0)
             {
-                if (_groups[i].Id == group.Id)
-                {
-                    throw new InvalidOperationException(group.Id + " is already tracked.");
-                }
+                throw new InvalidOperationException(group.Id + " is already tracked.");
             }
 
             _groups.Add(group);
+        }
+
+        /// <summary>
+        /// Stops placing newborns in a community, as <see cref="Deaths.Untrack"/>
+        /// does. Pregnancies carry on: a birth check finds the mother by her
+        /// household, and the child lands in whichever tracked community
+        /// holds her by then.
+        /// </summary>
+        public void Untrack(ICommunity group)
+        {
+            if (group is null)
+            {
+                throw new ArgumentNullException(nameof(group));
+            }
+
+            var index = IndexOf(group.Id);
+
+            if (index < 0)
+            {
+                throw new InvalidOperationException(group.Id + " is not tracked by Fertility.");
+            }
+
+            _groups.RemoveAt(index);
+        }
+
+        private int IndexOf(EntityId community)
+        {
+            for (var i = 0; i < _groups.Count; i++)
+            {
+                if (_groups[i].Id == community)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         /// <summary>Whether this person is carrying a pregnancy.</summary>
@@ -337,7 +374,7 @@ namespace KingdomWatch.Core.Lifecycle
             _bus.Publish(DomainEventKind.PersonBorn, childId, motherId);
         }
 
-        private MobileGroup? GroupOf(PersonHandle person)
+        private ICommunity? GroupOf(PersonHandle person)
         {
             for (var i = 0; i < _groups.Count; i++)
             {

@@ -8,6 +8,7 @@ using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.WorldGen;
 
 namespace KingdomWatch.Core.Tests.Lifecycle
 {
@@ -40,6 +41,8 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Mortality = new Mortality(Bus, People, Deaths, Rng, settings);
             Fertility = new Fertility(Bus, People, Genealogy, Partnerships, Households, Rng, settings);
             Hunger = new Hunger(Bus, People);
+            Matchmaking = new Matchmaking(Bus, People, Family, Partnerships, Rng);
+            Generator = new BandGenerator(Bus, People, Genealogy, Family, Households, settings, Rng);
             Bus.Subscribe(Aging);
             Bus.Subscribe(Mortality);
             Bus.Subscribe(Fertility);
@@ -51,6 +54,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Router.Register(ScheduledEventKind.BirthCheck, Fertility);
             Router.Register(ScheduledEventKind.BirthDue, Fertility);
             Router.Register(ScheduledEventKind.MealDue, Hunger);
+            Router.Register(ScheduledEventKind.CourtshipDue, Matchmaking);
         }
 
         internal HouseholdWorld Base { get; }
@@ -66,6 +70,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal Fertility Fertility { get; }
 
         internal Hunger Hunger { get; }
+
+        internal Matchmaking Matchmaking { get; }
+
+        internal BandGenerator Generator { get; }
 
         internal ScheduledEventRouter Router { get; }
 

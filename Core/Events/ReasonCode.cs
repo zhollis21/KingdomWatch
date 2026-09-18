@@ -41,5 +41,9 @@ namespace KingdomWatch.Core.Events
         Illness = 9,
         /// <summary>Died to the life table at or past the soft lifespan (#11).</summary>
         OldAge = 10,
+        /// <summary>A band grew and lingered long enough to want to stop (#54).</summary>
+        PopulationPressure = 11,
+        /// <summary>The camp can feed and build: food and wood both within reach (#54).</summary>
+        LandSuitable = 12,
     }
 }

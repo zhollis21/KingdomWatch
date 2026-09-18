@@ -30,16 +30,24 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void Tracking_refuses_null_and_the_same_band_twice()
+        public void Tracking_refuses_null_the_same_band_twice_off_the_map_and_where_nobody_can_stand()
         {
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, 0);
+            var ids = w.Demographics.Base.Ids;
+            var lost = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, new WorldPosition(99, 99));
+            var inTheRiver = new MobileGroup(
+                ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, new WorldPosition(WorkWorld.RiverColumn, 4));
+            var pending = w.Clock.ScheduledCount;
 
             Assert.Multiple(() =>
             {
                 Assert.That(() => w.Jobs.Track(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.Track(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.Track(lost), Throws.TypeOf<ArgumentOutOfRangeException>(), "off the map");
+                Assert.That(() => w.Jobs.Track(inTheRiver), Throws.TypeOf<ArgumentOutOfRangeException>(), "no site is reachable from a cell nobody can stand on; it would idle forever without a word");
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "nothing refused booked a dawn");
             });
         }
 
@@ -289,6 +297,66 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(route.Length, Is.EqualTo(2), "one step from the new camp to the forest");
                 Assert.That(next.TravelTicks, Is.EqualTo(200L));
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
+            });
+        }
+
+        [Test]
+        public void A_band_on_the_road_starts_nobody_at_dawn_and_still_books_tomorrow()
+        {
+            // A moving day (#54): the band's council set a destination before
+            // the work pass, so nobody walks out from a camp the band is
+            // leaving. Tomorrow's dawn is still booked - the band arrives
+            // today, and works from the new camp tomorrow.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var adults = w.JoinAdults(band, 3);
+            band.Destination = new WorldPosition(6, 3);
+            var pending = w.Clock.ScheduledCount;
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                for (var i = 0; i < adults.Count; i++)
+                {
+                    Assert.That(w.Jobs.HasTask(adults[i]), Is.False, adults[i] + " stays with the band");
+                }
+
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "tomorrow's dawn replaced today's, nothing else booked");
+            });
+
+            band.Position = band.Destination.Value;
+            band.Destination = null;
+            w.AdvanceToDawn();
+
+            Assert.That(w.Jobs.HasTask(adults[0]), Is.True, "work resumes from the new camp");
+            Assert.That(w.Jobs.TaskOf(adults[0]).Origin, Is.EqualTo(new WorldPosition(6, 3)));
+        }
+
+        [Test]
+        public void Untracking_cancels_the_dawn_and_refuses_a_band_with_someone_out()
+        {
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.HasTask(adult), Is.True);
+
+            Assert.That(() => w.Jobs.Untrack(band), Throws.InvalidOperationException, "someone is out");
+
+            w.AdvanceTo(w.Today(Jobs.Dusk));
+            Assert.That(w.Jobs.HasTask(adult), Is.False, "home by dusk");
+            var pending = w.Clock.ScheduledCount;
+
+            w.Jobs.Untrack(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.TrackedCount, Is.Zero);
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending - 1), "the dawn is cancelled");
+                Assert.That(() => w.Jobs.Untrack(band), Throws.InvalidOperationException, "not tracked now");
+                Assert.That(() => w.Jobs.Untrack(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.Track(band), Throws.Nothing, "and can be tracked afresh");
             });
         }
 
@@ -693,44 +761,44 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_band_off_the_map_cannot_be_given_sites()
+        public void A_band_that_walked_off_the_map_cannot_be_given_sites()
         {
+            // Tracked on the map, then moved off it by whoever owns its
+            // position: the dawn pass refuses rather than record no sites.
             var w = new WorkWorld();
-            var band = w.NewBand(new WorldPosition(-1, 0), 0);
+            var band = w.NewBand(WorkWorld.Camp, 0);
             w.Join(band, 30L);
+            band.Position = new WorldPosition(-1, 0);
 
             Assert.That(() => w.AdvanceToDawn(), Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
         [Test]
-        public void A_band_far_off_the_map_is_refused_not_left_siteless()
+        public void A_band_that_walked_far_off_the_map_is_refused_not_left_siteless()
         {
             // Too far out for the scan to touch any cell the pathfinder could
             // refuse: without a check up front, the pass would record no
             // sites and the band would idle forever without a word.
             var w = new WorkWorld();
-            var band = w.NewBand(new WorldPosition(-100, -100), 0);
+            var band = w.NewBand(WorkWorld.Camp, 0);
             w.Join(band, 30L);
+            band.Position = new WorldPosition(-100, -100);
 
             Assert.That(() => w.AdvanceToDawn(), Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
         [Test]
-        public void A_band_standing_where_it_cannot_walk_has_no_sites()
+        public void A_band_that_walked_into_the_river_is_refused_at_dawn_not_left_idle()
         {
+            // The same for a cell on the map that nobody can stand on: every
+            // site search from it fails, and silence would look like a band
+            // with nothing to do.
             var w = new WorkWorld();
-            var band = w.NewBand(new WorldPosition(WorkWorld.RiverColumn, 3), 0);
-            var adult = w.Join(band, 30L);
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            w.Join(band, 30L);
+            band.Position = new WorldPosition(WorkWorld.RiverColumn, 3);
 
-            w.AdvanceToDawn();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False);
-                Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False);
-                Assert.That(w.Jobs.HasSite(band, JobKind.StoneGatherer), Is.False);
-                Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.None));
-            });
+            Assert.That(() => w.AdvanceToDawn(), Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
         [Test]

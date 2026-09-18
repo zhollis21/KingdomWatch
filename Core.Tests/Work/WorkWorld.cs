@@ -4,6 +4,8 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
+using KingdomWatch.Core.Nomadic;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
@@ -38,10 +40,21 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         internal WorkWorld(ulong seed, TerrainGrid grid)
+            : this(seed, grid, DemographicSettings.Default)
         {
-            Demographics = new DemographicWorld(DemographicSettings.Default, seed, grid);
+        }
+
+        internal WorkWorld(ulong seed, TerrainGrid grid, DemographicSettings settings)
+        {
+            Demographics = new DemographicWorld(settings, seed, grid);
+            Founding = new Founding(
+                Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking);
+            Nomads = new NomadicBands(
+                Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng);
             Router.Register(ScheduledEventKind.WorkDayDue, Jobs);
             Router.Register(ScheduledEventKind.TaskCompleted, Jobs);
+            Router.Register(ScheduledEventKind.CouncilDue, Nomads);
+            Router.Register(ScheduledEventKind.BandArrival, Nomads);
         }
 
         internal static TerrainGrid DefaultMap()
@@ -68,6 +81,10 @@ namespace KingdomWatch.Core.Tests.Work
 
         internal Jobs Jobs => Demographics.Base.Jobs;
 
+        internal Founding Founding { get; }
+
+        internal NomadicBands Nomads { get; }
+
         internal SimulationClock Clock => Demographics.Clock;
 
         internal ScheduledEventRouter Router => Demographics.Router;
@@ -91,6 +108,7 @@ namespace KingdomWatch.Core.Tests.Work
             Demographics.Fertility.Track(band);
             Hunger.Track(band);
             Jobs.Track(band);
+            Demographics.Matchmaking.Track(band);
 
             if (food > 0)
             {
@@ -98,6 +116,26 @@ namespace KingdomWatch.Core.Tests.Work
             }
 
             return band;
+        }
+
+        // A tracked band that also wanders: its first camp is pitched here.
+        internal MobileGroup NewWanderingBand(WorldPosition position, int food)
+        {
+            var band = NewBand(position, food);
+            Nomads.Track(band);
+            return band;
+        }
+
+        // An existing band, put on everything that tracks bands - for a band
+        // made by hand at a time of the test's choosing.
+        internal void NewBandTrackedEverywhere(MobileGroup band)
+        {
+            Deaths.Track(band);
+            Demographics.Fertility.Track(band);
+            Hunger.Track(band);
+            Jobs.Track(band);
+            Demographics.Matchmaking.Track(band);
+            Nomads.Track(band);
         }
 
         internal PersonHandle Join(MobileGroup band, long ageYears, Sex sex = Sex.Male)
@@ -128,6 +166,13 @@ namespace KingdomWatch.Core.Tests.Work
         internal void AdvanceTo(SimulationTime time) => Clock.AdvanceTo(time, Router);
 
         internal void Advance(long ticks) => AdvanceTo(Now.Plus(ticks));
+
+        // To the first council from now, dispatching it.
+        internal void AdvanceToFirstLight()
+        {
+            var council = Today(NomadicBands.FirstLight);
+            AdvanceTo(council > Now ? council : council.Plus(SimulationTime.TicksPerDay));
+        }
 
         // To the first dawn from now, dispatching it.
         internal void AdvanceToDawn()

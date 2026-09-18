@@ -67,6 +67,29 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void An_untracked_band_receives_no_newborns_and_refuses_a_second_untrack()
+        {
+            var w = new DemographicWorld(Certain(), 1UL);
+            var band = w.NewBand();
+            var household = w.NewCouple(out var wife, out var husband);
+            band.AddMember(wife);
+            band.AddMember(husband);
+
+            w.Fertility.Untrack(band);
+            w.Advance(Check + Gestation);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(household.Members, Has.Count.EqualTo(3), "the pregnancy carried on");
+                Assert.That(band.Members, Has.Count.EqualTo(2), "the child landed in no band");
+                Assert.That(w.Fertility.TrackedCount, Is.Zero);
+                Assert.That(() => w.Fertility.Untrack(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Fertility.Untrack(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Fertility.Track(band), Throws.Nothing, "and can be tracked afresh");
+            });
+        }
+
+        [Test]
         public void A_household_forming_books_its_first_check_one_interval_out()
         {
             var w = new DemographicWorld(Certain(), 1UL);
