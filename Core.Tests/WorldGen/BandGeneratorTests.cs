@@ -98,6 +98,137 @@ namespace KingdomWatch.Core.Tests.WorldGen
             Assert.That(w.Households.Count, Is.EqualTo(BandGenerator.LineagesFor(30)), "every couple partnered");
         }
 
+        [Test]
+        public void Founders_are_never_older_than_the_table_lets_anyone_be()
+        {
+            // The shortest-lived table Validate accepts: adult at 16, elder
+            // at 17, and nobody past 19. Founders are grown and alive by it.
+            var brief = new DemographicSettings
+            {
+                ChildAtYears = 3L,
+                AdolescentAtYears = 12L,
+                AdultAtYears = 16L,
+                ElderAtYears = 17L,
+                SoftLifespanYears = 18L,
+                MaxLifespanYears = 19L,
+                FertileFromYears = 12L,
+                FertileUntilYears = 19L,
+            };
+            var w = new DemographicWorld(brief, 1UL);
+            var generator = new BandGenerator(w.Bus, w.People, w.Genealogy, w.Family, w.Households, brief, w.Rng);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(generator.MinAdultYears, Is.EqualTo(brief.AdultAtYears), "the spread starts at adulthood itself when the lifespan is short");
+                Assert.That(generator.MaxAdultYears, Is.EqualTo(brief.MaxLifespanYears - 1L));
+            });
+
+            var band = generator.Generate(30, Here);
+            var now = w.Clock.Now;
+
+            foreach (var member in band.Members)
+            {
+                if (w.Genealogy.Parents(w.IdOf(member)).Mother.IsNone)
+                {
+                    Assert.That(w.People.GetAgeYears(member, now), Is.InRange(brief.AdultAtYears, brief.MaxLifespanYears - 1L));
+                }
+            }
+
+            Assert.That(band.Members, Has.Count.EqualTo(30));
+        }
+
+        [Test]
+        public void Couples_outside_the_fertile_window_get_no_children_and_singles_fill_the_band()
+        {
+            // Fertile from 40 on a table that grows up at 16: founders are
+            // 20 to 44, so only those over 40 can have had a child, and the
+            // child is at most four. The band is still exactly the size
+            // asked; whoever the couples could not bear is a single adult.
+            var late = new DemographicSettings
+            {
+                FertileFromYears = 40L,
+                FertileUntilYears = 45L,
+            };
+            var w = new DemographicWorld(late, 2UL);
+            var generator = new BandGenerator(w.Bus, w.People, w.Genealogy, w.Family, w.Households, late, w.Rng);
+
+            var band = generator.Generate(60, Here);
+            var now = w.Clock.Now;
+            var children = 0;
+
+            foreach (var member in band.Members)
+            {
+                var parents = w.Genealogy.Parents(w.IdOf(member));
+
+                if (parents.Mother.IsNone)
+                {
+                    continue;
+                }
+
+                children++;
+                Assert.That(w.People.TryGetHandle(parents.Mother, out var mother), Is.True);
+                Assert.That(w.People.TryGetHandle(parents.Father, out var father), Is.True);
+                var age = w.People.GetAgeYears(member, now);
+                var motherAtBirth = w.People.GetAgeYears(mother, now) - age;
+                var fatherAtBirth = w.People.GetAgeYears(father, now) - age;
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(late.IsFertileAge(motherAtBirth), Is.True, "the mother was fertile at the birth");
+                    Assert.That(late.IsFertileAge(fatherAtBirth), Is.True, "so was the father");
+                });
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Members, Has.Count.EqualTo(60));
+                Assert.That(children, Is.LessThan(60 - 2 * BandGenerator.LineagesFor(60)), "some couples could bear none; singles took their place");
+                w.Base.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
+        public void Every_child_was_born_inside_both_parents_fertile_window()
+        {
+            // Fertile until thirty on a table whose founders reach forty-four:
+            // an older founder's children must be old enough to have been
+            // born before the window closed, and the young end of the range
+            // is what enforces it.
+            var early = new DemographicSettings
+            {
+                FertileFromYears = 16L,
+                FertileUntilYears = 30L,
+            };
+            var w = new DemographicWorld(early, 3UL);
+            var generator = new BandGenerator(w.Bus, w.People, w.Genealogy, w.Family, w.Households, early, w.Rng);
+            var band = generator.Generate(60, Here);
+            var now = w.Clock.Now;
+            var children = 0;
+
+            foreach (var member in band.Members)
+            {
+                var parents = w.Genealogy.Parents(w.IdOf(member));
+
+                if (parents.Mother.IsNone)
+                {
+                    continue;
+                }
+
+                children++;
+                w.People.TryGetHandle(parents.Mother, out var mother);
+                w.People.TryGetHandle(parents.Father, out var father);
+                var age = w.People.GetAgeYears(member, now);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(early.IsFertileAge(w.People.GetAgeYears(mother, now) - age), Is.True, "the mother was under thirty at the birth");
+                    Assert.That(early.IsFertileAge(w.People.GetAgeYears(father, now) - age), Is.True, "so was the father");
+                });
+            }
+
+            Assert.That(children, Is.GreaterThan(0), "some couples were young enough");
+        }
+
         [TestCase(30)]
         [TestCase(45)]
         [TestCase(60)]

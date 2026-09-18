@@ -312,38 +312,12 @@ namespace KingdomWatch.Core.Nomadic
 
             tracked.Pressure += Living(band);
             tracked.DaysAtCamp++;
+            tracked.DaysSinceLook++;
 
-            // Settling needs a tomorrow for the settlement's streams to book
-            // into; on the world's last days the band stays a band.
-            if (tracked.Pressure >= SettlingPressure
-                && Founding.HasRoomForStreams(_clock.Now)
-                && CanSettleAt(band.Position))
-            {
-                // Founding takes the band off every other tracker and
-                // refuses before touching anything if it cannot; this class
-                // takes the band off its own list when it hears
-                // SettlementFounded (see On), whoever called Found. No
-                // council is booked at this point - the one that sat is
-                // spent and the next would be booked below - so a refusal
-                // leaves the band tracked with nothing pending, and the
-                // throw stops the run where the wiring bug is.
-                _founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
-                return;
-            }
-
-            // A move needs a whole day to walk in. On the world's last day
-            // there is no dusk to arrive by, so the band stays - and the
-            // arrival it would have booked is one the clock could not hold.
-            var hasDusk = Jobs.Dusk - FirstLight <= long.MaxValue - _clock.Now.Ticks;
-
-            if (tracked.DaysAtCamp >= CampDays && hasDusk && TryChooseCamp(tracked, out var next, out var travel))
-            {
-                band.Destination = next;
-                var departure = _clock.Now.Plus(Jobs.Dawn - FirstLight);
-                tracked.PendingArrival = _clock.Schedule(
-                    departure.Plus(travel), Phase, ScheduledEventKind.BandArrival, band.Id, EntityId.None);
-            }
-
+            // Tomorrow's council is booked before anything is decided, so
+            // that a refused founding leaves a band still wandering rather
+            // than one on the list with nothing pending. When the founding
+            // goes through, SettlementFounded arrives and On cancels it.
             // The stream ends with time itself, as Hunger's does.
             var now = _clock.Now;
             var untilNext = TicksUntil(FirstLight, now);
@@ -352,6 +326,45 @@ namespace KingdomWatch.Core.Nomadic
             {
                 tracked.PendingCouncil = _clock.Schedule(
                     now.Plus(untilNext), Phase, ScheduledEventKind.CouncilDue, band.Id, EntityId.None);
+            }
+
+            // Settling needs a tomorrow for the settlement's streams to book
+            // into; on the world's last days the band stays a band.
+            if (tracked.Pressure >= SettlingPressure
+                && Founding.HasRoomForStreams(now)
+                && CanSettleAt(band.Position))
+            {
+                // Founding takes the band off every other tracker and
+                // refuses before touching anything if it cannot; this class
+                // takes the band off its own list when it hears
+                // SettlementFounded (see On), whoever called Found. A refusal
+                // is a wiring bug and throws; the band it leaves behind is
+                // whole and has its next council.
+                _founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+                return;
+            }
+
+            // A move needs a whole day to walk in. On the world's last day
+            // there is no dusk to arrive by, so the band stays - and the
+            // arrival it would have booked is one the clock could not hold.
+            var hasDusk = Jobs.Dusk - FirstLight <= long.MaxValue - now.Ticks;
+
+            if (tracked.DaysSinceLook < CampDays || !hasDusk)
+            {
+                return;
+            }
+
+            // The look is the expensive part of a council - a route and
+            // three site searches per candidate - so a camp that has nowhere
+            // to go looks again in another CampDays, not tomorrow.
+            tracked.DaysSinceLook = 0;
+
+            if (TryChooseCamp(tracked, out var next, out var travel))
+            {
+                band.Destination = next;
+                var departure = now.Plus(Jobs.Dawn - FirstLight);
+                tracked.PendingArrival = _clock.Schedule(
+                    departure.Plus(travel), Phase, ScheduledEventKind.BandArrival, band.Id, EntityId.None);
             }
         }
 
@@ -406,6 +419,7 @@ namespace KingdomWatch.Core.Nomadic
             }
 
             tracked.DaysAtCamp = 0;
+            tracked.DaysSinceLook = 0;
             _bus.Publish(DomainEventKind.CampPitched, band.Id, EntityId.None);
         }
 
@@ -601,6 +615,10 @@ namespace KingdomWatch.Core.Nomadic
             public long Pressure { get; set; }
 
             public int DaysAtCamp { get; set; }
+
+            // Days since the last hop scan, or the last camp: the scan runs
+            // every CampDays whether or not the last one found anywhere to go.
+            public int DaysSinceLook { get; set; }
 
             // The council and arrival this band booked, so that no other
             // runs and Untrack can cancel them. None while the event is

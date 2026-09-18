@@ -212,6 +212,15 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
             });
+
+            // Still wandering means a council is still booked: fix the
+            // wiring, and the next one founds the settlement.
+            w.Demographics.Fertility.Track(band);
+            w.Demographics.Matchmaking.Track(band);
+
+            Assert.That(() => w.AdvanceTo(w.Now.Plus(Day)), Throws.Nothing);
+            Assert.That(w.Founding.All, Has.Count.EqualTo(1), "founded at the next council");
+            Assert.That(w.Nomads.TrackedCount, Is.Zero);
         }
 
         [Test]
@@ -572,6 +581,33 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(w.Nomads.DaysAtCamp(band), Is.GreaterThan(NomadicBands.CampDays), "still counting at the same camp");
                 Assert.That(w.Count(DomainEventKind.CampPitched), Is.EqualTo(1));
             });
+        }
+
+        [Test]
+        public void A_blocked_camp_looks_again_every_camp_days_not_every_dawn()
+        {
+            // Island for the first look, which finds nothing. A causeway
+            // appears the next day; the band does not see it until its next
+            // look, twenty days on, and leaves then. The hop scan is the
+            // expensive thing a council does, and a blocked camp must not
+            // pay it daily.
+            var grid = new TerrainGrid(5, 5, TerrainKind.DeepWater);
+            var island = new WorldPosition(2, 2);
+            var causeway = new WorldPosition(3, 2);
+            grid.Set(island, TerrainKind.Plains);
+            var w = new WorkWorld(1UL, grid);
+            var band = w.NewWanderingBand(island, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.Null, "nowhere to go at the first look");
+            grid.Set(causeway, TerrainKind.Plains);
+
+            AdvanceToCouncil(w, 2 * NomadicBands.CampDays - 1);
+            Assert.That(band.Destination, Is.Null, "not looked again yet");
+
+            AdvanceToCouncil(w, 2 * NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.EqualTo(causeway), "the second look finds it");
         }
 
         [Test]

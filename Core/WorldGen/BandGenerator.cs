@@ -30,8 +30,10 @@ namespace KingdomWatch.Core.WorldGen
     ///
     /// **Ages by keyed draw, from the table.** Founders are a few years into
     /// the table's adulthood and spread over the next two dozen - 20 to 44
-    /// on the human table; a child is younger than the table's adulthood
-    /// and as old as the younger parent allows at the table's fertile age.
+    /// on the human table, and never older than the table lets anyone be;
+    /// a child is younger than the table's adulthood and born inside both
+    /// parents' fertile window, so a couple whose ages leave no such year
+    /// starts with no children and singles fill the band instead.
     /// Nothing here assumes the human numbers, so an elf table (#34) makes
     /// an elf band. Every draw is
     /// keyed by the band's id, the person's index in it and what the draw is
@@ -122,14 +124,29 @@ namespace KingdomWatch.Core.WorldGen
             _clock = bus.Clock;
         }
 
-        /// <summary>Youngest a founder is: a few years into the table's adulthood.</summary>
-        public long MinAdultYears => _settings.AdultAtYears + FounderYearsPastAdulthood;
+        /// <summary>
+        /// Oldest a founder is: a few years into the table's adulthood plus
+        /// the spread, or as old as anyone on the table can be.
+        /// </summary>
+        public long MaxAdultYears =>
+            Math.Min(_settings.AdultAtYears + FounderYearsPastAdulthood + FounderYearsSpread, OldestAnyoneIs);
 
-        /// <summary>Oldest a founder is.</summary>
-        public long MaxAdultYears => MinAdultYears + FounderYearsSpread;
+        /// <summary>
+        /// Youngest a founder is: the spread below the oldest, and never
+        /// younger than the table's adulthood - so a short-lived table keeps
+        /// a spread of ages by starting at adulthood itself.
+        /// </summary>
+        public long MinAdultYears => Math.Max(_settings.AdultAtYears, MaxAdultYears - FounderYearsSpread);
 
         /// <summary>Youngest a parent was at a child's birth: the table's fertile age.</summary>
         public long MinParentYears => _settings.FertileFromYears;
+
+        /// <summary>Oldest a parent was at a child's birth: the last year of the table's fertile window.</summary>
+        public long MaxParentYears => _settings.FertileUntilYears - 1L;
+
+        // Validate orders adulthood, elderhood, the soft lifespan and the
+        // maximum strictly, so this is at least two years past adulthood.
+        private long OldestAnyoneIs => _settings.MaxLifespanYears - 1L;
 
         /// <summary>Oldest a starting child is: the last year before the table's adulthood.</summary>
         public long MaxChildYears => _settings.AdultAtYears - 1L;
@@ -183,15 +200,31 @@ namespace KingdomWatch.Core.WorldGen
             }
 
             // Children, dealt round-robin so no couple has four before
-            // another has one.
+            // another has one - to the couples who could have borne one:
+            // a child's age has to put the birth inside both parents'
+            // fertile window, and a couple whose ages leave no such age
+            // gets none.
             var perCouple = 0;
 
             while (made < size && perCouple < MaxChildrenPerCouple)
             {
+                var dealt = false;
+
                 for (var i = 0; i < couples && made < size; i++)
                 {
-                    var child = Child(band, key, made++, wives[i], husbands[i]);
+                    if (!TryChildAges(wives[i], husbands[i], out var youngest, out var oldest))
+                    {
+                        continue;
+                    }
+
+                    var child = Child(band, key, made++, wives[i], husbands[i], youngest, oldest);
                     _households.Join(households[i], child);
+                    dealt = true;
+                }
+
+                if (!dealt)
+                {
+                    break;
                 }
 
                 perCouple++;
@@ -232,15 +265,27 @@ namespace KingdomWatch.Core.WorldGen
             return Add(band, age, sex, EntityId.None, EntityId.None);
         }
 
-        private PersonHandle Child(MobileGroup band, RandomKey key, int index, PersonHandle mother, PersonHandle father)
+        // The ages a child of this couple could be today: born when both
+        // parents were inside the fertile window, and not yet grown. A
+        // parent now aged p was p - a at a birth a years ago, so the window
+        // [from, until) bounds a from above by p - from and from below by
+        // p - until + 1, for the older parent and the younger respectively.
+        // False when the couple's ages leave no such year.
+        private bool TryChildAges(PersonHandle mother, PersonHandle father, out long youngest, out long oldest)
         {
             var now = _clock.Now;
-            var youngerParent = Math.Min(_people.GetAgeYears(mother, now), _people.GetAgeYears(father, now));
-            // A table whose fertile age is past its founders' youngest gives a
-            // couple newborns at most, never a negative range.
-            var oldest = Math.Max(0L, Math.Min(MaxChildYears, youngerParent - MinParentYears));
+            var motherYears = _people.GetAgeYears(mother, now);
+            var fatherYears = _people.GetAgeYears(father, now);
+            youngest = Math.Max(0L, Math.Max(motherYears, fatherYears) - MaxParentYears);
+            oldest = Math.Min(MaxChildYears, Math.Min(motherYears, fatherYears) - MinParentYears);
+            return youngest <= oldest;
+        }
+
+        private PersonHandle Child(
+            MobileGroup band, RandomKey key, int index, PersonHandle mother, PersonHandle father, long youngest, long oldest)
+        {
             var draw = key.Mix(index);
-            var age = draw.Mix(AgeDraw).Range(0, (int)oldest + 1);
+            var age = youngest + draw.Mix(AgeDraw).Range(0, (int)(oldest - youngest + 1L));
             var sex = draw.Mix(SexDraw).Chance(1, 2) ? Sex.Female : Sex.Male;
             return Add(band, age, sex, _people.GetId(mother), _people.GetId(father));
         }
