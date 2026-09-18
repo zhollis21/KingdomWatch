@@ -2,6 +2,7 @@ using System;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Traversal;
@@ -14,6 +15,19 @@ namespace KingdomWatch.Core.Tests.Nomadic
     public sealed class NomadicBandsTests
     {
         private static readonly long Day = SimulationTime.TicksPerDay;
+
+        // A table nobody dies to or conceives on, for runs that count people.
+        private static readonly DemographicSettings Immortal = new DemographicSettings
+        {
+            InfantMortalityPerMille = 0,
+            ChildMortalityPerMille = 0,
+            AdolescentMortalityPerMille = 0,
+            AdultMortalityPerMille = 0,
+            ElderMortalityPerMille = 0,
+            SoftLifespanYears = 1_000L,
+            MaxLifespanYears = 2_000L,
+            ConceptionPerMille = 0,
+        };
 
         [Test]
         public void Construction_refuses_a_missing_collaborator()
@@ -197,6 +211,59 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public void A_direct_founding_stops_the_council_stream_too()
+        {
+            // Founding is public - #35's founding parties will call it - and
+            // whoever calls it, the band stops wandering: the council it had
+            // booked is cancelled, and nothing moves an empty band later.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, 0);
+            w.JoinAdults(band, 2);
+            var pending = w.Clock.ScheduledCount;
+
+            w.Founding.Found(band, new Reasons(ReasonCode.LandSuitable));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Nomads.TrackedCount, Is.Zero);
+                Assert.That(() => w.Nomads.PressureOf(band), Throws.InvalidOperationException);
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending - 1), "the council is gone; every other stream was rebooked for the settlement");
+                Assert.That(() => w.AdvanceTo(w.Now.Plus((NomadicBands.CampDays + 2) * Day)), Throws.Nothing);
+                Assert.That(w.Count(DomainEventKind.CampPitched), Is.EqualTo(1), "the empty band never moved");
+            });
+        }
+
+        [Test]
+        public void On_the_last_day_of_the_world_the_band_does_not_settle_either()
+        {
+            // Pressure crossed at land that passes, on a day with no tomorrow
+            // for the settlement's first meal: the band stays a band, whole,
+            // rather than founding a settlement whose streams cannot be
+            // booked.
+            // Nobody dies, so the pressure crosses on exactly the last council.
+            var w = new WorkWorld(1UL, WorkWorld.DefaultMap(), Immortal);
+            var band = new MobileGroup(
+                w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+            var end = new SimulationTime(long.MaxValue);
+            var lastCouncil = new SimulationTime(end.Ticks - end.TickOfDay + NomadicBands.FirstLight);
+            var councils = (NomadicBands.SettlingPressure + 59) / 60;
+            w.Clock.AdvanceTo(lastCouncil.Plus(-councils * Day), w.Router);
+            w.NewBandTrackedEverywhere(band);
+            w.JoinAdults(band, 60);
+            band.SharedSupplies.Gather(ResourceKind.Food, WorkWorld.PlentifulFood(60));
+
+            Assert.That(() => w.AdvanceTo(end), Throws.Nothing);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Nomads.PressureOf(band), Is.GreaterThanOrEqualTo(NomadicBands.SettlingPressure), "wanted to settle");
+                Assert.That(w.Founding.All, Is.Empty);
+                Assert.That(band.Members, Has.Count.EqualTo(w.People.Count), "still a band, whole");
+                Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1));
             });
         }
 

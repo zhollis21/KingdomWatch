@@ -28,9 +28,14 @@ namespace KingdomWatch.Core.Settlements
     ///
     /// **Nothing is lost or doubled.** Members move in band order, which
     /// becomes the settlement's order. Stock moves through
-    /// <see cref="ResourceLedger.TransferTo"/>, so both ledgers still audit;
-    /// stock that is reserved, carried or in process has no available pile
-    /// to move from, so a band with any is refused. So is a band with
+    /// <see cref="ResourceLedger.TransferTo"/>, so both ledgers still audit.
+    /// Flows do not move: they are a holder's history, and the band's says
+    /// it built camps while the settlement's says it has built nothing yet.
+    /// The wood the band embodied in its last camp is in that history and
+    /// nowhere else - there is no camp to hand over until #23 and #69 give a
+    /// settlement things it can own. Stock that is reserved, carried or in
+    /// process has no available pile to move from, so a band with any is
+    /// refused. So is a band with
     /// anyone out on a task, by <see cref="Jobs.Untrack"/> - the caller
     /// founds at first light or after dusk, when nobody is, rather than
     /// strand a return leg to a camp that is now a town.
@@ -106,6 +111,16 @@ namespace KingdomWatch.Core.Settlements
             RequireStockAtRest(band);
             RequireTrackedEverywhere(band);
 
+            // Every stream the settlement will book has to fit before the
+            // end of time, or Track would throw after the band had already
+            // been emptied. Checked here, before anything moves, for the
+            // same reason as the two above: a refusal leaves the band whole.
+            if (!HasRoomForStreams(_clock.Now))
+            {
+                throw new InvalidOperationException(
+                    "The world ends before " + band.Id + "'s settlement could hold its first courtship; a band settles with a tomorrow to settle into.");
+            }
+
             // The band leaves every tracker before its members leave it:
             // Jobs refuses a band with anyone out on a task, and can only
             // tell while the members are still listed. Jobs goes first
@@ -159,6 +174,15 @@ namespace KingdomWatch.Core.Settlements
             _settlements.Add(settlement);
             return settlement;
         }
+
+        /// <summary>
+        /// Whether a settlement founded now could book every stream it needs:
+        /// the longest is <see cref="Matchmaking.Interval"/>, a year out. The
+        /// council asks this before deciding to settle on the world's last
+        /// days, so that it stays a band rather than be refused.
+        /// </summary>
+        public static bool HasRoomForStreams(SimulationTime now) =>
+            Matchmaking.Interval <= long.MaxValue - now.Ticks;
 
         // Every tracker must know the band before any of them lets it go,
         // or a "not tracked" from the third would leave the first two

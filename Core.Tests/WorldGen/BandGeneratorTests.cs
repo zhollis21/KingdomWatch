@@ -45,7 +45,57 @@ namespace KingdomWatch.Core.Tests.WorldGen
                 Assert.That(BandGenerator.LineagesFor(200), Is.EqualTo(BandGenerator.MaxLineages));
                 Assert.That(BandGenerator.LineagesFor(10), Is.EqualTo(5), "no more couples than pairs");
                 Assert.That(BandGenerator.LineagesFor(2), Is.EqualTo(1));
+                Assert.That(() => BandGenerator.LineagesFor(1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => BandGenerator.LineagesFor(0), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => BandGenerator.LineagesFor(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => BandGenerator.LineagesFor(int.MinValue), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
+        }
+
+        [Test]
+        public void Ages_follow_the_table_not_the_default_one()
+        {
+            // A race that grows up at thirty and is fertile from twenty-five:
+            // founders are adults by its table, children are children by
+            // it, and no child was born to a parent under its fertile age.
+            var late = new DemographicSettings
+            {
+                ChildAtYears = 6L,
+                AdolescentAtYears = 20L,
+                AdultAtYears = 30L,
+                FertileFromYears = 25L,
+                FertileUntilYears = 60L,
+                ElderAtYears = 90L,
+                SoftLifespanYears = 120L,
+                MaxLifespanYears = 160L,
+            };
+            var w = new DemographicWorld(late, 1UL);
+            var generator = new BandGenerator(w.Bus, w.People, w.Genealogy, w.Family, w.Households, late, w.Rng);
+
+            var band = generator.Generate(30, Here);
+
+            var now = w.Clock.Now;
+
+            foreach (var member in band.Members)
+            {
+                var age = w.People.GetAgeYears(member, now);
+                var parents = w.Genealogy.Parents(w.IdOf(member));
+
+                if (parents.Mother.IsNone)
+                {
+                    Assert.That(age, Is.InRange(late.AdultAtYears, late.ElderAtYears - 1L), "a founder is an adult by this table");
+                    continue;
+                }
+
+                Assert.That(w.People.TryGetHandle(parents.Mother, out var mother), Is.True);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(age, Is.LessThan(late.AdultAtYears), "a child is a child by this table");
+                    Assert.That(w.People.GetAgeYears(mother, now) - age, Is.GreaterThanOrEqualTo(late.FertileFromYears));
+                });
+            }
+
+            Assert.That(w.Households.Count, Is.EqualTo(BandGenerator.LineagesFor(30)), "every couple partnered");
         }
 
         [TestCase(30)]
@@ -138,9 +188,9 @@ namespace KingdomWatch.Core.Tests.WorldGen
 
                 Assert.Multiple(() =>
                 {
-                    Assert.That(age, Is.LessThanOrEqualTo(BandGenerator.MaxChildYears));
-                    Assert.That(w.People.GetAgeYears(mother, now) - age, Is.GreaterThanOrEqualTo(BandGenerator.MinParentYears));
-                    Assert.That(w.People.GetAgeYears(father, now) - age, Is.GreaterThanOrEqualTo(BandGenerator.MinParentYears));
+                    Assert.That(age, Is.LessThanOrEqualTo(w.Generator.MaxChildYears));
+                    Assert.That(w.People.GetAgeYears(mother, now) - age, Is.GreaterThanOrEqualTo(w.Generator.MinParentYears));
+                    Assert.That(w.People.GetAgeYears(father, now) - age, Is.GreaterThanOrEqualTo(w.Generator.MinParentYears));
                     Assert.That(w.Households.Of(member), Is.SameAs(w.Households.Of(mother)), "housed with the parents");
                     Assert.That(w.Partnerships.ActivePartnerOf(parents.Mother), Is.EqualTo(parents.Father), "the parents are a couple");
                 });

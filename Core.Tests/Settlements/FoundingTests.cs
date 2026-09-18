@@ -2,6 +2,7 @@ using System;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Work;
@@ -230,6 +231,35 @@ namespace KingdomWatch.Core.Tests.Settlements
                     Assert.That(w.Founding.All, Is.Empty);
                 });
             }
+        }
+
+        [Test]
+        public void Founding_refuses_a_world_with_no_room_for_the_settlements_streams_before_touching_anything()
+        {
+            // The last year of the world: the settlement's first courtship
+            // would fall past the end of time, so founding is refused up
+            // front rather than after the band has been emptied.
+            var w = new WorkWorld();
+            var end = new SimulationTime(long.MaxValue);
+            // Tracked at the last instant with room - every stream books
+            // exactly to the end - then one tick on.
+            w.Clock.AdvanceTo(end.Plus(-Matchmaking.Interval), w.Router);
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            w.JoinAdults(band, 2);
+            w.Advance(1L);
+            Assert.That(Founding.HasRoomForStreams(w.Now), Is.False);
+
+            Assert.That(() => w.Founding.Found(band, Why), Throws.InvalidOperationException);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.Members, Has.Count.EqualTo(2), "nobody moved");
+                Assert.That(w.Founding.All, Is.Empty);
+                Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1), "still on every tracker");
+                Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Demographics.Matchmaking.TrackedCount, Is.EqualTo(1));
+                Assert.That(Founding.HasRoomForStreams(end.Plus(-Matchmaking.Interval)), Is.True, "the last instant with room");
+            });
         }
 
         [Test]

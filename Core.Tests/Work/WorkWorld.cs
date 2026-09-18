@@ -126,6 +126,18 @@ namespace KingdomWatch.Core.Tests.Work
             return band;
         }
 
+        // An existing band, put on everything that tracks bands - for a band
+        // made by hand at a time of the test's choosing.
+        internal void NewBandTrackedEverywhere(MobileGroup band)
+        {
+            Deaths.Track(band);
+            Demographics.Fertility.Track(band);
+            Hunger.Track(band);
+            Jobs.Track(band);
+            Demographics.Matchmaking.Track(band);
+            Nomads.Track(band);
+        }
+
         internal PersonHandle Join(MobileGroup band, long ageYears, Sex sex = Sex.Male)
         {
             var person = Demographics.NewPerson(ageYears, sex);

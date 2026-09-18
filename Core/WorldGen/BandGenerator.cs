@@ -28,8 +28,12 @@ namespace KingdomWatch.Core.WorldGen
     /// adult, a lineage of their own. The viability run that tests
     /// the count lives with the generator, in Core.Tests.
     ///
-    /// **Ages by keyed draw.** Adults are 20 to 44; a child is as old as the
-    /// younger parent allows, at sixteen or more at the birth. Every draw is
+    /// **Ages by keyed draw, from the table.** Founders are a few years into
+    /// the table's adulthood and spread over the next two dozen - 20 to 44
+    /// on the human table; a child is younger than the table's adulthood
+    /// and as old as the younger parent allows at the table's fertile age.
+    /// Nothing here assumes the human numbers, so an elf table (#34) makes
+    /// an elf band. Every draw is
     /// keyed by the band's id, the person's index in it and what the draw is
     /// for, under <see cref="RandomDomain.BandGeneration"/>, so the same seed
     /// gives the same band on every platform and no person depends on the
@@ -74,17 +78,11 @@ namespace KingdomWatch.Core.WorldGen
         /// <summary>Children a founding couple starts with, at most.</summary>
         public const int MaxChildrenPerCouple = 4;
 
-        /// <summary>Youngest a founder is.</summary>
-        public const long MinAdultYears = 20L;
+        /// <summary>Years past the table's adulthood the youngest founder is.</summary>
+        public const long FounderYearsPastAdulthood = 4L;
 
-        /// <summary>Oldest a founder is.</summary>
-        public const long MaxAdultYears = 44L;
-
-        /// <summary>Youngest a parent was at a child's birth.</summary>
-        public const long MinParentYears = 16L;
-
-        /// <summary>Oldest a starting child is.</summary>
-        public const long MaxChildYears = 15L;
+        /// <summary>Years between the youngest and the oldest founder.</summary>
+        public const long FounderYearsSpread = 24L;
 
         /// <summary>Wood a band starts with: a few camps' worth.</summary>
         public const int StartingWood = 4 * Nomadic.NomadicBands.CampWood;
@@ -124,16 +122,37 @@ namespace KingdomWatch.Core.WorldGen
             _clock = bus.Clock;
         }
 
+        /// <summary>Youngest a founder is: a few years into the table's adulthood.</summary>
+        public long MinAdultYears => _settings.AdultAtYears + FounderYearsPastAdulthood;
+
+        /// <summary>Oldest a founder is.</summary>
+        public long MaxAdultYears => MinAdultYears + FounderYearsSpread;
+
+        /// <summary>Youngest a parent was at a child's birth: the table's fertile age.</summary>
+        public long MinParentYears => _settings.FertileFromYears;
+
+        /// <summary>Oldest a starting child is: the last year before the table's adulthood.</summary>
+        public long MaxChildYears => _settings.AdultAtYears - 1L;
+
         /// <summary>
         /// How many founding couples a band of this size gets: about one per
         /// <see cref="PeoplePerLineage"/>, at least <see cref="MinLineages"/>
         /// and at most <see cref="MaxLineages"/>, and never more than the
-        /// size holds.
+        /// size holds. Refuses a size under two, as <see cref="Generate"/> does.
         /// </summary>
         public static int LineagesFor(int size)
         {
+            RequireSize(size);
             var wanted = Math.Max(MinLineages, Math.Min(MaxLineages, size / PeoplePerLineage));
             return Math.Min(wanted, size / 2);
+        }
+
+        private static void RequireSize(int size)
+        {
+            if (size < 2)
+            {
+                throw new ArgumentOutOfRangeException(nameof(size), size, "A band is at least a couple.");
+            }
         }
 
         /// <summary>
@@ -143,10 +162,7 @@ namespace KingdomWatch.Core.WorldGen
         /// </summary>
         public MobileGroup Generate(int size, WorldPosition at)
         {
-            if (size < 2)
-            {
-                throw new ArgumentOutOfRangeException(nameof(size), size, "A band is at least a couple.");
-            }
+            RequireSize(size);
 
             var band = new MobileGroup(_clock.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, at);
             var key = _rng.Key(RandomDomain.BandGeneration).Mix(band.Id);
@@ -220,7 +236,9 @@ namespace KingdomWatch.Core.WorldGen
         {
             var now = _clock.Now;
             var youngerParent = Math.Min(_people.GetAgeYears(mother, now), _people.GetAgeYears(father, now));
-            var oldest = Math.Min(MaxChildYears, youngerParent - MinParentYears);
+            // A table whose fertile age is past its founders' youngest gives a
+            // couple newborns at most, never a negative range.
+            var oldest = Math.Max(0L, Math.Min(MaxChildYears, youngerParent - MinParentYears));
             var draw = key.Mix(index);
             var age = draw.Mix(AgeDraw).Range(0, (int)oldest + 1);
             var sex = draw.Mix(SexDraw).Chance(1, 2) ? Sex.Female : Sex.Male;

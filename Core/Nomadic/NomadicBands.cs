@@ -74,8 +74,9 @@ namespace KingdomWatch.Core.Nomadic
     /// arrival it booked, and only those run; any other of either kind
     /// throws, the rule <see cref="Jobs"/> and <see cref="Needs.Hunger"/>
     /// apply. Settling hands the band to <see cref="Founding"/>, which
-    /// takes it off every other tracker; this class takes it off its own
-    /// and books nothing more for it.
+    /// takes it off every other tracker and announces the settlement; this
+    /// class hears that and takes the band off its own list, whoever
+    /// called Found, and books nothing more for it.
     ///
     /// The numbers are placeholders: plausible, not tuned. The chronicle
     /// (#17) is where they get tuned.
@@ -85,7 +86,7 @@ namespace KingdomWatch.Core.Nomadic
     /// reuses its own. Settling allocates, by design - a settlement is a
     /// new entity.
     /// </remarks>
-    public sealed class NomadicBands : IScheduledEventHandler
+    public sealed class NomadicBands : IScheduledEventHandler, IDomainEventSubscriber
     {
         /// <summary>Tick of day the council sits: an hour before <see cref="Jobs.Dawn"/>.</summary>
         public const long FirstLight = 5L * SimulationTime.TicksPerHour;
@@ -143,6 +144,12 @@ namespace KingdomWatch.Core.Nomadic
             _clock = bus.Clock;
             _grid = pathfinder.Grid;
             _scratchRoute = new List<WorldPosition>(_grid.CellCount);
+
+            // Listen for the handover rather than be told: Founding is
+            // public, and whoever calls it, the band it emptied stops
+            // wandering. Subscribing here rather than Founding taking this
+            // class avoids a construction cycle - the council calls Founding.
+            bus.Subscribe(this);
         }
 
         /// <summary>How many bands are wandering.</summary>
@@ -237,6 +244,27 @@ namespace KingdomWatch.Core.Nomadic
             return viable;
         }
 
+        /// <summary>
+        /// A settlement founded from a tracked band ends its wandering: the
+        /// council it had booked is cancelled, and a move under way is
+        /// abandoned - though Founding refuses a band on the road, so there
+        /// is none. Other events are not this class's business.
+        /// </summary>
+        public void On(in DomainEvent published)
+        {
+            if (published.Kind != DomainEventKind.SettlementFounded)
+            {
+                return;
+            }
+
+            var index = IndexOf(published.SecondaryEntity);
+
+            if (index >= 0)
+            {
+                Drop(index);
+            }
+        }
+
         public void Handle(ScheduledEvent scheduled, SimulationClock clock)
         {
             if (!ReferenceEquals(clock, _clock))
@@ -285,17 +313,21 @@ namespace KingdomWatch.Core.Nomadic
             tracked.Pressure += Living(band);
             tracked.DaysAtCamp++;
 
-            if (tracked.Pressure >= SettlingPressure && CanSettleAt(band.Position))
+            // Settling needs a tomorrow for the settlement's streams to book
+            // into; on the world's last days the band stays a band.
+            if (tracked.Pressure >= SettlingPressure
+                && Founding.HasRoomForStreams(_clock.Now)
+                && CanSettleAt(band.Position))
             {
-                // Founding takes the band off every other tracker, and
-                // refuses before touching anything if it cannot; this is
-                // its own, dropped once the handover has happened. No
+                // Founding takes the band off every other tracker and
+                // refuses before touching anything if it cannot; this class
+                // takes the band off its own list when it hears
+                // SettlementFounded (see On), whoever called Found. No
                 // council is booked at this point - the one that sat is
-                // spent and the next is booked below - so a refusal leaves
-                // the band tracked with nothing pending, and the throw
-                // stops the run where the wiring bug is.
+                // spent and the next would be booked below - so a refusal
+                // leaves the band tracked with nothing pending, and the
+                // throw stops the run where the wiring bug is.
                 _founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
-                Drop(index);
                 return;
             }
 
