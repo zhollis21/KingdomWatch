@@ -11,7 +11,7 @@
 
 One kind of edge between issues, and the roadmap reads nothing else: **blocked by**, GitHub's native relationship (the *Relationships* box in the issue sidebar, or `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -f issue_id=<database id>`). Record the *direct* dependency only — if #17 needs #52 and #52 needs #12, do not also link #17 to #12; readiness is computed transitively. An open issue is *ready* when everything it is blocked by is closed, and the `blocked` label is derived from that by the roadmap workflow, so never set it by hand.
 
-Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` wire the relationships when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, `gh workflow run roadmap.yml` or wait for the nightly run.
+Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` wire the relationships when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, run `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main` or wait for the nightly run (`gh workflow run` itself resolves the default branch over GraphQL, so it is refused — see below).
 
 ## Repository Layout
 
@@ -121,6 +121,71 @@ pwsh tools/Get-OpenPrComments.ps1
 pwsh tools/Build-Roadmap.ps1
 ```
 
+```powershell
+# Every page of a REST collection, as one JSON array — for the skills, which
+# cannot page in a shell loop (see below)
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all'
+```
+
+`tools/GitHubApi.psm1` is not a script but the shared GitHub REST helpers the
+above import; see [below](#calling-the-github-api-from-a-claude-code-cloud-session) for why they exist.
+
 Requires `gh` CLI authenticated. See `.claude/skills/pr-feedback/SKILL.md` (`/pr-feedback`) for the full evaluation workflow.
+
+### Calling the GitHub API from a Claude Code cloud session
+
+Cloud sessions reach GitHub through a proxy that holds the real credentials
+outside the container. Its restrictions change how tooling here has to be
+written, and none of them is configurable — they apply regardless of the
+credentials supplied, and independently of the environment's network access
+level, so setting `GH_TOKEN` to a personal token does not lift any of them.
+
+**The short version: `gh api repos/{owner}/{repo}/...` is the only GitHub
+surface that works.** Every `gh issue`, `gh pr` and `gh label` subcommand is
+GraphQL-backed and returns `403` — including plain `gh issue view` and the
+write commands `gh issue comment`, `gh issue edit`, `gh pr comment` and
+`gh pr edit`. `gh workflow list` is REST-backed and works, but `gh workflow run` resolves the
+default branch over GraphQL and is refused; dispatch a workflow with
+`gh api -X POST repos/{owner}/{repo}/actions/workflows/{file}/dispatches -f ref=main`.
+
+**GraphQL is refused.** Only a pinned set of pull-request operations is served;
+anything else on `/graphql` comes back `HTTP 403`. That takes with it
+`gh api graphql`, the `gh` subcommands above, and anything GraphQL-only such as
+Projects v2. Use REST. Review threads have no REST equivalent on
+github.com, so the proxy adds its own routes — `GET  .../pulls/{n}/ccr/review_threads`
+and `POST .../pulls/{n}/ccr/comments/{comment_id}/resolve` (also `/unresolve`,
+`/auto_merge`, `/ready_for_review`, `/convert_to_draft`). Those are proxy-only
+and key off a comment id rather than GraphQL's thread node id, so anything
+built on them does not run off a normal machine — say so in a comment where
+they are used.
+
+**`gh --paginate` breaks past the first page.** It follows GitHub's
+`Link: rel="next"`, which points at the numeric-ID form
+(`/repositories/{id}/issues?...`), and the proxy rejects that form too. It
+fails loudly (non-zero exit) rather than truncating silently, but it fails.
+Walk pages by hand instead — `&per_page=100&page=N` until a short page arrives.
+
+**Cross-repository endpoints are refused as well.** `search/issues` and friends
+come back `403` with "sessions are bound to their configured repositories". Use
+a repo-scoped endpoint and filter client-side.
+
+The pagination restriction is the one that bites late: a collection that still
+fits one page works, so tooling looks healthy right up until it does not.
+`tools/GitHubApi.psm1` holds the two helpers (`Invoke-GhJson`, `Get-Paged`) so
+the workaround has exactly one copy — import it rather than hand-rolling a
+second. `Get-Paged` refuses a `PageSize` above 100, because GitHub silently
+serves 100 for anything larger and the next short page would read as the end of
+the collection.
+
+**A skill cannot page in a shell loop.** The command-prefix allow rules those
+skills are granted match the first word, so a `for … do … gh api … done` starts
+with `for` and gets bounced to the interactive classifier — the same trap as
+putting `-X POST` before the endpoint. `tools/Get-GhPages.ps1` exists for that:
+it prints a whole collection as one JSON array, the command starts with `pwsh`,
+and it throws rather than truncating when a collection outgrows its page cap.
+
+`tools/` and `.claude/skills/` are clear of all of the above; keep them that
+way. A `gh issue`/`gh pr` one-liner from memory is the likely way it creeps
+back in.
 
 Project slash commands (`/create-issue`, `/kickoff`, `/pr-feedback`, `/self-review`) live in `.claude/skills/`.

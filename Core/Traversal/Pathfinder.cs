@@ -269,11 +269,47 @@ namespace KingdomWatch.Core.Traversal
             ReadOnlySpan<bool> acceptable,
             int radius,
             List<WorldPosition> route,
+            out long cost) =>
+            TryFindNearest(from, mover, acceptable, default, radius, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, int, List{WorldPosition}, out long)"/>,
+        /// restricted to cells the searcher knows: a site only counts as found
+        /// when its terrain is acceptable <i>and</i> <paramref name="known"/>
+        /// says the searcher has seen it.
+        /// </summary>
+        /// <remarks>
+        /// Section 12's bounded map knowledge, at the one point that decides
+        /// what a place-picking search may land on. The route is still allowed
+        /// to run through unknown cells - it is the destination that must be
+        /// known, not the walking - because a searcher that could not path
+        /// across unseen ground would be unable to reach anywhere it had only
+        /// glimpsed the far side of.
+        /// </remarks>
+        /// <param name="known">
+        /// Indexed by grid cell index; true for a cell the searcher knows. An
+        /// empty span means omniscient, which is what the overload without it
+        /// passes.
+        /// </param>
+        public bool TryFindNearest(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            int radius,
+            List<WorldPosition> route,
             out long cost)
         {
             if (route is null)
             {
                 throw new ArgumentNullException(nameof(route));
+            }
+
+            if (!known.IsEmpty && known.Length < _grid.CellCount)
+            {
+                throw new ArgumentException(
+                    "The known mask covers " + known.Length + " cells; the grid has " + _grid.CellCount + ".",
+                    nameof(known));
             }
 
             if (acceptable.Length < DefinedTerrainKinds)
@@ -306,7 +342,7 @@ namespace KingdomWatch.Core.Traversal
             {
                 var current = PopCheapest();
 
-                if (acceptable[(int)_grid.KindAt(current)])
+                if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
                 {
                     cost = _gScore[current];
                     WriteRoute(start, current, route);

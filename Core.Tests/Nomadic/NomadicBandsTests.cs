@@ -38,11 +38,12 @@ namespace KingdomWatch.Core.Tests.Nomadic
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new NomadicBands(null!, w.People, path, w.Founding, w.Demographics.Rng), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, null!, path, w.Founding, w.Demographics.Rng), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, null!, w.Founding, w.Demographics.Rng), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, path, null!, w.Demographics.Rng), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, null!), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(null!, w.People, path, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, null!, path, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, null!, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, null!, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, null!, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, w.Demographics.Rng, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -341,10 +342,10 @@ namespace KingdomWatch.Core.Tests.Nomadic
             var w = new WorkWorld(1UL, grid);
             var start = new WorldPosition(2, 6);
             var south = new WorldPosition(2, 10);
-            Assert.That(w.Nomads.LandScore(south), Is.EqualTo(3), "hills in reach south of the wall");
-            Assert.That(w.Nomads.LandScore(start), Is.EqualTo(2), "forest only north of it");
             var band = w.NewWanderingBand(start, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            Assert.That(w.Nomads.LandScore(band, south), Is.EqualTo(3), "hills in reach south of the wall");
+            Assert.That(w.Nomads.LandScore(band, start), Is.EqualTo(2), "forest only north of it");
 
             AdvanceToCouncil(w, NomadicBands.CampDays);
 
@@ -398,15 +399,25 @@ namespace KingdomWatch.Core.Tests.Nomadic
         public void Land_is_scored_by_the_jobs_that_would_find_a_site()
         {
             var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            var across = new WorldPosition(14, 0);
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Nomads.LandScore(WorkWorld.Camp), Is.EqualTo(3), "plains, forest and hills all within reach");
-                Assert.That(w.Nomads.CanSettleAt(WorkWorld.Camp), Is.True);
-                Assert.That(w.Nomads.LandScore(new WorldPosition(14, 0)), Is.EqualTo(1), "across the river: plains only");
-                Assert.That(w.Nomads.CanSettleAt(new WorldPosition(14, 0)), Is.False, "no wood");
-                Assert.That(() => w.Nomads.LandScore(new WorldPosition(99, 99)), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(w.Nomads.LandScore(band, WorkWorld.Camp), Is.EqualTo(3), "plains, forest and hills all within reach");
+                Assert.That(w.Nomads.CanSettleAt(band, WorkWorld.Camp), Is.True);
+                Assert.That(w.Nomads.LandScore(band, across), Is.EqualTo(0), "across the river, and never seen: nothing counts");
+                Assert.That(w.Nomads.CanSettleAt(band, across), Is.False, "no wood, and no anything");
+                Assert.That(() => w.Nomads.LandScore(band, new WorldPosition(99, 99)), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
+
+            // The land did not change; what the band knows of it did. Scoring
+            // is a reading of the band's map, not a property of the ground.
+            w.KnownMaps.Reveal(band.Id, across, Jobs.MaxSiteRadius);
+
+            Assert.That(w.Nomads.LandScore(band, across), Is.EqualTo(1), "across the river: plains only");
+            Assert.That(w.Nomads.CanSettleAt(band, across), Is.False, "no wood");
         }
 
         [Test]
@@ -474,9 +485,9 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // reach and walks toward the better land.
             var w = new WorkWorld();
             var start = new WorldPosition(14, 8);
-            Assert.That(w.Nomads.LandScore(start), Is.EqualTo(1));
             var band = w.NewWanderingBand(start, WorkWorld.PlentifulFood(2));
             var adults = w.JoinAdults(band, 2);
+            Assert.That(w.Nomads.LandScore(band, start), Is.EqualTo(1));
 
             // Councils up to and including the one that decides to move.
             AdvanceToCouncil(w, NomadicBands.CampDays);
@@ -528,20 +539,62 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // candidate but the hop box's far column, which is exactly
             // sixteen cells from it. Thirteen cells of 168 score two; the
             // band goes to one of them, whatever the seed.
+            //
+            // The forest is revealed to the band up front (#81): twenty cells
+            // is far outside RevealRadius, and a band cannot prefer land whose
+            // merit it has never seen - which is what the fixture below this
+            // one asserts. Scoring differences inside one hop box can only
+            // come from knowledge or from reachability now, never from
+            // distance, because MaxSiteRadius reaches well past anything a
+            // band has walked close enough to see.
             var grid = new TerrainGrid(32, 32, TerrainKind.Plains);
             var camp = new WorldPosition(2, 8);
             var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
             grid.Set(forest, TerrainKind.Forest);
             var w = new WorkWorld(seed, grid);
-            Assert.That(w.Nomads.LandScore(camp), Is.EqualTo(1));
             var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            w.KnownMaps.Reveal(band.Id, forest, 0);
+            Assert.That(w.Nomads.LandScore(band, camp), Is.EqualTo(1));
 
             AdvanceToCouncil(w, NomadicBands.CampDays);
 
             Assert.That(band.Destination, Is.Not.Null);
             Assert.That(band.Destination!.Value.X, Is.EqualTo(camp.X + NomadicBands.HopRadius), "the far column");
-            Assert.That(w.Nomads.LandScore(band.Destination.Value), Is.EqualTo(2));
+            Assert.That(w.Nomads.LandScore(band, band.Destination.Value), Is.EqualTo(2));
+        }
+
+        [TestCase(1UL)]
+        [TestCase(2UL)]
+        [TestCase(3UL)]
+        public void A_hop_cannot_prefer_land_the_band_has_never_seen(ulong seed)
+        {
+            // The fixture above, with the reveal taken away: the same forest,
+            // the same far column that reaches it, and a band that has never
+            // been within RevealRadius of any of it. Section 12 - a band picks
+            // among the cells it knows - so the forest counts for nothing, no
+            // candidate outscores another, and the hop is whichever cell the
+            // keyed draw lands on rather than a beeline toward land the band
+            // has no way to have heard of.
+            var grid = new TerrainGrid(32, 32, TerrainKind.Plains);
+            var camp = new WorldPosition(2, 8);
+            var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
+            grid.Set(forest, TerrainKind.Forest);
+            var w = new WorkWorld(seed, grid);
+            var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(band.Id, forest), Is.False, "twenty cells east of anywhere it has stood");
+                Assert.That(band.Destination, Is.Not.Null, "it still moves; nomads move");
+                Assert.That(
+                    w.Nomads.LandScore(band, band.Destination!.Value),
+                    Is.EqualTo(1),
+                    "the hop gained it nothing, because it could not see what it was walking toward");
+            });
         }
 
         [Test]
@@ -708,6 +761,266 @@ namespace KingdomWatch.Core.Tests.Nomadic
         }
 
         // From tick zero, the n-th council sits at first light on day n - 1.
+        [Test]
+        public void Tracking_reveals_the_ground_the_band_stands_on()
+        {
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            var edge = new WorldPosition(WorkWorld.Camp.X + NomadicBands.RevealRadius, WorkWorld.Camp.Y);
+            var past = new WorldPosition(WorkWorld.Camp.X + NomadicBands.RevealRadius + 1, WorkWorld.Camp.Y);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(band.Id, WorkWorld.Camp), Is.True, "where it stands");
+                Assert.That(w.KnownMaps.Knows(band.Id, edge), Is.True, "out to the reveal radius");
+                Assert.That(w.KnownMaps.Knows(band.Id, past), Is.False, "and no further");
+            });
+        }
+
+        [Test]
+        public void A_hop_reveals_the_ground_the_band_walked_over_not_just_the_two_camps()
+        {
+            // RevealRadius equals HopRadius, so a straight hop lies entirely
+            // inside the square the band already revealed from where it
+            // started - revealing "the path" adds nothing there, and a test on
+            // open ground passes whether or not the path is read at all. It is
+            // a detour that makes the difference: a band walking around a
+            // river passes cells far outside either camp's square.
+            //
+            // A wall down column five to within three rows of the south edge,
+            // with the only good land on the far side of it. The band can see
+            // that land - it is five cells east - but to reach it must walk
+            // south around the wall and back up.
+            const int Size = 32;
+            const int WallColumn = 5;
+            var grid = new TerrainGrid(Size, Size, TerrainKind.Plains);
+
+            for (var y = 0; y <= 28; y++)
+            {
+                grid.Set(new WorldPosition(WallColumn, y), TerrainKind.SmallRiver);
+            }
+
+            var camp = new WorldPosition(2, 10);
+            grid.Set(new WorldPosition(7, 10), TerrainKind.Forest);
+            grid.Set(new WorldPosition(7, 11), TerrainKind.Hills);
+
+            var w = new WorkWorld(1UL, grid);
+            var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            // Well south of the camp and of anywhere east of the wall: only
+            // the walk itself can teach the band this cell.
+            var onTheDetour = new WorldPosition(2, 25);
+            Assert.That(w.KnownMaps.Knows(band.Id, onTheDetour), Is.False, "nothing has been near it yet");
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            var destination = band.Destination;
+            w.AdvanceTo(w.Now.Plus(Day));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination, Is.Not.Null, "the council decided to move");
+                Assert.That(destination!.Value.X, Is.GreaterThan(WallColumn), "toward the only land worth having");
+                Assert.That(band.Position, Is.EqualTo(destination.Value), "and it arrived");
+                Assert.That(w.KnownMaps.Knows(band.Id, band.Position), Is.True, "the new camp");
+                Assert.That(
+                    w.KnownMaps.Knows(band.Id, onTheDetour),
+                    Is.True,
+                    "and the long way round, which neither camp's square covers");
+            });
+        }
+
+        [Test]
+        public void What_a_band_knows_does_not_depend_on_what_another_band_walked()
+        {
+            // One map per holder, and only the mover writes to its own. Two
+            // bands on the same world learn only their own journeys.
+            var w = new WorkWorld();
+            var first = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(first, 1);
+            // Far enough south that neither band's reveal square reaches the
+            // other's camp, and still on a sixteen-cell map.
+            var far = new WorldPosition(WorkWorld.Camp.X, WorkWorld.Height - 1);
+            var second = w.NewWanderingBand(far, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(second, 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(first.Id, WorkWorld.Camp), Is.True);
+                Assert.That(w.KnownMaps.Knows(second.Id, WorkWorld.Camp), Is.False, "it has never been there");
+                Assert.That(w.KnownMaps.Knows(second.Id, far), Is.True);
+                Assert.That(w.KnownMaps.Knows(first.Id, far), Is.False);
+            });
+        }
+
+        [Test]
+        public void The_same_seed_learns_the_same_map()
+        {
+            // Determinism (section 5): reveal follows the route, the route
+            // follows the keyed draw, so the same seed must end knowing
+            // exactly the same cells - not merely the same number of them.
+            var once = KnownAfterWalking(1UL);
+            var again = KnownAfterWalking(1UL);
+
+            Assert.That(again, Is.EqualTo(once));
+        }
+
+        [Test]
+        public void A_band_still_settles_within_a_reasonable_span_now_that_it_must_know_the_land()
+        {
+            // The risk the fog introduces: a band settles only once it knows a
+            // forager's site and a woodcutter's, and it now has to have walked
+            // near them. If RevealRadius were too tight against
+            // Jobs.MaxSiteRadius this would never come true and bands would
+            // wander forever, so the guarantee is worth a test rather than an
+            // argument.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
+            w.JoinAdults(band, 4);
+
+            Assert.That(w.Nomads.CanSettleAt(band, WorkWorld.Camp), Is.True, "it can see food and wood from the first camp");
+            Assert.That(w.Founding.All, Is.Empty, "but not until the pressure is there");
+
+            // Pressure is member-days, so four adults reach the threshold in
+            // SettlingPressure / 4 days; a year's slack covers the councils.
+            var days = (int)(NomadicBands.SettlingPressure / 4L) + (int)SimulationTime.DaysPerYear;
+            w.AdvanceTo(w.Now.Plus(days * Day));
+
+            Assert.That(w.Founding.All, Is.Not.Empty, "a band that can see good land still settles on it");
+        }
+
+        private static int KnownCells(WorkWorld w, MobileGroup band)
+        {
+            var known = w.KnownMaps.For(band.Id);
+            var count = 0;
+
+            for (var i = 0; i < known.Length; i++)
+            {
+                if (known[i])
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static string KnownAfterWalking(ulong seed)
+        {
+            var w = new WorkWorld(seed, WorkWorld.DefaultMap());
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            w.AdvanceTo(w.Now.Plus(3 * (NomadicBands.CampDays + 1) * Day));
+
+            var known = w.KnownMaps.For(band.Id);
+            var chars = new char[known.Length];
+
+            for (var i = 0; i < known.Length; i++)
+            {
+                chars[i] = known[i] ? '1' : '0';
+            }
+
+            return new string(chars);
+        }
+
+        [Test]
+        public void Scoring_land_refuses_a_missing_band_and_one_with_no_map()
+        {
+            // The holder-relative API has the same two refusals as anything
+            // else that takes a band: no band, and a band this world has never
+            // given a map to.
+            var w = new WorkWorld();
+            var stranger = w.NewBand(WorkWorld.Camp, 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Nomads.LandScore(null!, WorkWorld.Camp), Throws.ArgumentNullException);
+                Assert.That(() => w.Nomads.CanSettleAt(null!, WorkWorld.Camp), Throws.ArgumentNullException);
+                Assert.That(() => w.Nomads.LandScore(stranger, WorkWorld.Camp), Throws.InvalidOperationException, "never tracked, so never given a map");
+                Assert.That(() => w.Nomads.CanSettleAt(stranger, WorkWorld.Camp), Throws.InvalidOperationException);
+            });
+        }
+
+        [Test]
+        public void Every_camp_a_council_could_choose_is_one_the_band_has_already_seen()
+        {
+            // Why Score never gates the candidate itself: RevealRadius matches
+            // HopRadius, so the square revealed from where a band stands is
+            // exactly the square it chooses from. If that stops holding - #85
+            // is what would buy a tighter reveal - an unknown candidate could
+            // be scored by known sites near it and beat its unseen neighbours
+            // on knowledge the band does not have, and the candidate would need
+            // a gate of its own. This is the test that should say so.
+            Assert.That(
+                NomadicBands.RevealRadius,
+                Is.GreaterThanOrEqualTo(NomadicBands.HopRadius),
+                "a reveal tighter than the hop box means unknown candidates, which Score does not gate");
+
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            var unknown = 0;
+
+            for (var dy = -NomadicBands.HopRadius; dy <= NomadicBands.HopRadius; dy++)
+            {
+                for (var dx = -NomadicBands.HopRadius; dx <= NomadicBands.HopRadius; dx++)
+                {
+                    var candidate = new WorldPosition(WorkWorld.Camp.X + dx, WorkWorld.Camp.Y + dy);
+
+                    if (candidate.X < 0 || candidate.Y < 0
+                        || candidate.X >= WorkWorld.Width || candidate.Y >= WorkWorld.Height)
+                    {
+                        continue;
+                    }
+
+                    if (!w.KnownMaps.Knows(band.Id, candidate))
+                    {
+                        unknown++;
+                    }
+                }
+            }
+
+            Assert.That(unknown, Is.Zero, "every cell the hop box offers is already revealed");
+        }
+
+        [Test]
+        public void Ground_that_changes_under_a_booked_arrival_is_refused_rather_than_revealed_wrongly()
+        {
+            // The council costs a route when it books the arrival, and the
+            // reveal recomputes that route on landing. Nothing moves terrain
+            // mid-run yet - bridges (#35) will be the first - so this drowns
+            // the corridor by hand to reach the guard. Revealing nothing, or
+            // revealing some other way round, would leave the band's map
+            // quietly wrong; refusing says which band and which cell.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.Not.Null, "the council booked a move");
+
+            // Wall the destination off after the arrival is booked.
+            var grid = w.Demographics.Base.Pathfinder.Grid;
+
+            for (var y = 0; y < WorkWorld.Height; y++)
+            {
+                for (var x = 0; x < WorkWorld.Width; x++)
+                {
+                    var cell = new WorldPosition(x, y);
+
+                    if (cell != band.Destination!.Value)
+                    {
+                        grid.Set(cell, TerrainKind.DeepWater);
+                    }
+                }
+            }
+
+            Assert.That(
+                () => w.AdvanceTo(w.Now.Plus(Day)),
+                Throws.InvalidOperationException.With.Message.Contains("the ground changed under a booked arrival"));
+        }
+
         private static void AdvanceToCouncil(WorkWorld w, int n) =>
             w.AdvanceTo(SimulationTime.FromDays(n - 1L).Plus(NomadicBands.FirstLight));
 

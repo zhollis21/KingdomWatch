@@ -2,7 +2,7 @@
 name: create-issue
 description: "File a GitHub issue that survives contact with the future: interrogate the user for what only they know, verify every claim against the actual repo before writing it down, state the problem rather than decree a fix, label it, and create it. Also audits existing issues against the same bar (`audit <N>` / `audit all`). Use whenever the user wants to file, open, raise, log, or write up an issue, ticket, bug report or piece of tech debt — and whenever a session turns up a problem that isn't going to get fixed right now, even if they didn't use the word 'issue'. Prefer this over calling `gh issue create` directly, always."
 argument-hint: "<what's wrong> | audit <issue number|all>"
-allowed-tools: Bash(gh *) Bash(git *) Bash(grep *) Bash(sed *) Bash(cp *) Bash(diff *) Bash(cat *) Bash(od *) Bash(head *) Read Grep Glob AskUserQuestion
+allowed-tools: Bash(gh *) Bash(pwsh tools/*) Bash(git *) Bash(grep *) Bash(sed *) Bash(cp *) Bash(diff *) Bash(cat *) Bash(od *) Bash(head *) Read Grep Glob AskUserQuestion
 ---
 
 # Create Issue
@@ -96,10 +96,29 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
-gh issue list --state all --search "<topic>" --limit 8 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
-gh pr list --state all --search "<keyword>" --limit 5 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
+  | jq -r --arg topic '<topic>' '.[] | select(.pull_request == null)
+           | select((.title + " " + (.body // "")) | ascii_downcase | contains($topic | ascii_downcase))
+           | "#\(.number) [\(.state)] \(.title)"' | head -8
+# Repo-scoped, then filtered here: the search/ endpoints are refused as well
+# ("sessions are bound to their configured repositories").
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
+  | jq -r --arg keyword '<keyword>' '.[] | select((.title + " " + (.body // "")) | ascii_downcase | contains($keyword | ascii_downcase))
+           | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
 Then, before any line number goes in the body, **open the file and confirm the
@@ -290,7 +309,12 @@ Check what actually exists before proposing anything — this repo is new and ma
 not have a type/priority taxonomy set up yet:
 
 ```bash
-gh label list
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/labels' \
+  | jq -r '.[] | "\(.name)  \(.description)"'
 ```
 
 If a reasonable set exists, propose the full set with a one-line justification
@@ -302,7 +326,7 @@ priority scale) and wait for an explicit yes before creating labels; a label set
 grows once and gets pruned never, so the bar is high.
 
 ```bash
-gh label create "<name>" --description "<description>" --color "<hex>"
+gh api repos/zhollis21/KingdomWatch/labels -f name="<name>" -f description="<description>" -f color="<hex>"
 ```
 
 **Every issue gets a priority** once a priority label exists. If the user
@@ -312,7 +336,7 @@ genuinely can't call it, the lowest priority with a note beats silence.
 
 ## Step 8 — File it
 
-Compose the body in a scratch file and pass it with `--body-file`. This is not
+Compose the body in a scratch file and pass it with `-F body=@<file>`. This is not
 style: shell-quoted issue bodies routinely get mangled — every backtick becomes
 `\`, or quotes get doubled — because the body went through inline shell quoting. A
 file round-trip has no such failure mode.
@@ -327,21 +351,24 @@ stray issue body can never end up in a commit:
 
 ```bash
 # Write the body to a scratch file first, then:
-gh issue create \
-  --title "<title>" \
-  --body-file "<scratch>/issue-body.md" \
-  --label "<type>" --label "<priority>"
+# REST: every `gh issue`/`gh pr`/`gh label` subcommand is GraphQL-backed and is
+# refused from a Claude Code session. See AGENTS.md, "Calling the GitHub API
+# from a Claude Code cloud session".
+gh api repos/zhollis21/KingdomWatch/issues \
+  -f title="<title>" \
+  -F body=@"<scratch>/issue-body.md" \
+  -f "labels[]=<type>" -f "labels[]=<priority>"
 ```
 
 Then read it back and look at it, because a rendering problem is invisible in the
 source and permanent in the issue:
 
 ```bash
-gh issue view <N> | head -40
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq '"#\(.number) \(.title) [\(.state)]", .body' | head -40
 ```
 
 Report the URL and the labels set. If the body came out wrong, fix it with
-`gh issue edit <N> --body-file` immediately — before the user has to notice.
+`gh api … -X PATCH -F body=@<file>` immediately — before the user has to notice.
 
 Then wire the dependencies agreed in Step 5 as native relationships — the
 roadmap and the `blocked` label derive from these, not from prose:
@@ -365,7 +392,7 @@ published as *ready*, and a regeneration would make that public before anyone
 looked.
 
 Only once the list matches: relationship edits do not trigger the roadmap
-workflow, so finish with `gh workflow run roadmap.yml` (the issue-opened event
+workflow, so finish with `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main` (the issue-opened event
 already fired, but before the relationships existed).
 
 For a split from Step 4, file all of them, then edit the `## Related` sections to
@@ -411,15 +438,15 @@ Present per issue: what you verified, what's wrong, and a specific recommended
 action — _edit the body_, _add labels_, _close as fixed by `<sha>`_, _merge into
 #N_, _leave it_. Then act only on what the user approves.
 
-When editing an approved body, `gh issue edit --body-file` **replaces the whole
+When editing an approved body, `gh api … -X PATCH -F body=@<file>` **replaces the whole
 body** — so fetch, edit in place, diff, and only then write back.
 
 ```bash
-gh issue view <N> --json body --jq .body > "<scratch>/issue-<N>.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq .body > "<scratch>/issue-<N>.md"
 cp "<scratch>/issue-<N>.md" "<scratch>/issue-<N>.orig.md"
 # edit issue-<N>.md, then:
 diff "<scratch>/issue-<N>.orig.md" "<scratch>/issue-<N>.md"
-gh issue edit <N> --body-file "<scratch>/issue-<N>.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> -X PATCH -F body=@"<scratch>/issue-<N>.md"
 ```
 
 If the diff shows anything you didn't deliberately change, don't write it back.

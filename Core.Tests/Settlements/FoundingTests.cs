@@ -25,12 +25,13 @@ namespace KingdomWatch.Core.Tests.Settlements
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Founding(null!, w.Deaths, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, null!, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, null!, w.Hunger, w.Jobs, d.Matchmaking), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, null!, w.Jobs, d.Matchmaking), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, null!, d.Matchmaking), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Jobs, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(null!, w.Deaths, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, null!, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, null!, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, null!, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, null!, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Jobs, null!, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -316,6 +317,56 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1), "nothing untracked");
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
                 Assert.That(() => w.Founding.Found(band, Why), Throws.Nothing, "at rest again");
+            });
+        }
+
+        [Test]
+        public void Founding_hands_the_bands_map_to_the_settlement()
+        {
+            // Section 12: at founding the settlement takes the map over, the
+            // same handover as members and stock. Exactly what the band knew,
+            // no more - a settlement that gained cells nobody walked would be
+            // omniscience arriving by the back door.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
+            w.JoinAdults(band, 4);
+            var seen = new WorldPosition(WorkWorld.Camp.X + 1, WorkWorld.Camp.Y + 1);
+            var unseen = new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1);
+
+            Assert.That(w.KnownMaps.Knows(band.Id, seen), Is.True, "revealed when it was tracked");
+            Assert.That(w.KnownMaps.Knows(band.Id, unseen), Is.False, "the far corner never was");
+
+            var settlement = w.Founding.Found(band, Why);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.IsTracked(settlement.Id), Is.True);
+                Assert.That(w.KnownMaps.Knows(settlement.Id, seen), Is.True, "what the band knew");
+                Assert.That(w.KnownMaps.Knows(settlement.Id, unseen), Is.False, "and nothing it did not");
+                Assert.That(w.KnownMaps.IsTracked(band.Id), Is.False, "the band is the settlement now, not beside it");
+            });
+        }
+
+        [Test]
+        public void A_band_that_never_wandered_founds_a_settlement_that_knows_nothing()
+        {
+            // Founding is public and does not require NomadicBands, so a band
+            // can reach it without ever having been given a map. The
+            // settlement still gets one - every community that picks places
+            // needs somewhere to read from - and it is empty rather than
+            // absent, because an absent map reads as omniscient.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 30);
+            w.JoinAdults(band, 4);
+
+            Assert.That(w.KnownMaps.IsTracked(band.Id), Is.False, "it never wandered");
+
+            var settlement = w.Founding.Found(band, Why);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.IsTracked(settlement.Id), Is.True);
+                Assert.That(w.KnownMaps.Knows(settlement.Id, WorkWorld.Camp), Is.False, "not even the ground it stands on");
             });
         }
     }

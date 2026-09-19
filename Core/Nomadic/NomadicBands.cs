@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
@@ -56,13 +57,31 @@ namespace KingdomWatch.Core.Nomadic
     /// route costed into a travel time, one arrival event - is what #35's
     /// founding parties and M4's armies reuse.
     ///
-    /// **A band sees its whole hop box, for now.** Section 12's bounded map
-    /// knowledge says a community picks places among the cells it knows;
-    /// that map is #81's, and until it exists the council reads the grid
-    /// directly, as <see cref="Jobs"/> finds the nearest forest without
-    /// anyone looking. #81 replaces the candidate scan and the land check
-    /// with reads of the band's known cells; the council, the scoring and
-    /// the arrival stay.
+    /// **A band scores only what it knows** (#81). Section 12's bounded map
+    /// knowledge: a site counts toward a cell's score only if the band has
+    /// seen it, so a council rates the land it has walked rather than the
+    /// world. The band reveals <see cref="RevealRadius"/> around wherever it
+    /// stands and around every cell of a hop it walks.
+    ///
+    /// **Every candidate is one the band has already seen**, so nothing gates
+    /// the candidate itself. <see cref="RevealRadius"/> matches
+    /// <see cref="HopRadius"/>, which makes the square a band reveals from
+    /// where it stands exactly the square it picks its next camp from: an
+    /// unknown candidate does not arise. What the fog changes is the
+    /// *scoring* - a site counts toward a cell's score only if the band has
+    /// seen the site - which is how a band can stand a few cells from good
+    /// land and still have no idea it is there.
+    ///
+    /// Should <see cref="RevealRadius"/> ever drop below
+    /// <see cref="HopRadius"/> - #85, something that goes looking on purpose,
+    /// is what would buy that - unknown candidates become reachable, and one
+    /// scored by known sites near it would beat its unseen neighbours on
+    /// knowledge the band does not have. The test that pins this invariant is
+    /// what will say so.
+    ///
+    /// <see cref="Jobs"/> still finds work sites by reading the grid: whether
+    /// section 12's rule reaches work sites at all is #84, and binding them
+    /// naively would stop a settled community's map ever growing.
     ///
     /// **Camps embody wood.** Making camp takes up to <see cref="CampWood"/>
     /// from the band's stock and embodies it - section 9's temporary camp,
@@ -97,6 +116,22 @@ namespace KingdomWatch.Core.Nomadic
         /// <summary>How far, in cells, a band looks for its next camp.</summary>
         public const int HopRadius = 6;
 
+        /// <summary>
+        /// How far, in cells, a band sees around wherever it stands or walks.
+        /// Section 12: reveal is passive, so this is the only thing widening a
+        /// band's map.
+        /// </summary>
+        /// <remarks>
+        /// Matched to <see cref="HopRadius"/> so a band always knows the ground
+        /// it could hop to next. It cannot go much tighter while reveal stays
+        /// passive: a band only settles once it knows a forager's site and a
+        /// woodcutter's, each within <see cref="Jobs.MaxSiteRadius"/> of the
+        /// camp, so a smaller radius trades directly against whether a band
+        /// ever settles at all. #85 - something that goes looking on purpose -
+        /// is what would buy a tighter one.
+        /// </remarks>
+        public const int RevealRadius = 6;
+
         /// <summary>Wood a camp embodies, if the band has it.</summary>
         public const int CampWood = 5;
 
@@ -119,6 +154,7 @@ namespace KingdomWatch.Core.Nomadic
         private readonly TerrainGrid _grid;
         private readonly Founding _founding;
         private readonly DeterministicRng _rng;
+        private readonly KnownMaps _knownMaps;
 
         // A list, scanned by id, for the reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
@@ -134,13 +170,15 @@ namespace KingdomWatch.Core.Nomadic
             PersonStore people,
             Pathfinder pathfinder,
             Founding founding,
-            DeterministicRng rng)
+            DeterministicRng rng,
+            KnownMaps knownMaps)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
             _founding = founding ?? throw new ArgumentNullException(nameof(founding));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
+            _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _clock = bus.Clock;
             _grid = pathfinder.Grid;
             _scratchRoute = new List<WorldPosition>(_grid.CellCount);
@@ -201,6 +239,16 @@ namespace KingdomWatch.Core.Nomadic
                 _clock.Now.Plus(TicksUntil(FirstLight, _clock.Now)), Phase, ScheduledEventKind.CouncilDue, band.Id, EntityId.None);
             var tracked = new Tracked(band) { PendingCouncil = council };
             _tracked.Add(tracked);
+
+            // A band is its own holder until there are polities (#39). Only on
+            // the first Track: a band untracked and tracked again keeps what it
+            // learned, since it did not stop existing in between.
+            if (!_knownMaps.IsTracked(band.Id))
+            {
+                _knownMaps.Track(band.Id);
+            }
+
+            _knownMaps.Reveal(band.Id, band.Position, RevealRadius);
             PitchCamp(tracked);
         }
 
@@ -232,20 +280,31 @@ namespace KingdomWatch.Core.Nomadic
         public int DaysAtCamp(MobileGroup band) => TrackedFor(band).DaysAtCamp;
 
         /// <summary>
-        /// How many of the three jobs would find a site from a position:
-        /// the land score a council uses. Throws for a position off the map.
+        /// How many of the three jobs this band would find a site for from a
+        /// position, counting only cells the band knows. Throws for a position
+        /// off the map, or a band with no map.
         /// </summary>
-        public int LandScore(WorldPosition at) => Score(at, out _);
+        /// <remarks>
+        /// Holder-relative rather than a property of the land, because under
+        /// section 12 there is no such thing as what a cell is worth to
+        /// nobody - two bands standing on the same cell score it differently
+        /// when one has walked further.
+        /// </remarks>
+        public int LandScore(MobileGroup band, WorldPosition at) =>
+            Score(_knownMaps.For(BandId(band)), at, out _);
 
         /// <summary>
-        /// Whether a band could settle at a position: a forager and a
-        /// woodcutter would both find a site from it.
+        /// Whether this band could settle at a position: it knows a forager's
+        /// site and a woodcutter's within reach of it.
         /// </summary>
-        public bool CanSettleAt(WorldPosition at)
+        public bool CanSettleAt(MobileGroup band, WorldPosition at)
         {
-            Score(at, out var viable);
+            Score(_knownMaps.For(BandId(band)), at, out var viable);
             return viable;
         }
+
+        private static EntityId BandId(MobileGroup band) =>
+            band is null ? throw new ArgumentNullException(nameof(band)) : band.Id;
 
         /// <summary>
         /// A settlement founded from a tracked band ends its wandering: the
@@ -335,7 +394,7 @@ namespace KingdomWatch.Core.Nomadic
             // into; on the world's last days the band stays a band.
             if (tracked.Pressure >= SettlingPressure
                 && Founding.HasRoomForStreams(now)
-                && CanSettleAt(band.Position))
+                && CanSettleAt(band, band.Position))
             {
                 // Founding takes the band off every other tracker and
                 // refuses before touching anything if it cannot; this class
@@ -396,6 +455,37 @@ namespace KingdomWatch.Core.Nomadic
                     band.Id + " arrived at " + (band.Destination?.ToString() ?? "nowhere") + ", but the council sent it to " + tracked.Booked + ".");
             }
 
+            // Revealed here rather than at departure, and recomputed rather
+            // than kept: TryChooseCamp pathfinds every candidate into one
+            // shared buffer, so once it returns the buffer holds whichever
+            // candidate the scan ended on, not the one it picked. The same
+            // inputs through the same deterministic search give the route the
+            // band actually walked. Arrival rather than departure because a
+            // band cannot decide anything while travelling - a council refuses
+            // to sit - so the whole path landing at once is indistinguishable
+            // from revealing it stride by stride, which is what section 4's
+            // LOD equivalence asks for.
+            //
+            // While RevealRadius equals HopRadius this only earns its keep on a
+            // DETOUR: a straight hop never leaves the square already revealed
+            // from the old camp, so the two Reveal calls either side would
+            // cover it. A band walking around a river does leave it, and those
+            // cells are known only because the route was read.
+            // The council costed a route to this very cell when it booked the
+            // arrival, so one exists unless the ground changed underneath it.
+            // Nothing changes terrain mid-run today - bridges (#35) will be the
+            // first - and a silent skip here would leave the band's map quietly
+            // missing the walk instead of saying so.
+            if (!_pathfinder.TryFindRoute(band.Position, destination, Jobs.Mover, _scratchRoute, out _))
+            {
+                throw new InvalidOperationException(
+                    band.Id + " has no route from " + band.Position + " to " + destination
+                    + ", which its council costed one to; the ground changed under a booked arrival.");
+            }
+
+            _knownMaps.RevealAlong(band.Id, _scratchRoute, RevealRadius);
+            _knownMaps.Reveal(band.Id, destination, RevealRadius);
+
             band.Position = destination;
             band.Destination = null;
 
@@ -438,6 +528,11 @@ namespace KingdomWatch.Core.Nomadic
             var from = band.Position;
             var key = _rng.Key(RandomDomain.Wandering).Mix(band.Id).Mix(_clock.Now.DayNumber);
 
+            // Fetched once for the whole scan rather than per cell: the look
+            // scores every candidate in the hop box, each with a site search
+            // per job, so a lookup inside Score would be the hot path.
+            var known = _knownMaps.For(band.Id);
+
             chosen = from;
             travelTicks = 0L;
             var bestScore = -1;
@@ -464,7 +559,7 @@ namespace KingdomWatch.Core.Nomadic
                         continue;
                     }
 
-                    var score = Score(candidate, out _);
+                    var score = Score(known, candidate, out _);
 
                     if (score > bestScore)
                     {
@@ -498,7 +593,7 @@ namespace KingdomWatch.Core.Nomadic
 
         // How many jobs would find a site from here, and whether the two
         // that make a camp settle-able - food and wood - both would.
-        private int Score(WorldPosition at, out bool viable)
+        private int Score(ReadOnlySpan<bool> known, WorldPosition at, out bool viable)
         {
             var score = 0;
             var food = false;
@@ -508,7 +603,7 @@ namespace KingdomWatch.Core.Nomadic
             {
                 var job = Jobs.Priority[i];
 
-                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), Jobs.MaxSiteRadius, _scratchRoute, out _))
+                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, Jobs.MaxSiteRadius, _scratchRoute, out _))
                 {
                     continue;
                 }
