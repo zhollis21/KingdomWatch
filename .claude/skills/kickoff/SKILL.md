@@ -302,6 +302,37 @@ Come up with at least one genuine alternative before settling. If the issue's
 option really is best, saying _why_ it beat the alternative is far more useful
 than saying it was the only thing considered.
 
+**Read the code each option would touch, before judging any of them.** This is
+the step that is easiest to skip and most expensive to have skipped, because an
+issue's options were written from the code as it stood months ago and read as
+though they still describe it. Most of them quietly assert something — that a
+piece of state exists, that a system has somewhere to put a field, that a seam
+is available, that a value is pinned by a test. Those assertions are the whole
+basis of the tradeoff, and every one of them is checkable in a couple of
+minutes.
+
+So for each option, open the files it would change and write down what you
+found:
+
+- **The state it assumes exists.** Go and look at it. "`Fertility`'s
+  per-household state has somewhere to keep the id" turned out to be false —
+  it tracks communities, and the stream is keyed per household — which moved
+  that option from cheap to the same cost as the one the issue called
+  expensive.
+- **The home it assumes is available.** A "record it during harness runs"
+  option needs the harness to run the thing being recorded. Check.
+- **The constraint it assumes binds.** "Must not change draw values" is worth
+  dating the same way Step 2 dates a design-doc decision: a constraint that was
+  true when written can be free now and expensive later.
+- **What would actually break.** Grep for the pinned values, golden files and
+  saved fixtures the change would invalidate. "This rewrites every saved world"
+  and "this rewrites four numbers in one test, and no saved world exists yet"
+  are different decisions wearing the same words.
+
+An option you have not checked this way is not an option yet — it is a
+paraphrase of the ticket. Offering it as one asks the user to arbitrate between
+descriptions neither of you has confirmed.
+
 Check candidate approaches against the conventions that actually bite here (see
 `AGENTS.md` and the design doc):
 
@@ -331,6 +362,34 @@ short overview in the conversation so the user is answering from the same pictur
 you are. A question arriving cold — "refuse or queue nested publishes?" — asks the
 user to reconstruct the whole problem in their head before they can answer it;
 the same question after two paragraphs of context is answerable in a sentence.
+
+**The failure this prevents, stated plainly, because it is the easy thing to
+do:** read the issue, lift its **A / B / C** into a question box, ask which one
+the user wants. It looks like consulting them and is the opposite. The options
+came from the ticket rather than from the code, nobody has checked whether they
+still describe reality, and the user is being asked to pick between three
+summaries you have not verified — so their answer cannot be better than the
+ticket was. The tell is that when they reply "explain more" or "I need more
+info", the reading you do *then* changes your own recommendation. Everything
+that reading would have found was available before the question was asked.
+
+Before the first `AskUserQuestion`, all of these must hold:
+
+- [ ] **Every option names a file you opened.** Not the design doc, not
+      `AGENTS.md` — the code it would change. If you cannot cite one, you are
+      about to quote the ticket back.
+- [ ] **No option's premise is still an assumption.** Step 3's checks are done
+      and written down, including the ones that killed an option.
+- [ ] **Anything greppable is already settled.** If reading the repo answers
+      it, it is not a question; it is a sentence in the brief.
+- [ ] **Each option's real cost is known**, not its cost as the ticket
+      described it.
+- [ ] **You have a recommendation and a reason.** No recommendation usually
+      means the analysis is not finished, and a menu is being offered in place
+      of a judgement.
+
+A question that survives all five is worth the user's attention. One that does
+not is a request for them to do Step 3 for you.
 
 The brief covers, in this order and briefly:
 
