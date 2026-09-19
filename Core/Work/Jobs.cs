@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Traversal;
 
@@ -51,9 +52,10 @@ namespace KingdomWatch.Core.Work
     /// that a grid change mid-task (a bridge, one day) cannot put someone on
     /// the far side of a river they never crossed.
     ///
-    /// **Sites are per band, per job, found at dawn.** The cheapest cell the
-    /// job works on that a route reaches within <see cref="MaxSiteRadius"/>
-    /// - one bounded search per job (<see cref="Pathfinder.TryFindNearest"/>),
+    /// **Sites are per band, per job, found at dawn, and known.** The
+    /// cheapest cell the job works on that the community has seen and that a
+    /// route reaches within <see cref="MaxSiteRadius"/> - one bounded search
+    /// per job (<see cref="Pathfinder.TryFindNearest"/>),
     /// however many candidates there are and whether or not any of them
     /// connect - so every worker on a job walks the same route to the same
     /// cell. Three searches per band per day rather than one per task, and
@@ -63,6 +65,17 @@ namespace KingdomWatch.Core.Work
     /// them again first - so a band that moves (#54) need not tell anyone;
     /// <see cref="RefreshSites"/> is there for a caller that wants the new
     /// sites before the next pick.
+    ///
+    /// **A work site is one of section 12's place-picking decisions.** The
+    /// site must be a cell the community knows; the route to it need not be,
+    /// so a band can work something it has only glimpsed the near edge of.
+    /// The trip then reveals <see cref="RevealRadius"/> around its whole
+    /// route, which is how a settled community's map grows at all once it
+    /// stops wandering. Only as far as the work goes, though: foraging on
+    /// plains is worked underfoot, so a settlement that knows no forest and
+    /// no hills makes no trips and learns nothing. Founding softens that - a
+    /// band only settles where it already knows food and wood - and #85's
+    /// deliberate scouting is section 12's real answer to it.
     ///
     /// **A task starts and ends where the band stood when it started.** The
     /// worker walks out from the band's position and back to it, and that
@@ -141,6 +154,21 @@ namespace KingdomWatch.Core.Work
         public const int MaxSiteRadius = 16;
 
         /// <summary>
+        /// How far a worker on the road sees, in cells. Section 12 names
+        /// "foragers and hunters working out from a settlement" among the
+        /// things that reveal, and this is how far they reveal.
+        /// </summary>
+        /// <remarks>
+        /// Its own constant rather than <see cref="Nomadic.NomadicBands.RevealRadius"/>,
+        /// which happens to be the same number today: a band on the march and
+        /// a forager on a day trip are different sights, and deliberate
+        /// scouting (#85) is likely to want to tell them apart. If the two are
+        /// ever meant to move together, say so here rather than leaving it to
+        /// coincidence.
+        /// </remarks>
+        public const int RevealRadius = 6;
+
+        /// <summary>
         /// Both kinds run in the physical phase: a completion is a resource
         /// change, and the dawn pass starts the tasks that will be.
         /// </summary>
@@ -160,6 +188,7 @@ namespace KingdomWatch.Core.Work
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
         private readonly Pathfinder _pathfinder;
+        private readonly KnownMaps _knownMaps;
         private readonly TerrainGrid _grid;
 
         // A list, scanned by id, for the same reason Hunger's is.
@@ -173,11 +202,12 @@ namespace KingdomWatch.Core.Work
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
 
-        public Jobs(SimulationClock clock, PersonStore people, Pathfinder pathfinder)
+        public Jobs(SimulationClock clock, PersonStore people, Pathfinder pathfinder, KnownMaps knownMaps)
         {
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _people = people ?? throw new ArgumentNullException(nameof(people));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
+            _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _grid = pathfinder.Grid;
         }
 
@@ -336,10 +366,17 @@ namespace KingdomWatch.Core.Work
 
             RequireStandable(from);
 
+            // Section 12's map belongs to the community, not to Jobs: a band's
+            // own tracking makes it, and a settlement takes it over at
+            // founding. Work only reads it - a community with none has never
+            // seen anywhere to work, and KnownMaps says so rather than
+            // quietly finding nowhere.
+            var known = _knownMaps.For(tracked.Group.Id);
+
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                FindSite(from, job, SiteOf(tracked, job));
+                FindSite(from, known, job, SiteOf(tracked, job));
             }
 
             tracked.SitesFrom = from;
@@ -553,6 +590,12 @@ namespace KingdomWatch.Core.Work
             slot.CopyRoute(site.Route);
             _people.SetJob(worker, job);
             tracked.OnDuty[(int)job]++;
+
+            // Section 12: reveal is computed from the scheduled movement, at
+            // the moment it is scheduled, so a stepped agent walking the same
+            // route reveals the same cells. The way home is the way out
+            // reversed, so one walk of the route covers the round trip.
+            _knownMaps.RevealAlong(tracked.Group.Id, site.Route, RevealRadius);
             return true;
         }
 
@@ -561,18 +604,11 @@ namespace KingdomWatch.Core.Work
         // everyone with a task is about to deliver its output.
         private JobKind ChooseJob(Tracked tracked, long ticksUntilDusk)
         {
+            // At least one: the dawn pass counts before anything starts, and
+            // a pick follows either that pass - which only offers a living
+            // member - or a completion, which only a worker started at that
+            // pass can reach. So the daily draw in Needed is never zero.
             var living = tracked.Living;
-
-            // The dawn pass counts before anything picks, and every pick
-            // follows a pass or a completion, so a band that is picking has
-            // been counted. Zero here would divide by zero in Needed, so it
-            // is a broken invariant rather than an empty band.
-            if (living <= 0)
-            {
-                throw new InvalidOperationException(
-                    "Band " + tracked.Group.Id + " is picking a job with " + living
-                    + " living members counted; the dawn pass counts before any pick.");
-            }
 
             for (var i = 0; i < Priority.Count; i++)
             {
@@ -630,8 +666,8 @@ namespace KingdomWatch.Core.Work
             tracked.Living = living;
         }
 
-        // The picker is alive and a member, so living is at least one and the
-        // daily draw is never zero.
+        // Living is at least one wherever this is reached (see ChooseJob), so
+        // the daily draw is never zero.
         private bool Needed(Tracked tracked, JobKind job, ResourceLedger ledger, int living)
         {
             switch (job)
@@ -683,10 +719,10 @@ namespace KingdomWatch.Core.Work
         // stops at the first the job accepts. The way home is the same cells
         // in the other order, and costs what they cost entered from that
         // side - the camp cell instead of the site cell, at the least.
-        private void FindSite(WorldPosition from, JobKind job, Site site)
+        private void FindSite(WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
         {
             site.Reachable = _pathfinder.TryFindNearest(
-                from, Mover, JobTable.Terrain(job), MaxSiteRadius, site.Route, out var cost);
+                from, Mover, JobTable.Terrain(job), known, MaxSiteRadius, site.Route, out var cost);
 
             if (!site.Reachable)
             {

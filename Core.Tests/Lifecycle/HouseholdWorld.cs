@@ -3,6 +3,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.History;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Traversal;
@@ -44,7 +45,8 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // somewhere pass their own (Work.WorkWorld).
             Grid = grid;
             Pathfinder = new Pathfinder(Grid, TerrainRules.Default);
-            Jobs = new Jobs(Clock, People, Pathfinder);
+            KnownMaps = new KnownMaps(Grid);
+            Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps);
             Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households, Jobs);
         }
 
@@ -75,6 +77,8 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         internal Pathfinder Pathfinder { get; }
 
         internal Jobs Jobs { get; }
+
+        internal KnownMaps KnownMaps { get; }
 
         internal Deaths Deaths { get; }
 

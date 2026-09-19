@@ -931,7 +931,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // else that takes a band: no band, and a band this world has never
             // given a map to.
             var w = new WorkWorld();
-            var stranger = w.NewBand(WorkWorld.Camp, 0);
+            var stranger = w.NewUnmappedBand(WorkWorld.Camp, 0);
 
             Assert.Multiple(() =>
             {

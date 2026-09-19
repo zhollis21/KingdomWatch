@@ -23,9 +23,10 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Jobs(null!, w.People, pathfinder), Throws.ArgumentNullException);
-                Assert.That(() => new Jobs(w.Clock, null!, pathfinder), Throws.ArgumentNullException);
-                Assert.That(() => new Jobs(w.Clock, w.People, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(null!, w.People, pathfinder, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, null!, pathfinder, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, w.People, null!, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, w.People, pathfinder, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -693,6 +694,8 @@ namespace KingdomWatch.Core.Tests.Work
                 w.Demographics.Base.Ids.Next(EntityKind.Person), WorkWorld.Camp, 100, AgeStage.Adult, Sex.Male, 0, 0,
                 SimulationTime.Zero, 0L);
             band.AddMember(adult);
+            w.KnownMaps.Track(band.Id);
+            w.KnownMaps.Reveal(band.Id, WorkWorld.Camp, Jobs.RevealRadius);
             var end = new SimulationTime(long.MaxValue);
             var lastDawn = new SimulationTime(end.Ticks - end.TickOfDay + Jobs.Dawn);
             w.Clock.AdvanceTo(lastDawn.Plus(-1L), w.Router);
@@ -813,6 +816,10 @@ namespace KingdomWatch.Core.Tests.Work
             var w = new WorkWorld(1UL, grid);
             var band = w.NewBand(camp, WorkWorld.PlentifulFood(1));
             w.Join(band, 30L);
+
+            // Both cells known, so the search radius is the only thing that
+            // can rule either out; the fog is the next fixture's subject.
+            w.KnownMaps.Reveal(band.Id, camp, Jobs.MaxSiteRadius + 1);
 
             w.AdvanceToDawn();
 
@@ -1060,6 +1067,221 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.Forager));
                 Assert.That(w.People.GetJob(adults[2]), Is.EqualTo(JobKind.Forager), "still feeding the six counted at dawn");
             });
+        }
+
+        // ---------------------------------------------------------------
+        // Bounded map knowledge at the work site (#84). Section 12's rule is
+        // that every decision picking a place picks among cells the holder
+        // knows; work sites were the one such decision still reading the
+        // whole world. The band's own trips are what move the frontier.
+        // ---------------------------------------------------------------
+
+        [Test]
+        public void A_site_the_band_has_never_seen_is_not_worked()
+        {
+            // The only forest is ten cells out: inside the search radius,
+            // outside anything the band has seen. It is not a site until the
+            // band has seen it, and then it is.
+            var w = new WorkWorld(1UL, FogMap());
+            var band = w.NewBand(FogCamp, WorkWorld.PlentifulFood(1));
+            w.Join(band, 30L);
+
+            Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False, "not tracked yet, and nothing seen that far");
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(band.Id, FogForest), Is.False, "sixteen cells out, and it sees six");
+                Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False);
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.True, "plains underfoot are always known");
+            });
+
+            w.KnownMaps.Reveal(band.Id, FogForest, 0);
+            w.Jobs.RefreshSites(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.True);
+                Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(FogForest));
+            });
+        }
+
+        [Test]
+        public void The_walking_may_cross_unknown_ground_the_destination_may_not()
+        {
+            // One seen cell at the edge of the radius, with a band of fog
+            // between it and the camp. The band works it: section 12
+            // restricts where a search may land, not what it may walk over -
+            // a searcher that could not cross unseen ground could never reach
+            // anywhere it had only glimpsed the far side of.
+            var w = new WorkWorld(1UL, FogMap());
+            var band = w.NewBand(FogCamp, WorkWorld.PlentifulFood(1));
+            var cutter = w.Join(band, 30L);
+            w.KnownMaps.Reveal(band.Id, FogForest, 0);
+            var between = new WorldPosition(FogCamp.X + Jobs.RevealRadius + 2, FogCamp.Y);
+
+            Assert.That(w.KnownMaps.Knows(band.Id, between), Is.False, "fog between the camp and the far cell");
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(w.Jobs.TaskOf(cutter).Destination, Is.EqualTo(FogForest));
+            });
+        }
+
+        [Test]
+        public void A_work_trip_reveals_the_ground_it_covers()
+        {
+            // Section 12 counts "foragers and hunters working out from a
+            // settlement" among the things that reveal, and nothing in Jobs
+            // used to reveal anything. A trip to the far forest widens the
+            // band's map around the whole route, so the frontier creeps
+            // outward on the strength of the work itself.
+            var w = new WorkWorld(1UL, FogMap());
+            var band = w.NewBand(FogCamp, WorkWorld.PlentifulFood(1));
+            var cutter = w.Join(band, 30L);
+            w.KnownMaps.Reveal(band.Id, FogForest, 0);
+
+            // Halfway along, in the fog between the camp's reveal square and
+            // the site's, and off the line the route walks: within reach of
+            // the road and of neither end of it, so only a reveal that
+            // follows the route can bring it into view.
+            var besideTheRoad = new WorldPosition(
+                FogCamp.X + (Jobs.MaxSiteRadius / 2), FogCamp.Y + Jobs.RevealRadius);
+            Assert.That(w.KnownMaps.Knows(band.Id, besideTheRoad), Is.False);
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "the trip is what does the revealing");
+                Assert.That(w.KnownMaps.Knows(band.Id, besideTheRoad), Is.True);
+                Assert.That(
+                    w.KnownMaps.Knows(band.Id, new WorldPosition(FogCamp.X + (Jobs.MaxSiteRadius / 2), FogCamp.Y)),
+                    Is.True,
+                    "and the ground it walked over itself");
+            });
+        }
+
+        [Test]
+        public void A_band_with_no_map_is_refused_its_work_day()
+        {
+            // Section 12's map belongs to the community. Jobs only reads it,
+            // so a band nobody gave one to is a wiring gap, named at the dawn
+            // that needs it rather than left to find nowhere to work.
+            var w = new WorkWorld();
+            var band = w.NewUnmappedBand(WorkWorld.Camp, 30);
+            w.Join(band, 30L);
+
+            Assert.That(() => w.AdvanceToDawn(), Throws.InvalidOperationException);
+        }
+
+        [Test]
+        public void A_community_that_has_seen_nothing_has_nowhere_to_work()
+        {
+            // An empty map is a real state, not a broken one - a settlement
+            // founded by a band that never wandered starts with exactly that.
+            // It is not omniscience: there is nowhere to work at all, not even
+            // the plains the band is standing on.
+            var w = new WorkWorld();
+            var band = w.NewUnmappedBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.KnownMaps.Track(band.Id);
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False, "not even underfoot");
+                Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False);
+                Assert.That(w.Jobs.HasSite(band, JobKind.StoneGatherer), Is.False);
+                Assert.That(w.Jobs.HasTask(adult), Is.False);
+            });
+        }
+
+        [Test]
+        public void A_settlements_map_keeps_growing_on_the_strength_of_its_work()
+        {
+            // Section 12's constraint on this rule: whatever restricts a work
+            // site must not freeze a settled community's map, or the
+            // exploration motive stops existing the moment bands stop
+            // wandering. The settlement takes over what the band knew, and its
+            // own work trips are what widen it from there.
+            var w = new WorkWorld(1UL, FogMap());
+            var band = w.NewWanderingBand(FogCamp, WorkWorld.PlentifulFood(4));
+            w.JoinAdults(band, 4);
+            w.KnownMaps.Reveal(band.Id, FogForest, 0);
+            var settlement = w.Founding.Found(band, new Reasons(ReasonCode.FoodShortage));
+            var before = KnownCells(w, settlement.Id);
+
+            w.AdvanceToDawn();
+
+            Assert.That(KnownCells(w, settlement.Id), Is.GreaterThan(before), "the work widened the map");
+        }
+
+        [Test]
+        public void A_settlement_with_nothing_known_worth_walking_to_stops_growing()
+        {
+            // The limit of the rule above, recorded rather than left to be
+            // discovered: reveal rides on trips, so a community whose only
+            // work is underfoot makes no trips and learns nothing. Foraging on
+            // plains is worked where the band stands, so a settlement that
+            // knows no forest and no hills sees exactly what it saw on the day
+            // it was founded, for ever.
+            //
+            // Section 12 answers this with a deliberate Scouting purpose
+            // (#85), which is why that issue exists; founding softens it
+            // meanwhile, since a band only settles where it already knows both
+            // food and wood, so a real settlement starts with somewhere to
+            // walk to. Expect this test to change when #85 lands.
+            var w = new WorkWorld(1UL, FogMap());
+            var band = w.NewWanderingBand(FogCamp, WorkWorld.PlentifulFood(4));
+            w.JoinAdults(band, 4);
+            var settlement = w.Founding.Found(band, new Reasons(ReasonCode.FoodShortage));
+            var before = KnownCells(w, settlement.Id);
+
+            w.AdvanceToDawn();
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.HasSite(settlement, JobKind.Forager), Is.True, "the plains it stands on");
+                Assert.That(w.Jobs.HasSite(settlement, JobKind.Woodcutter), Is.False, "the only forest is unseen");
+                Assert.That(KnownCells(w, settlement.Id), Is.EqualTo(before), "so nothing new is ever seen");
+            });
+        }
+
+        private static int KnownCells(WorkWorld w, EntityId holder)
+        {
+            var known = w.KnownMaps.For(holder);
+            var count = 0;
+
+            for (var i = 0; i < known.Length; i++)
+            {
+                if (known[i])
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        // Forty by forty of plains with one forest cell at the far edge of
+        // the search radius: reachable, well outside what standing still
+        // reveals, and far enough that the camp's reveal square and the
+        // site's leave a band of fog in between for the road to lift.
+        private static readonly WorldPosition FogCamp = new WorldPosition(20, 20);
+        private static readonly WorldPosition FogForest = new WorldPosition(20 + Jobs.MaxSiteRadius, 20);
+
+        private static TerrainGrid FogMap()
+        {
+            var grid = new TerrainGrid(40, 40, TerrainKind.Plains);
+            grid.Set(FogForest, TerrainKind.Forest);
+            return grid;
         }
     }
 }

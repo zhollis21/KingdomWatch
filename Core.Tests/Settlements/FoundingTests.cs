@@ -356,7 +356,7 @@ namespace KingdomWatch.Core.Tests.Settlements
             // needs somewhere to read from - and it is empty rather than
             // absent, because an absent map reads as omniscient.
             var w = new WorkWorld();
-            var band = w.NewBand(WorkWorld.Camp, 30);
+            var band = w.NewUnmappedBand(WorkWorld.Camp, 30);
             w.JoinAdults(band, 4);
 
             Assert.That(w.KnownMaps.IsTracked(band.Id), Is.False, "it never wandered");

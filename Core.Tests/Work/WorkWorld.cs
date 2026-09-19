@@ -48,7 +48,6 @@ namespace KingdomWatch.Core.Tests.Work
         internal WorkWorld(ulong seed, TerrainGrid grid, DemographicSettings settings)
         {
             Demographics = new DemographicWorld(settings, seed, grid);
-            KnownMaps = new KnownMaps(grid);
             Founding = new Founding(
                 Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking, KnownMaps);
             Nomads = new NomadicBands(
@@ -83,7 +82,9 @@ namespace KingdomWatch.Core.Tests.Work
 
         internal Jobs Jobs => Demographics.Base.Jobs;
 
-        internal KnownMaps KnownMaps { get; }
+        // One map store, the one Jobs was built with: a second instance
+        // would leave Founding handing over a map nobody works from.
+        internal KnownMaps KnownMaps => Demographics.Base.KnownMaps;
 
         internal Founding Founding { get; }
 
@@ -105,6 +106,24 @@ namespace KingdomWatch.Core.Tests.Work
         // bands, with the given food and nothing else. Members are added by
         // the caller.
         internal MobileGroup NewBand(WorldPosition position, int food)
+        {
+            var band = NewUnmappedBand(position, food);
+
+            // The map, and what the band can see from where it stands: the
+            // same pair NomadicBands.Track gives a wandering band. Section 12
+            // leaves a band without one with nowhere to work, so every band
+            // meant to do any gets it here.
+            KnownMaps.Track(band.Id);
+            KnownMaps.Reveal(band.Id, position, Jobs.RevealRadius);
+
+            return band;
+        }
+
+        // The same band, with no known map - for the fixtures whose subject is
+        // a community nobody has given one, which section 12 makes a real
+        // state rather than a broken one. It cannot work: its first dawn pass
+        // asks KnownMaps for a map and is refused.
+        internal MobileGroup NewUnmappedBand(WorldPosition position, int food)
         {
             var band = new MobileGroup(
                 Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, position);
