@@ -1096,7 +1096,7 @@ The point is the exploration motive. A polity that has used up its known viable 
 
 **Legibility.** A god sees everything, so the fog is invisible unless the UI shows *what Oakshire knows* on tap. Otherwise a polity ignoring good land the player can see just looks stupid. The overlay is the cheap part; the constraint is writing it down so it is not forgotten.
 
-**M1 slice:** the band reveals as it wanders and settles on the best known cell. Small, and it means no caller ever learns to read the world directly.
+**M1 slice, built at #81 as `KnownMaps`:** the band reveals as it wanders and settles on the best known cell. One map per holder, keyed by entity id (a band is its own holder until polities exist at #39), revealed in a square of `NomadicBands.RevealRadius` around wherever a band stands and around every cell of a hop it walks, and read by `Pathfinder.TryFindNearest`'s known-mask overload so a site counts only if it has been seen. The hop *candidates* are deliberately unrestricted: an unknown cell scores zero and ties, so the keyed draw still walks the band into new country. Whether work-site selection is bound by the same rule is #84; something that goes looking on purpose, so the radius can be tighter, is #85.
 
 ### Bridges
 

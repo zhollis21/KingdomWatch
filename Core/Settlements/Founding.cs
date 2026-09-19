@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Work;
@@ -63,6 +64,7 @@ namespace KingdomWatch.Core.Settlements
         private readonly Hunger _hunger;
         private readonly Jobs _jobs;
         private readonly Matchmaking _matchmaking;
+        private readonly KnownMaps _knownMaps;
 
         private readonly List<Settlement> _settlements = new List<Settlement>();
         private readonly ReadOnlyCollection<Settlement> _settlementsView;
@@ -73,7 +75,8 @@ namespace KingdomWatch.Core.Settlements
             Fertility fertility,
             Hunger hunger,
             Jobs jobs,
-            Matchmaking matchmaking)
+            Matchmaking matchmaking,
+            KnownMaps knownMaps)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _deaths = deaths ?? throw new ArgumentNullException(nameof(deaths));
@@ -81,6 +84,7 @@ namespace KingdomWatch.Core.Settlements
             _hunger = hunger ?? throw new ArgumentNullException(nameof(hunger));
             _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
             _matchmaking = matchmaking ?? throw new ArgumentNullException(nameof(matchmaking));
+            _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _clock = bus.Clock;
             _settlementsView = _settlements.AsReadOnly();
         }
@@ -170,6 +174,20 @@ namespace KingdomWatch.Core.Settlements
                 {
                     band.SharedSupplies.TransferTo(settlement.SharedSupplies, (ResourceKind)kind, available);
                 }
+            }
+
+            // What the band knew, the settlement knows - the same handover as
+            // members and stock, and section 12's rule that at founding the
+            // settlement takes the map over. A band that never wandered has no
+            // map to give, and its settlement starts knowing nothing rather
+            // than knowing everything.
+            if (_knownMaps.IsTracked(band.Id))
+            {
+                _knownMaps.HandOver(band.Id, settlement.Id);
+            }
+            else
+            {
+                _knownMaps.Track(settlement.Id);
             }
 
             _deaths.Track(settlement);

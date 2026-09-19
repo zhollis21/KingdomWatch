@@ -632,5 +632,119 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(() => new Pathfinder(Map("."), null!), Throws.ArgumentNullException);
             });
         }
+
+        [Test]
+        public void A_known_mask_restricts_what_counts_as_found()
+        {
+            // Two forests, the near one unknown: section 12's rule at the one
+            // point that decides what a place-picking search may land on.
+            var grid = Map(
+                ".f..f",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var forest = TerrainMask(TerrainKind.Forest);
+            var known = new bool[grid.CellCount];
+            known[grid.IndexOf(new WorldPosition(4, 0))] = true;
+
+            var found = finder.TryFindNearest(Origin, Transport.Foot, forest, known, 8, route, out _);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(route[route.Count - 1], Is.EqualTo(new WorldPosition(4, 0)), "the known one, not the near one");
+            });
+        }
+
+        [Test]
+        public void An_empty_known_mask_is_omniscient_and_matches_the_overload_without_one()
+        {
+            var grid = Map(
+                ".f..f",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var withMask = new List<WorldPosition>();
+            var without = new List<WorldPosition>();
+            var forest = TerrainMask(TerrainKind.Forest);
+
+            var a = finder.TryFindNearest(Origin, Transport.Foot, forest, default, 8, withMask, out var costA);
+            var b = finder.TryFindNearest(Origin, Transport.Foot, forest, 8, without, out var costB);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(a, Is.True);
+                Assert.That(b, Is.True);
+                Assert.That(costA, Is.EqualTo(costB));
+                Assert.That(withMask, Is.EqualTo(without));
+            });
+        }
+
+        [Test]
+        public void Nothing_known_is_nothing_found_even_where_the_terrain_is_right()
+        {
+            var grid = Map(
+                ".f..f",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+
+            var found = finder.TryFindNearest(
+                Origin, Transport.Foot, TerrainMask(TerrainKind.Forest), new bool[grid.CellCount], 8, route, out _);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.False);
+                Assert.That(route, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void The_route_may_cross_unknown_ground_to_reach_a_known_site()
+        {
+            // Only the destination has to be known. A searcher that could not
+            // path over unseen cells could not reach anywhere it had only
+            // glimpsed the far side of, which is not what section 12 says.
+            var grid = Map(
+                "....f",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var known = new bool[grid.CellCount];
+            known[grid.IndexOf(new WorldPosition(4, 0))] = true;
+
+            var found = finder.TryFindNearest(
+                Origin, Transport.Foot, TerrainMask(TerrainKind.Forest), known, 8, route, out _);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(route.Count, Is.GreaterThan(1), "it walked there");
+                Assert.That(known[grid.IndexOf(route[1])], Is.False, "over a cell it does not know");
+            });
+        }
+
+        [Test]
+        public void A_known_mask_too_small_for_the_grid_is_refused()
+        {
+            // Silently accepting a short mask would restrict searches to the
+            // wrong cells, which reads as a plausible result rather than a bug.
+            var grid = Map(
+                ".f...",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+
+            Assert.That(
+                () => finder.TryFindNearest(
+                    Origin, Transport.Foot, TerrainMask(TerrainKind.Forest), new bool[grid.CellCount - 1], 8, route, out _),
+                Throws.ArgumentException);
+        }
+
+        private static bool[] TerrainMask(TerrainKind kind)
+        {
+            var mask = new bool[Enum.GetValues(typeof(TerrainKind)).Length];
+            mask[(int)kind] = true;
+            return mask;
+        }
     }
 }

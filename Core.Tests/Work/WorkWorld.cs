@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
@@ -47,10 +48,11 @@ namespace KingdomWatch.Core.Tests.Work
         internal WorkWorld(ulong seed, TerrainGrid grid, DemographicSettings settings)
         {
             Demographics = new DemographicWorld(settings, seed, grid);
+            KnownMaps = new KnownMaps(grid);
             Founding = new Founding(
-                Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking);
+                Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking, KnownMaps);
             Nomads = new NomadicBands(
-                Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng);
+                Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng, KnownMaps);
             Router.Register(ScheduledEventKind.WorkDayDue, Jobs);
             Router.Register(ScheduledEventKind.TaskCompleted, Jobs);
             Router.Register(ScheduledEventKind.CouncilDue, Nomads);
@@ -80,6 +82,8 @@ namespace KingdomWatch.Core.Tests.Work
         internal TerrainGrid Grid => Demographics.Base.Grid;
 
         internal Jobs Jobs => Demographics.Base.Jobs;
+
+        internal KnownMaps KnownMaps { get; }
 
         internal Founding Founding { get; }
 
