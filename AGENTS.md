@@ -121,20 +121,29 @@ pwsh tools/Get-OpenPrComments.ps1
 pwsh tools/Build-Roadmap.ps1
 ```
 
+`tools/GitHubApi.psm1` is not a script but the shared GitHub REST helpers both
+of the above import; see [below](#calling-the-github-api-from-a-claude-code-cloud-session) for why they exist.
+
 Requires `gh` CLI authenticated. See `.claude/skills/pr-feedback/SKILL.md` (`/pr-feedback`) for the full evaluation workflow.
 
 ### Calling the GitHub API from a Claude Code cloud session
 
 Cloud sessions reach GitHub through a proxy that holds the real credentials
-outside the container. Two of its restrictions change how tooling here has to
-be written, and neither is configurable — they apply regardless of the
+outside the container. Its restrictions change how tooling here has to be
+written, and none of them is configurable — they apply regardless of the
 credentials supplied, and independently of the environment's network access
-level, so setting `GH_TOKEN` to a personal token does not lift either one.
+level, so setting `GH_TOKEN` to a personal token does not lift any of them.
+
+**The short version: `gh api repos/{owner}/{repo}/...` is the only GitHub
+surface that works.** Every `gh issue`, `gh pr` and `gh label` subcommand is
+GraphQL-backed and returns `403` — including plain `gh issue view` and the
+write commands `gh issue comment`, `gh issue edit`, `gh pr comment` and
+`gh pr edit`. `gh workflow` is REST-backed and does work.
 
 **GraphQL is refused.** Only a pinned set of pull-request operations is served;
 anything else on `/graphql` comes back `HTTP 403`. That takes with it
-`gh api graphql`, and anything GraphQL-only such as Projects v2. Use REST
-(`gh api repos/{owner}/{repo}/...`). Review threads have no REST equivalent on
+`gh api graphql`, the `gh` subcommands above, and anything GraphQL-only such as
+Projects v2. Use REST. Review threads have no REST equivalent on
 github.com, so the proxy adds its own routes — `GET  .../pulls/{n}/ccr/review_threads`
 and `POST .../pulls/{n}/ccr/comments/{comment_id}/resolve` (also `/unresolve`,
 `/auto_merge`, `/ready_for_review`, `/convert_to_draft`). Those are proxy-only
@@ -146,12 +155,20 @@ they are used.
 `Link: rel="next"`, which points at the numeric-ID form
 (`/repositories/{id}/issues?...`), and the proxy rejects that form too. It
 fails loudly (non-zero exit) rather than truncating silently, but it fails.
-Walk pages by hand instead — `&per_page=100&page=N` until a short page arrives
-— as `Get-Paged` in `tools/Build-Roadmap.ps1` does.
+Walk pages by hand instead — `&per_page=100&page=N` until a short page arrives.
 
-This is latent rather than broken wherever a collection still fits one page.
-`tools/Get-OpenPrComments.ps1` and the findings-comment lookup in
-`.claude/skills/kickoff/SKILL.md` still use `--paginate`, and will break on the
-first PR or issue that outgrows a single page.
+**Cross-repository endpoints are refused as well.** `search/issues` and friends
+come back `403` with "sessions are bound to their configured repositories". Use
+a repo-scoped endpoint and filter client-side.
+
+The pagination restriction is the one that bites late: a collection that still
+fits one page works, so tooling looks healthy right up until it does not.
+`tools/GitHubApi.psm1` holds the two helpers (`Invoke-GhJson`, `Get-Paged`) so
+the workaround has exactly one copy — import it rather than hand-rolling a
+second.
+
+`tools/` and `.claude/skills/` are clear of all of the above; keep them that
+way. A `gh issue`/`gh pr` one-liner from memory is the likely way it creeps
+back in.
 
 Project slash commands (`/create-issue`, `/kickoff`, `/pr-feedback`, `/self-review`) live in `.claude/skills/`.

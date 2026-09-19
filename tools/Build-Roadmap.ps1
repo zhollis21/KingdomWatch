@@ -84,46 +84,8 @@ $EXT_STYLE = 'stroke-dasharray:4 4'
 # query. At this repository's size that is seconds, and it keeps CI running the
 # same code path a session does, so this cannot rot unnoticed.
 # ---------------------------------------------------------------------------
-$PAGE_SIZE = 100
-$MAX_PAGES = 50
+Import-Module (Join-Path $PSScriptRoot 'GitHubApi.psm1') -Force
 $REPO_PATH = "repos/$OWNER/$REPO_NAME"
-
-function Invoke-GhJson([string]$Path) {
-    # gh prints the API's error body to stderr and exits non-zero, so stderr is
-    # captured to put the reason in the exception rather than losing it. It can
-    # also write to stderr on a *successful* call (deprecation and rate-limit
-    # notices), and those lines would break the parse, so they are dropped by
-    # type instead: merged stderr arrives as ErrorRecord, stdout as string.
-    $output = & gh api -H 'Accept: application/vnd.github+json' $Path 2>&1
-    if ($LASTEXITCODE) { throw "gh api $Path failed with exit code ${LASTEXITCODE}: $($output -join [Environment]::NewLine)" }
-    ($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join [Environment]::NewLine | ConvertFrom-Json
-}
-
-function Get-Paged([string]$Path) {
-    <#
-      Walks ?page=N by hand instead of using `gh --paginate`, which follows the
-      Link header GitHub returns — and that points at the numeric-ID form
-      (/repositories/{id}/issues?...), which the proxy in front of Claude Code
-      sessions rejects with its own 403. Nothing warns about this until a
-      collection outgrows one page, so the hand-rolled walk is the only shape
-      that keeps working as the repository grows.
-    #>
-    $all = [System.Collections.Generic.List[object]]::new()
-    $sep = if ($Path.Contains('?')) { '&' } else { '?' }
-    $page = 1
-    while ($true) {
-        $batch = @(Invoke-GhJson "$Path${sep}per_page=$PAGE_SIZE&page=$page")
-        foreach ($item in $batch) { $all.Add($item) }
-        # A short page is the last page; GitHub returns an empty one after it.
-        if ($batch.Count -lt $PAGE_SIZE) { break }
-        # An endpoint that ignored ?page would hand back a full page forever. Refusing
-        # to loop keeps that a loud failure rather than a hang, in the same spirit as
-        # the page-size caps the GraphQL query used to assert.
-        if ($page -ge $MAX_PAGES) { throw "$Path returned $MAX_PAGES full pages; raise `$MAX_PAGES or check that the endpoint honours ?page." }
-        $page++
-    }
-    $all
-}
 
 $milestoneNodes = @(Get-Paged "$REPO_PATH/milestones?state=all")
 # The issues endpoint returns pull requests too; they carry a pull_request key.
@@ -241,10 +203,19 @@ function Set-BlockedLabel([int]$number, [string]$verb) {
     # The API drops the odd request (a 503 on one issue failed the first publish). Retry with
     # backoff; if it still fails, the label is stale until the next run rather than the publish
     # being lost — every run re-derives every label, so nothing needs remembering.
-    $flag = if ($verb -eq 'add') { '--add-label' } else { '--remove-label' }
+    # REST rather than `gh issue edit`, which is GraphQL-backed and so is refused
+    # from a Claude Code session — it works under the workflow token but would fail
+    # for anyone running -SyncLabels by hand. gh api is called directly here rather
+    # than through Invoke-GhJson because this deliberately swallows failures and
+    # retries instead of throwing.
+    $ghArgs = if ($verb -eq 'add') {
+        @('api', '-X', 'POST', "$REPO_PATH/issues/$number/labels", '-f', 'labels[]=blocked')
+    } else {
+        @('api', '-X', 'DELETE', "$REPO_PATH/issues/$number/labels/blocked")
+    }
     foreach ($delay in 0, 3, 10) {
         if ($delay) { Start-Sleep -Seconds $delay }
-        gh issue edit $number --repo "$OWNER/$REPO_NAME" $flag blocked 2>&1 | Out-Null
+        & gh @ghArgs 2>&1 | Out-Null
         if (-not $LASTEXITCODE) { return $true }
     }
     $warnings.Add("Could not $verb the blocked label on #$number after three attempts; it is stale until the next run.")

@@ -69,11 +69,19 @@ so if the user disagrees with it, the fix is a relationship, not a rerun.
 ## Step 1 — Load the issues
 
 ```bash
-gh issue view <N> --json number,title,state,body,labels,createdAt,updatedAt,closedAt,comments \
-  --template '#{{.number}} {{.title}} [{{.state}}] created={{.createdAt}} updated={{.updatedAt}} closed={{.closedAt}}{{"\n"}}labels:{{range .labels}} {{.name}}{{end}}{{"\n"}}--- body ---{{"\n"}}{{.body}}{{range .comments}}{{"\n"}}--- comment by {{.author.login}} @ {{.createdAt}} ---{{"\n"}}{{.body}}{{end}}'
+# REST, not `gh issue view`: every `gh issue`/`gh pr` subcommand is GraphQL-backed
+# and is refused from a Claude Code session, so this is two calls rather than one.
+# See AGENTS.md, "Calling the GitHub API from a Claude Code cloud session".
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq '
+  "#\(.number) \(.title) [\(.state)] created=\(.created_at) updated=\(.updated_at) closed=\(.closed_at)",
+  "labels: \([.labels[].name] | join(" "))",
+  "--- body ---", .body'
+
+gh api 'repos/zhollis21/KingdomWatch/issues/<N>/comments?per_page=100' --jq '
+  .[] | "--- comment by \(.user.login) @ \(.created_at) ---", .body'
 ```
 
-That template deliberately renders every comment body, not just a count. Comments
+That second call deliberately renders every comment body, not just a count. Comments
 are where a decision that nobody folded back into the body tends to live, and can
 be disproportionately likely to settle an issue on their own. A count tells you
 nothing.
@@ -126,8 +134,10 @@ issue names, and check history since it was filed:
 ```bash
 git log --oneline --since=<issue createdAt> --grep=<keyword> -i
 git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
-gh pr list --state all --search "<keyword>" --limit 5 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
+# Repo-scoped, then filtered here: the search/ endpoints are refused as well
+# ("sessions are bound to their configured repositories").
+gh api 'repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100' \
+  --jq '.[] | select(.title | test("<keyword>"; "i")) | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
 `git log -S` is the more reliable of the two log commands — it finds the commit
@@ -154,8 +164,10 @@ up on is just a description of the gap.
 open ones:
 
 ```bash
-gh issue list --state all --search "<topic>" --limit 8 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
+gh api 'repos/zhollis21/KingdomWatch/issues?state=all&per_page=100' \
+  --jq '.[] | select(.pull_request == null)
+             | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+             | "#\(.number) [\(.state)] \(.title)"' | head -8
 ```
 
 What you're looking for is not only exact duplicates but **dependency order**,
@@ -218,18 +230,23 @@ findings at all. Mark the comment and look for that marker first:
 
 ```bash
 # Find a previous findings comment (numeric id, or empty if this is the first).
-# --paginate is load-bearing: the endpoint returns 30 comments per page by
-# default, so on a busy issue an unpaginated lookup misses the marker and
-# silently posts a duplicate instead of updating.
-gh api --paginate 'repos/zhollis21/KingdomWatch/issues/<N>/comments?per_page=100' \
-  --jq '.[] | select(.body | contains("<!-- kickoff-findings -->")) | .id'
+# Reading every page is load-bearing: missing the marker silently posts a
+# duplicate instead of updating. But `gh --paginate` cannot be used to do it —
+# it follows GitHub's Link header, which points at the /repositories/{id}/...
+# form that the proxy in front of Claude Code sessions rejects with a 403, so
+# it breaks the moment an issue outgrows one page. Walk the pages by hand.
+for p in $(seq 1 20); do
+  batch=$(gh api "repos/zhollis21/KingdomWatch/issues/<N>/comments?per_page=100&page=$p")
+  jq -r '.[] | select(.body | contains("<!-- kickoff-findings -->")) | .id' <<<"$batch"
+  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
+done
 
 # Update it in place
 gh api repos/zhollis21/KingdomWatch/issues/comments/<id> -X PATCH -f body='<!-- kickoff-findings -->
 ...'
 
 # Or, if none exists, create it
-gh issue comment <N> --body '<!-- kickoff-findings -->
+gh api repos/zhollis21/KingdomWatch/issues/<N>/comments -f body='<!-- kickoff-findings -->
 ...'
 ```
 
@@ -351,13 +368,13 @@ criteria, checklists, counts, named files, proposed APIs — and change only wha
 the plan actually contradicts. This is narrow work: correcting statements that
 stopped being true in the last ten minutes, not rewriting or tidying the issue.
 
-`gh issue edit --body-file` **replaces the entire body**, so never compose a
+`gh api … -X PATCH -F body=@<file>` **replaces the entire body**, so never compose a
 replacement from scratch — fetch what is there, change the contradicted claims in
 place, and write the whole thing back.
 
 ```bash
 # 1. Fetch the current body, and keep a pristine copy to diff against.
-gh issue view <N> --json body --jq .body > "<scratch>/issue-<N>-body.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq .body > "<scratch>/issue-<N>-body.md"
 cp "<scratch>/issue-<N>-body.md" "<scratch>/issue-<N>-body.orig.md"
 
 # 2. Edit issue-<N>-body.md, changing only the claims the plan contradicts.
@@ -366,7 +383,7 @@ cp "<scratch>/issue-<N>-body.md" "<scratch>/issue-<N>-body.orig.md"
 diff "<scratch>/issue-<N>-body.orig.md" "<scratch>/issue-<N>-body.md"
 
 # 4. Write the complete, modified body back.
-gh issue edit <N> --body-file "<scratch>/issue-<N>-body.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> -X PATCH -F body=@"<scratch>/issue-<N>-body.md"
 ```
 
 If step 3 shows anything you did not deliberately change, do not run step 4.

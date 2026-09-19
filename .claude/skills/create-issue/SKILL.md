@@ -96,10 +96,14 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
-gh issue list --state all --search "<topic>" --limit 8 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
-gh pr list --state all --search "<keyword>" --limit 5 --json number,title,state \
-  --template '{{range .}}#{{.number}} [{{.state}}] {{.title}}{{"\n"}}{{end}}'
+gh api 'repos/zhollis21/KingdomWatch/issues?state=all&per_page=100' \
+  --jq '.[] | select(.pull_request == null)
+             | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+             | "#\(.number) [\(.state)] \(.title)"' | head -8
+# Repo-scoped, then filtered here: the search/ endpoints are refused as well
+# ("sessions are bound to their configured repositories").
+gh api 'repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100' \
+  --jq '.[] | select(.title | test("<keyword>"; "i")) | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
 Then, before any line number goes in the body, **open the file and confirm the
@@ -290,7 +294,7 @@ Check what actually exists before proposing anything — this repo is new and ma
 not have a type/priority taxonomy set up yet:
 
 ```bash
-gh label list
+gh api 'repos/zhollis21/KingdomWatch/labels?per_page=100' --jq '.[] | "\(.name)  \(.description)"'
 ```
 
 If a reasonable set exists, propose the full set with a one-line justification
@@ -302,7 +306,7 @@ priority scale) and wait for an explicit yes before creating labels; a label set
 grows once and gets pruned never, so the bar is high.
 
 ```bash
-gh label create "<name>" --description "<description>" --color "<hex>"
+gh api repos/zhollis21/KingdomWatch/labels -f name="<name>" -f description="<description>" -f color="<hex>"
 ```
 
 **Every issue gets a priority** once a priority label exists. If the user
@@ -327,21 +331,24 @@ stray issue body can never end up in a commit:
 
 ```bash
 # Write the body to a scratch file first, then:
-gh issue create \
-  --title "<title>" \
-  --body-file "<scratch>/issue-body.md" \
-  --label "<type>" --label "<priority>"
+# REST: every `gh issue`/`gh pr`/`gh label` subcommand is GraphQL-backed and is
+# refused from a Claude Code session. See AGENTS.md, "Calling the GitHub API
+# from a Claude Code cloud session".
+gh api repos/zhollis21/KingdomWatch/issues \
+  -f title="<title>" \
+  -F body=@"<scratch>/issue-body.md" \
+  -f "labels[]=<type>" -f "labels[]=<priority>"
 ```
 
 Then read it back and look at it, because a rendering problem is invisible in the
 source and permanent in the issue:
 
 ```bash
-gh issue view <N> | head -40
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq '"#\(.number) \(.title) [\(.state)]", .body' | head -40
 ```
 
 Report the URL and the labels set. If the body came out wrong, fix it with
-`gh issue edit <N> --body-file` immediately — before the user has to notice.
+`gh api … -X PATCH -F body=@<file>` immediately — before the user has to notice.
 
 Then wire the dependencies agreed in Step 5 as native relationships — the
 roadmap and the `blocked` label derive from these, not from prose:
@@ -411,15 +418,15 @@ Present per issue: what you verified, what's wrong, and a specific recommended
 action — _edit the body_, _add labels_, _close as fixed by `<sha>`_, _merge into
 #N_, _leave it_. Then act only on what the user approves.
 
-When editing an approved body, `gh issue edit --body-file` **replaces the whole
+When editing an approved body, `gh api … -X PATCH -F body=@<file>` **replaces the whole
 body** — so fetch, edit in place, diff, and only then write back.
 
 ```bash
-gh issue view <N> --json body --jq .body > "<scratch>/issue-<N>.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> --jq .body > "<scratch>/issue-<N>.md"
 cp "<scratch>/issue-<N>.md" "<scratch>/issue-<N>.orig.md"
 # edit issue-<N>.md, then:
 diff "<scratch>/issue-<N>.orig.md" "<scratch>/issue-<N>.md"
-gh issue edit <N> --body-file "<scratch>/issue-<N>.md"
+gh api repos/zhollis21/KingdomWatch/issues/<N> -X PATCH -F body=@"<scratch>/issue-<N>.md"
 ```
 
 If the diff shows anything you didn't deliberately change, don't write it back.
