@@ -7,9 +7,16 @@ name: Roadmap
 #
 # Relationship edits do not fire a webhook, so the nightly run is the
 # backstop for re-wired dependencies; everything else (open, close, label,
-# milestone) republishes within a minute or two, as does a change to the
-# generator, the viewer or this file landing on main. Run it by hand with
-# `gh workflow run roadmap.yml`.
+# milestone) republishes within a minute or two. Run it by hand with
+# `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main`
+# (`gh workflow run` resolves the default branch over GraphQL, which Claude
+# Code sessions are refused).
+#
+# A merge to main does NOT republish. The pull_request run below already
+# publishes with the merged generator, and a merge that both touches the
+# tooling and closes an issue used to fire twice a second apart - once for the
+# push and once for the closure - doing identical work. The closure event is
+# the one that matters, because it is the one whose result changed.
 #
 # A pull request that touches the tooling runs this same job in full — label
 # sync and deploy included — so the change is exercised for real before it
@@ -21,12 +28,6 @@ name: Roadmap
 # "GitHub Actions"; until then the deploy step fails and nothing else does.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - tools/Build-Roadmap.ps1
-      - tools/roadmap-index.html
-      - .github/workflows/roadmap.yml
   pull_request:
     branches: [main]
     paths:
@@ -44,10 +45,23 @@ on:
 # Nothing by default; the job asks for exactly what it needs.
 permissions: {}
 
-# One publish at a time, and never cancel one that is mid-deploy.
+# One publish at a time. The group is a fixed string rather than per-ref on
+# purpose: a pull request run deploys to Pages like any other, so two runs on
+# different refs must still not deploy at once.
+#
+# Superseded runs are cancelled. Every run regenerates from live GitHub state,
+# so a queued one is doing work the newer one is about to redo - and issue
+# events arrive in bursts, where a bulk label or relationship edit would
+# otherwise serialise a run apiece.
+#
+# The tradeoff, decided deliberately: GitHub's Pages guidance recommends
+# cancel-in-progress: false so a deploy is never killed mid-flight, and a run
+# cancelled inside actions/deploy-pages can leave the github-pages environment
+# needing a manual nudge. If a deploy ever wedges, this is the first line to
+# suspect.
 concurrency:
   group: roadmap
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
