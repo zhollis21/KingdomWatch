@@ -32,11 +32,16 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         {
         }
 
-        internal DemographicWorld(DemographicSettings settings, ulong seed, TerrainGrid grid)
+        // The observer is for the watched-versus-unwatched equivalence tests
+        // (#57): a world built with one must reach exactly the state the same
+        // seed reaches without one, or diagnostic code is changing the
+        // simulation. Null everywhere else, as it is in production.
+        internal DemographicWorld(
+            DemographicSettings settings, ulong seed, TerrainGrid grid, IRandomDrawObserver? observer = null)
         {
             Base = new HouseholdWorld(FamilyFormationSettings.Default, new CampSpace(), grid);
             Settings = settings;
-            Rng = new DeterministicRng(seed);
+            Rng = new DeterministicRng(seed, observer);
             Aging = new Aging(Bus, People, settings);
             Mortality = new Mortality(Bus, People, Deaths, Rng, settings);
             Fertility = new Fertility(Bus, People, Genealogy, Partnerships, Households, Rng, settings);

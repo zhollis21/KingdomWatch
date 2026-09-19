@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.WorldGen;
@@ -154,6 +156,85 @@ namespace KingdomWatch.Core.Tests.Rng
         }
 
         [Test]
+        public void Watching_a_whole_run_changes_nothing_about_where_it_ends_up()
+        {
+            // The standing rule for any new IRandomDrawObserver, and the one
+            // this file exists to make cheap to copy (AGENTS.md). The observer
+            // is non-null in the harness and null on device, so anything an
+            // implementation *does* - drawing, scheduling, writing to a store -
+            // happens on one side of the comparison the determinism story
+            // rests on and not the other. The two would each be perfectly
+            // reproducible and quietly different, and the difference would
+            // read as an IL2CPP divergence rather than as diagnostic code.
+            //
+            // Worldgen alone is too thin to prove that: it takes two sites and
+            // touches nothing but a grid. This drives the demographic systems
+            // through births, deaths, courtship and conception, so the draws
+            // are keyed on durable ids and their results feed back into the
+            // state being compared.
+            //
+            // The digest is a stand-in for the canonical world hash #13 owns.
+            // Once that exists, this assertion should become "the same hash"
+            // and stop enumerating fields by hand.
+            const int Size = 12;
+            const long Years = 40L;
+
+            var watched = Run(new DrawCollisionDetector(), Size, Years);
+            var unwatched = Run(null, Size, Years);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(watched, Is.EqualTo(unwatched));
+                Assert.That(watched, Does.Contain("|"), "the run produced no people to compare");
+            });
+        }
+
+        // Sorted by durable id and serialised in a fixed field order, the way
+        // section 5 asks a canonical hash to be built.
+        private static string Run(IRandomDrawObserver? observer, int size, long years)
+        {
+            var world = new DemographicWorld(
+                DemographicSettings.Default, WorldSeed, new TerrainGrid(16, 16, TerrainKind.Plains), observer);
+
+            if (observer is Meddler meddler)
+            {
+                meddler.World = world;
+            }
+
+            var band = world.NewBand();
+            var generated = world.Generator.Generate(size, new WorldPosition(4, 4));
+
+            foreach (var member in generated.Members)
+            {
+                band.AddMember(member);
+            }
+
+            world.AdvanceYears(years);
+
+            var lines = new List<string>();
+            var records = world.People.RecordSpan();
+
+            for (var i = 0; i < records.Length; i++)
+            {
+                var record = records[i];
+
+                if (record.Id.IsNone)
+                {
+                    continue;
+                }
+
+                lines.Add(
+                    record.Id + "/" + record.Sex + "/" + record.AgeStage + "/" + record.BornTick
+                    + "/" + record.Health + "/" + record.Position + "/" + record.Household
+                    + "/" + record.BirthCulture + "/" + record.Assimilation + "/" + record.Job
+                    + "/" + record.PregnancyDue + "/" + record.PendingMortalityCheck);
+            }
+
+            lines.Sort(StringComparer.Ordinal);
+            return string.Join("|", lines);
+        }
+
+        [Test]
         public void A_real_run_draws_no_two_values_from_different_sites()
         {
             // The backstop actually running against real systems rather than
@@ -215,6 +296,70 @@ namespace KingdomWatch.Core.Tests.Rng
                 Assert.That(detector.Collisions[0], Does.Contain("Terrain").And.Contain("RiverDrift"));
                 Assert.That(detector.Draws, Is.EqualTo(3));
             });
+        }
+
+        [Test]
+        public void An_observer_that_writes_to_the_world_is_caught_by_that_comparison()
+        {
+            // The rule with teeth. Without this, the test above has never been
+            // seen to fail and could be passing because both sides are equally
+            // broken.
+            //
+            // Note what does NOT diverge: an observer that merely *draws* is a
+            // recursion hazard but not a determinism one, because keyed draws
+            // have no stream position for an extra draw to advance. Writing to
+            // the world is the failure that matters, so that is what is
+            // mutated here.
+            var meddler = new Meddler();
+            var meddled = Run(meddler, 12, 40L);
+            var clean = Run(null, 12, 40L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(meddler.Struck, Is.True, "the meddler never got a draw to act on");
+                Assert.That(meddled, Is.Not.EqualTo(clean));
+            });
+        }
+
+        // An observer that does the one thing the contract forbids, so the
+        // equivalence test above can be seen to fail.
+        private sealed class Meddler : IRandomDrawObserver
+        {
+            private int _draws;
+
+            internal DemographicWorld? World { get; set; }
+
+            internal bool Struck { get; private set; }
+
+            public void Drew(RandomDomain domain, RandomSite site, ulong value)
+            {
+                // Once only, and to a field nothing reads back, so what the
+                // comparison catches is the write itself rather than a
+                // cascade the write set off. A field the simulation acts on
+                // would also work, but only when its owner happens to outlive
+                // the run - and a victim who dies either way takes the
+                // evidence with them.
+                if (Struck || World is null || ++_draws < 20)
+                {
+                    return;
+                }
+
+                var records = World.People.RecordSpan();
+
+                // Every living person, not one of them: a single victim who
+                // dies before the run ends takes the evidence with them, and
+                // over forty years most of them do.
+                for (var i = 0; i < records.Length; i++)
+                {
+                    if (records[i].Id.IsNone)
+                    {
+                        continue;
+                    }
+
+                    records[i].Assimilation = (byte)(records[i].Assimilation + 1);
+                    Struck = true;
+                }
+            }
         }
 
         private sealed class Recorder : IRandomDrawObserver
