@@ -384,6 +384,11 @@ function Save([string]$name, [string[]]$lines) {
 # graph.json
 $graph = [ordered]@{
     repository = "$OWNER/$REPO_NAME"
+    # When this was built, so a reader of the published copy can tell how far
+    # behind GitHub it might be. Relationship edits fire no webhook, and the
+    # workflow runs on issue events, pull requests and nightly, so the answer
+    # is usually minutes and occasionally a day. Round-trip format, UTC.
+    generated = (Get-Date).ToUniversalTime().ToString('o')
     currentMilestone = if ($current) { $current.number } else { $null }
     ready = @($ready.number)
     warnings = @($warnings)
