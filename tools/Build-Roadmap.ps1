@@ -73,52 +73,75 @@ $EXT_STYLE = 'stroke-dasharray:4 4'
 
 # ---------------------------------------------------------------------------
 # Fetch
+#
+# REST rather than GraphQL. Claude Code sessions are refused /graphql outright
+# (HTTP 403, "GitHub GraphQL is not available from Claude Code sessions"), so a
+# GraphQL generator worked in the workflow and failed for anyone regenerating
+# the roadmap from a session — the one place a stale roadmap actually misleads,
+# since the published copy is only as fresh as the last nightly run.
+#
+# The cost is one request per issue for the relationships instead of a single
+# query. At this repository's size that is seconds, and it keeps CI running the
+# same code path a session does, so this cannot rot unnoticed.
 # ---------------------------------------------------------------------------
-$gql = @'
-query($owner:String!, $name:String!, $after:String) {
-  repository(owner:$owner, name:$name) {
-    milestones(first:50, states:[OPEN, CLOSED]) {
-      pageInfo { hasNextPage }
-      nodes { number title state description }
-    }
-    issues(first:100, after:$after, states:[OPEN, CLOSED],
-           orderBy:{field:CREATED_AT, direction:ASC}) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        number title state url
-        labels(first:20) { pageInfo { hasNextPage } nodes { name } }
-        milestone { number }
-        blockedBy(first:50) { pageInfo { hasNextPage } nodes { number repository { nameWithOwner } } }
-      }
-    }
-  }
-}
-'@
+$PAGE_SIZE = 100
+$MAX_PAGES = 50
+$REPO_PATH = "repos/$OWNER/$REPO_NAME"
 
-$milestoneNodes = $null
-$issueNodes = [System.Collections.Generic.List[object]]::new()
-$after = $null
-do {
-    $ghArgs = @('api', 'graphql', '-f', "query=$gql", '-f', "owner=$OWNER", '-f', "name=$REPO_NAME")
-    if ($after) { $ghArgs += @('-f', "after=$after") }
-    $json = & gh @ghArgs
-    if ($LASTEXITCODE) { throw "gh api graphql failed with exit code $LASTEXITCODE." }
-    $page = ($json | ConvertFrom-Json).data.repository
-    if ($page.milestones.pageInfo.hasNextPage) { throw "More than 50 milestones; raise the page size in the query." }
-    if (-not $milestoneNodes) { $milestoneNodes = $page.milestones.nodes }
-    foreach ($n in $page.issues.nodes) { $issueNodes.Add($n) }
-    $after = $page.issues.pageInfo.endCursor
-} while ($page.issues.pageInfo.hasNextPage)
+function Invoke-GhJson([string]$Path) {
+    # gh prints the API's error body to stderr and exits non-zero, so stderr is
+    # captured to put the reason in the exception rather than losing it. It can
+    # also write to stderr on a *successful* call (deprecation and rate-limit
+    # notices), and those lines would break the parse, so they are dropped by
+    # type instead: merged stderr arrives as ErrorRecord, stdout as string.
+    $output = & gh api -H 'Accept: application/vnd.github+json' $Path 2>&1
+    if ($LASTEXITCODE) { throw "gh api $Path failed with exit code ${LASTEXITCODE}: $($output -join [Environment]::NewLine)" }
+    ($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join [Environment]::NewLine | ConvertFrom-Json
+}
+
+function Get-Paged([string]$Path) {
+    <#
+      Walks ?page=N by hand instead of using `gh --paginate`, which follows the
+      Link header GitHub returns — and that points at the numeric-ID form
+      (/repositories/{id}/issues?...), which the proxy in front of Claude Code
+      sessions rejects with its own 403. Nothing warns about this until a
+      collection outgrows one page, so the hand-rolled walk is the only shape
+      that keeps working as the repository grows.
+    #>
+    $all = [System.Collections.Generic.List[object]]::new()
+    $sep = if ($Path.Contains('?')) { '&' } else { '?' }
+    $page = 1
+    while ($true) {
+        $batch = @(Invoke-GhJson "$Path${sep}per_page=$PAGE_SIZE&page=$page")
+        foreach ($item in $batch) { $all.Add($item) }
+        # A short page is the last page; GitHub returns an empty one after it.
+        if ($batch.Count -lt $PAGE_SIZE) { break }
+        # An endpoint that ignored ?page would hand back a full page forever. Refusing
+        # to loop keeps that a loud failure rather than a hang, in the same spirit as
+        # the page-size caps the GraphQL query used to assert.
+        if ($page -ge $MAX_PAGES) { throw "$Path returned $MAX_PAGES full pages; raise `$MAX_PAGES or check that the endpoint honours ?page." }
+        $page++
+    }
+    $all
+}
+
+$milestoneNodes = @(Get-Paged "$REPO_PATH/milestones?state=all")
+# The issues endpoint returns pull requests too; they carry a pull_request key.
+# Fetch order is not specified on purpose: every output sorts before writing, so
+# the REST default (newest first) and the old GraphQL order produce byte-identical files.
+$issueNodes = @(Get-Paged "$REPO_PATH/issues?state=all" | Where-Object { -not $_.pull_request })
 
 # Deliberate: an empty result is far likelier to be a silently failed fetch (gh has returned
 # nothing with exit 0 before) than a repository with no issues, and publishing an empty roadmap
 # over a real one is the worse outcome.
 if ($issueNodes.Count -eq 0) { throw 'No issues fetched; refusing to write an empty roadmap.' }
-# The sub-connections are capped rather than paginated; an issue past a cap
-# would silently lose labels or blockers, and a wrong "ready" is worse than no roadmap.
+
+# Relationships are one call per issue — there is no bulk endpoint for them.
+# Closed issues are fetched too: their edges are what make a dependent "ready".
+Write-Host "Fetching relationships for $($issueNodes.Count) issue(s)..."
+$blockedByNumber = [System.Collections.Generic.Dictionary[int, object]]::new()
 foreach ($n in $issueNodes) {
-    if ($n.labels.pageInfo.hasNextPage) { throw "#$($n.number) has more than 20 labels; raise the page size in the query." }
-    if ($n.blockedBy.pageInfo.hasNextPage) { throw "#$($n.number) is blocked by more than 50 issues; raise the page size in the query." }
+    $blockedByNumber[[int]$n.number] = @(Get-Paged "$REPO_PATH/issues/$($n.number)/dependencies/blocked_by")
 }
 
 # ---------------------------------------------------------------------------
@@ -140,20 +163,21 @@ foreach ($m in $milestones) { $milestoneByNumber[$m.number] = $m }
 
 $issues = [System.Collections.Generic.Dictionary[int, object]]::new()
 foreach ($n in $issueNodes) {
-    $labels = @($n.labels.nodes.name)
+    $labels = @($n.labels | ForEach-Object { $_.name })
     $number = [int]$n.number
     # Highest priority wins if several labels are set; the warning below asks for one.
     $priority = @($PRIORITIES | Where-Object { $labels -contains $_ })[0]
+    $blockers = @($blockedByNumber[$number])
     $issues[$number] = [ordered]@{
         number = $number
         title = $n.title
         state = $n.state.ToLower()
-        url = $n.url
+        url = $n.html_url
         milestone = if ($n.milestone) { [int]$n.milestone.number } else { $null }
         priority = $priority
         labels = $labels
-        blockedBy = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -eq "$OWNER/$REPO_NAME" } | ForEach-Object { [int]$_.number } | Sort-Object)
-        foreignBlockers = @($n.blockedBy.nodes | Where-Object { $_.repository.nameWithOwner -ne "$OWNER/$REPO_NAME" } | ForEach-Object { "$($_.repository.nameWithOwner)#$($_.number)" })
+        blockedBy = @($blockers | Where-Object { $_.repository.full_name -eq "$OWNER/$REPO_NAME" } | ForEach-Object { [int]$_.number } | Sort-Object)
+        foreignBlockers = @($blockers | Where-Object { $_.repository.full_name -ne "$OWNER/$REPO_NAME" } | ForEach-Object { "$($_.repository.full_name)#$($_.number)" })
         blocking = [System.Collections.Generic.List[int]]::new()
         openBlocking = @()
         openBlockers = @()
@@ -249,7 +273,10 @@ foreach ($w in $warnings) { Write-Warning $w }
 function Get-PriorityRank($p) { $r = $PRIORITIES.IndexOf($p); if ($r -lt 0) { 99 } else { $r } }
 function Get-MilestoneRank($i) { if ($i.milestone) { $milestones.IndexOf($milestoneByNumber[$i.milestone]) } else { 999 } }
 
-$ready = @($issues.Values | Where-Object ready | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, number)
+# The number tie-break must be a script block: a bare `number` key does not resolve
+# against an [ordered] dictionary, so it sorts every issue equal and Sort-Object's
+# stable order silently falls through to fetch order.
+$ready = @($issues.Values | Where-Object ready | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, { $_.number })
 $current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 } | Select-Object -First 1
 $next = if ($current) { $milestones[$milestones.IndexOf($current) + 1] } else { $null }
 

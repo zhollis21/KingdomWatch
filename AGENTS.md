@@ -123,4 +123,35 @@ pwsh tools/Build-Roadmap.ps1
 
 Requires `gh` CLI authenticated. See `.claude/skills/pr-feedback/SKILL.md` (`/pr-feedback`) for the full evaluation workflow.
 
+### Calling the GitHub API from a Claude Code cloud session
+
+Cloud sessions reach GitHub through a proxy that holds the real credentials
+outside the container. Two of its restrictions change how tooling here has to
+be written, and neither is configurable — they apply regardless of the
+credentials supplied, and independently of the environment's network access
+level, so setting `GH_TOKEN` to a personal token does not lift either one.
+
+**GraphQL is refused.** Only a pinned set of pull-request operations is served;
+anything else on `/graphql` comes back `HTTP 403`. That takes with it
+`gh api graphql`, and anything GraphQL-only such as Projects v2. Use REST
+(`gh api repos/{owner}/{repo}/...`). Review threads have no REST equivalent on
+github.com, so the proxy adds its own routes — `GET  .../pulls/{n}/ccr/review_threads`
+and `POST .../pulls/{n}/ccr/comments/{comment_id}/resolve` (also `/unresolve`,
+`/auto_merge`, `/ready_for_review`, `/convert_to_draft`). Those are proxy-only
+and key off a comment id rather than GraphQL's thread node id, so anything
+built on them does not run off a normal machine — say so in a comment where
+they are used.
+
+**`gh --paginate` breaks past the first page.** It follows GitHub's
+`Link: rel="next"`, which points at the numeric-ID form
+(`/repositories/{id}/issues?...`), and the proxy rejects that form too. It
+fails loudly (non-zero exit) rather than truncating silently, but it fails.
+Walk pages by hand instead — `&per_page=100&page=N` until a short page arrives
+— as `Get-Paged` in `tools/Build-Roadmap.ps1` does.
+
+This is latent rather than broken wherever a collection still fits one page.
+`tools/Get-OpenPrComments.ps1` and the findings-comment lookup in
+`.claude/skills/kickoff/SKILL.md` still use `--paginate`, and will break on the
+first PR or issue that outgrows a single page.
+
 Project slash commands (`/create-issue`, `/kickoff`, `/pr-feedback`, `/self-review`) live in `.claude/skills/`.
