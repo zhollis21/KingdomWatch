@@ -336,5 +336,65 @@ namespace KingdomWatch.Core.Tests.Knowledge
                 Assert.That(maps.IsTracked(Band), Is.False);
             });
         }
+
+        [Test]
+        public void A_radius_at_the_top_of_its_type_reveals_the_map_and_returns()
+        {
+            // int.MaxValue passes the "not negative" guard, so it is input a
+            // caller can actually hand over. Iterating -radius..radius would
+            // wrap the increment past the bound and never terminate; the bounds
+            // are clipped to the grid instead, so this is the same work as any
+            // radius that covers the map.
+            //
+            // A regression here HANGS rather than fails, and no attribute can
+            // change that - .NET cannot abort a loop that never yields. The
+            // run stops dead, which is its own loud signal.
+            var maps = Tracking(Band);
+
+            Assert.That(maps.Reveal(Band, new WorldPosition(5, 5), int.MaxValue), Is.EqualTo(Width * Height));
+            Assert.That(maps.Knows(Band, new WorldPosition(0, 0)), Is.True);
+            Assert.That(maps.Knows(Band, new WorldPosition(Width - 1, Height - 1)), Is.True);
+        }
+
+        [Test]
+        public void A_huge_radius_costs_no_more_than_the_map_is_big()
+        {
+            // The overflow is the extreme of a wider problem: a radius of a
+            // million does not overflow anything and still asks for four
+            // trillion steps across a map of a hundred and twenty cells.
+            var maps = Tracking(Band);
+
+            Assert.That(maps.Reveal(Band, new WorldPosition(0, 0), 1_000_000), Is.EqualTo(Width * Height));
+        }
+
+        [Test]
+        public void A_centre_far_off_the_map_reveals_nothing_rather_than_throwing()
+        {
+            // Clipping can cross the bounds over, which has to mean "no cells"
+            // rather than a negative count or a walk in the wrong direction.
+            var maps = Tracking(Band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(maps.Reveal(Band, new WorldPosition(-100, -100), 3), Is.Zero);
+                Assert.That(maps.Reveal(Band, new WorldPosition(Width + 100, Height + 100), 3), Is.Zero);
+                Assert.That(maps.Reveal(Band, new WorldPosition(int.MinValue, int.MinValue), 3), Is.Zero, "and no overflow computing the bounds");
+            });
+        }
+
+        [Test]
+        public void RevealAlong_checks_the_radius_even_when_the_route_is_empty()
+        {
+            // Whether an argument is valid cannot depend on how many cells came
+            // with it: Reveal rejects a negative radius, so this must too,
+            // empty route or not.
+            var maps = Tracking(Band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => maps.RevealAlong(Band, new List<WorldPosition>(), -1), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => maps.RevealAlong(Band, new List<WorldPosition> { new WorldPosition(1, 1) }, -1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
     }
 }

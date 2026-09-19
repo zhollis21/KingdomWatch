@@ -124,18 +124,26 @@ namespace KingdomWatch.Core.Knowledge
 
             var revealed = 0;
 
-            for (var dy = -radius; dy <= radius; dy++)
+            // Clipped to the grid before looping, not inside it. Iterating
+            // -radius..radius would scan the square the caller asked for rather
+            // than the part of it that exists: a radius of a million costs four
+            // trillion steps on a map of a few hundred cells, and at
+            // int.MaxValue the increment wraps past the bound and the loop
+            // never ends at all. The arithmetic is done in long because
+            // centre +/- radius is exactly what overflows an int.
+            var minX = (int)Math.Max(0L, (long)centre.X - radius);
+            var maxX = (int)Math.Min(_grid.Width - 1L, (long)centre.X + radius);
+            var minY = (int)Math.Max(0L, (long)centre.Y - radius);
+            var maxY = (int)Math.Min(_grid.Height - 1L, (long)centre.Y + radius);
+
+            for (var y = minY; y <= maxY; y++)
             {
-                for (var dx = -radius; dx <= radius; dx++)
+                for (var x = minX; x <= maxX; x++)
                 {
-                    var cell = new WorldPosition(centre.X + dx, centre.Y + dy);
-
-                    if (!_grid.Contains(cell))
-                    {
-                        continue;
-                    }
-
-                    var index = _grid.IndexOf(cell);
+                    // Every cell in range is on the map, so there is nothing
+                    // left to reject: a centre far enough off it leaves the
+                    // bounds crossed and the loops never run.
+                    var index = _grid.IndexOf(new WorldPosition(x, y));
 
                     if (!map[index])
                     {
@@ -161,10 +169,18 @@ namespace KingdomWatch.Core.Knowledge
                 throw new ArgumentNullException(nameof(route));
             }
 
-            // Checked here rather than left to the loop: an empty route would
-            // otherwise report a cheerful zero for a holder that has no map at
-            // all, which is the one answer that looks like success.
+            // Both checked here rather than left to the loop: an empty route
+            // would otherwise report a cheerful zero for a holder with no map,
+            // or for a radius Reveal rejects outright - and "it depends how
+            // many cells you passed" is the wrong answer to whether an
+            // argument is valid.
             RequireMap(holder);
+
+            if (radius < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
+            }
+
             var revealed = 0;
 
             for (var i = 0; i < route.Count; i++)
