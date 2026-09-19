@@ -11,7 +11,7 @@
 
 One kind of edge between issues, and the roadmap reads nothing else: **blocked by**, GitHub's native relationship (the *Relationships* box in the issue sidebar, or `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by -f issue_id=<database id>`). Record the *direct* dependency only — if #17 needs #52 and #52 needs #12, do not also link #17 to #12; readiness is computed transitively. An open issue is *ready* when everything it is blocked by is closed, and the `blocked` label is derived from that by the roadmap workflow, so never set it by hand.
 
-Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` wire the relationships when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, `gh workflow run roadmap.yml` or wait for the nightly run.
+Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invisible to the roadmap, because the same bodies say "open question #7" about the design doc's list. `/create-issue` and `/kickoff` wire the relationships when they file or split issues. Relationship edits do not trigger the workflow; after re-wiring, run `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main` or wait for the nightly run (`gh workflow run` itself resolves the default branch over GraphQL, so it is refused — see below).
 
 ## Repository Layout
 
@@ -138,7 +138,9 @@ level, so setting `GH_TOKEN` to a personal token does not lift any of them.
 surface that works.** Every `gh issue`, `gh pr` and `gh label` subcommand is
 GraphQL-backed and returns `403` — including plain `gh issue view` and the
 write commands `gh issue comment`, `gh issue edit`, `gh pr comment` and
-`gh pr edit`. `gh workflow` is REST-backed and does work.
+`gh pr edit`. `gh workflow list` is REST-backed and works, but `gh workflow run` resolves the
+default branch over GraphQL and is refused; dispatch a workflow with
+`gh api -X POST repos/{owner}/{repo}/actions/workflows/{file}/dispatches -f ref=main`.
 
 **GraphQL is refused.** Only a pinned set of pull-request operations is served;
 anything else on `/graphql` comes back `HTTP 403`. That takes with it

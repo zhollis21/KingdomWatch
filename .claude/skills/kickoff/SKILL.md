@@ -399,7 +399,7 @@ The same applies to the dependency graph. If the plan narrowed scope and pushed
 work into new issues (`/create-issue` files them and wires their
 relationships), or Step 2 found a dependency the graph lacks, record it now as a
 native *blocked by* relationship — direct edges only, per `AGENTS.md` § Issue
-dependencies — and run `gh workflow run roadmap.yml`, since relationship edits
+dependencies — and run `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main`, since relationship edits
 do not trigger the regeneration on their own.
 
 ---

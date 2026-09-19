@@ -372,7 +372,7 @@ published as *ready*, and a regeneration would make that public before anyone
 looked.
 
 Only once the list matches: relationship edits do not trigger the roadmap
-workflow, so finish with `gh workflow run roadmap.yml` (the issue-opened event
+workflow, so finish with `gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main` (the issue-opened event
 already fired, but before the relationships existed).
 
 For a split from Step 4, file all of them, then edit the `## Related` sections to

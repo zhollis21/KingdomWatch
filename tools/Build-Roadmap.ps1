@@ -43,7 +43,10 @@
     milestone events and nightly, then deploys the output to Pages. Nothing
     is committed, so no branch rule is involved. Relationship edits do not
     fire an event, so after re-wiring blocked-by links either wait for the
-    nightly run or `gh workflow run roadmap.yml`.
+    nightly run or dispatch it over REST:
+    gh api -X POST repos/zhollis21/KingdomWatch/actions/workflows/roadmap.yml/dispatches -f ref=main
+    (`gh workflow run` resolves the default branch over GraphQL, which Claude Code
+    sessions are refused.)
 #>
 [CmdletBinding()]
 param(
