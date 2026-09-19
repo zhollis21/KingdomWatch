@@ -938,5 +938,128 @@ namespace KingdomWatch.Core.Tests.Work
                 w.People.Count,
             };
         }
+
+        // ---------------------------------------------------------------
+        // The band's counts (#83). They used to be rebuilt by walking every
+        // member on every pick; now the dawn pass builds them and the three
+        // places a task slot changes keep the on-duty half exact. Each test
+        // below sits the wood stock one gather either side of the cap, so a
+        // count that is off by one task flips the job that gets picked.
+        // ---------------------------------------------------------------
+
+        [Test]
+        public void A_starting_task_counts_against_the_cap_at_once()
+        {
+            // 198 wood and a cap of 200: the first cutter is wanted, and the
+            // two his trip will bring home fill the store, so the second is
+            // not. Were a started task not counted until it delivered, both
+            // would cut and the band would overshoot.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
+            band.SharedSupplies.Gather(ResourceKind.Wood, 198);
+            var adults = w.JoinAdults(band, 2);
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Woodcutter), "198 + nothing on its way = under the cap");
+                Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.StoneGatherer), "198 + his two = the cap, so wood is done");
+            });
+        }
+
+        [Test]
+        public void A_delivering_task_leaves_the_tally_as_it_joins_the_store()
+        {
+            // 196 wood, one cutter. He delivers two and picks again: 198 in
+            // store with nothing on its way is the same expectation as 196
+            // with his trip out, and still under the cap, so he cuts again.
+            // A task counted both in the store and on the road would read 200
+            // and send him to the hills.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            band.SharedSupplies.Gather(ResourceKind.Wood, 196);
+            var cutter = w.Join(band, 30L);
+
+            w.AdvanceToDawn();
+            Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "196 is under the cap");
+
+            w.AdvanceTo(w.Jobs.TaskOf(cutter).End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(198L));
+                Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "198 in store, nothing on the road");
+            });
+        }
+
+        [Test]
+        public void A_death_takes_its_task_off_the_tally_as_well()
+        {
+            // 198 wood: the cutter's two fill the store, so the stone
+            // gatherer goes to the hills. The cutter then dies on the road
+            // and his two never arrive, so by the time the gatherer is home
+            // wood is wanted again. A dead worker still counted as on his way
+            // would keep the store looking full for the rest of the day.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
+            band.SharedSupplies.Gather(ResourceKind.Wood, 198);
+            var cutter = w.Join(band, 30L);
+            var gatherer = w.Join(band, 31L);
+
+            w.AdvanceToDawn();
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.StoneGatherer), "the cutter's two fill the store");
+            });
+
+            var stoneTrip = w.Jobs.TaskOf(gatherer);
+            w.Advance(SimulationTime.TicksPerHour);
+            w.Deaths.Die(cutter, new Reasons(ReasonCode.Illness));
+            w.AdvanceTo(stoneTrip.End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(198L), "the dead deliver nothing");
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "198 and nobody cutting is under the cap again");
+            });
+        }
+
+        [Test]
+        public void The_bands_appetite_is_the_one_counted_at_dawn()
+        {
+            // Six adults draw 18 a day, so 120 food is under seven days and
+            // foraging is wanted. Three die mid-morning; the survivors draw
+            // nine a day, which would make the same store a fortnight and
+            // send them for wood instead. Jobs hears about a death but never
+            // about a birth or a join, so a count kept through the day would
+            // only ever shrink - the band works to the appetite it counted at
+            // dawn, and finds out about the loss at the next one.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 120);
+            var adults = w.JoinAdults(band, 6);
+
+            w.AdvanceToDawn();
+            Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager), "120 against 18 a day is under the ten-day target");
+
+            var trip = w.Jobs.TaskOf(adults[0]);
+            w.Advance(SimulationTime.TicksPerHour);
+
+            for (var i = 3; i < 6; i++)
+            {
+                w.Deaths.Die(adults[i], new Reasons(ReasonCode.Illness));
+            }
+
+            w.AdvanceTo(trip.End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(129L), "three of the six delivered");
+                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager));
+                Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.Forager));
+                Assert.That(w.People.GetJob(adults[2]), Is.EqualTo(JobKind.Forager), "still feeding the six counted at dawn");
+            });
+        }
     }
 }

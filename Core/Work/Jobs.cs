@@ -24,12 +24,13 @@ namespace KingdomWatch.Core.Work
     /// of <see cref="Priority"/> that is needed, reachable, and fits before
     /// dusk. It runs at dawn and at every completion, so a band whose food
     /// is covered by noon sends its afternoon hands to wood without waiting
-    /// for tomorrow. Nothing is stored between picks: how many are on a job
-    /// is a scan of the band's members, which section 5 blesses at this
-    /// scale. What is already on its way home counts toward the threshold,
-    /// so a round of pickers cannot all see the same shortfall and all fill
-    /// it. Skill weighting is #22's; a settlement-wide plan is #23's and
-    /// replaces "decide need" without touching "choose".
+    /// for tomorrow. What is already on its way home counts toward the
+    /// threshold, so a round of pickers cannot all see the same shortfall and
+    /// all fill it. That tally, and the band's head count, are built by the
+    /// dawn pass and carried through the day rather than rescanned per pick -
+    /// a scan there made a day's work quadratic in population (#83). Skill
+    /// weighting is #22's; a settlement-wide plan is #23's and replaces
+    /// "decide need" without touching "choose".
     ///
     /// **One task at a time, inside a dawn-to-dusk window.** A task is
     /// booked when it starts, never a day ahead, and is started only if it
@@ -168,9 +169,6 @@ namespace KingdomWatch.Core.Work
         // and checked against the handle's generation, so a recycled slot
         // never reads its last occupant's task as the new one's.
         private Slot?[] _slots = Array.Empty<Slot?>();
-
-        // Scratch for a pick: how many members are on each job.
-        private readonly int[] _onDuty = new int[JobKindCount];
 
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
@@ -361,14 +359,20 @@ namespace KingdomWatch.Core.Work
             {
                 var task = slot.Task;
                 var recipe = JobTable.Recipe(task.Job);
+                var tracked = TrackedFor(task.Holder);
                 _clock.Cancel(task.Completion);
 
                 if (recipe.Inputs.Count > 0)
                 {
-                    TrackedFor(task.Holder).Group.SharedSupplies.CancelRecipe(recipe);
+                    tracked.Group.SharedSupplies.CancelRecipe(recipe);
                 }
 
                 slot.Clear();
+
+                // The band keeps its dawn count of the living: this person is
+                // usually dead, and Jobs is told about that but not about the
+                // births and joins that would balance it (see Tracked.Living).
+                tracked.OnDuty[(int)task.Job]--;
             }
 
             _people.SetJob(person, JobKind.None);
@@ -427,6 +431,11 @@ namespace KingdomWatch.Core.Work
             }
 
             tracked.PendingDawn = EventId.None;
+
+            // Before the destination check, not inside it: a moving day starts
+            // no tasks, but Vacate can still strike the band mid-march, and it
+            // adjusts counts it expects the day to have rebuilt.
+            Recount(tracked);
 
             // A moving day: the band's council (#54) set a destination before
             // this pass, and everyone walks with the band rather than out
@@ -497,6 +506,7 @@ namespace KingdomWatch.Core.Work
             // the ledger tallies it as such.
             tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job));
             slot.Clear();
+            tracked.OnDuty[(int)task.Job]--;
             _people.SetJob(worker, JobKind.None);
 
             TryStart(tracked, worker);
@@ -542,6 +552,7 @@ namespace KingdomWatch.Core.Work
                 tracked.Group.Position, site.Destination, completion);
             slot.CopyRoute(site.Route);
             _people.SetJob(worker, job);
+            tracked.OnDuty[(int)job]++;
             return true;
         }
 
@@ -550,27 +561,17 @@ namespace KingdomWatch.Core.Work
         // everyone with a task is about to deliver its output.
         private JobKind ChooseJob(Tracked tracked, long ticksUntilDusk)
         {
-            var members = tracked.Group.Members;
-            var living = 0;
-            Array.Clear(_onDuty, 0, _onDuty.Length);
+            var living = tracked.Living;
 
-            for (var i = 0; i < members.Count; i++)
+            // The dawn pass counts before anything picks, and every pick
+            // follows a pass or a completion, so a band that is picking has
+            // been counted. Zero here would divide by zero in Needed, so it
+            // is a broken invariant rather than an empty band.
+            if (living <= 0)
             {
-                var member = members[i];
-
-                if (!_people.IsAlive(member))
-                {
-                    continue;
-                }
-
-                living++;
-
-                // From the task, not the record: the record's Job is a mirror
-                // the bulk span can write, and this count must not be.
-                if (SlotOf(member) is Slot slot)
-                {
-                    _onDuty[(int)slot.Task.Job]++;
-                }
+                throw new InvalidOperationException(
+                    "Band " + tracked.Group.Id + " is picking a job with " + living
+                    + " living members counted; the dawn pass counts before any pick.");
             }
 
             for (var i = 0; i < Priority.Count; i++)
@@ -588,7 +589,7 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                if (Needed(job, tracked.Group.SharedSupplies, living))
+                if (Needed(tracked, job, tracked.Group.SharedSupplies, living))
                 {
                     return job;
                 }
@@ -597,33 +598,65 @@ namespace KingdomWatch.Core.Work
             return JobKind.None;
         }
 
+        // One walk of the membership per band per dawn, where a walk per pick
+        // used to be: the pick is what scales with workers, so the scan inside
+        // it made a day quadratic in population (#83).
+        private void Recount(Tracked tracked)
+        {
+            var members = tracked.Group.Members;
+            var living = 0;
+            var onDuty = tracked.OnDuty;
+            Array.Clear(onDuty, 0, onDuty.Length);
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                var member = members[i];
+
+                if (!_people.IsAlive(member))
+                {
+                    continue;
+                }
+
+                living++;
+
+                // From the task, not the record: the record's Job is a mirror
+                // the bulk span can write, and this count must not be.
+                if (SlotOf(member) is Slot slot)
+                {
+                    onDuty[(int)slot.Task.Job]++;
+                }
+            }
+
+            tracked.Living = living;
+        }
+
         // The picker is alive and a member, so living is at least one and the
         // daily draw is never zero.
-        private bool Needed(JobKind job, ResourceLedger ledger, int living)
+        private bool Needed(Tracked tracked, JobKind job, ResourceLedger ledger, int living)
         {
             switch (job)
             {
                 case JobKind.Forager:
                     var dailyDraw = (long)Hunger.DailyRation * living;
-                    return Expected(ledger, ResourceKind.Food) / dailyDraw < FoodTargetDays;
+                    return Expected(tracked, ledger, ResourceKind.Food) / dailyDraw < FoodTargetDays;
                 case JobKind.Woodcutter:
-                    return Expected(ledger, ResourceKind.Wood) < WoodCap;
+                    return Expected(tracked, ledger, ResourceKind.Wood) < WoodCap;
                 case JobKind.StoneGatherer:
-                    return Expected(ledger, ResourceKind.Stone) < StoneCap;
+                    return Expected(tracked, ledger, ResourceKind.Stone) < StoneCap;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
             }
         }
 
         // Available now plus what those on duty will bring home.
-        private long Expected(ResourceLedger ledger, ResourceKind kind)
+        private long Expected(Tracked tracked, ResourceLedger ledger, ResourceKind kind)
         {
             long expected = ledger.Available(kind);
 
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                var onDuty = _onDuty[(int)job];
+                var onDuty = tracked.OnDuty[(int)job];
 
                 if (onDuty == 0)
                 {
@@ -810,6 +843,7 @@ namespace KingdomWatch.Core.Work
             {
                 Group = group;
                 Sites = new Site[jobKinds];
+                OnDuty = new int[jobKinds];
 
                 for (var i = 0; i < jobKinds; i++)
                 {
@@ -820,6 +854,24 @@ namespace KingdomWatch.Core.Work
             public ICommunity Group { get; }
 
             public Site[] Sites { get; }
+
+            /// <summary>
+            /// How many of the band are on each job. Rebuilt by the dawn pass
+            /// and kept exact through the day: a task starting, completing or
+            /// being vacated are the only ways a slot changes, and all three
+            /// adjust this.
+            /// </summary>
+            public int[] OnDuty { get; }
+
+            /// <summary>
+            /// Living members, as counted at dawn. Unlike <see cref="OnDuty"/>
+            /// this is a snapshot, not a running total: Jobs hears about a
+            /// death (through <see cref="Jobs.Vacate"/>) but not a birth or a
+            /// join, so a count maintained in-day would drift one way only.
+            /// A day's picks therefore size the band's appetite by who was
+            /// alive at dawn, which is also the moment its sites were found.
+            /// </summary>
+            public int Living { get; set; }
 
             /// <summary>The WorkDayDue booked for this band's next dawn; None when the world ends first.</summary>
             public EventId PendingDawn { get; set; }
