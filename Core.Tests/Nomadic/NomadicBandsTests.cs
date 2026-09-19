@@ -942,6 +942,85 @@ namespace KingdomWatch.Core.Tests.Nomadic
             });
         }
 
+        [Test]
+        public void Every_camp_a_council_could_choose_is_one_the_band_has_already_seen()
+        {
+            // Why Score never gates the candidate itself: RevealRadius matches
+            // HopRadius, so the square revealed from where a band stands is
+            // exactly the square it chooses from. If that stops holding - #85
+            // is what would buy a tighter reveal - an unknown candidate could
+            // be scored by known sites near it and beat its unseen neighbours
+            // on knowledge the band does not have, and the candidate would need
+            // a gate of its own. This is the test that should say so.
+            Assert.That(
+                NomadicBands.RevealRadius,
+                Is.GreaterThanOrEqualTo(NomadicBands.HopRadius),
+                "a reveal tighter than the hop box means unknown candidates, which Score does not gate");
+
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            var unknown = 0;
+
+            for (var dy = -NomadicBands.HopRadius; dy <= NomadicBands.HopRadius; dy++)
+            {
+                for (var dx = -NomadicBands.HopRadius; dx <= NomadicBands.HopRadius; dx++)
+                {
+                    var candidate = new WorldPosition(WorkWorld.Camp.X + dx, WorkWorld.Camp.Y + dy);
+
+                    if (candidate.X < 0 || candidate.Y < 0
+                        || candidate.X >= WorkWorld.Width || candidate.Y >= WorkWorld.Height)
+                    {
+                        continue;
+                    }
+
+                    if (!w.KnownMaps.Knows(band.Id, candidate))
+                    {
+                        unknown++;
+                    }
+                }
+            }
+
+            Assert.That(unknown, Is.Zero, "every cell the hop box offers is already revealed");
+        }
+
+        [Test]
+        public void Ground_that_changes_under_a_booked_arrival_is_refused_rather_than_revealed_wrongly()
+        {
+            // The council costs a route when it books the arrival, and the
+            // reveal recomputes that route on landing. Nothing moves terrain
+            // mid-run yet - bridges (#35) will be the first - so this drowns
+            // the corridor by hand to reach the guard. Revealing nothing, or
+            // revealing some other way round, would leave the band's map
+            // quietly wrong; refusing says which band and which cell.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            Assert.That(band.Destination, Is.Not.Null, "the council booked a move");
+
+            // Wall the destination off after the arrival is booked.
+            var grid = w.Demographics.Base.Pathfinder.Grid;
+
+            for (var y = 0; y < WorkWorld.Height; y++)
+            {
+                for (var x = 0; x < WorkWorld.Width; x++)
+                {
+                    var cell = new WorldPosition(x, y);
+
+                    if (cell != band.Destination!.Value)
+                    {
+                        grid.Set(cell, TerrainKind.DeepWater);
+                    }
+                }
+            }
+
+            Assert.That(
+                () => w.AdvanceTo(w.Now.Plus(Day)),
+                Throws.InvalidOperationException.With.Message.Contains("the ground changed under a booked arrival"));
+        }
+
         private static void AdvanceToCouncil(WorkWorld w, int n) =>
             w.AdvanceTo(SimulationTime.FromDays(n - 1L).Plus(NomadicBands.FirstLight));
 

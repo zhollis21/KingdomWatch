@@ -96,14 +96,27 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
-gh api 'repos/zhollis21/KingdomWatch/issues?state=all&per_page=100' \
-  --jq '.[] | select(.pull_request == null)
+# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
+# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
+# so nothing has to be accumulated.
+for p in $(seq 1 50); do
+  batch=$(gh api "repos/zhollis21/KingdomWatch/issues?state=all&per_page=100&page=$p")
+  jq -r '.[] | select(.pull_request == null)
              | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
-             | "#\(.number) [\(.state)] \(.title)"' | head -8
+             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
+  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
+done | head -8
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
-gh api 'repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100' \
-  --jq '.[] | select(.title | test("<keyword>"; "i")) | "#\(.number) [\(.state)] \(.title)"' | head -5
+# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
+# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
+# so nothing has to be accumulated.
+for p in $(seq 1 50); do
+  batch=$(gh api "repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100&page=$p")
+  jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
+             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
+  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
+done | head -5
 ```
 
 Then, before any line number goes in the body, **open the file and confirm the
@@ -294,7 +307,11 @@ Check what actually exists before proposing anything — this repo is new and ma
 not have a type/priority taxonomy set up yet:
 
 ```bash
-gh api 'repos/zhollis21/KingdomWatch/labels?per_page=100' --jq '.[] | "\(.name)  \(.description)"'
+for p in $(seq 1 50); do
+  batch=$(gh api "repos/zhollis21/KingdomWatch/labels?per_page=100&page=$p")
+  jq -r '.[] | "\(.name)  \(.description)"' <<<"$batch"
+  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
+done
 ```
 
 If a reasonable set exists, propose the full set with a one-line justification

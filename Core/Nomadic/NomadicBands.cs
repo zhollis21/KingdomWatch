@@ -63,15 +63,25 @@ namespace KingdomWatch.Core.Nomadic
     /// world. The band reveals <see cref="RevealRadius"/> around wherever it
     /// stands and around every cell of a hop it walks.
     ///
-    /// The *candidates* are deliberately not restricted. A band may hop onto
-    /// ground it knows nothing about - an unknown cell simply scores zero,
-    /// ties with every other unknown cell, and the keyed draw picks among
-    /// them. That is what keeps a band exploring; restricting candidates to
-    /// known cells would trap it inside the disc it started in, because
-    /// nothing else in M1 widens a map. <see cref="Jobs"/> still finds work
-    /// sites by reading the grid: whether section 12's rule reaches work
-    /// sites at all is #84, and binding them naively would stop a settled
-    /// community's map ever growing.
+    /// **Every candidate is one the band has already seen**, so nothing gates
+    /// the candidate itself. <see cref="RevealRadius"/> matches
+    /// <see cref="HopRadius"/>, which makes the square a band reveals from
+    /// where it stands exactly the square it picks its next camp from: an
+    /// unknown candidate does not arise. What the fog changes is the
+    /// *scoring* - a site counts toward a cell's score only if the band has
+    /// seen the site - which is how a band can stand a few cells from good
+    /// land and still have no idea it is there.
+    ///
+    /// Should <see cref="RevealRadius"/> ever drop below
+    /// <see cref="HopRadius"/> - #85, something that goes looking on purpose,
+    /// is what would buy that - unknown candidates become reachable, and one
+    /// scored by known sites near it would beat its unseen neighbours on
+    /// knowledge the band does not have. The test that pins this invariant is
+    /// what will say so.
+    ///
+    /// <see cref="Jobs"/> still finds work sites by reading the grid: whether
+    /// section 12's rule reaches work sites at all is #84, and binding them
+    /// naively would stop a settled community's map ever growing.
     ///
     /// **Camps embody wood.** Making camp takes up to <see cref="CampWood"/>
     /// from the band's stock and embodies it - section 9's temporary camp,
@@ -461,11 +471,19 @@ namespace KingdomWatch.Core.Nomadic
             // from the old camp, so the two Reveal calls either side would
             // cover it. A band walking around a river does leave it, and those
             // cells are known only because the route was read.
-            if (_pathfinder.TryFindRoute(band.Position, destination, Jobs.Mover, _scratchRoute, out _))
+            // The council costed a route to this very cell when it booked the
+            // arrival, so one exists unless the ground changed underneath it.
+            // Nothing changes terrain mid-run today - bridges (#35) will be the
+            // first - and a silent skip here would leave the band's map quietly
+            // missing the walk instead of saying so.
+            if (!_pathfinder.TryFindRoute(band.Position, destination, Jobs.Mover, _scratchRoute, out _))
             {
-                _knownMaps.RevealAlong(band.Id, _scratchRoute, RevealRadius);
+                throw new InvalidOperationException(
+                    band.Id + " has no route from " + band.Position + " to " + destination
+                    + ", which its council costed one to; the ground changed under a booked arrival.");
             }
 
+            _knownMaps.RevealAlong(band.Id, _scratchRoute, RevealRadius);
             _knownMaps.Reveal(band.Id, destination, RevealRadius);
 
             band.Position = destination;

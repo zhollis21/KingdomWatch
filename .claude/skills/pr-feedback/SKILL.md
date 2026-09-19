@@ -168,7 +168,7 @@ same id is what both the reply and the resolve call take.
   ```
 - **Resolve a thread** (one standalone call per thread, keyed by that same comment id):
   ```
-  gh api -X POST repos/zhollis21/KingdomWatch/pulls/<pr>/ccr/comments/<commentId>/resolve
+  gh api repos/zhollis21/KingdomWatch/pulls/<pr>/ccr/comments/<commentId>/resolve -X POST
   ```
 
 **Keep the PR description up to date as you go.** Whenever the branch changes meaningfully (a fix lands, scope shifts, a new behavior is added), edit the PR body with `gh api repos/zhollis21/KingdomWatch/pulls/<num> -X PATCH -F body=@<file>` so it always reflects what's actually in the PR. Reviewers and the merge record should never read a stale description.
