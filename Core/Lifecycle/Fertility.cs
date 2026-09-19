@@ -97,6 +97,18 @@ namespace KingdomWatch.Core.Lifecycle
         // The communities a newborn may need adding to. See the type's remarks.
         private readonly List<ICommunity> _groups = new List<ICommunity>();
 
+        // The BirthCheck each household's stream is currently booked as, so a
+        // stray one can be told from the real one and refused (#80). A map of
+        // its own rather than a field on Household: a household is a plain
+        // object in a registry with a get-only shape (Household.cs), and this
+        // is Fertility's bookkeeping, not something the household knows about
+        // itself. Mortality keeps the same thing on PersonRecord, because
+        // people already have a record and PregnancyDue already lives there.
+        //
+        // Only ever looked up by key, never iterated, so the dictionary's
+        // order cannot reach the simulation.
+        private readonly Dictionary<EntityId, EventId> _pendingChecks = new Dictionary<EntityId, EventId>();
+
         public Fertility(
             DomainEventBus bus,
             PersonStore people,
@@ -119,6 +131,15 @@ namespace KingdomWatch.Core.Lifecycle
 
         /// <summary>How many communities a newborn may be placed in.</summary>
         public int TrackedCount => _groups.Count;
+
+        /// <summary>
+        /// How many households have a <c>BirthCheck</c> booked. Exposed for
+        /// the same reason <see cref="TrackedCount"/> is: bookkeeping kept by
+        /// hand is worth being able to assert on directly, and an entry that
+        /// outlived the household that owned it has no other symptom - ids are
+        /// never reused, so nothing would ever collide with it.
+        /// </summary>
+        public int PendingCheckCount => _pendingChecks.Count;
 
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
@@ -201,7 +222,7 @@ namespace KingdomWatch.Core.Lifecycle
             switch (scheduled.Kind)
             {
                 case ScheduledEventKind.BirthCheck:
-                    Check(scheduled.PrimaryEntity);
+                    Check(scheduled);
                     break;
                 case ScheduledEventKind.BirthDue:
                     GiveBirth(scheduled.Id, scheduled.PrimaryEntity, scheduled.SecondaryEntity);
@@ -213,12 +234,33 @@ namespace KingdomWatch.Core.Lifecycle
             }
         }
 
-        private void Check(EntityId householdId)
+        private void Check(ScheduledEvent scheduled)
         {
+            var householdId = scheduled.PrimaryEntity;
+
             if (!_households.TryGet(householdId, out var household))
             {
+                // A dissolved household books no successor, so the stream ends
+                // itself; the entry goes with it rather than outliving the
+                // household that owned it.
+                _pendingChecks.Remove(householdId);
                 return;
             }
+
+            // The household names the check it booked, and only that one runs -
+            // the rule Hunger and Jobs apply to their streams. Any other
+            // BirthCheck would book a second stream, and two streams check
+            // twice as often, which doubles the conception chance per interval
+            // and reads as bad tuning rather than as a bug (#80).
+            var booked = _pendingChecks.TryGetValue(householdId, out var pending) ? pending : EventId.None;
+
+            if (scheduled.Id != booked)
+            {
+                throw new InvalidOperationException(
+                    scheduled + " came due for " + householdId + ", whose next check is " + booked + ".");
+            }
+
+            _pendingChecks.Remove(householdId);
 
             if (TryFindCouple(household, out var mother, out var father))
             {
@@ -310,7 +352,7 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
-            if (!_rng.Key(RandomDomain.Conception).Mix(householdId).Mix(now.Ticks)
+            if (!_rng.Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(householdId).Mix(now.Ticks)
                 .Chance(_settings.ConceptionPerMille, PerMille))
             {
                 return;
@@ -340,7 +382,7 @@ namespace KingdomWatch.Core.Lifecycle
 
             var now = _clock.Now;
             var childId = _clock.Ids.Next(EntityKind.Person);
-            var sex = _rng.Key(RandomDomain.ChildSex).Mix(motherId).Mix(now.Ticks).Chance(1, 2)
+            var sex = _rng.Key(RandomDomain.ChildSex, RandomSite.NewbornSex).Mix(motherId).Mix(now.Ticks).Chance(1, 2)
                 ? Sex.Female
                 : Sex.Male;
 
@@ -403,7 +445,7 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
-            _clock.Schedule(
+            _pendingChecks[householdId] = _clock.Schedule(
                 now.Plus(_settings.BirthCheckTicks), Phase, ScheduledEventKind.BirthCheck, householdId, EntityId.None);
         }
     }

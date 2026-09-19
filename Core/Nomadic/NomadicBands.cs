@@ -526,7 +526,7 @@ namespace KingdomWatch.Core.Nomadic
         {
             var band = tracked.Band;
             var from = band.Position;
-            var key = _rng.Key(RandomDomain.Wandering).Mix(band.Id).Mix(_clock.Now.DayNumber);
+            var key = _rng.Key(RandomDomain.Wandering, RandomSite.CampChoice).Mix(band.Id).Mix(_clock.Now.DayNumber);
 
             // Fetched once for the whole scan rather than per cell: the look
             // scores every candidate in the hop box, each with a site search

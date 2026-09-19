@@ -36,11 +36,6 @@ namespace KingdomWatch.Core.WorldGen
         // per row, so it is always contiguous and never leaves the map.
         private const int MinimumWidth = 3;
 
-        // Key components so a cell's terrain draw and a row's river draw can
-        // never be the same roll.
-        private const int TerrainDraw = 1;
-        private const int RiverDraw = 2;
-
         public static TerrainGrid Generate(int width, int height, DeterministicRng rng)
         {
             if (rng is null)
@@ -55,13 +50,19 @@ namespace KingdomWatch.Core.WorldGen
             }
 
             var grid = new TerrainGrid(width, height, TerrainKind.Plains);
-            var domain = rng.Key(RandomDomain.WorldGen);
+
+            // Two sites in one domain, so a cell's terrain draw and a row's
+            // river draw can never be the same roll. This file used to say
+            // that with a pair of local consts; RandomSite is that idea with
+            // a type behind it (#57).
+            var terrain = rng.Key(RandomDomain.WorldGen, RandomSite.Terrain);
+            var river = rng.Key(RandomDomain.WorldGen, RandomSite.RiverDrift);
 
             for (var y = 0; y < height; y++)
             {
                 for (var x = 0; x < width; x++)
                 {
-                    var roll = domain.Mix(TerrainDraw).Mix(x).Mix(y).Range(0, 100);
+                    var roll = terrain.Mix(x).Mix(y).Range(0, 100);
 
                     if (roll < ForestPercent)
                     {
@@ -82,7 +83,7 @@ namespace KingdomWatch.Core.WorldGen
 
             for (var y = 0; y < height; y++)
             {
-                column += domain.Mix(RiverDraw).Mix(y).Range(-1, 2);
+                column += river.Mix(y).Range(-1, 2);
                 column = Math.Max(1, Math.Min(width - 2, column));
                 grid.Set(new WorldPosition(column, y), TerrainKind.SmallRiver);
             }

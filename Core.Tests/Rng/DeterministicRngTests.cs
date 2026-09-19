@@ -21,13 +21,19 @@ namespace KingdomWatch.Core.Tests.Rng
         private static readonly EntityId Attacker = new EntityId(EntityKind.Person, 3UL);
         private static readonly EntityId Household = new EntityId(EntityKind.Household, 12UL);
 
+        // A real (domain, site) pair for the tests that need a key but nothing
+        // in particular from it. Real rather than invented, because a site is
+        // declared by the system that draws it and a test is not a system.
+        private const RandomDomain AnyDomain = RandomDomain.Mortality;
+        private const RandomSite AnySite = RandomSite.LifeTableRoll;
+
         private static DeterministicRng NewRng() => new DeterministicRng(WorldSeed);
 
         [Test]
         public void The_same_key_always_gives_the_same_value()
         {
-            var first = NewRng().Key(RandomDomain.Combat).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64();
-            var second = NewRng().Key(RandomDomain.Combat).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64();
+            var first = NewRng().Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64();
+            var second = NewRng().Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64();
 
             Assert.That(first, Is.EqualTo(second));
         }
@@ -35,8 +41,8 @@ namespace KingdomWatch.Core.Tests.Rng
         [Test]
         public void A_different_world_seed_gives_a_different_value()
         {
-            var here = new DeterministicRng(WorldSeed).Key(RandomDomain.Combat).Mix(Battle).NextUInt64();
-            var elsewhere = new DeterministicRng(WorldSeed + 1UL).Key(RandomDomain.Combat).Mix(Battle).NextUInt64();
+            var here = new DeterministicRng(WorldSeed).Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).NextUInt64();
+            var elsewhere = new DeterministicRng(WorldSeed + 1UL).Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).NextUInt64();
 
             Assert.That(here, Is.Not.EqualTo(elsewhere));
         }
@@ -46,15 +52,15 @@ namespace KingdomWatch.Core.Tests.Rng
         {
             var rng = NewRng();
 
-            var combat = rng.Key(RandomDomain.Combat).Mix(Household).NextUInt64();
-            var conception = rng.Key(RandomDomain.Conception).Mix(Household).NextUInt64();
-            var social = rng.Key(RandomDomain.Social).Mix(Household).NextUInt64();
+            var combat = rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Household).NextUInt64();
+            var conception = rng.Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(Household).NextUInt64();
+            var mortality = rng.Key(AnyDomain, AnySite).Mix(Household).NextUInt64();
 
             Assert.Multiple(() =>
             {
                 Assert.That(combat, Is.Not.EqualTo(conception));
-                Assert.That(combat, Is.Not.EqualTo(social));
-                Assert.That(conception, Is.Not.EqualTo(social));
+                Assert.That(combat, Is.Not.EqualTo(mortality));
+                Assert.That(conception, Is.Not.EqualTo(mortality));
             });
         }
 
@@ -63,8 +69,8 @@ namespace KingdomWatch.Core.Tests.Rng
         {
             var rng = NewRng();
 
-            var forwards = rng.Key(RandomDomain.Combat).Mix(Battle).Mix(Attacker).NextUInt64();
-            var backwards = rng.Key(RandomDomain.Combat).Mix(Attacker).Mix(Battle).NextUInt64();
+            var forwards = rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).Mix(Attacker).NextUInt64();
+            var backwards = rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Attacker).Mix(Battle).NextUInt64();
 
             Assert.That(forwards, Is.Not.EqualTo(backwards));
         }
@@ -76,8 +82,8 @@ namespace KingdomWatch.Core.Tests.Rng
             // field on EntityId would be decorative.
             var rng = NewRng();
 
-            var person = rng.Key(RandomDomain.Social).Mix(new EntityId(EntityKind.Person, 1UL)).NextUInt64();
-            var settlement = rng.Key(RandomDomain.Social).Mix(new EntityId(EntityKind.Settlement, 1UL)).NextUInt64();
+            var person = rng.Key(AnyDomain, AnySite).Mix(new EntityId(EntityKind.Person, 1UL)).NextUInt64();
+            var settlement = rng.Key(AnyDomain, AnySite).Mix(new EntityId(EntityKind.Settlement, 1UL)).NextUInt64();
 
             Assert.That(person, Is.Not.EqualTo(settlement));
         }
@@ -90,7 +96,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var sequence = 0; sequence < 1000; sequence++)
             {
-                var value = rng.Key(RandomDomain.Combat).Mix(Battle).Mix(sequence).NextUInt64();
+                var value = rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).Mix(sequence).NextUInt64();
                 Assert.That(seen.Add(value), Is.True, "Collision at sequence " + sequence + ".");
             }
         }
@@ -106,7 +112,7 @@ namespace KingdomWatch.Core.Tests.Rng
             var rng = NewRng();
 
             ulong SecondBattleOutcome() =>
-                rng.Key(RandomDomain.Combat)
+                rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome)
                    .Mix(new EntityId(EntityKind.MobileGroup, 99UL))
                    .Mix(0)
                    .NextUInt64();
@@ -125,8 +131,8 @@ namespace KingdomWatch.Core.Tests.Rng
         {
             var rng = NewRng();
 
-            var first = rng.Key(RandomDomain.Social).Mix(new EventId(1UL)).NextUInt64();
-            var second = rng.Key(RandomDomain.Social).Mix(new EventId(2UL)).NextUInt64();
+            var first = rng.Key(AnyDomain, AnySite).Mix(new EventId(1UL)).NextUInt64();
+            var second = rng.Key(AnyDomain, AnySite).Mix(new EventId(2UL)).NextUInt64();
 
             Assert.That(first, Is.Not.EqualTo(second));
         }
@@ -141,8 +147,8 @@ namespace KingdomWatch.Core.Tests.Rng
             // only as two independent things moving in lockstep.
             var rng = NewRng();
 
-            var viaEvent = rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64();
-            var viaValue = rng.Key(RandomDomain.Social).Mix(7UL).NextUInt64();
+            var viaEvent = rng.Key(AnyDomain, AnySite).Mix(new EventId(7UL)).NextUInt64();
+            var viaValue = rng.Key(AnyDomain, AnySite).Mix(7UL).NextUInt64();
 
             Assert.That(viaEvent, Is.Not.EqualTo(viaValue));
         }
@@ -156,9 +162,9 @@ namespace KingdomWatch.Core.Tests.Rng
             // collision without trying.
             var rng = NewRng();
 
-            var viaEntity = rng.Key(RandomDomain.Social)
+            var viaEntity = rng.Key(AnyDomain, AnySite)
                 .Mix(new EntityId(EntityKind.Person, 42UL)).Mix(3).NextUInt64();
-            var viaParts = rng.Key(RandomDomain.Social)
+            var viaParts = rng.Key(AnyDomain, AnySite)
                 .Mix(1UL).Mix(42UL).Mix(3).NextUInt64();
 
             Assert.That(viaEntity, Is.Not.EqualTo(viaParts));
@@ -169,8 +175,8 @@ namespace KingdomWatch.Core.Tests.Rng
         {
             var rng = NewRng();
 
-            var viaEvent = rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64();
-            var viaEntity = rng.Key(RandomDomain.Social)
+            var viaEvent = rng.Key(AnyDomain, AnySite).Mix(new EventId(7UL)).NextUInt64();
+            var viaEntity = rng.Key(AnyDomain, AnySite)
                 .Mix(new EntityId(EntityKind.Person, 7UL)).NextUInt64();
 
             Assert.That(viaEvent, Is.Not.EqualTo(viaEntity));
@@ -193,7 +199,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 200; i++)
             {
-                var key = rng.Key(RandomDomain.Social).Mix(i);
+                var key = rng.Key(AnyDomain, AnySite).Mix(i);
                 var firstDraw = key.NextUInt64();
                 var result = key.Below(exclusiveMax);
 
@@ -222,7 +228,7 @@ namespace KingdomWatch.Core.Tests.Rng
             for (var i = 0; i < 100; i++)
             {
                 Assert.That(
-                    rng.Key(RandomDomain.Social).Mix(i).Below(ulong.MaxValue),
+                    rng.Key(AnyDomain, AnySite).Mix(i).Below(ulong.MaxValue),
                     Is.LessThan(ulong.MaxValue));
             }
         }
@@ -236,7 +242,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 500; i++)
             {
-                var value = rng.Key(RandomDomain.Social).Mix(i).Range(int.MinValue, int.MaxValue);
+                var value = rng.Key(AnyDomain, AnySite).Mix(i).Range(int.MinValue, int.MaxValue);
                 Assert.That(value, Is.InRange(int.MinValue, int.MaxValue - 1));
             }
         }
@@ -248,7 +254,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 2000; i++)
             {
-                var value = rng.Key(RandomDomain.Social).Mix(i).Below(7UL);
+                var value = rng.Key(AnyDomain, AnySite).Mix(i).Below(7UL);
                 Assert.That(value, Is.LessThan(7UL));
             }
         }
@@ -260,7 +266,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 100; i++)
             {
-                Assert.That(rng.Key(RandomDomain.Social).Mix(i).Below(1UL), Is.EqualTo(0UL));
+                Assert.That(rng.Key(AnyDomain, AnySite).Mix(i).Below(1UL), Is.EqualTo(0UL));
             }
         }
 
@@ -268,7 +274,7 @@ namespace KingdomWatch.Core.Tests.Rng
         public void Below_zero_is_refused()
         {
             Assert.That(
-                () => NewRng().Key(RandomDomain.Social).Mix(1).Below(0UL),
+                () => NewRng().Key(AnyDomain, AnySite).Mix(1).Below(0UL),
                 Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
@@ -283,7 +289,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 60000; i++)
             {
-                buckets[rng.Key(RandomDomain.Social).Mix(i).Below(6UL)]++;
+                buckets[rng.Key(AnyDomain, AnySite).Mix(i).Below(6UL)]++;
             }
 
             foreach (var count in buckets)
@@ -299,7 +305,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 2000; i++)
             {
-                var value = rng.Key(RandomDomain.Social).Mix(i).Range(-5, 5);
+                var value = rng.Key(AnyDomain, AnySite).Mix(i).Range(-5, 5);
                 Assert.That(value, Is.InRange(-5, 4));
             }
         }
@@ -307,7 +313,7 @@ namespace KingdomWatch.Core.Tests.Rng
         [Test]
         public void Range_refuses_an_empty_or_inverted_span()
         {
-            var key = NewRng().Key(RandomDomain.Social).Mix(1);
+            var key = NewRng().Key(AnyDomain, AnySite).Mix(1);
 
             Assert.Multiple(() =>
             {
@@ -319,7 +325,7 @@ namespace KingdomWatch.Core.Tests.Rng
         [Test]
         public void Certain_chances_resolve_without_a_draw()
         {
-            var key = NewRng().Key(RandomDomain.Conception).Mix(Household);
+            var key = NewRng().Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(Household);
 
             Assert.Multiple(() =>
             {
@@ -336,7 +342,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var i = 0; i < 60000; i++)
             {
-                if (rng.Key(RandomDomain.Conception).Mix(Household).Mix(i).Chance(1, 4))
+                if (rng.Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(Household).Mix(i).Chance(1, 4))
                 {
                     hits++;
                 }
@@ -348,7 +354,7 @@ namespace KingdomWatch.Core.Tests.Rng
         [Test]
         public void Chance_refuses_nonsense_odds()
         {
-            var key = NewRng().Key(RandomDomain.Conception).Mix(Household);
+            var key = NewRng().Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(Household);
 
             Assert.Multiple(() =>
             {
@@ -363,7 +369,7 @@ namespace KingdomWatch.Core.Tests.Rng
         public void A_draw_must_belong_to_a_real_domain()
         {
             Assert.That(
-                () => NewRng().Key(RandomDomain.None),
+                () => NewRng().Key(RandomDomain.None, AnySite),
                 Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
@@ -377,10 +383,10 @@ namespace KingdomWatch.Core.Tests.Rng
             Assert.Multiple(() =>
             {
                 Assert.That(
-                    () => NewRng().Key((RandomDomain)999),
+                    () => NewRng().Key((RandomDomain)999, AnySite),
                     Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(
-                    () => NewRng().Key((RandomDomain)(-1)),
+                    () => NewRng().Key((RandomDomain)(-1), AnySite),
                     Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
@@ -392,27 +398,34 @@ namespace KingdomWatch.Core.Tests.Rng
             // future. These values exist so that can never happen quietly - if
             // this test fails and the change was deliberate, every saved world
             // is invalidated and that decision belongs to a person.
+            //
+            // They were last rewritten deliberately, for #57: every key now
+            // mixes a RandomSite straight after its domain, which moves every
+            // draw in the game. It was taken then because no save format
+            // existed yet (#15, #42 are open) and so no world could be
+            // invalidated - the same change costs a migration once they land.
+            // A second rewrite will not be that cheap.
             var rng = NewRng();
 
             var lines = new List<string>
             {
-                Line("combat", rng.Key(RandomDomain.Combat).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64()),
-                Line("conception", rng.Key(RandomDomain.Conception).Mix(Household).Mix(1).NextUInt64()),
-                Line("social", rng.Key(RandomDomain.Social).Mix(Attacker).Mix(4).Mix(9).NextUInt64()),
-                Line("event", rng.Key(RandomDomain.Social).Mix(new EventId(7UL)).NextUInt64()),
-                Line("below100", rng.Key(RandomDomain.Social).Mix(Attacker).Below(100UL)),
-                Line("range", (ulong)(long)rng.Key(RandomDomain.Social).Mix(Attacker).Range(0, 1000)),
+                Line("combat", rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome).Mix(Battle).Mix(Attacker).Mix(2).NextUInt64()),
+                Line("conception", rng.Key(RandomDomain.Conception, RandomSite.ConceptionRoll).Mix(Household).Mix(1).NextUInt64()),
+                Line("mortality", rng.Key(AnyDomain, AnySite).Mix(Attacker).Mix(4).Mix(9).NextUInt64()),
+                Line("event", rng.Key(AnyDomain, AnySite).Mix(new EventId(7UL)).NextUInt64()),
+                Line("below100", rng.Key(AnyDomain, AnySite).Mix(Attacker).Below(100UL)),
+                Line("range", (ulong)(long)rng.Key(AnyDomain, AnySite).Mix(Attacker).Range(0, 1000)),
             };
 
             Assert.That(
                 string.Join("|", lines),
                 Is.EqualTo(
-                    "combat=13514175954488880116"
-                    + "|conception=12047574463750113385"
-                    + "|social=16099087809957385506"
-                    + "|event=5573920518276458559"
-                    + "|below100=67"
-                    + "|range=467"));
+                    "combat=17717398539770001697"
+                    + "|conception=9538769391836090366"
+                    + "|mortality=6002517734200191514"
+                    + "|event=15170082442219820765"
+                    + "|below100=16"
+                    + "|range=816"));
         }
 
         private static string Line(string name, ulong value) =>
@@ -420,7 +433,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
         /// <summary>Compressed combat: one draw resolves the whole battle.</summary>
         private static ulong ResolveCompressed(DeterministicRng rng) =>
-            rng.Key(RandomDomain.Combat)
+            rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome)
                .Mix(new EntityId(EntityKind.MobileGroup, 1UL))
                .Mix(0)
                .NextUInt64();
@@ -432,7 +445,7 @@ namespace KingdomWatch.Core.Tests.Rng
 
             for (var blow = 0; blow < blows; blow++)
             {
-                last = rng.Key(RandomDomain.Combat)
+                last = rng.Key(RandomDomain.Combat, RandomSite.BattleOutcome)
                           .Mix(new EntityId(EntityKind.MobileGroup, 1UL))
                           .Mix(blow)
                           .NextUInt64();

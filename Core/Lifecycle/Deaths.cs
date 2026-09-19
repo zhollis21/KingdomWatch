@@ -178,6 +178,7 @@ namespace KingdomWatch.Core.Lifecycle
             _memories.WitnessDied(id);
 
             EndPregnancy(person);
+            EndMortalityCheck(person);
             _jobs.Vacate(person);
             LeaveHousehold(person);
             LeaveGroup(person);
@@ -200,6 +201,23 @@ namespace KingdomWatch.Core.Lifecycle
 
             _bus.Clock.Cancel(due);
             _people.SetPregnancyDue(person, EventId.None);
+        }
+
+        // The same rule for the yearly roll (#80). Mortality would ignore a
+        // check for the dead - nobody's id is ever reused - but the record
+        // names this one, so cancelling it is a queue entry saved and, once
+        // section 17's saves exist, one less future commitment to keep.
+        private void EndMortalityCheck(PersonHandle person)
+        {
+            var booked = _people.GetPendingMortalityCheck(person);
+
+            if (booked.IsNone)
+            {
+                return;
+            }
+
+            _bus.Clock.Cancel(booked);
+            _people.SetPendingMortalityCheck(person, EventId.None);
         }
 
         // Out of the household; then, if nobody grown is left, the dependents

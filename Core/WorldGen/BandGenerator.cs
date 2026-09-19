@@ -91,10 +91,6 @@ namespace KingdomWatch.Core.WorldGen
 
         private const short StartingHealth = 100;
 
-        // What each draw is for, so no two draws for one person share a key.
-        private const int AgeDraw = 1;
-        private const int SexDraw = 2;
-
         private readonly DomainEventBus _bus;
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
@@ -182,7 +178,6 @@ namespace KingdomWatch.Core.WorldGen
             RequireSize(size);
 
             var band = new MobileGroup(_clock.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, at);
-            var key = _rng.Key(RandomDomain.BandGeneration).Mix(band.Id);
             var couples = LineagesFor(size);
             var made = 0;
 
@@ -194,8 +189,8 @@ namespace KingdomWatch.Core.WorldGen
 
             for (var i = 0; i < couples; i++)
             {
-                wives[i] = Founder(band, key, made++, Sex.Female);
-                husbands[i] = Founder(band, key, made++, Sex.Male);
+                wives[i] = Founder(band, made++, Sex.Female);
+                husbands[i] = Founder(band, made++, Sex.Male);
                 households[i] = _family.Partner(wives[i], husbands[i], Reasons.None);
             }
 
@@ -217,7 +212,7 @@ namespace KingdomWatch.Core.WorldGen
                         continue;
                     }
 
-                    var child = Child(band, key, made++, wives[i], husbands[i], youngest, oldest);
+                    var child = Child(band, made++, wives[i], husbands[i], youngest, oldest);
                     _households.Join(households[i], child);
                     dealt = true;
                 }
@@ -233,7 +228,7 @@ namespace KingdomWatch.Core.WorldGen
             // Whoever is left is a single adult: another lineage.
             while (made < size)
             {
-                Founder(band, key, made, made % 2 == 0 ? Sex.Female : Sex.Male);
+                Founder(band, made, made % 2 == 0 ? Sex.Female : Sex.Male);
                 made++;
             }
 
@@ -259,9 +254,17 @@ namespace KingdomWatch.Core.WorldGen
             return band;
         }
 
-        private PersonHandle Founder(MobileGroup band, RandomKey key, int index, Sex sex)
+        // Each draw names its own site, so a founder's age and a child's age
+        // cannot key the same roll however the indices fall. They used to be
+        // told apart by a local AgeDraw const plus the fact that `made` is one
+        // counter shared across founders, children and singles - correct, but
+        // resting on an invariant nothing stated (#57).
+        private PersonHandle Founder(MobileGroup band, int index, Sex sex)
         {
-            var age = MinAdultYears + key.Mix(index).Mix(AgeDraw).Range(0, (int)(MaxAdultYears - MinAdultYears + 1L));
+            var age = MinAdultYears
+                + _rng.Key(RandomDomain.BandGeneration, RandomSite.FounderAge)
+                    .Mix(band.Id).Mix(index)
+                    .Range(0, (int)(MaxAdultYears - MinAdultYears + 1L));
             return Add(band, age, sex, EntityId.None, EntityId.None);
         }
 
@@ -282,11 +285,15 @@ namespace KingdomWatch.Core.WorldGen
         }
 
         private PersonHandle Child(
-            MobileGroup band, RandomKey key, int index, PersonHandle mother, PersonHandle father, long youngest, long oldest)
+            MobileGroup band, int index, PersonHandle mother, PersonHandle father, long youngest, long oldest)
         {
-            var draw = key.Mix(index);
-            var age = youngest + draw.Mix(AgeDraw).Range(0, (int)(oldest - youngest + 1L));
-            var sex = draw.Mix(SexDraw).Chance(1, 2) ? Sex.Female : Sex.Male;
+            var age = youngest
+                + _rng.Key(RandomDomain.BandGeneration, RandomSite.BandChildAge)
+                    .Mix(band.Id).Mix(index)
+                    .Range(0, (int)(oldest - youngest + 1L));
+            var sex = _rng.Key(RandomDomain.BandGeneration, RandomSite.BandChildSex)
+                .Mix(band.Id).Mix(index)
+                .Chance(1, 2) ? Sex.Female : Sex.Male;
             return Add(band, age, sex, _people.GetId(mother), _people.GetId(father));
         }
 

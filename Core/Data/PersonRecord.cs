@@ -134,6 +134,22 @@ namespace KingdomWatch.Core.Data
         public EventId PregnancyDue;
 
         /// <summary>
+        /// The scheduled <see cref="Clock.ScheduledEventKind.MortalityCheck"/>
+        /// this person's next birthday roll is booked as, or
+        /// <see cref="EventId.None"/> once they are dead. Written by
+        /// <see cref="Lifecycle.Mortality"/> when it books each year's check,
+        /// and cleared by the death cascade, which cancels the event.
+        ///
+        /// The record points at it for the reason
+        /// <see cref="PregnancyDue"/> does: the check IS the pending event, so
+        /// a stray <c>MortalityCheck</c> for this person can be told from the
+        /// real one and refused. Without it a second stream would roll the
+        /// life table twice a year, for good, and read as bad tuning rather
+        /// than as a bug (#80).
+        /// </summary>
+        public EventId PendingMortalityCheck;
+
+        /// <summary>
         /// The household this person belongs to, or <see cref="EntityId.None"/>
         /// for someone in none. Written by <see cref="Lifecycle.Households"/>,
         /// which keeps this and the household's member list saying the same
