@@ -2,7 +2,7 @@
 name: create-issue
 description: "File a GitHub issue that survives contact with the future: interrogate the user for what only they know, verify every claim against the actual repo before writing it down, state the problem rather than decree a fix, label it, and create it. Also audits existing issues against the same bar (`audit <N>` / `audit all`). Use whenever the user wants to file, open, raise, log, or write up an issue, ticket, bug report or piece of tech debt — and whenever a session turns up a problem that isn't going to get fixed right now, even if they didn't use the word 'issue'. Prefer this over calling `gh issue create` directly, always."
 argument-hint: "<what's wrong> | audit <issue number|all>"
-allowed-tools: Bash(gh *) Bash(git *) Bash(grep *) Bash(sed *) Bash(cp *) Bash(diff *) Bash(cat *) Bash(od *) Bash(head *) Read Grep Glob AskUserQuestion
+allowed-tools: Bash(gh *) Bash(pwsh tools/*) Bash(git *) Bash(grep *) Bash(sed *) Bash(cp *) Bash(diff *) Bash(cat *) Bash(od *) Bash(head *) Read Grep Glob AskUserQuestion
 ---
 
 # Create Issue
@@ -96,27 +96,23 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
-# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
-# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
-# so nothing has to be accumulated.
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/issues?state=all&per_page=100&page=$p")
-  jq -r '.[] | select(.pull_request == null)
-             | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
-             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done | head -8
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
+  | jq -r '.[] | select(.pull_request == null)
+           | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+           | "#\(.number) [\(.state)] \(.title)"' | head -8
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
-# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
-# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
-# so nothing has to be accumulated.
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100&page=$p")
-  jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
-             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done | head -5
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
+  | jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
+           | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
 Then, before any line number goes in the body, **open the file and confirm the
@@ -307,11 +303,12 @@ Check what actually exists before proposing anything — this repo is new and ma
 not have a type/priority taxonomy set up yet:
 
 ```bash
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/labels?per_page=100&page=$p")
-  jq -r '.[] | "\(.name)  \(.description)"' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/labels' \
+  | jq -r '.[] | "\(.name)  \(.description)"'
 ```
 
 If a reasonable set exists, propose the full set with a one-line justification

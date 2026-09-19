@@ -76,13 +76,25 @@ namespace KingdomWatch.Core.Tests.Knowledge
         }
 
         [Test]
-        public void None_is_not_a_holder()
+        public void None_is_not_a_holder_at_any_entry_point()
         {
-            var maps = Fresh(out _);
+            // A defaulted EntityId is a caller's uninitialised field, not a
+            // holder that happens to have no map. Answering "not tracked" for
+            // it - which IsTracked did - conflates the two, and sends a reader
+            // hunting for a missing Track instead of at their own default.
+            var maps = Tracking(Band);
+            var route = new List<WorldPosition> { new WorldPosition(1, 1) };
 
             Assert.Multiple(() =>
             {
                 Assert.That(() => maps.Track(EntityId.None), Throws.ArgumentException);
+                Assert.That(() => maps.IsTracked(EntityId.None), Throws.ArgumentException);
+                Assert.That(() => maps.Untrack(EntityId.None), Throws.ArgumentException);
+                Assert.That(() => maps.For(EntityId.None).Length, Throws.ArgumentException);
+                Assert.That(() => maps.Knows(EntityId.None, new WorldPosition(1, 1)), Throws.ArgumentException);
+                Assert.That(() => maps.Reveal(EntityId.None, new WorldPosition(1, 1), 1), Throws.ArgumentException);
+                Assert.That(() => maps.RevealAlong(EntityId.None, route, 1), Throws.ArgumentException);
+                Assert.That(() => maps.HandOver(EntityId.None, Town), Throws.ArgumentException);
                 Assert.That(() => maps.HandOver(Band, EntityId.None), Throws.ArgumentException);
             });
         }

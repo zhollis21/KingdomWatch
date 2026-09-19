@@ -77,11 +77,12 @@ gh api repos/zhollis21/KingdomWatch/issues/<N> --jq '
   "labels: \([.labels[].name] | join(" "))",
   "--- body ---", .body'
 
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/issues/<N>/comments?per_page=100&page=$p")
-  jq -r '.[] | "--- comment by \(.user.login) @ \(.created_at) ---", .body' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues/<N>/comments' \
+  | jq -r '.[] | "--- comment by \(.user.login) @ \(.created_at) ---", .body'
 ```
 
 That second call deliberately renders every comment body, not just a count. Comments
@@ -139,15 +140,13 @@ git log --oneline --since=<issue createdAt> --grep=<keyword> -i
 git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
-# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
-# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
-# so nothing has to be accumulated.
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/pulls?state=all&per_page=100&page=$p")
-  jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
-             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done | head -5
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
+  | jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
+           | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
 `git log -S` is the more reliable of the two log commands — it finds the commit
@@ -174,16 +173,14 @@ up on is just a description of the gap.
 open ones:
 
 ```bash
-# Pages are walked by hand: `gh --paginate` follows a Link header pointing at
-# the numeric-id form the proxy rejects (AGENTS.md). Filtering happens per page,
-# so nothing has to be accumulated.
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/issues?state=all&per_page=100&page=$p")
-  jq -r '.[] | select(.pull_request == null)
-             | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
-             | "#\(.number) [\(.state)] \(.title)"' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-done | head -8
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
+  | jq -r '.[] | select(.pull_request == null)
+           | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+           | "#\(.number) [\(.state)] \(.title)"' | head -8
 ```
 
 What you're looking for is not only exact duplicates but **dependency order**,
@@ -251,15 +248,12 @@ findings at all. Mark the comment and look for that marker first:
 # it follows GitHub's Link header, which points at the /repositories/{id}/...
 # form that the proxy in front of Claude Code sessions rejects with a 403, so
 # it breaks the moment an issue outgrows one page. Walk the pages by hand.
-for p in $(seq 1 50); do
-  batch=$(gh api "repos/zhollis21/KingdomWatch/issues/<N>/comments?per_page=100&page=$p")
-  jq -r '.[] | select(.body | contains("<!-- kickoff-findings -->")) | .id' <<<"$batch"
-  [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
-  # Never stop quietly: a marker past the cap would look like "no previous
-  # comment" and post a duplicate, which is the failure this whole lookup exists
-  # to avoid.
-  [ "$p" -eq 50 ] && { echo "PAGE CAP HIT - raise it; a marker past page 50 is invisible" >&2; exit 1; }
-done
+# One command, not a loop: `gh --paginate` follows a Link header the proxy
+# rejects, and a `for` loop is a compound command that starts with `for`, so
+# it falls outside this skill's command-prefix allow rules. The script throws
+# rather than quietly truncating if a collection outgrows its page cap.
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues/<N>/comments' \
+  | jq -r '.[] | select(.body | contains("<!-- kickoff-findings -->")) | .id'
 
 # Update it in place
 gh api repos/zhollis21/KingdomWatch/issues/comments/<id> -X PATCH -f body='<!-- kickoff-findings -->

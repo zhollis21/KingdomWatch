@@ -60,8 +60,15 @@ namespace KingdomWatch.Core.Knowledge
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
         }
 
-        /// <summary>Whether this holder has a map at all.</summary>
-        public bool IsTracked(EntityId holder) => _maps.ContainsKey(holder);
+        /// <summary>
+        /// Whether this holder has a map at all. Refuses
+        /// <see cref="EntityId.None"/>, as every entry point here does.
+        /// </summary>
+        public bool IsTracked(EntityId holder)
+        {
+            RequireRealHolder(holder);
+            return _maps.ContainsKey(holder);
+        }
 
         /// <summary>
         /// Gives a holder an empty map: it knows nothing until something
@@ -87,6 +94,8 @@ namespace KingdomWatch.Core.Knowledge
         /// </summary>
         public void Untrack(EntityId holder)
         {
+            RequireRealHolder(holder);
+
             if (!_maps.Remove(holder))
             {
                 throw new InvalidOperationException(holder + " has no known map to forget.");
@@ -214,6 +223,12 @@ namespace KingdomWatch.Core.Knowledge
 
         private bool[] RequireMap(EntityId holder)
         {
+            // Before the lookup, so a defaulted id is named as one rather than
+            // reported as a holder nobody tracked. The two failures send a
+            // reader to opposite places: one to the caller's uninitialised
+            // field, the other to a missing Track.
+            RequireRealHolder(holder);
+
             if (!_maps.TryGetValue(holder, out var map))
             {
                 throw new InvalidOperationException(holder + " has no known map; it is not tracked by KnownMaps.");
@@ -222,6 +237,9 @@ namespace KingdomWatch.Core.Knowledge
             return map;
         }
 
+        // Every public entry point runs this, directly or through RequireMap:
+        // None can never be tracked, so answering "not tracked" for it would
+        // conflate an invalid id with a real holder that simply has no map.
         private static void RequireRealHolder(EntityId holder)
         {
             if (holder.IsNone)

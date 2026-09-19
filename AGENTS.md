@@ -121,8 +121,14 @@ pwsh tools/Get-OpenPrComments.ps1
 pwsh tools/Build-Roadmap.ps1
 ```
 
-`tools/GitHubApi.psm1` is not a script but the shared GitHub REST helpers both
-of the above import; see [below](#calling-the-github-api-from-a-claude-code-cloud-session) for why they exist.
+```powershell
+# Every page of a REST collection, as one JSON array — for the skills, which
+# cannot page in a shell loop (see below)
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all'
+```
+
+`tools/GitHubApi.psm1` is not a script but the shared GitHub REST helpers the
+above import; see [below](#calling-the-github-api-from-a-claude-code-cloud-session) for why they exist.
 
 Requires `gh` CLI authenticated. See `.claude/skills/pr-feedback/SKILL.md` (`/pr-feedback`) for the full evaluation workflow.
 
@@ -167,7 +173,16 @@ The pagination restriction is the one that bites late: a collection that still
 fits one page works, so tooling looks healthy right up until it does not.
 `tools/GitHubApi.psm1` holds the two helpers (`Invoke-GhJson`, `Get-Paged`) so
 the workaround has exactly one copy — import it rather than hand-rolling a
-second.
+second. `Get-Paged` refuses a `PageSize` above 100, because GitHub silently
+serves 100 for anything larger and the next short page would read as the end of
+the collection.
+
+**A skill cannot page in a shell loop.** The command-prefix allow rules those
+skills are granted match the first word, so a `for … do … gh api … done` starts
+with `for` and gets bounced to the interactive classifier — the same trap as
+putting `-X POST` before the endpoint. `tools/Get-GhPages.ps1` exists for that:
+it prints a whole collection as one JSON array, the command starts with `pwsh`,
+and it throws rather than truncating when a collection outgrows its page cap.
 
 `tools/` and `.claude/skills/` are clear of all of the above; keep them that
 way. A `gh issue`/`gh pr` one-liner from memory is the likely way it creeps

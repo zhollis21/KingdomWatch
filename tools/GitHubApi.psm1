@@ -51,8 +51,13 @@ function Get-Paged {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
-        [int]$PageSize = 100,
-        [int]$MaxPages = 50
+        # GitHub caps per_page at 100 and silently serves 100 for anything
+        # larger. Without this, -PageSize 1000 would fetch 100, read that as a
+        # short page, and stop one page into the collection - losing the rest
+        # and reporting success. Refused rather than clamped, because a caller
+        # who asked for 1000 has a wrong idea of the page size either way.
+        [ValidateRange(1, 100)][int]$PageSize = 100,
+        [ValidateRange(1, [int]::MaxValue)][int]$MaxPages = 50
     )
 
     $all = [System.Collections.Generic.List[object]]::new()
