@@ -96,22 +96,28 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
-  | jq -r '.[] | select(.pull_request == null)
-           | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+  | jq -r --arg topic '<topic>' '.[] | select(.pull_request == null)
+           | select((.title + " " + (.body // "")) | ascii_downcase | contains($topic | ascii_downcase))
            | "#\(.number) [\(.state)] \(.title)"' | head -8
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
-  | jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
+  | jq -r --arg keyword '<keyword>' '.[] | select((.title + " " + (.body // "")) | ascii_downcase | contains($keyword | ascii_downcase))
            | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
@@ -330,7 +336,7 @@ genuinely can't call it, the lowest priority with a note beats silence.
 
 ## Step 8 — File it
 
-Compose the body in a scratch file and pass it with `--body-file`. This is not
+Compose the body in a scratch file and pass it with `-F body=@<file>`. This is not
 style: shell-quoted issue bodies routinely get mangled — every backtick becomes
 `\`, or quotes get doubled — because the body went through inline shell quoting. A
 file round-trip has no such failure mode.

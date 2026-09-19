@@ -140,12 +140,15 @@ git log --oneline --since=<issue createdAt> --grep=<keyword> -i
 git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
-  | jq -r '.[] | select((.title + " " + (.body // "")) | test("<keyword>"; "i"))
+  | jq -r --arg keyword '<keyword>' '.[] | select((.title + " " + (.body // "")) | ascii_downcase | contains($keyword | ascii_downcase))
            | "#\(.number) [\(.state)] \(.title)"' | head -5
 ```
 
@@ -173,13 +176,16 @@ up on is just a description of the gap.
 open ones:
 
 ```bash
+# The term is matched literally, not as a regex: jq's test() would read
+# `Found(` as an unterminated group and fail outright, and `a.b` would
+# quietly match `axb`. --arg also keeps the shell out of the quoting.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
-  | jq -r '.[] | select(.pull_request == null)
-           | select((.title + " " + (.body // "")) | test("<topic>"; "i"))
+  | jq -r --arg topic '<topic>' '.[] | select(.pull_request == null)
+           | select((.title + " " + (.body // "")) | ascii_downcase | contains($topic | ascii_downcase))
            | "#\(.number) [\(.state)] \(.title)"' | head -8
 ```
 
