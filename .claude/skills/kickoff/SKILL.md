@@ -2,7 +2,7 @@
 name: kickoff
 description: 'Start work on a GitHub issue the right way: pull the issue, verify it isn''t stale or already fixed, analyze solutions independently of whatever the issue proposes, brief the user on the issue, where it fits and the decisions it needs, ask clarifying questions, agree a plan, then build it. Use whenever the user names issue numbers to work on — "let''s do #12", "start issue 4", "pick up 9 and 14" — or asks to take something off the backlog. Also `/kickoff next` (or "what should I work on", "what''s next") for a brief on what is ready to pick up and which of it matters most, before any issue is named. Prefer this over jumping straight into implementation, even when the issue looks obvious.'
 argument-hint: "<issue number> [more issue numbers] | next"
-allowed-tools: Bash(gh *) Bash(git *) Bash(cp *) Bash(diff *) Bash(dotnet *) Bash(pwsh *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
+allowed-tools: Bash(gh *) Bash(git *) Bash(curl *) Bash(cp *) Bash(diff *) Bash(dotnet *) Bash(pwsh *) Read Grep Glob Edit Write AskUserQuestion EnterPlanMode ExitPlanMode Skill
 ---
 
 # Kickoff
@@ -36,14 +36,28 @@ stay in the conversation where they can be argued with.
 ## `next` — what should I pick up?
 
 When the argument is `next` (or the user asks what to work on without naming an
-issue), the job is a brief, not a plan. Regenerate the graph and read it:
+issue), the job is a brief, not a plan. Read the published graph — one request,
+rather than the ~70 the generator makes:
 
 ```bash
-pwsh tools/Build-Roadmap.ps1
+curl -sS https://zhollis21.github.io/KingdomWatch/graph.json -o "<scratch>/graph.json"
 ```
 
-Then from `docs/roadmap/graph.json` (`ready`, and each issue's `milestone`,
-`priority`, `openBlocking`), write the brief — short enough to read on a phone:
+Its `generated` field says when the workflow last built it. That run fires on
+issue, milestone and pull-request events, nightly, and on demand, so the answer
+is normally minutes old. A copy with no `generated` at all was published before
+the stamp existed, which makes it old by definition. **Regenerate locally instead when it is not good
+enough** — after re-wiring a relationship (those fire no webhook at all, which
+is the one case the published copy is reliably wrong about), when `generated` is
+older than something you know happened, or when the brief contradicts what you
+just read on GitHub:
+
+```bash
+pwsh tools/Build-Roadmap.ps1   # writes the same file to docs/roadmap/, straight from GitHub
+```
+
+Then from the graph (`ready`, and each issue's `milestone`, `priority`,
+`openBlocking`), write the brief — short enough to read on a phone:
 
 1. **The ready list**, grouped by milestone in order, priority first within
    each. One line per issue: number, title, priority, and what closing it
@@ -191,9 +205,10 @@ pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
 
 What you're looking for is not only exact duplicates but **dependency order**,
 which is easier to miss and more expensive to get wrong. The recorded order is
-in the graph: run `pwsh tools/Build-Roadmap.ps1` (read-only against GitHub,
-writes the git-ignored `docs/roadmap/`) and read `graph.json` — each issue's
-`blockedBy`, `blocking`, `openBlocking` and `ready`. Read it
+in the graph — each issue's `blockedBy`, `blocking`, `openBlocking` and `ready`.
+Read the published copy as above, or regenerate with
+`pwsh tools/Build-Roadmap.ps1` (read-only against GitHub, writes the git-ignored
+`docs/roadmap/`) when this run has edited a relationship. Read it
 before the search, then treat the search as a check on it: an issue the dig
 says this one depends on, or unblocks, that the graph does not list is a
 missing relationship, and fixing it is part of kickoff (see

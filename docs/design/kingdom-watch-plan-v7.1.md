@@ -1084,7 +1084,7 @@ Pathfinding is hierarchical: grid A* locally, road/region graph between settleme
 
 ### Bounded map knowledge
 
-**Nobody sees the whole map.** The god does; the people do not. Each polity carries one **known-cells bitmap** over the terrain grid, and every decision that picks a place — a settling site, a founding site, a migration target, "unclaimed viable land" for a bridge, a target for an army — chooses among the cells that polity knows, never the world. This is the map-shaped half of §11's rule that knowledge is not omniscient.
+**Nobody sees the whole map.** The god does; the people do not. Each polity carries one **known-cells bitmap** over the terrain grid, and every decision that picks a place — a settling site, a founding site, a migration target, a work site for a day's gathering, "unclaimed viable land" for a bridge, a target for an army — chooses among the cells that polity knows, never the world. The *destination* is what must be known: a route may cross unseen ground, or nothing could ever be reached that was only glimpsed from the far side. This is the map-shaped half of §11's rule that knowledge is not omniscient.
 
 The point is the exploration motive. A polity that has used up its known viable land has to push its frontier before it can expand, and it may not know a better valley exists one ridge over. Without fog, expansion is a distance-weighted optimisation over a fully visible map and the "exploration" motive in §12 Bridges is a label with nothing behind it.
 

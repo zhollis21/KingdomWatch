@@ -1,6 +1,7 @@
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Traversal;
@@ -28,8 +29,10 @@ namespace KingdomWatch.Core.Tests.Performance
             var clock = new SimulationClock(ids);
             var bus = new DomainEventBus(clock);
             var people = new PersonStore();
-            var pathfinder = new Pathfinder(WorkWorld.DefaultMap(), TerrainRules.Default);
-            var jobs = new Jobs(clock, people, pathfinder);
+            var grid = WorkWorld.DefaultMap();
+            var pathfinder = new Pathfinder(grid, TerrainRules.Default);
+            var knownMaps = new KnownMaps(grid);
+            var jobs = new Jobs(clock, people, pathfinder, knownMaps);
             var hunger = new Hunger(bus, people);
             var router = new ScheduledEventRouter();
             router.Register(ScheduledEventKind.WorkDayDue, jobs);
@@ -45,6 +48,14 @@ namespace KingdomWatch.Core.Tests.Performance
             jobs.Track(fed);
             hunger.Track(hungry);
             hunger.Track(fed);
+
+            // Each band holds a map and sees its own surroundings, as a
+            // tracked band does in the world: without one the dawn pass is
+            // refused, and the measured span would never run a day's work.
+            knownMaps.Track(hungry.Id);
+            knownMaps.Track(fed.Id);
+            knownMaps.Reveal(hungry.Id, hungry.Position, Jobs.RevealRadius);
+            knownMaps.Reveal(fed.Id, fed.Position, Jobs.RevealRadius);
 
             // Ten days: every worker has had a task and a route buffer, and
             // the fed band has reached the wood cap and moved on to stone, so
