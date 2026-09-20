@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Tests.Lifecycle;
+using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.WorldGen;
@@ -21,6 +24,10 @@ namespace KingdomWatch.Core.Tests.Rng
     public sealed class RandomSiteTests
     {
         private const ulong WorldSeed = 38471928UL;
+
+        // Enough food that the wandering run is about choosing camps rather
+        // than about starving.
+        private const int BandMembers = 8;
 
         private static readonly EntityId Household = new EntityId(EntityKind.Household, 12UL);
 
@@ -176,16 +183,25 @@ namespace KingdomWatch.Core.Tests.Rng
             // The digest is a stand-in for the canonical world hash #13 owns.
             // Once that exists, this assertion should become "the same hash"
             // and stop enumerating fields by hand.
-            const int Size = 12;
+            // Large enough to deal children: a band of twelve leaves every
+            // couple outside the window TryChildAges needs, so BandChildAge
+            // and BandChildSex are never drawn at all.
+            const int Size = 45;
             const long Years = 40L;
 
-            var watched = Run(new DrawCollisionDetector(), Size, Years);
+            var detector = new DrawCollisionDetector();
+            var watched = Run(detector, Size, Years);
             var unwatched = Run(null, Size, Years);
 
             Assert.Multiple(() =>
             {
                 Assert.That(watched, Is.EqualTo(unwatched));
                 Assert.That(watched, Does.Contain("|"), "the run produced no people to compare");
+
+                // The detector is attached anyway, so its answer is free; an
+                // observer whose findings nobody reads is just overhead.
+                Assert.That(detector.Collisions, Is.Empty);
+                Assert.That(detector.Draws, Is.GreaterThan(1000), "this run barely drew anything");
             });
         }
 
@@ -208,6 +224,11 @@ namespace KingdomWatch.Core.Tests.Rng
             {
                 band.AddMember(member);
             }
+
+            // Matchmaking runs off a booked CourtshipDue and Track is what
+            // books one; DemographicWorld tracks the other systems but not
+            // this, so without it the run never reaches RandomSite.MarriageRoll.
+            world.Matchmaking.Track(band);
 
             world.AdvanceYears(years);
 
@@ -277,6 +298,71 @@ namespace KingdomWatch.Core.Tests.Rng
             detector.Drew(RandomDomain.Mortality, RandomSite.Terrain, 11UL);
 
             Assert.That(detector.Collisions, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void A_wandering_run_draws_no_two_values_from_different_sites()
+        {
+            // RandomSite.CampChoice is drawn from NomadicBands and nowhere
+            // else, so without a run of its own it is the one production site
+            // no collision check ever sees.
+            var detector = new DrawCollisionDetector();
+            var world = new WorkWorld(WorldSeed, WorkWorld.DefaultMap(), DemographicSettings.Default, detector);
+
+            world.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(BandMembers));
+            world.Advance(NomadicBands.CampDays * SimulationTime.TicksPerDay * 4L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(detector.Collisions, Is.Empty);
+                Assert.That(detector.Draws, Is.GreaterThan(0), "the band never chose a camp");
+            });
+        }
+
+        [Test]
+        public void Every_site_a_production_call_site_uses_is_covered_by_a_collision_check()
+        {
+            // The guard on this file rather than on the code. Copilot found
+            // one run whose detector was discarded; the wider problem was that
+            // only two of eleven sites were covered by any collision check at
+            // all, and nothing would have said so when the twelfth arrived.
+            //
+            // So the sites the runs above actually exercise are collected here
+            // and checked against the enum. A new RandomSite fails this until
+            // someone either drives it under a detector or states here why it
+            // cannot be.
+            var seen = new SiteLog();
+
+            PlaceholderMap.Generate(60, 40, new DeterministicRng(WorldSeed, seen));
+            Run(seen, 45, 40L);
+
+            var wandering = new WorkWorld(WorldSeed, WorkWorld.DefaultMap(), DemographicSettings.Default, seen);
+            wandering.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(BandMembers));
+            wandering.Advance(NomadicBands.CampDays * SimulationTime.TicksPerDay * 4L);
+
+            // Declared ahead of the system that will draw it, as
+            // RandomDomain.Combat is. Nothing in Core keys a draw on it yet,
+            // so there is no run that could reach it - remove it from here the
+            // moment combat exists.
+            var notYetDrawnInProduction = new[] { RandomSite.BattleOutcome };
+
+            var uncovered = Enum.GetValues(typeof(RandomSite))
+                .Cast<RandomSite>()
+                .Where(site => !seen.Seen.Contains(site) && !notYetDrawnInProduction.Contains(site))
+                .ToArray();
+
+            Assert.That(
+                uncovered,
+                Is.Empty,
+                "No collision-checked run draws from these sites, so a collision involving one "
+                + "would go unnoticed. Drive them under a DrawCollisionDetector, or say here why not.");
+        }
+
+        private sealed class SiteLog : IRandomDrawObserver
+        {
+            internal HashSet<RandomSite> Seen { get; } = new HashSet<RandomSite>();
+
+            public void Drew(RandomDomain domain, RandomSite site, ulong value) => Seen.Add(site);
         }
 
         [Test]
