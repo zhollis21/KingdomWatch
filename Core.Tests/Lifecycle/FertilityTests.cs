@@ -492,8 +492,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(due, Is.Not.EqualTo(EventId.None));
                 Assert.That(
                     pendingAfter,
-                    Is.EqualTo(pendingBefore - 2),
-                    "the birth and the yearly check were both cancelled, not left to be ignored");
+                    Is.EqualTo(pendingBefore - 3),
+                    "the birth, the yearly check and the next stage boundary were all cancelled, "
+                    + "not left to be ignored");
                 Assert.That(w.Clock.Cancel(due), Is.False, "already gone");
                 Assert.That(w.People.Count, Is.EqualTo(1));
                 Assert.That(w.Published(DomainEventKind.PersonBorn), Has.Count.EqualTo(2), "the founders only");

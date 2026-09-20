@@ -109,6 +109,19 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
+            if (scheduled.Id != _people.GetPendingAgeStage(person))
+            {
+                throw new InvalidOperationException(
+                    scheduled + " came due for " + scheduled.PrimaryEntity + ", whose next boundary is "
+                    + _people.GetPendingAgeStage(person) + ".");
+            }
+
+            // Not cleared here. ScheduleNextBoundary below writes the field
+            // on every path it can leave by, so it is the only writer and the
+            // record is never left naming an event that has been dispatched.
+            // Mortality clears before its roll because a death publishes
+            // PersonDied while the record is readable; nothing here publishes
+            // anything, so there is no window to close.
             var age = _people.GetAgeYears(person, clock.Now);
             _people.SetAgeStage(person, _settings.StageAt(age));
             ScheduleNextBoundary(person, scheduled.PrimaryEntity);
@@ -123,6 +136,11 @@ namespace KingdomWatch.Core.Lifecycle
 
             if (!_settings.TryNextBoundary(age, out var boundaryYears))
             {
+                // An elder has no boundary left, so the stream ends here and
+                // the record says so. Every exit from this method writes the
+                // field: the record naming the pending event is only worth
+                // anything if it is right about there not being one (#80).
+                _people.SetPendingAgeStage(person, EventId.None);
                 return;
             }
 
@@ -134,10 +152,14 @@ namespace KingdomWatch.Core.Lifecycle
             // itself, as Hunger's does.
             if (born > long.MaxValue - offset)
             {
+                _people.SetPendingAgeStage(person, EventId.None);
                 return;
             }
 
-            _clock.Schedule(new SimulationTime(born + offset), Phase, ScheduledEventKind.AgeStageDue, id, EntityId.None);
+            _people.SetPendingAgeStage(
+                person,
+                _clock.Schedule(
+                    new SimulationTime(born + offset), Phase, ScheduledEventKind.AgeStageDue, id, EntityId.None));
         }
     }
 }

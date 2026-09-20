@@ -508,8 +508,8 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(
                     w.Clock.ScheduledCount,
-                    Is.EqualTo(pending - 2),
-                    "the completion and the dead worker's yearly check are both gone");
+                    Is.EqualTo(pending - 3),
+                    "the completion, the dead worker's yearly check and their next stage boundary are all gone");
                 Assert.That(w.Jobs.HasTask(worker), Is.False);
                 Assert.That(w.People.IsAlive(worker), Is.False);
                 Assert.That(w.Jobs.HasTask(other), Is.True, "the living carry on");

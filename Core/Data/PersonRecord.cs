@@ -150,6 +150,22 @@ namespace KingdomWatch.Core.Data
         public EventId PendingMortalityCheck;
 
         /// <summary>
+        /// The scheduled <see cref="Clock.ScheduledEventKind.AgeStageDue"/>
+        /// this person's next stage boundary is booked as, or
+        /// <see cref="EventId.None"/> when none is pending. Written by
+        /// <see cref="Lifecycle.Aging"/> as it books each boundary, and
+        /// cleared by the death cascade, which cancels the event.
+        ///
+        /// The last of the periodic streams to name what it booked (#80).
+        /// Aging was missed in that pass: it rebooks from inside its own
+        /// handler like the others, but discarded the id, so nothing could
+        /// cancel a boundary for someone who had died and nothing could tell
+        /// a stray AgeStageDue from the real one. Found by the validator's
+        /// seed sweep (#13), which reported it on every seed.
+        /// </summary>
+        public EventId PendingAgeStage;
+
+        /// <summary>
         /// The household this person belongs to, or <see cref="EntityId.None"/>
         /// for someone in none. Written by <see cref="Lifecycle.Households"/>,
         /// which keeps this and the household's member list saying the same

@@ -181,6 +181,7 @@ namespace KingdomWatch.Core.Data
                 BornTick = bornTick,
                 PregnancyDue = EventId.None,
                 PendingMortalityCheck = EventId.None,
+                PendingAgeStage = EventId.None,
                 Household = EntityId.None,
             };
 
@@ -331,6 +332,13 @@ namespace KingdomWatch.Core.Data
 
         public void SetPendingMortalityCheck(PersonHandle handle, EventId value) =>
             _people[SlotFor(handle)].PendingMortalityCheck = value;
+
+        /// <summary>The AgeStageDue this person's next boundary is booked as.</summary>
+        public EventId GetPendingAgeStage(PersonHandle handle) =>
+            _people[SlotFor(handle)].PendingAgeStage;
+
+        public void SetPendingAgeStage(PersonHandle handle, EventId value) =>
+            _people[SlotFor(handle)].PendingAgeStage = value;
 
         public EntityId GetHousehold(PersonHandle handle) => _people[SlotFor(handle)].Household;
 
