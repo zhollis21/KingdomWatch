@@ -6,6 +6,7 @@ using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
+using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Traversal;
@@ -45,9 +46,13 @@ namespace KingdomWatch.Core.Tests.Work
         {
         }
 
-        internal WorkWorld(ulong seed, TerrainGrid grid, DemographicSettings settings)
+        // The observer is for the watched-versus-unwatched equivalence and
+        // collision tests (#57); it reaches the rng through DemographicWorld,
+        // and RandomSite.CampChoice is drawn only from here.
+        internal WorkWorld(
+            ulong seed, TerrainGrid grid, DemographicSettings settings, IRandomDrawObserver? observer = null)
         {
-            Demographics = new DemographicWorld(settings, seed, grid);
+            Demographics = new DemographicWorld(settings, seed, grid, observer);
             Founding = new Founding(
                 Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking, KnownMaps);
             Nomads = new NomadicBands(

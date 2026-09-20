@@ -235,7 +235,7 @@ namespace KingdomWatch.Core.Lifecycle
                     var womanId = _people.GetId(woman);
                     var manId = _people.GetId(man);
 
-                    if (_rng.Key(RandomDomain.Courtship).Mix(womanId).Mix(manId).Mix(year)
+                    if (_rng.Key(RandomDomain.Courtship, RandomSite.MarriageRoll).Mix(womanId).Mix(manId).Mix(year)
                         .Chance(ChancePerMille(gap), PerMille))
                     {
                         _family.Partner(woman, man, Reasons.None);

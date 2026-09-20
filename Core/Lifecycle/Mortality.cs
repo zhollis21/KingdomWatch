@@ -162,7 +162,7 @@ namespace KingdomWatch.Core.Lifecycle
             switch (scheduled.Kind)
             {
                 case ScheduledEventKind.MortalityCheck:
-                    Check(scheduled.PrimaryEntity);
+                    Check(scheduled);
                     break;
                 case ScheduledEventKind.StarvationCritical:
                     Starve(scheduled.PrimaryEntity);
@@ -174,12 +174,37 @@ namespace KingdomWatch.Core.Lifecycle
             }
         }
 
-        private void Check(EntityId id)
+        private void Check(ScheduledEvent scheduled)
         {
+            var id = scheduled.PrimaryEntity;
+
+            // A check for someone already dead is ignored rather than refused:
+            // durable ids are never reused, so there is nobody it could wrongly
+            // touch, and it books no successor on its way out.
             if (!_people.TryGetHandle(id, out var person))
             {
                 return;
             }
+
+            // The person names the check they booked, and only that one is
+            // rolled - the rule Hunger and Jobs apply to their streams. Any
+            // other MortalityCheck would roll the life table again and book a
+            // second stream, doubling this person's yearly hazard from then on
+            // and reading as bad tuning rather than as a bug (#80).
+            if (scheduled.Id != _people.GetPendingMortalityCheck(person))
+            {
+                throw new InvalidOperationException(
+                    scheduled + " came due for " + id + ", whose next check is "
+                    + _people.GetPendingMortalityCheck(person) + ".");
+            }
+
+            // Cleared before the roll, not after. This event is in flight, so
+            // cancelling it is already a no-op - the queue drops a dispatched
+            // id from its live set before handing it over (EventQueue) - but a
+            // death below publishes PersonDied, and every subscriber to that
+            // runs while this record is readable. Clearing first means they
+            // read None rather than the id of a check that will never come.
+            _people.SetPendingMortalityCheck(person, EventId.None);
 
             // Zero health is certain death whichever wake-up finds it. The
             // meal that took them there shares this instant when it falls on
@@ -201,7 +226,7 @@ namespace KingdomWatch.Core.Lifecycle
             var yearLived = _people.GetAgeYears(person, now) - 1L;
             var chance = ChanceAtNextBirthday(person, yearLived);
 
-            if (_rng.Key(RandomDomain.Mortality).Mix(id).Mix(now.Ticks).Chance(chance, PerMille))
+            if (_rng.Key(RandomDomain.Mortality, RandomSite.LifeTableRoll).Mix(id).Mix(now.Ticks).Chance(chance, PerMille))
             {
                 var reason = yearLived >= _settings.SoftLifespanYears ? ReasonCode.OldAge : ReasonCode.Illness;
                 _deaths.Die(person, new Reasons(reason));
@@ -248,8 +273,10 @@ namespace KingdomWatch.Core.Lifecycle
                 return;
             }
 
-            _clock.Schedule(
-                now.Plus(untilBirthday), Phase, ScheduledEventKind.MortalityCheck, id, EntityId.None);
+            _people.SetPendingMortalityCheck(
+                person,
+                _clock.Schedule(
+                    now.Plus(untilBirthday), Phase, ScheduledEventKind.MortalityCheck, id, EntityId.None));
         }
     }
 }

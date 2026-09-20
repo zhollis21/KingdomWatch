@@ -490,7 +490,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Assert.Multiple(() =>
             {
                 Assert.That(due, Is.Not.EqualTo(EventId.None));
-                Assert.That(pendingAfter, Is.EqualTo(pendingBefore - 1), "the birth was cancelled, not left to be ignored");
+                Assert.That(
+                    pendingAfter,
+                    Is.EqualTo(pendingBefore - 2),
+                    "the birth and the yearly check were both cancelled, not left to be ignored");
                 Assert.That(w.Clock.Cancel(due), Is.False, "already gone");
                 Assert.That(w.People.Count, Is.EqualTo(1));
                 Assert.That(w.Published(DomainEventKind.PersonBorn), Has.Count.EqualTo(2), "the founders only");
@@ -644,6 +647,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             {
                 Assert.That(w.Households.TryGet(household.Id, out _), Is.False);
                 Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pendingBefore - 1), "the check ran and booked no successor");
+                Assert.That(
+                    w.Fertility.PendingCheckCount,
+                    Is.Zero,
+                    "the household's booking went with it (#80) - ids are never reused, so a leaked entry has no other symptom");
             });
         }
 

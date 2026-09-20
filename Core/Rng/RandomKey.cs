@@ -4,9 +4,9 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Rng
 {
     /// <summary>
-    /// A random draw identified by what it is FOR rather than by a position in
-    /// a stream. Build a key from the things that make the decision unique,
-    /// then read a value off it.
+    /// A random draw identified by what it is FOR and where it is taken from,
+    /// rather than by a position in a stream. Build a key from the things that
+    /// make the decision unique, then read a value off it.
     /// </summary>
     /// <remarks>
     /// This is the shape section 5 asks for. One stream per subsystem is not
@@ -16,8 +16,19 @@ namespace KingdomWatch.Core.Rng
     /// the subsystem at a different position and change every future battle.
     /// Keyed draws have no position to disturb.
     ///
-    /// The struct carries a single ulong and allocates nothing, so building a
-    /// key inside the tick loop is free.
+    /// The struct allocates nothing, so building a key inside the tick loop is
+    /// free. It carries its <see cref="RandomDomain"/> and
+    /// <see cref="RandomSite"/> alongside the mixed state, which is what lets
+    /// a draw tell an <see cref="IRandomDrawObserver"/> where it came from
+    /// (#57); those two fields take no part in mixing after
+    /// <see cref="DeterministicRng.Key"/> has folded them in, so they cost
+    /// stack space and nothing else.
+    ///
+    /// **Order is part of a key.** Mix(a).Mix(b) and Mix(b).Mix(a) are
+    /// different draws, which is why the domain and the site are folded in
+    /// first and at a fixed depth: every key begins from a state unique to its
+    /// call site, and the caller's own components build on that rather than
+    /// competing with it.
     ///
     /// There is deliberately no Mix overload for PersonHandle or any other
     /// runtime handle. Handles carry a storage index and generation, both of
@@ -35,8 +46,8 @@ namespace KingdomWatch.Core.Rng
     /// Such a collision is the quiet kind. The world stays perfectly
     /// reproducible, no test fails, and the cross-platform hash still agrees;
     /// it surfaces much later as two things that should be independent moving
-    /// in lockstep. Domain granularity is the other half of the protection -
-    /// see the remarks on RandomDomain.
+    /// in lockstep. Domain and site granularity is the other half of the
+    /// protection - see the remarks on RandomDomain and RandomSite.
     /// </remarks>
     public readonly struct RandomKey
     {
@@ -52,13 +63,23 @@ namespace KingdomWatch.Core.Rng
 
         private readonly ulong _state;
 
-        internal RandomKey(ulong state)
+        // Where this key came from. Carried for reporting only; the mixing is
+        // already done by the time a key exists.
+        private readonly RandomDomain _domain;
+        private readonly RandomSite _site;
+        private readonly IRandomDrawObserver? _observer;
+
+        internal RandomKey(ulong state, RandomDomain domain, RandomSite site, IRandomDrawObserver? observer)
         {
             _state = state;
+            _domain = domain;
+            _site = site;
+            _observer = observer;
         }
 
         /// <summary>Folds another component into the key.</summary>
-        public RandomKey Mix(ulong value) => new RandomKey(SplitMix64.Mix(_state ^ value));
+        public RandomKey Mix(ulong value) =>
+            new RandomKey(SplitMix64.Mix(_state ^ value), _domain, _site, _observer);
 
         /// <summary>Folds a signed component into the key.</summary>
         public RandomKey Mix(long value) => Mix(unchecked((ulong)value));
@@ -80,7 +101,7 @@ namespace KingdomWatch.Core.Rng
         public RandomKey Mix(EventId id) => Mix(EventDiscriminator).Mix(id.Value);
 
         /// <summary>The full 64-bit value for this key.</summary>
-        public ulong NextUInt64() => Draw(0UL);
+        public ulong NextUInt64() => Observe(Draw(0UL));
 
         /// <summary>
         /// A value in [0, exclusiveMax). Unbiased.
@@ -112,7 +133,10 @@ namespace KingdomWatch.Core.Rng
 
                 if (draw >= threshold)
                 {
-                    return draw % exclusiveMax;
+                    // The accepted draw is what is reported, not each rejected
+                    // attempt and not the bounded result: two sites that agree
+                    // on this agree however either one bounds it.
+                    return Observe(draw) % exclusiveMax;
                 }
             }
         }
@@ -154,7 +178,8 @@ namespace KingdomWatch.Core.Rng
             }
 
             // Certainties resolve without a draw, so they are exact rather than
-            // merely overwhelmingly likely.
+            // merely overwhelmingly likely. Nothing is drawn, so nothing is
+            // reported: a certainty cannot collide with anything.
             if (numerator == 0)
             {
                 return false;
@@ -169,5 +194,14 @@ namespace KingdomWatch.Core.Rng
         }
 
         private ulong Draw(ulong attempt) => SplitMix64.Mix(unchecked(_state + attempt));
+
+        // One predictable branch on a field that is null everywhere except the
+        // harness and the tests. Returns its argument so it can wrap a draw
+        // without restructuring the caller.
+        private ulong Observe(ulong value)
+        {
+            _observer?.Drew(_domain, _site, value);
+            return value;
+        }
     }
 }

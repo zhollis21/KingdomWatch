@@ -302,6 +302,37 @@ Come up with at least one genuine alternative before settling. If the issue's
 option really is best, saying _why_ it beat the alternative is far more useful
 than saying it was the only thing considered.
 
+**Read the code each option would touch, before judging any of them.** This is
+the step that is easiest to skip and most expensive to have skipped, because an
+issue's options were written from the code as it stood months ago and read as
+though they still describe it. Most of them quietly assert something — that a
+piece of state exists, that a system has somewhere to put a field, that a seam
+is available, that a value is pinned by a test. Those assertions are the whole
+basis of the tradeoff, and every one of them is checkable in a couple of
+minutes.
+
+So for each option, open the files it would change and write down what you
+found:
+
+- **The state it assumes exists.** Go and look at it. "`Fertility`'s
+  per-household state has somewhere to keep the id" turned out to be false —
+  it tracks communities, and the stream is keyed per household — which moved
+  that option from cheap to the same cost as the one the issue called
+  expensive.
+- **The home it assumes is available.** A "record it during harness runs"
+  option needs the harness to run the thing being recorded. Check.
+- **The constraint it assumes binds.** "Must not change draw values" is worth
+  dating the same way Step 2 dates a design-doc decision: a constraint that was
+  true when written can be free now and expensive later.
+- **What would actually break.** Grep for the pinned values, golden files and
+  saved fixtures the change would invalidate. "This rewrites every saved world"
+  and "this rewrites four numbers in one test, and no saved world exists yet"
+  are different decisions wearing the same words.
+
+An option you have not checked this way is not an option yet — it is a
+paraphrase of the ticket. Offering it as one asks the user to arbitrate between
+descriptions neither of you has confirmed.
+
 Check candidate approaches against the conventions that actually bite here (see
 `AGENTS.md` and the design doc):
 
@@ -332,6 +363,36 @@ you are. A question arriving cold — "refuse or queue nested publishes?" — as
 user to reconstruct the whole problem in their head before they can answer it;
 the same question after two paragraphs of context is answerable in a sentence.
 
+**The failure this prevents, stated plainly, because it is the easy thing to
+do:** read the issue, lift its **A / B / C** into a question box, ask which one
+the user wants. It looks like consulting them and is the opposite. The options
+came from the ticket rather than from the code, nobody has checked whether they
+still describe reality, and the user is being asked to pick between three
+summaries you have not verified — so their answer cannot be better than the
+ticket was. The tell is that when they reply "explain more" or "I need more
+info", the reading you do *then* changes your own recommendation. Everything
+that reading would have found was available before the question was asked.
+
+Before the first `AskUserQuestion`, all of these must hold:
+
+- [ ] **Every option names a file you opened.** Not the design doc, not
+      `AGENTS.md` — the code it would change. If you cannot cite one, you are
+      about to quote the ticket back.
+- [ ] **No option's premise is still an assumption.** Step 3's checks are done
+      and written down, including the ones that killed an option.
+- [ ] **Every fact the question rests on has been looked up**, so what is left
+      is the decision itself. This is not a reason to drop the question — a
+      decision stays the user's however clearly the code points. It is a reason
+      the question should arrive with its answer already costed.
+- [ ] **Each option's real cost is known**, not its cost as the ticket
+      described it.
+- [ ] **You have a recommendation and a reason.** No recommendation usually
+      means the analysis is not finished, and a menu is being offered in place
+      of a judgement.
+
+A question that survives all five is worth the user's attention. One that does
+not is a request for them to do Step 3 for you.
+
 The brief covers, in this order and briefly:
 
 - **What the issue is** — the problem in your own words, reflecting what Step 2
@@ -343,8 +404,11 @@ The brief covers, in this order and briefly:
   argument for doing it now, or for not.
 - **The decisions to make** — each one named, with the options and the tradeoff
   in a line or two apiece, and your recommendation. This is the list Step 3
-  produced. If a decision has an obvious default and no real alternative, say
-  so and do not put it to the user.
+  produced. Leave one out only when there is genuinely nothing to decide — one
+  viable way to do it, and you would not change course whatever the answer was.
+  "I have a clear preference" is not that; neither is "the repo points one
+  way". State those as recommendations and still ask. A decision quietly
+  resolved in the brief is a decision taken away.
 
 Write it in plain language. The user may not have the design doc open, and a
 decision explained as "the clock already refuses reentrant dispatch, so the bus
@@ -355,12 +419,35 @@ is Step 5.
 Then ask.
 
 The user's explicit goal is to fix it right the first time, which means questions
-are welcome — but their value comes from being answerable and consequential, not
-from their quantity.
+are welcome. There is no budget to stay under — make each one answerable and
+consequential, then ask all of them. Batching keeps that cheap.
 
-Ask about anything where two readings lead to genuinely different code. Skip
-anything you can settle yourself by reading the repo/design doc; burning a
-question on something greppable spends the user's attention badly.
+Ask about anything where two readings lead to genuinely different code.
+
+**When in doubt, ask.** The costs here are not symmetric and it is worth being
+blunt about which way they fall: a question the user did not need costs them a
+few seconds, and something built the way they did not want costs hours, plus
+the argument about whether to keep it. Do not talk yourself out of a question
+on the grounds that you could defend a choice from the repo. Being able to
+justify a decision is not the same as it being yours to make.
+
+The distinction that matters is **facts versus decisions**, not
+greppable versus not:
+
+- **A fact about the code is never a question.** Does that state exist, what
+  does that method do, is this value pinned by a test, when was that written —
+  go and look. You have the tools and the user does not have the file open.
+  Asking is not caution, it is offloading Step 3.
+- **A decision about what to build is always the user's**, however confidently
+  the repo points one way. Which approach, what is in scope, whether it is
+  acceptable to break or rewrite something, which of two defensible readings of
+  the issue is the one they meant. A repo can tell you what is *possible* and
+  what it would *cost*; it cannot tell you what they want.
+
+The two are easy to confuse because a decision usually rests on facts. Settle
+the facts by reading, then put the decision to them **with the facts attached** —
+that is what makes a question answerable in a sentence instead of a research
+project.
 
 Worth probing on most issues:
 

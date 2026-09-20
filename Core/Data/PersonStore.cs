@@ -180,6 +180,7 @@ namespace KingdomWatch.Core.Data
                 LastFedAt = lastFedAt,
                 BornTick = bornTick,
                 PregnancyDue = EventId.None,
+                PendingMortalityCheck = EventId.None,
                 Household = EntityId.None,
             };
 
@@ -323,6 +324,13 @@ namespace KingdomWatch.Core.Data
 
         public void SetPregnancyDue(PersonHandle handle, EventId value) =>
             _people[SlotFor(handle)].PregnancyDue = value;
+
+        /// <summary>The MortalityCheck this person's next roll is booked as.</summary>
+        public EventId GetPendingMortalityCheck(PersonHandle handle) =>
+            _people[SlotFor(handle)].PendingMortalityCheck;
+
+        public void SetPendingMortalityCheck(PersonHandle handle, EventId value) =>
+            _people[SlotFor(handle)].PendingMortalityCheck = value;
 
         public EntityId GetHousehold(PersonHandle handle) => _people[SlotFor(handle)].Household;
 
