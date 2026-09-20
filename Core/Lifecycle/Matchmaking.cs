@@ -126,6 +126,37 @@ namespace KingdomWatch.Core.Lifecycle
             }
         }
 
+        /// <summary>
+        /// Fills <paramref name="into"/> with every courtship round this system has
+        /// booked and not yet seen come due (#80). Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The validator confirms each one is still in the queue, and the
+        /// world hash folds them in: a world that agrees on its people and
+        /// disagrees on what it has booked for them has already diverged, it
+        /// has just not shown yet.
+        /// </remarks>
+        public void CopyBookingsTo(List<PendingBooking> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                var booked = _tracked[i].PendingCourtship;
+
+                if (!booked.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Community.Id, ScheduledEventKind.CourtshipDue, booked));
+                }
+            }
+        }
+
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
             IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;

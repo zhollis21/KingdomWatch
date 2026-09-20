@@ -164,6 +164,41 @@ namespace KingdomWatch.Core.Lifecycle
         }
 
         /// <summary>
+        /// Fills <paramref name="into"/> with every birth check this system
+        /// has booked and not yet seen come due (#80), ordered. Clears the
+        /// list first.
+        /// </summary>
+        /// <remarks>
+        /// The bookings are kept in a dictionary keyed by household, and
+        /// section 5 forbids acting on the order a dictionary hands its
+        /// entries back in - it is a function of hash codes and insertion
+        /// history, not of the world. The world hash folds these in, so the
+        /// order has to be a property of the bookings themselves: they are
+        /// sorted before they leave, by <see cref="PendingBooking"/>'s own
+        /// total ordering.
+        /// </remarks>
+        public void CopyBookingsTo(List<PendingBooking> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            foreach (var entry in _pendingChecks)
+            {
+                if (!entry.Value.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        entry.Key, ScheduledEventKind.BirthCheck, entry.Value));
+                }
+            }
+
+            into.Sort();
+        }
+
+        /// <summary>
         /// How many households have a <c>BirthCheck</c> booked. Exposed for
         /// the same reason <see cref="TrackedCount"/> is: bookkeeping kept by
         /// hand is worth being able to assert on directly, and an entry that

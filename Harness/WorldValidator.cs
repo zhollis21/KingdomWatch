@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Lifecycle;
@@ -39,10 +40,12 @@ namespace KingdomWatch.Harness
     /// </remarks>
     public sealed class WorldValidator
     {
-        // A kinship walk that has gone this far up has found a cycle or a
-        // genealogy nobody meant to build; either way it is a finding, and an
-        // unbounded walk on corrupt data does not return.
-        private const int MaxAncestorDepth = 512;
+        // A walk that has visited this many ancestors has found a cycle the
+        // seen-set somehow did not close, or a genealogy nobody meant to
+        // build; either way it is a finding, and an unbounded walk on corrupt
+        // data does not return. A count of people visited, not a depth: the
+        // walk follows both parents, so it covers a graph rather than a line.
+        private const int MaxAncestorsWalked = 512;
 
         // Built once rather than per call. EnumGuard's mask - what
         // ResourceLedger and WorldHash index over - is internal to Core, and
@@ -55,6 +58,7 @@ namespace KingdomWatch.Harness
         private readonly HashSet<EventId> _queued = new HashSet<EventId>();
         private readonly HashSet<EntityId> _seen = new HashSet<EntityId>();
         private readonly HashSet<EntityId> _ancestors = new HashSet<EntityId>();
+        private readonly Stack<EntityId> _pendingAncestors = new Stack<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
 
@@ -255,8 +259,9 @@ namespace KingdomWatch.Harness
         }
 
         /// <summary>
-        /// Every living person is recorded, parent links point at people, and
-        /// no one is their own ancestor.
+        /// Every living person is recorded, parent links point at people who
+        /// are themselves recorded, and no one is their own ancestor by any
+        /// line of descent.
         /// </summary>
         public WorldValidator CheckGenealogy(Genealogy genealogy, PersonStore people, SimulationClock clock)
         {
@@ -290,8 +295,9 @@ namespace KingdomWatch.Harness
         }
 
         /// <summary>
-        /// Every event still due names something that resolves, and every
-        /// booked id a record names is still in the queue.
+        /// Every event still due names a primary entity that resolves, and
+        /// every booked id a <see cref="PersonRecord"/> names is still in the
+        /// queue.
         /// </summary>
         /// <remarks>
         /// The second half is the rule #80 exists because of: a stream that
@@ -306,16 +312,11 @@ namespace KingdomWatch.Harness
 
             var now = clock.Now;
 
-            clock.CopyPendingTo(_pending);
-            _queued.Clear();
+            RefreshQueued(clock);
 
             for (var i = 0; i < _pending.Count; i++)
             {
-                var scheduled = _pending[i];
-
-                _queued.Add(scheduled.Id);
-
-                CheckTarget(scheduled, people, now);
+                CheckTarget(_pending[i], people, now);
             }
 
             foreach (var person in people.Alive())
@@ -324,6 +325,40 @@ namespace KingdomWatch.Harness
 
                 CheckBooked(people.GetPregnancyDue(person), id, "pregnancy", now);
                 CheckBooked(people.GetPendingMortalityCheck(person), id, "mortality check", now);
+                CheckBooked(people.GetPendingAgeStage(person), id, "stage boundary", now);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Every booking a system is holding names an event the queue still
+        /// has.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="CheckSchedule"/> asks this of the three ids a
+        /// <see cref="PersonRecord"/> carries. The periodic streams keep the
+        /// same kind of record for the communities they run for - a work day,
+        /// a meal, a courtship round, a council, an arrival, a birth check -
+        /// and those are what this covers. A booking the queue has forgotten
+        /// is a stream that has silently stopped; the owner is waiting for a
+        /// wake-up that is never coming, and nothing else says so.
+        /// </remarks>
+        public WorldValidator CheckBookings(IReadOnlyList<PendingBooking> bookings, SimulationClock clock)
+        {
+            Require(bookings, nameof(bookings));
+            Require(clock, nameof(clock));
+
+            RefreshQueued(clock);
+
+            for (var i = 0; i < bookings.Count; i++)
+            {
+                if (!_queued.Contains(bookings[i].Booked))
+                {
+                    Add(ValidationRule.PendingEventMissing, clock.Now, bookings[i].Owner,
+                        "names " + bookings[i].Booked + " as its next " + bookings[i].Kind
+                        + ", which the queue does not hold.");
+                }
             }
 
             return this;
@@ -508,14 +543,33 @@ namespace KingdomWatch.Harness
                 return "seed " + seed + ": clean";
             }
 
-            var report = "seed " + seed + ": " + _findings.Count + " finding(s)";
+            var report = new StringBuilder("seed ")
+                .Append(seed)
+                .Append(": ")
+                .Append(_findings.Count)
+                .Append(" finding(s)");
 
             for (var i = 0; i < _findings.Count; i++)
             {
-                report += Environment.NewLine + "  " + _findings[i];
+                report.Append(Environment.NewLine).Append("  ").Append(_findings[i]);
             }
 
-            return report;
+            return report.ToString();
+        }
+
+        // One snapshot of the queue per check that needs it. Cancellation is
+        // lazy, so "is this id still live" cannot be answered by looking for
+        // the entry - only by asking the clock, which applies the same test
+        // dispatch does.
+        private void RefreshQueued(SimulationClock clock)
+        {
+            clock.CopyPendingTo(_pending);
+            _queued.Clear();
+
+            for (var i = 0; i < _pending.Count; i++)
+            {
+                _queued.Add(_pending[i].Id);
+            }
         }
 
         private void CheckParent(EntityId parent, EntityId child, SimulationTime now)
@@ -527,37 +581,79 @@ namespace KingdomWatch.Harness
             }
         }
 
+        // Both parents, not one line. Walking mothers alone misses any cycle
+        // that uses a father edge: if a's father is b and b's mother is a,
+        // then walking a stops at a's own mother and walking b reaches a and
+        // stops there - neither ever closes the loop. The rule says nobody is
+        // their own ancestor, so it has to follow every edge that makes
+        // somebody an ancestor.
+        //
+        // The stack and the seen set are fields, reused across people, so a
+        // walk per living person per simulated day allocates nothing.
         private void CheckAncestry(Genealogy genealogy, EntityId person, SimulationTime now)
         {
             _ancestors.Clear();
+            _pendingAncestors.Clear();
+            _pendingAncestors.Push(person);
             _ancestors.Add(person);
 
-            // Breadth would need a queue and an allocation per person; depth
-            // up the maternal line finds a self-reference just as well, and a
-            // cycle through a father is caught when that father is walked.
-            var walker = person;
+            var visited = 0;
 
-            for (var depth = 0; depth < MaxAncestorDepth; depth++)
+            while (_pendingAncestors.Count > 0)
             {
-                var mother = genealogy.Parents(walker).Mother;
-
-                if (mother.IsNone)
-                {
-                    return;
-                }
-
-                if (!_ancestors.Add(mother))
+                if (++visited > MaxAncestorsWalked)
                 {
                     Add(ValidationRule.KinshipCycle, now, person,
-                        "reaches " + mother + " twice walking up the maternal line.");
+                        "has more than " + MaxAncestorsWalked + " recorded ancestors.");
                     return;
                 }
 
-                walker = mother;
+                var parents = genealogy.Parents(_pendingAncestors.Pop());
+
+                if (Reaches(genealogy, parents.Mother, person, now)
+                    || Reaches(genealogy, parents.Father, person, now))
+                {
+                    return;
+                }
+            }
+        }
+
+        // True when the walk should stop: either this parent closes a cycle
+        // back onto the person being checked, or it is somebody already seen
+        // on this walk - a diamond in the tree, which is ordinary, so only the
+        // first is reported.
+        private bool Reaches(Genealogy genealogy, EntityId parent, EntityId person, SimulationTime now)
+        {
+            if (parent.IsNone)
+            {
+                return false;
             }
 
-            Add(ValidationRule.KinshipCycle, now, person,
-                "has more than " + MaxAncestorDepth + " generations of mothers.");
+            if (parent == person)
+            {
+                Add(ValidationRule.KinshipCycle, now, person, "is their own ancestor.");
+                return true;
+            }
+
+            // Genealogy.Parents throws for somebody it has no record of, and
+            // a validator that crashes on corrupt data reports nothing about
+            // it. Record.RequireRecordedParent makes this unreachable through
+            // the front door; a world rebuilt from a save (#42) has no such
+            // door, and a parent link into nothing is exactly what this should
+            // be able to say out loud.
+            if (!genealogy.IsRecorded(parent))
+            {
+                Add(ValidationRule.GenealogyMissing, now, parent,
+                    "is named as an ancestor of " + person + " and has no record of their own.");
+                return false;
+            }
+
+            if (_ancestors.Add(parent))
+            {
+                _pendingAncestors.Push(parent);
+            }
+
+            return false;
         }
 
         // Section 5's rule ends "unless it explicitly targets a durable

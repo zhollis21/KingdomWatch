@@ -64,6 +64,7 @@ namespace KingdomWatch.Core.Validation
             Households = 2,
             Settlements = 3,
             Pending = 4,
+            Bookings = 5,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
@@ -75,6 +76,7 @@ namespace KingdomWatch.Core.Validation
         private readonly List<Household> _households = new List<Household>();
         private readonly List<Settlement> _settlements = new List<Settlement>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
+        private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
 
         private ulong _state;
 
@@ -211,6 +213,49 @@ namespace KingdomWatch.Core.Validation
                 Mix(settlement.Position);
                 MixMembers(settlement.Members, people);
                 MixSupplies(settlement.SharedSupplies);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every booking a system is holding - the "state names the
+        /// event it booked" record each periodic stream keeps (#80) - in
+        /// their own canonical order.
+        /// </summary>
+        /// <remarks>
+        /// The pending section already covers the queue's side of this. These
+        /// are the other side: what each system believes it has booked. Two
+        /// runs that agree on the queue and disagree on who thinks they own
+        /// which entry have diverged, and the disagreement surfaces later as a
+        /// stream that doubled or stopped.
+        ///
+        /// Sorted here rather than trusted from the caller, because the
+        /// caller gathers them from several systems and the concatenation
+        /// order would otherwise be part of the hash.
+        /// </remarks>
+        public WorldHash AddBookings(IReadOnlyList<PendingBooking> bookings)
+        {
+            if (bookings is null)
+            {
+                throw new ArgumentNullException(nameof(bookings));
+            }
+
+            _bookings.Clear();
+
+            for (var i = 0; i < bookings.Count; i++)
+            {
+                _bookings.Add(bookings[i]);
+            }
+
+            _bookings.Sort();
+            Open(Section.Bookings, _bookings.Count);
+
+            for (var i = 0; i < _bookings.Count; i++)
+            {
+                Mix(_bookings[i].Owner);
+                Mix((long)_bookings[i].Kind);
+                Mix(_bookings[i].Booked);
             }
 
             return this;

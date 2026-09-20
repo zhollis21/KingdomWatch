@@ -225,6 +225,46 @@ namespace KingdomWatch.Core.Nomadic
         }
 
         /// <summary>
+        /// Fills <paramref name="into"/> with every council or arrival this system has
+        /// booked and not yet seen come due (#80). Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The validator confirms each one is still in the queue, and the
+        /// world hash folds them in: a world that agrees on its people and
+        /// disagrees on what it has booked for them has already diverged, it
+        /// has just not shown yet.
+        /// </remarks>
+        public void CopyBookingsTo(List<PendingBooking> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                var council = _tracked[i].PendingCouncil;
+                var arrival = _tracked[i].PendingArrival;
+
+                if (!council.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Band.Id, ScheduledEventKind.CouncilDue, council));
+                }
+
+                // A band on the move has both: the council that sent it and
+                // the arrival that ends the journey.
+                if (!arrival.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Band.Id, ScheduledEventKind.BandArrival, arrival));
+                }
+            }
+        }
+
+        /// <summary>
         /// A band makes its first camp where it stands and starts
         /// wandering: wood is embodied, <see cref="DomainEventKind.CampPitched"/>
         /// announced, and its first council booked for the next

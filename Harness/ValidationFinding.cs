@@ -51,7 +51,7 @@ namespace KingdomWatch.Harness
         /// <summary>A parent link points at something that is not a person.</summary>
         ParentInvalid = 11,
 
-        /// <summary>The kinship graph reaches itself.</summary>
+        /// <summary>Somebody is their own ancestor, by some line of descent.</summary>
         KinshipCycle = 12,
 
         /// <summary>A scheduled event names an entity that does not resolve.</summary>

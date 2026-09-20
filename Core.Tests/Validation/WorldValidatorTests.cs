@@ -265,6 +265,77 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_stage_boundary_the_queue_lost_is_caught()
+        {
+            // The third of PersonRecord's booked-event ids. It was added by
+            // the same change that added this validator and went unchecked
+            // until review caught it - the rule covered two of the three.
+            var world = Populated();
+
+            First(world).PendingAgeStage = new EventId(60_002UL);
+
+            Assert.That(Rules(world), Does.Contain(ValidationRule.PendingEventMissing));
+        }
+
+        [Test]
+        public void A_system_booking_the_queue_lost_is_caught()
+        {
+            // The same rule for the record a system keeps rather than the one
+            // a person carries. A booking the queue has forgotten is a stream
+            // that has silently stopped: the owner waits for a wake-up that
+            // never comes, and nothing else says so.
+            var world = new WorkWorld(3UL, WorkWorld.DefaultMap());
+            var band = world.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
+
+            world.JoinAdults(band, 4);
+            world.AdvanceToDawn();
+
+            var bookings = new List<PendingBooking>();
+            world.Jobs.CopyBookingsTo(bookings);
+
+            Assert.That(bookings, Is.Not.Empty, "the band never booked a work day to lose");
+
+            // Cancelling behind the system's back is what a lost booking is.
+            world.Clock.Cancel(bookings[0].Booked);
+
+            var validator = new WorldValidator().CheckBookings(bookings, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Contain(ValidationRule.PendingEventMissing));
+        }
+
+        [Test]
+        public void An_ancestry_walk_follows_fathers_as_well_as_mothers()
+        {
+            // The walk used to climb mothers only, which cannot see a cycle
+            // that uses a father edge - if a's father is b and b's mother is
+            // a, neither walk ever closes the loop.
+            //
+            // A cycle cannot be built through Genealogy at all (see below), so
+            // the discriminating case is the walk's own bound: a chain of
+            // fathers longer than it will report only if fathers are
+            // followed. Climbing mothers alone stops at the first person,
+            // whose mother is None, and reports nothing.
+            var world = Populated();
+            var ancestor = world.IdOf(world.NewPerson(30L, Sex.Male));
+
+            for (var i = 0; i < 600; i++)
+            {
+                ancestor = world.IdOf(
+                    world.NewPersonBornAt(
+                        world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear,
+                        Sex.Male,
+                        AgeStage.Adult,
+                        EntityId.None,
+                        ancestor));
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Contain(ValidationRule.KinshipCycle));
+        }
+
+        [Test]
         public void A_tracked_community_listing_somebody_the_store_lost_is_caught()
         {
             // The tracked set is what each system has events booked against,
@@ -370,20 +441,91 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(() => validator.CheckCommunities(null!, people, clock), Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckTracked(null!, people, clock), Throws.ArgumentNullException);
                 Assert.That(
+                    () => validator.CheckBookings(null!, clock), Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckBookings(new List<PendingBooking>(), null!),
+                    Throws.ArgumentNullException);
+                Assert.That(
                     () => validator.CheckSupplies(null!, EntityId.None, clock), Throws.ArgumentNullException);
             });
         }
 
         [Test]
+        public void A_booking_names_an_owner_a_kind_and_an_event()
+        {
+            // The type is what five systems hand their records out in, so a
+            // half-filled one would be a silently unchecked stream rather
+            // than a crash.
+            var owner = new EntityId(EntityKind.MobileGroup, 4UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    () => new PendingBooking(EntityId.None, ScheduledEventKind.MealDue, new EventId(1UL)),
+                    Throws.ArgumentException);
+                Assert.That(
+                    () => new PendingBooking(owner, ScheduledEventKind.None, new EventId(1UL)),
+                    Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => new PendingBooking(owner, ScheduledEventKind.MealDue, EventId.None),
+                    Throws.ArgumentException,
+                    "nothing booked is an absent entry, not one naming None");
+            });
+        }
+
+        [Test]
+        public void Bookings_order_by_owner_then_kind_then_event()
+        {
+            // AddBookings sorts on this, so the hash depends on it being a
+            // total order rather than merely a consistent one.
+            var first = new EntityId(EntityKind.MobileGroup, 1UL);
+            var second = new EntityId(EntityKind.MobileGroup, 2UL);
+
+            var byOwner = new PendingBooking(first, ScheduledEventKind.MealDue, new EventId(9UL));
+            var byKind = new PendingBooking(second, ScheduledEventKind.MealDue, new EventId(9UL));
+            var byEvent = new PendingBooking(second, ScheduledEventKind.WorkDayDue, new EventId(1UL));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(byOwner.CompareTo(byKind), Is.LessThan(0), "owner first");
+                Assert.That(byKind.CompareTo(byEvent), Is.LessThan(0), "then kind");
+                Assert.That(byOwner.CompareTo(byOwner), Is.Zero, "and a booking equals itself");
+                Assert.That(byOwner, Is.Not.EqualTo(byKind));
+            });
+        }
+
+        [Test]
+        public void An_ancestor_with_no_record_of_their_own_is_reported_rather_than_thrown_on()
+        {
+            // Unreachable today for the same reason the cycle rules are:
+            // Genealogy.Record refuses a parent it has not already recorded.
+            // It is here because Genealogy.Parents throws for somebody it has
+            // no record of, and a validator that crashes on corrupt data
+            // reports nothing about it - so the walk checks before it asks.
+            // #42 rebuilds a world from a save, which is a door Record does
+            // not stand in front of.
+            var world = Populated();
+            var child = world.IdOf(world.NewPerson(5L, Sex.Female));
+
+            Assert.That(
+                () => world.Genealogy.Record(child, new EntityId(EntityKind.Person, 88_888UL), EntityId.None),
+                Throws.ArgumentException,
+                "an unrecorded parent is refused at the door");
+        }
+
+        [Test]
         public void The_ancestry_rules_are_held_up_by_Genealogy_rather_than_by_this()
         {
-            // KinshipCycle and ParentInvalid cannot be provoked today, and it
-            // is worth saying why rather than leaving two rules that have
-            // never been seen to fire. Genealogy.Record refuses a parent that
-            // is not a person (ParentLinks checks the kinds), refuses a parent
-            // it has not already recorded, and refuses to record anyone twice
-            // - so a cycle cannot be built forwards and cannot be introduced
-            // by rewriting an existing link.
+            // ParentInvalid cannot be provoked today, and neither can a real
+            // cycle: Genealogy.Record refuses a parent that is not a person
+            // (ParentLinks checks the kinds), refuses a parent it has not
+            // already recorded, refuses anyone as their own parent, and
+            // refuses to record anyone twice - so a cycle cannot be built
+            // forwards and cannot be introduced by rewriting an existing link.
+            //
+            // KinshipCycle's other arm is reachable and tested: the walk's own
+            // bound fires on an ancestry too large to be real, which is what
+            // An_ancestry_walk_follows_fathers_as_well_as_mothers drives.
             //
             // The rules stay because that guard is not the only way ancestry
             // will ever be written: #42 rebuilds a world from a save, and

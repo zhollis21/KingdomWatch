@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Lifecycle;
@@ -184,6 +185,46 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void What_each_system_has_booked_is_folded_in()
+        {
+            // The other side of the pending section. Two runs that agree on
+            // the queue and disagree on who believes they own which entry
+            // have diverged; it just surfaces later, as a stream that doubled
+            // or stopped.
+            var bookings = Bookings(Populate(Build()));
+
+            Assert.That(bookings, Is.Not.Empty, "nothing was booked to hash");
+
+            var all = new WorldHash().AddBookings(bookings).Value;
+            var fewer = bookings.GetRange(0, bookings.Count - 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new WorldHash().AddBookings(fewer).Value, Is.Not.EqualTo(all));
+                Assert.That(() => new WorldHash().AddBookings(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
+        public void The_order_bookings_arrive_in_is_not_part_of_the_hash()
+        {
+            // They are gathered from several systems, so the order they
+            // arrive in is an artefact of the caller rather than of the
+            // world. AddBookings sorts them into their own canonical order
+            // before folding any in.
+            var forward = Bookings(Populate(Build()));
+
+            Assert.That(forward, Has.Count.GreaterThan(1), "one booking cannot be reordered");
+
+            var backward = new List<PendingBooking>(forward);
+            backward.Reverse();
+
+            Assert.That(
+                new WorldHash().AddBookings(backward).Value,
+                Is.EqualTo(new WorldHash().AddBookings(forward).Value));
+        }
+
+        [Test]
         public void A_reused_hash_must_be_reset()
         {
             var world = Populate(Build());
@@ -253,6 +294,23 @@ namespace KingdomWatch.Core.Tests.Validation
 
             world.AdvanceYears(3L);
             return world;
+        }
+
+        // Two systems' worth, so the order they are concatenated in is a
+        // choice this test makes rather than one the world made.
+        private static List<PendingBooking> Bookings(DemographicWorld world)
+        {
+            var gathered = new List<PendingBooking>();
+            var scratch = new List<PendingBooking>();
+
+            world.Hunger.CopyBookingsTo(scratch);
+            gathered.AddRange(scratch);
+            world.Fertility.CopyBookingsTo(scratch);
+            gathered.AddRange(scratch);
+            world.Matchmaking.CopyBookingsTo(scratch);
+            gathered.AddRange(scratch);
+
+            return gathered;
         }
 
         private static ulong HashOf(DemographicWorld world) =>

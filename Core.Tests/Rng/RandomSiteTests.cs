@@ -241,9 +241,20 @@ namespace KingdomWatch.Core.Tests.Rng
             // something would leave the two runs agreeing on everyone alive
             // and disagreeing on what the world has booked, which is a
             // divergence that has not shown yet rather than no divergence.
+            var bookings = new List<PendingBooking>();
+            var scratch = new List<PendingBooking>();
+
+            world.Hunger.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
+            world.Fertility.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
+            world.Matchmaking.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
+
             var hash = new WorldHash()
                 .AddPeople(world.People)
                 .AddHouseholds(world.Households, world.People)
+                .AddBookings(bookings)
                 .AddPending(world.Clock);
 
             return (hash.Value, world.People.Count);

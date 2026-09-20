@@ -61,6 +61,8 @@ namespace KingdomWatch.Core.Tests.Validation
 
                 var spatial = new List<ICommunity> { band };
                 var tracked = new List<ICommunity>();
+                var bookings = new List<PendingBooking>();
+                var scratch = new List<PendingBooking>();
 
                 for (var year = 1L; year <= Years; year++)
                 {
@@ -85,6 +87,14 @@ namespace KingdomWatch.Core.Tests.Validation
                     world.Matchmaking.CopyTrackedTo(tracked);
                     validator.CheckTracked(tracked, world.People, world.Clock);
 
+                    // Every booking every system is holding, against the
+                    // queue that is supposed to be carrying them.
+                    bookings.Clear();
+                    Gather(bookings, scratch, world.Hunger.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Fertility.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Matchmaking.CopyBookingsTo);
+                    validator.CheckBookings(bookings, world.Clock);
+
                     if (!validator.IsClean)
                     {
                         report.AppendLine("year " + year + ", " + validator.Report(seed));
@@ -106,6 +116,8 @@ namespace KingdomWatch.Core.Tests.Validation
 
                 var spatial = new List<ICommunity>();
                 var tracked = new List<ICommunity>();
+                var bookings = new List<PendingBooking>();
+                var scratch = new List<PendingBooking>();
 
                 for (var year = 1L; year <= Years; year++)
                 {
@@ -136,6 +148,14 @@ namespace KingdomWatch.Core.Tests.Validation
                     world.Hunger.CopyTrackedTo(tracked);
                     validator.CheckTracked(tracked, world.People, world.Clock);
 
+                    bookings.Clear();
+                    Gather(bookings, scratch, world.Jobs.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Hunger.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Nomads.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Demographics.Fertility.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Demographics.Matchmaking.CopyBookingsTo);
+                    validator.CheckBookings(bookings, world.Clock);
+
                     for (var i = 0; i < world.Founding.All.Count; i++)
                     {
                         validator.CheckSupplies(
@@ -149,6 +169,16 @@ namespace KingdomWatch.Core.Tests.Validation
                     }
                 }
             });
+        }
+
+        // CopyBookingsTo fills a list rather than appending to one, since
+        // each system owns its own answer; gathering several means one
+        // scratch buffer and a copy across.
+        private static void Gather(
+            List<PendingBooking> into, List<PendingBooking> scratch, System.Action<List<PendingBooking>> copy)
+        {
+            copy(scratch);
+            into.AddRange(scratch);
         }
 
         // One validator and one report across every seed: a sweep that stopped
