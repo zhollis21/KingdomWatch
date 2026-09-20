@@ -274,10 +274,14 @@ namespace KingdomWatch.Core.Tests.Rng
         }
 
         [Test]
-        public void A_world_with_no_observer_draws_the_same_as_one_watched()
+        public void Passing_no_observer_and_passing_null_are_the_same_world()
         {
-            // The null observer is the production path, so it is worth saying
-            // outright that passing one explicitly is the same as passing none.
+            // Both sides here are unwatched; what is being pinned is that the
+            // convenience constructor and an explicit null agree, since the
+            // null path is the one production takes. Watching a world and
+            // comparing it against an unwatched one is a different test -
+            // Watching_does_not_change_what_is_drawn, and the whole-run
+            // version below it.
             var implicitly_unwatched = new DeterministicRng(WorldSeed);
             var explicitly_unwatched = new DeterministicRng(WorldSeed, null);
 

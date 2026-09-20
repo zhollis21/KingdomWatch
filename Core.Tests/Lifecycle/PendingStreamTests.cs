@@ -100,12 +100,24 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // cascade clears both - the rule EndPregnancy already follows.
             var w = new DemographicWorld(Immortal(), 5UL);
             var person = w.NewPerson(30L, Sex.Female);
+            var booked = w.People.GetPendingMortalityCheck(person);
 
-            Assert.That(w.People.GetPendingMortalityCheck(person).IsNone, Is.False, "a living person is booked");
+            Assert.That(booked.IsNone, Is.False, "a living person is booked");
 
+            var pendingBefore = w.Clock.ScheduledCount;
             w.Deaths.Die(person, Reasons.None);
 
-            Assert.That(() => w.AdvanceYears(3L), Throws.Nothing, "no check survives the person");
+            Assert.Multiple(() =>
+            {
+                // The cancel itself, not merely its absence of consequences.
+                // Mortality already ignores a check for the dead, so "nothing
+                // throws" stays true whether or not the cascade cancels - the
+                // queue is the only place the difference shows. This is the
+                // check FertilityTests makes on the pregnancy.
+                Assert.That(w.Clock.Cancel(booked), Is.False, "already gone");
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pendingBefore - 1));
+                Assert.That(() => w.AdvanceYears(3L), Throws.Nothing, "no check survives the person");
+            });
         }
 
         // A table nobody survives, so the birthday roll is certain to kill.
