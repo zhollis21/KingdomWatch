@@ -55,8 +55,17 @@ namespace KingdomWatch.Core.Clock
     /// single-threaded by design - section 5's determinism rules do not survive
     /// arbitrary interleaving.
     ///
-    /// Saving and loading the queue is issue #15. See
-    /// docs/design/kingdom-watch-plan-v7.1.md section 4.
+    /// **The queue is state, and it leaves and returns as data.** Section 17
+    /// says pending events are serialized rather than rebuilt from entity
+    /// fields, because rebuilding can silently shift history across a
+    /// version change. <see cref="CopyPendingTo"/> is the export and the
+    /// restoring constructor is the import; both carry each event's
+    /// <see cref="EventId"/>, so a booking a system kept (a
+    /// <see cref="PendingBooking"/>) still names the same event afterwards.
+    /// The export is refused unless <see cref="AtCheckpoint"/> - the one
+    /// moment section 17 permits a snapshot. What is written to disk, and how a
+    /// whole world is rebuilt from it, is issue #42. See
+    /// docs/design/kingdom-watch-plan-v7.1.md sections 4 and 17.
     /// </remarks>
     public sealed class SimulationClock
     {
@@ -89,6 +98,11 @@ namespace KingdomWatch.Core.Clock
         private readonly EventQueue _queue = new EventQueue();
 
         private bool _dispatching;
+        private bool _publishing;
+
+        // Set when a handler or subscriber throws out of its call, and never
+        // cleared - see AtCheckpoint.
+        private bool _faulted;
         private bool _busClaimed;
         private bool _hasCurrent;
         private ScheduledEvent _current;
@@ -110,8 +124,124 @@ namespace KingdomWatch.Core.Clock
             _ids = ids ?? throw new ArgumentNullException(nameof(ids));
         }
 
+        /// <summary>
+        /// Rebuilds a clock from a snapshot: standing at <paramref name="now"/>,
+        /// with <paramref name="pending"/> still due, each event keeping the
+        /// id it was booked under.
+        /// </summary>
+        /// <remarks>
+        /// This is the import half of section 17's rule that pending events
+        /// are state. The list is what <see cref="CopyPendingTo"/> exported,
+        /// in any order - the dispatch order is a property of the events, not
+        /// of the list or the heap they sat in.
+        ///
+        /// Refuses rather than repairs, the way <see cref="IdAllocator.ResumeFrom"/>
+        /// does: an event whose id the allocator has not yet handed out would
+        /// be handed out again by the next <see cref="Schedule"/>, an id that
+        /// appears twice breaks the total order, and an event before
+        /// <paramref name="now"/> is a past the world cannot run back to. The
+        /// caller resumes <paramref name="ids"/> first, the way it resumes
+        /// everything else.
+        /// </remarks>
+        /// <param name="ids">The world's allocator, already resumed past every id in <paramref name="pending"/>.</param>
+        /// <param name="now">Where the clock stood when the snapshot was taken.</param>
+        /// <param name="pending">Every event that was still due.</param>
+        public SimulationClock(IdAllocator ids, SimulationTime now, IReadOnlyList<ScheduledEvent> pending)
+            : this(ids)
+        {
+            if (pending is null)
+            {
+                throw new ArgumentNullException(nameof(pending));
+            }
+
+            var next = ids.PeekNextEvent();
+
+            for (var i = 0; i < pending.Count; i++)
+            {
+                var scheduled = pending[i];
+
+                // The struct's constructor guards its fields; a default one
+                // never went through it, and id 0 would pass the check below.
+                if (scheduled.Id.IsNone)
+                {
+                    throw new ArgumentException(
+                        "Cannot restore a defaulted entry (index " + i + "): it names no event, no phase and "
+                        + "no kind, and nothing could have booked it.",
+                        nameof(pending));
+                }
+
+                if (scheduled.Id.Value >= next)
+                {
+                    throw new ArgumentException(
+                        "Cannot restore " + scheduled + ": its id has not been allocated (next is " + next
+                        + "), so a later Schedule would hand it out again. Resume the allocator first.",
+                        nameof(pending));
+                }
+
+                if (scheduled.Time < now)
+                {
+                    throw new ArgumentException(
+                        "Cannot restore " + scheduled + " to a clock standing at " + now
+                        + ": the world does not run backwards.",
+                        nameof(pending));
+                }
+
+                if (!_queue.TryEnqueueRestored(scheduled))
+                {
+                    throw new ArgumentException(
+                        "Cannot restore " + scheduled + ": its id appears twice, and an id is the last "
+                        + "component of the ordering, so two events sharing one have no defined order.",
+                        nameof(pending));
+                }
+            }
+
+            Now = now;
+        }
+
         /// <summary>Where the world clock currently stands.</summary>
         public SimulationTime Now { get; private set; }
+
+        /// <summary>
+        /// True when the world is consistent enough to snapshot: no
+        /// <see cref="AdvanceTo"/> is running and no domain event is being
+        /// published. Section 17's checkpoint.
+        /// </summary>
+        /// <remarks>
+        /// Inside a handler, the event has been dequeued and whatever it
+        /// mutates is in progress; inside a publish, subscribers are hearing
+        /// about a change that has been announced but not yet made (the
+        /// death cascade publishes first and mutates after). Either is the
+        /// half-state section 17 says must never be serialized. Between
+        /// calls there is none: <see cref="AdvanceTo"/> drains every event due
+        /// on or before its target before returning, including the
+        /// same-instant reactions handlers booked into later phases, so a
+        /// cascade cannot be left half-run by the clock.
+        ///
+        /// Both flags live here rather than one on the clock and one on the
+        /// bus so that a single question has a single answer. The bus reports
+        /// through <see cref="Publishing"/> and <see cref="EndPublish"/>.
+        ///
+        /// **A fault is permanent.** When a handler or subscriber throws out
+        /// of its call, the in-flight flags are put back - but the world is
+        /// not. The event was dequeued and the mutation was partway through;
+        /// a driver that catches the exception and asks this question would
+        /// otherwise hear "yes" over exactly the half-state the flags exist
+        /// to hide. So the clock remembers, and this stays false for the rest
+        /// of its life. It still advances and publishes: a thrown tick means
+        /// the world is being discarded (see <see cref="Lifecycle.Households.Form"/>),
+        /// and the gate is where that is enforced, not the clock at large.
+        /// A refusal the handler catches - a nested advance, scheduling in the
+        /// past - is not a fault: the handler completed, and what it leaves
+        /// is whole.
+        ///
+        /// What this does NOT guard is a driver that stops between two
+        /// <see cref="AdvanceTo"/> calls at the same instant - that is a
+        /// checkpoint, and correctly so: nothing has been dequeued and not
+        /// finished. Nor does it need to guard a suspend: the simulation is
+        /// single-threaded, so a platform pause lands between calls, never
+        /// inside one.
+        /// </remarks>
+        public bool AtCheckpoint => !_dispatching && !_publishing && !_faulted;
 
         /// <summary>
         /// The allocator scheduled events draw their ids from. Internal so
@@ -125,9 +255,9 @@ namespace KingdomWatch.Core.Clock
         /// <summary>
         /// Called by <see cref="Events.DomainEventBus"/> as it is built.
         /// Refuses a second bus on this clock: the bus's promise that
-        /// publishing never nests is kept by a flag on the bus, and two buses
-        /// over one clock would let a subscriber on one publish through the
-        /// other with neither noticing.
+        /// publishing never nests is kept by <see cref="Publishing"/>, and
+        /// two buses over one clock would let a subscriber on one publish
+        /// through the other with neither noticing.
         /// </summary>
         internal void ClaimBus()
         {
@@ -139,6 +269,29 @@ namespace KingdomWatch.Core.Clock
             }
 
             _busClaimed = true;
+        }
+
+        /// <summary>
+        /// Whether <see cref="Events.DomainEventBus"/> is mid-publish. The
+        /// bus's rule that reactions are queued rather than run recursively
+        /// is checked against this flag, which lives here rather than on the
+        /// bus so that <see cref="AtCheckpoint"/> sees it.
+        /// </summary>
+        internal bool Publishing
+        {
+            get => _publishing;
+            set => _publishing = value;
+        }
+
+        /// <summary>
+        /// Called by <see cref="Events.DomainEventBus"/> as a publish ends,
+        /// however it ends. A publish that did not complete - a subscriber
+        /// threw - is a fault, for the reason <see cref="AtCheckpoint"/> gives.
+        /// </summary>
+        internal void EndPublish(bool completed)
+        {
+            _faulted |= !completed;
+            _publishing = false;
         }
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
@@ -166,7 +319,11 @@ namespace KingdomWatch.Core.Clock
         ///
         /// This is deliberately not an <c>IEnumerable</c> property. Handing
         /// out a lazy view of the queue would let a caller hold it across a
-        /// <see cref="AdvanceTo"/> and read a half-dispatched world.
+        /// <see cref="AdvanceTo"/> and read a half-dispatched world. For the
+        /// same reason it is refused unless <see cref="AtCheckpoint"/>: this
+        /// is the export a snapshot is built from, and section 17 permits
+        /// one only there. A handler that wants to look ahead has
+        /// <see cref="TryPeekNext"/>.
         /// </remarks>
         /// <param name="into">The list to fill. Cleared before use.</param>
         public void CopyPendingTo(List<ScheduledEvent> into)
@@ -174,6 +331,21 @@ namespace KingdomWatch.Core.Clock
             if (into is null)
             {
                 throw new ArgumentNullException(nameof(into));
+            }
+
+            // Cleared before the guard, not after: "cleared before use" has to
+            // hold on the refusal path too, or a reused buffer keeps the
+            // previous answer through the throw.
+            into.Clear();
+
+            if (!AtCheckpoint)
+            {
+                throw new InvalidOperationException(
+                    "The pending events can only be read at a checkpoint, and the clock is "
+                    + (_dispatching ? "mid-dispatch" : _publishing ? "mid-publish" : "faulted")
+                    + ": what is due has already been partly acted on, and a snapshot of it would be "
+                    + "the half-state section 17 forbids. Use TryPeekNext from inside a handler; a "
+                    + "world that threw out of a tick is discarded, not saved.");
             }
 
             _queue.CopyLiveTo(into);
@@ -315,12 +487,19 @@ namespace KingdomWatch.Core.Clock
                     _current = due;
                     _hasCurrent = true;
 
+                    // Completed, not "did not throw": a handler that catches
+                    // one of this clock's own refusals and carries on has
+                    // finished its work, and the world it leaves is whole.
+                    var completed = false;
+
                     try
                     {
                         handler.Handle(due, this);
+                        completed = true;
                     }
                     finally
                     {
+                        _faulted |= !completed;
                         _hasCurrent = false;
                         _current = default;
                     }

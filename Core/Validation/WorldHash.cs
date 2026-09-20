@@ -270,7 +270,10 @@ namespace KingdomWatch.Core.Validation
         /// are state, not something to rebuild from entity fields, because
         /// rebuilding can shift history. A world that agrees on its people and
         /// disagrees on what it has booked has already diverged - it just has
-        /// not shown yet.
+        /// not shown yet. The export this reads is refused off a checkpoint
+        /// (<see cref="SimulationClock.AtCheckpoint"/>), so a hash taken from
+        /// inside a handler throws rather than folding in a half-dispatched
+        /// queue.
         /// </remarks>
         public WorldHash AddPending(SimulationClock clock)
         {

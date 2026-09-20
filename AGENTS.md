@@ -51,6 +51,8 @@ A periodic stream carries one more obligation. The "state names the event it boo
 
 That surface follows one shape: `CopyXTo(List<T> into)`, which clears and fills a caller-supplied list — `SimulationClock.CopyPendingTo`, `Jobs.CopyTrackedTo`, `Jobs.CopyTaskWorkersTo`, `Hunger.CopyBookingsTo`. A method rather than an `IEnumerable` property on purpose: a lazy view held across an `AdvanceTo` reads a half-dispatched world, and a check taken once per simulated day over a long run should not allocate a fresh collection each time. Hand out durable ids wherever the caller could otherwise keep a `PersonHandle` past the point it resolves.
 
+**Snapshots are taken at a checkpoint, and pending events are state** (§17, #15). `SimulationClock.AtCheckpoint` is true when no `AdvanceTo` is running, no domain event is mid-publish, and no handler or subscriber has ever thrown out of its call (a thrown tick faults the clock for good — the world it leaves is discarded, never saved); `CopyPendingTo` — the export a snapshot is built from — throws otherwise, so anything that reads the queue as data runs between advances, never inside a handler or subscriber (a handler that wants to look ahead has `TryPeekNext`). A clock is rebuilt from that export with every event keeping its `EventId`, which is why a system's `CopyBookingsTo` ids survive a restore unchanged. Never rebuild a booking from entity state on load; it shifts history. The format on disk and the restore of each system's own state are #42 — when you add durable state to a system, expect to give it a restore path there.
+
 Two exclusions from the hash are load-bearing: storage handles (a slot index and a generation are representation, which is exactly what §5 says a canonical hash must not depend on) and any container's own iteration order. Nothing in `Core` uses `float`, `double` or `decimal` today, which is the other reason the hash is tractable at all — a floating-point field in simulation state is a determinism decision before it is a hashing one.
 
 **The tick loop is allocation-checked and timed** (`Core.Tests/Performance/`). Section 18 commits to zero allocations in the tick loop, and `SchedulerSoakTests` holds the scheduler to exactly that: warm up, then `Allocations.Measure(...)` around a further span of `AdvanceTo` calls, asserting zero bytes. When you add a system that runs under `AdvanceTo`, give it the same test — a `foreach` over an interface, a captured closure, or a `params` call in a per-entity path is invisible in review and costs nothing until it is GC pauses on a phone. The same fixture bounds wall time loosely; the bound exists to catch an order-of-magnitude regression, not to police percentages, so if it ever flakes, loosen it once and say so rather than chase it. `dotnet run --project Harness -c Release` prints the current throughput (sim-years/s, events/s, peak pending); until #17 provides a world, the workload is `Harness/SchedulerSoak.cs`, which exercises the scheduler alone.
@@ -165,9 +167,12 @@ Projects v2. Use REST. Review threads have no REST equivalent on
 github.com, so the proxy adds its own routes — `GET  .../pulls/{n}/ccr/review_threads`
 and `POST .../pulls/{n}/ccr/comments/{comment_id}/resolve` (also `/unresolve`,
 `/auto_merge`, `/ready_for_review`, `/convert_to_draft`). Those are proxy-only
-and key off a comment id rather than GraphQL's thread node id, so anything
-built on them does not run off a normal machine — say so in a comment where
-they are used.
+and key off a comment id rather than GraphQL's thread node id, and github.com
+answers them with `404` — so anything built on them alone does not run off a
+normal machine, and anything built on GraphQL alone does not run in a cloud
+session. `Get-ReviewThreads` and `Resolve-ReviewThread` in `tools/GitHubApi.psm1`
+try the `ccr/` route and fall back to GraphQL on that `404`; go through them
+(or `tools/Resolve-PrThread.ps1`) rather than calling either transport directly.
 
 **`gh --paginate` breaks past the first page.** It follows GitHub's
 `Link: rel="next"`, which points at the numeric-ID form

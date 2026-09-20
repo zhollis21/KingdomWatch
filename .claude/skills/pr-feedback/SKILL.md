@@ -1,7 +1,7 @@
 ---
 name: pr-feedback
 description: "Pull open PR review comments for this repository, present an overview of each finding with whether it is valid and what the options are, then act on what the user chooses. Use when asked to address PR feedback, review open comments, or work through reviewer notes."
-allowed-tools: Bash(pwsh tools/Get-OpenPrComments.ps1) Bash(gh api repos/:*) Bash(git *) Bash(dotnet *) Read Glob Grep Edit Write AskUserQuestion
+allowed-tools: Bash(pwsh tools/Get-OpenPrComments.ps1) Bash(pwsh tools/Resolve-PrThread.ps1:*) Bash(gh api repos/:*) Bash(git *) Bash(dotnet *) Read Glob Grep Edit Write AskUserQuestion
 ---
 
 # PR Feedback
@@ -150,26 +150,26 @@ Don't leave handled comments open — the open-comment list should only ever sho
 > them) makes the command start with `for`/another binary instead of `gh`, so it no longer matches
 > the rule and gets bounced to the interactive classifier. Resolve threads one call at a time.
 
-Threads are addressed by **comment id**, not by a thread id: the `ccr/` route below
-reports `comment_ids`, whose first entry is the thread's opening comment, and that
-same id is what both the reply and the resolve call take.
+Threads are addressed by **comment id**, not by a thread id: the report above
+shows each thread under its opening comment, and that comment's id is what both
+the reply and the resolve call take. Thread state has no REST endpoint on
+github.com — the report and the resolve script get it from the proxy's `ccr/`
+route in a cloud session and from GraphQL everywhere else (`Get-ReviewThreads`
+and `Resolve-ReviewThread` in `tools/GitHubApi.psm1`), so the commands below
+are the same on either.
 
-- **List unresolved threads** (resolution state, path, and the comment id to reply to):
-  ```
-  gh api repos/zhollis21/KingdomWatch/pulls/<pr>/ccr/review_threads
-  ```
-  This route is served by the proxy in front of Claude Code sessions; the equivalent
-  is GraphQL-only on github.com, so anything built on it will not run elsewhere. It
-  returns no comment bodies — read those from the report above, or from
-  `gh api repos/zhollis21/KingdomWatch/pulls/<pr>/comments`.
-- **Reply to a review comment** (one standalone call; `<commentId>` is `comment_ids[0]` above):
+- **Comment ids**: read them from
+  `gh api repos/zhollis21/KingdomWatch/pulls/<pr>/comments` (the `id` of a
+  comment with no `in_reply_to_id` is a thread's opening comment).
+- **Reply to a review comment** (one standalone call):
   ```
   gh api repos/zhollis21/KingdomWatch/pulls/<pr>/comments/<commentId>/replies -f body='<reply text>'
   ```
 - **Resolve a thread** (one standalone call per thread, keyed by that same comment id):
   ```
-  gh api repos/zhollis21/KingdomWatch/pulls/<pr>/ccr/comments/<commentId>/resolve -X POST
+  pwsh tools/Resolve-PrThread.ps1 -PullNumber <pr> -CommentId <commentId>
   ```
+  `-Unresolve` reopens one.
 
 **Keep the PR description up to date as you go.** Whenever the branch changes meaningfully (a fix lands, scope shifts, a new behavior is added), edit the PR body with `gh api repos/zhollis21/KingdomWatch/pulls/<num> -X PATCH -F body=@<file>` so it always reflects what's actually in the PR. Reviewers and the merge record should never read a stale description.
 

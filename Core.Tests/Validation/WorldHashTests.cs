@@ -131,6 +131,29 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_queue_that_left_as_data_and_came_back_hashes_the_same()
+        {
+            // The save-side half of section 17 (#15): pending events are
+            // exported with their ids and restored as they were, never
+            // rebuilt from entity state. A clock rebuilt from the export of
+            // a lived-in world is the same clock to the hash.
+            var world = Populate(Build());
+            var before = new WorldHash().AddPending(world.Clock).Value;
+
+            var exported = new List<ScheduledEvent>();
+            world.Clock.CopyPendingTo(exported);
+            var ids = new IdAllocator();
+            ids.ResumeEventsFrom(world.Base.Ids.PeekNextEvent());
+            var restored = new SimulationClock(ids, world.Clock.Now, exported);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exported, Is.Not.Empty, "a lived-in world has commitments to carry");
+                Assert.That(new WorldHash().AddPending(restored).Value, Is.EqualTo(before));
+            });
+        }
+
+        [Test]
         public void Booking_an_event_changes_the_pending_section()
         {
             // Pending events are state. A world that agrees on its people and

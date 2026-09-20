@@ -42,7 +42,11 @@ namespace KingdomWatch.Core.Events
     /// That promise is only as good as the number of buses: a subscriber on
     /// one bus publishing through a second would nest without either
     /// noticing. So a clock has exactly one bus, and the constructor refuses
-    /// a second (see <see cref="SimulationClock.ClaimBus"/>).
+    /// a second (see <see cref="SimulationClock.ClaimBus"/>). The in-flight
+    /// flag itself lives on the clock (<see cref="SimulationClock.Publishing"/>)
+    /// rather than here, so that <see cref="SimulationClock.AtCheckpoint"/> -
+    /// section 17's "may the world be snapshotted now" - answers for both
+    /// streams with one flag per stream and no second source of truth.
     ///
     /// Publishing outside a dispatch is fine - world generation publishes
     /// SettlementFounded and PersonBorn at T=0 before the clock has run.
@@ -59,7 +63,6 @@ namespace KingdomWatch.Core.Events
         private readonly List<IDomainEventSubscriber> _subscribers = new List<IDomainEventSubscriber>();
 
         private bool _sealed;
-        private bool _publishing;
 
         /// <param name="clock">
         /// Stamps each event with the instant it happened, and supplies the
@@ -155,7 +158,7 @@ namespace KingdomWatch.Core.Events
             EntityId secondaryEntity,
             Reasons reasons)
         {
-            if (_publishing)
+            if (_clock.Publishing)
             {
                 throw new InvalidOperationException(
                     "Cannot publish " + kind + " from inside a subscriber: reactions are queued, never run "
@@ -166,7 +169,12 @@ namespace KingdomWatch.Core.Events
                 _ids.NextEvent(), _clock.Now, kind, primaryEntity, secondaryEntity, reasons);
 
             _sealed = true;
-            _publishing = true;
+            _clock.Publishing = true;
+
+            // Completed, not "did not throw": a subscriber that catches a
+            // refused nested publish and carries on has heard the event, and
+            // the ones after it still get their turn.
+            var completed = false;
 
             try
             {
@@ -174,10 +182,12 @@ namespace KingdomWatch.Core.Events
                 {
                     _subscribers[i].On(in published);
                 }
+
+                completed = true;
             }
             finally
             {
-                _publishing = false;
+                _clock.EndPublish(completed);
             }
 
             return published.Id;
