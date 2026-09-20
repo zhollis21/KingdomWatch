@@ -784,6 +784,8 @@ This feeds decision provenance directly: *"Oakshire declared war — border clai
 
 **Target ~10 resources with two-step chains, defined as data.**
 
+**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the ten resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
+
 ```
 recipe: iron_tools
   inputs:  [iron x2, charcoal x1]
@@ -1536,9 +1538,9 @@ Then choose perspective.
 
 ## 20. Systems requiring design before implementation
 
-Sequenced by when they block progress. Items now specified elsewhere in this document are marked ✓.
+Sequenced by when they block progress. Items now specified elsewhere in this document, or in its companion [economy ladder](kingdom-watch-economy-ladder.md), are marked ✓.
 
-**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **performance budgets — measured at M0, not yet set** · **capability-graph pacing and the skill chicken-and-egg**
+**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **performance budgets — measured at M0, not yet set** · **capability-graph pacing and the skill chicken-and-egg** ✓
 
 **Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, wildlife, soil, finite stone and ore)
 
@@ -1556,7 +1558,7 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 
 ## 21. Open questions
 
-1. **Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world
+1. ~~**Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world~~ — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78): each capability has a crude tier-zero form, so the climb is paced by how long real people take to reach journeyman, which varies per world. The targets there are placeholders until #17 and #22 measure them.
 2. **Performance budgets** — set as a fraction of the M0 baseline, fraction chosen before measuring
 3. Disease and plague as a system
 4. Siege model — walls, gates, duration, stores, assault, surrender

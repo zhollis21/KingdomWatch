@@ -13,6 +13,7 @@ That sentence is the whole design. Everything else is in service of it.
 | Question | Page |
 |---|---|
 | What are we building, and why is it shaped like this? | [The design doc](docs/design/kingdom-watch-plan-v7.1.md) — a living plan, not a spec |
+| What are the resources, jobs, buildings and milestones? | [The economy ladder](docs/design/kingdom-watch-economy-ladder.md) — the contents §9 argues about |
 | What's done, what's next, what's blocked? | [The roadmap](https://zhollis21.github.io/KingdomWatch/) · [what to pick up now](https://zhollis21.github.io/KingdomWatch/#next.md) — generated from GitHub issues, never hand-edited |
 | How do we work in this repo? | [AGENTS.md](AGENTS.md) — conventions, the issue → `/kickoff` → PR loop, what the tests enforce |
 | How do I run the Unity prototype? | [docs/town-prototype.md](docs/town-prototype.md) |
