@@ -389,8 +389,21 @@ Before the first `AskUserQuestion`, all of these must hold:
 - [ ] **You have a recommendation and a reason.** No recommendation usually
       means the analysis is not finished, and a menu is being offered in place
       of a judgement.
+- [ ] **The decisions are named in the brief, with their tradeoffs, before the
+      popup opens.** Each one: what is being decided, the options, a line or
+      two of pro and con apiece, and your recommendation. Facts alone are not
+      a brief. The tell is a brief that explains the problem thoroughly and
+      then jumps straight to the question box, leaving every tradeoff
+      compressed into option descriptions the user reads inside the widget,
+      at the moment they are choosing, with no way to compare them
+      side by side.
 
-A question that survives all five is worth the user's attention. One that does
+      This does not conflict with *never list options in plain text*. That rule
+      stops prose being used **instead of** the popup — it does not license
+      withholding the reasoning until the popup. The popup is where the choice
+      is made; the brief is where the tradeoffs are read.
+
+A question that survives all six is worth the user's attention. One that does
 not is a request for them to do Step 3 for you.
 
 The brief covers, in this order and briefly:
