@@ -73,7 +73,7 @@ namespace KingdomWatch.Core.Tests.Validation
                         .CheckPeople(world.People, world.Clock, world.Settings)
                         .CheckHouseholds(world.Households, world.People, world.Clock)
                         .CheckGenealogy(world.Genealogy, world.People, world.Clock)
-                        .CheckSchedule(world.Clock, world.People)
+                        .CheckSchedule(world.Clock, world.People, spatial, world.Households)
                         .CheckCommunities(spatial, world.People, world.Clock);
 
                     // Each system's own tracked set, read back through the
@@ -138,7 +138,8 @@ namespace KingdomWatch.Core.Tests.Validation
                         .Reset()
                         .CheckPeople(world.People, world.Clock, world.Demographics.Settings)
                         .CheckHouseholds(world.Demographics.Households, world.People, world.Clock)
-                        .CheckSchedule(world.Clock, world.People)
+                        .CheckSchedule(
+                            world.Clock, world.People, spatial, world.Demographics.Households)
                         .CheckJobs(world.Jobs, world.People, world.Clock)
                         .CheckCommunities(spatial, world.People, world.Clock)
                         .CheckSupplies(band.SharedSupplies, band.Id, world.Clock);

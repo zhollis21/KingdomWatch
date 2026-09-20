@@ -30,7 +30,7 @@ namespace KingdomWatch.Harness
         /// <summary>Two people share a durable id.</summary>
         DuplicateEntityId = 4,
 
-        /// <summary>An identity field holds a value outside its enum.</summary>
+        /// <summary>An identity field holds a value the field cannot mean.</summary>
         PersonFieldUndefined = 5,
 
         /// <summary>The cached age stage disagrees with the age.</summary>
@@ -45,7 +45,7 @@ namespace KingdomWatch.Harness
         /// <summary>A household lists someone the store no longer holds.</summary>
         HouseholdMemberMissing = 9,
 
-        /// <summary>A living person has no genealogy record.</summary>
+        /// <summary>Somebody the genealogy is expected to know has no record in it.</summary>
         GenealogyMissing = 10,
 
         /// <summary>A parent link points at something that is not a person.</summary>
@@ -54,10 +54,10 @@ namespace KingdomWatch.Harness
         /// <summary>Somebody is their own ancestor, by some line of descent.</summary>
         KinshipCycle = 12,
 
-        /// <summary>A scheduled event names an entity that does not resolve.</summary>
+        /// <summary>A scheduled event names a person, community or household that does not resolve.</summary>
         ScheduledTargetMissing = 13,
 
-        /// <summary>A record names a booked event the queue does not hold.</summary>
+        /// <summary>A person or a system names a booked event the queue does not hold.</summary>
         PendingEventMissing = 14,
 
         /// <summary>Someone the store no longer holds still has a work task.</summary>

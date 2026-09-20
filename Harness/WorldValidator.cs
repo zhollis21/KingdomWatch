@@ -57,6 +57,7 @@ namespace KingdomWatch.Harness
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly HashSet<EventId> _queued = new HashSet<EventId>();
         private readonly HashSet<EntityId> _seen = new HashSet<EntityId>();
+        private readonly HashSet<EntityId> _known = new HashSet<EntityId>();
         private readonly HashSet<EntityId> _ancestors = new HashSet<EntityId>();
         private readonly Stack<EntityId> _pendingAncestors = new Stack<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
@@ -295,9 +296,9 @@ namespace KingdomWatch.Harness
         }
 
         /// <summary>
-        /// Every event still due names a primary entity that resolves, and
-        /// every booked id a <see cref="PersonRecord"/> names is still in the
-        /// queue.
+        /// Every event still due names a primary entity that resolves - a
+        /// person, a community or a household - and every booked id a
+        /// <see cref="PersonRecord"/> names is still in the queue.
         /// </summary>
         /// <remarks>
         /// The second half is the rule #80 exists because of: a stream that
@@ -305,18 +306,38 @@ namespace KingdomWatch.Harness
         /// booked leaves the record and the queue free to disagree, and
         /// nothing else notices.
         /// </remarks>
-        public WorldValidator CheckSchedule(SimulationClock clock, PersonStore people)
+        /// <param name="communities">
+        /// Every band and settlement in the world. Most scheduled kinds are
+        /// owned by a community rather than by a person - work days, meals,
+        /// courtship rounds, councils, arrivals - so without these the
+        /// majority of the queue's targets go unexamined.
+        /// </param>
+        /// <param name="households">The registry a <c>BirthCheck</c> is booked against.</param>
+        public WorldValidator CheckSchedule(
+            SimulationClock clock,
+            PersonStore people,
+            IReadOnlyList<ICommunity> communities,
+            Households households)
         {
             Require(clock, nameof(clock));
             Require(people, nameof(people));
+            Require(communities, nameof(communities));
+            Require(households, nameof(households));
 
             var now = clock.Now;
 
             RefreshQueued(clock);
 
+            _known.Clear();
+
+            for (var i = 0; i < communities.Count; i++)
+            {
+                _known.Add(communities[i].Id);
+            }
+
             for (var i = 0; i < _pending.Count; i++)
             {
-                CheckTarget(_pending[i], people, now);
+                CheckTarget(_pending[i], people, households, now);
             }
 
             foreach (var person in people.Alive())
@@ -664,16 +685,41 @@ namespace KingdomWatch.Harness
         // still the child's father, so checking the second party for liveness
         // reports correct worlds as broken. Only the primary - "who this is
         // mainly about", the entity the handler acts on - has to resolve.
-        private void CheckTarget(ScheduledEvent scheduled, PersonStore people, SimulationTime now)
+        private void CheckTarget(
+            ScheduledEvent scheduled, PersonStore people, Households households, SimulationTime now)
         {
             var target = scheduled.PrimaryEntity;
 
-            if (target.IsNone || target.Kind != EntityKind.Person)
+            if (target.IsNone)
             {
                 return;
             }
 
-            if (!people.TryGetHandle(target, out _))
+            bool resolves;
+
+            switch (target.Kind)
+            {
+                case EntityKind.Person:
+                    resolves = people.TryGetHandle(target, out _);
+                    break;
+                case EntityKind.Household:
+                    resolves = households.TryGet(target, out _);
+                    break;
+                case EntityKind.MobileGroup:
+                case EntityKind.Settlement:
+                    resolves = _known.Contains(target);
+                    break;
+                default:
+                    // Polities, dynasties and named animals exist in section 5
+                    // and in EntityKind, and in nothing that schedules yet
+                    // (#39, #45). A kind that cannot be booked against cannot
+                    // dangle, and a rule that cannot fire is worse than an
+                    // absent one - it reads as coverage. This arm becomes real
+                    // when the first of them books an event.
+                    return;
+            }
+
+            if (!resolves)
             {
                 Add(ValidationRule.ScheduledTargetMissing, now, target,
                     scheduled + " is still due and names them.");

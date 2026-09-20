@@ -183,6 +183,59 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void An_event_still_due_for_a_household_that_is_gone_is_caught()
+        {
+            // Six of the eleven scheduled kinds are owned by a household or a
+            // community rather than by a person - work days, meals, courtship
+            // rounds, councils, arrivals, birth checks - and the rule skipped
+            // every one of them until review said so.
+            var world = Populated();
+
+            world.Clock.Schedule(
+                world.Clock.Now.Plus(SimulationTime.TicksPerDay),
+                Fertility.Phase,
+                ScheduledEventKind.BirthCheck,
+                new EntityId(EntityKind.Household, 71_001UL),
+                EntityId.None);
+
+            Assert.That(Rules(world), Does.Contain(ValidationRule.ScheduledTargetMissing));
+        }
+
+        [Test]
+        public void An_event_still_due_for_a_community_that_is_gone_is_caught()
+        {
+            var world = Populated();
+
+            world.Clock.Schedule(
+                world.Clock.Now.Plus(SimulationTime.TicksPerDay),
+                KingdomWatch.Core.Work.Jobs.Phase,
+                ScheduledEventKind.WorkDayDue,
+                new EntityId(EntityKind.MobileGroup, 71_002UL),
+                EntityId.None);
+
+            Assert.That(Rules(world), Does.Contain(ValidationRule.ScheduledTargetMissing));
+        }
+
+        [Test]
+        public void A_kind_that_nothing_schedules_against_is_left_alone()
+        {
+            // Polities, dynasties and named animals are in EntityKind and in
+            // nothing that books an event (#39, #45). Reporting them would be
+            // a rule that fires on a world nobody can build, which is the
+            // opposite of the point.
+            var world = Populated();
+
+            world.Clock.Schedule(
+                world.Clock.Now.Plus(SimulationTime.TicksPerDay),
+                Fertility.Phase,
+                ScheduledEventKind.BirthCheck,
+                new EntityId(EntityKind.Polity, 71_003UL),
+                EntityId.None);
+
+            Assert.That(Rules(world), Does.Not.Contain(ValidationRule.ScheduledTargetMissing));
+        }
+
+        [Test]
         public void A_record_naming_an_event_the_queue_lost_is_caught()
         {
             // The #80 failure, from the other side: the record and the queue
@@ -435,8 +488,18 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(
                     () => validator.CheckHouseholds(world.Households, null!, clock), Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckGenealogy(null!, people, clock), Throws.ArgumentNullException);
-                Assert.That(() => validator.CheckSchedule(null!, people), Throws.ArgumentNullException);
-                Assert.That(() => validator.CheckSchedule(clock, null!), Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckSchedule(null!, people, Communities(world), world.Households),
+                    Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckSchedule(clock, null!, Communities(world), world.Households),
+                    Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckSchedule(clock, people, null!, world.Households),
+                    Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckSchedule(clock, people, Communities(world), null!),
+                    Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckJobs(null!, people, clock), Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckCommunities(null!, people, clock), Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckTracked(null!, people, clock), Throws.ArgumentNullException);
@@ -563,12 +626,25 @@ namespace KingdomWatch.Core.Tests.Validation
             return world;
         }
 
+        // Every band the world has, which is what the schedule rule resolves
+        // a community-owned event against.
+        private static List<ICommunity> Communities(DemographicWorld world)
+        {
+            var communities = new List<ICommunity>();
+            var scratch = new List<ICommunity>();
+
+            world.Hunger.CopyTrackedTo(scratch);
+            communities.AddRange(scratch);
+
+            return communities;
+        }
+
         private static WorldValidator Check(DemographicWorld world) =>
             new WorldValidator()
                 .CheckPeople(world.People, world.Clock, world.Settings)
                 .CheckHouseholds(world.Households, world.People, world.Clock)
                 .CheckGenealogy(world.Genealogy, world.People, world.Clock)
-                .CheckSchedule(world.Clock, world.People);
+                .CheckSchedule(world.Clock, world.People, Communities(world), world.Households);
 
         private static ValidationRule[] Rules(DemographicWorld world) => RulesOf(Check(world));
 

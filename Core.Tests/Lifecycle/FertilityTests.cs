@@ -638,16 +638,34 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
+
+            var pendingBefore = w.Clock.ScheduledCount;
+
             w.Deaths.Die(wife, Reasons.None);
             w.Deaths.Die(husband, Reasons.None);
 
-            var pendingBefore = w.Clock.ScheduledCount;
+            // The stream ends at the dissolution now, not at the next check.
+            // Fertility used to hear only HouseholdFormed, so the booking
+            // outlived the household and was dropped when it finally came due
+            // - which left the queue carrying a commitment to a household
+            // nobody could look up for the rest of the interval. Found by the
+            // validator's seed sweep (#13) once it began resolving household
+            // targets and not only people.
+            var pendingAfter = w.Clock.ScheduledCount;
+
             w.Advance(Check);
 
             Assert.Multiple(() =>
             {
                 Assert.That(w.Households.TryGet(household.Id, out _), Is.False);
-                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pendingBefore - 1), "the check ran and booked no successor");
+                Assert.That(
+                    pendingAfter,
+                    Is.LessThan(pendingBefore),
+                    "the check was cancelled with the household, not left to run");
+                Assert.That(
+                    w.Clock.ScheduledCount,
+                    Is.EqualTo(pendingAfter),
+                    "and nothing was left for the advance to dispatch");
                 Assert.That(
                     w.Fertility.PendingCheckCount,
                     Is.Zero,

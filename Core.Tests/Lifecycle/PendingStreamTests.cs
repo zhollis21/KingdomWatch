@@ -140,6 +140,32 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_birth_check_is_cancelled_when_its_household_dissolves()
+        {
+            // Fertility heard HouseholdFormed and booked a check; it did not
+            // hear HouseholdDissolved, so the check outlived the household it
+            // was for. Check drops one whose household is gone, which is
+            // exactly why nothing noticed - the queue is the only place the
+            // difference shows.
+            var w = new DemographicWorld(Immortal(), 5UL);
+            var household = w.NewCouple(out var wife, out var husband);
+            var booked = w.Clock.ScheduledCount;
+
+            w.Households.Leave(wife);
+            w.Households.Leave(husband);
+            w.Households.Dissolve(household);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    w.Clock.ScheduledCount,
+                    Is.LessThan(booked),
+                    "the birth check went with the household");
+                Assert.That(() => w.AdvanceYears(3L), Throws.Nothing, "no check survives the household");
+            });
+        }
+
+        [Test]
         public void A_person_dying_at_their_own_check_names_no_pending_check()
         {
             // The ordering inside Check, pinned. A death during the roll

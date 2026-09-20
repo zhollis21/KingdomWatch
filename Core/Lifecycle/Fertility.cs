@@ -275,6 +275,34 @@ namespace KingdomWatch.Core.Lifecycle
             {
                 ScheduleCheck(published.PrimaryEntity);
             }
+            else if (published.Kind == DomainEventKind.HouseholdDissolved)
+            {
+                EndCheck(published.PrimaryEntity);
+            }
+        }
+
+        // A dissolved household books no successor, so the stream ends either
+        // way - Check drops a birth check whose household is gone. But it only
+        // drops it when the event finally comes due, which leaves the queue
+        // carrying a commitment to a household nobody can look up, for as long
+        // as the interval lasts.
+        //
+        // The same rule Deaths applies to a person's pregnancy, mortality
+        // check and stage boundary, for the same reasons: a queue entry saved
+        // now, one less future commitment for section 17's saves to keep, and
+        // section 5's "no scheduled event targets a dead handle" left true
+        // rather than nearly true. Found by the validator's seed sweep (#13)
+        // once it began resolving community and household targets and not
+        // only people.
+        private void EndCheck(EntityId householdId)
+        {
+            if (!_pendingChecks.TryGetValue(householdId, out var booked))
+            {
+                return;
+            }
+
+            _clock.Cancel(booked);
+            _pendingChecks.Remove(householdId);
         }
 
         public void Handle(ScheduledEvent scheduled, SimulationClock clock)
