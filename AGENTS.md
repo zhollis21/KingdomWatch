@@ -165,9 +165,12 @@ Projects v2. Use REST. Review threads have no REST equivalent on
 github.com, so the proxy adds its own routes — `GET  .../pulls/{n}/ccr/review_threads`
 and `POST .../pulls/{n}/ccr/comments/{comment_id}/resolve` (also `/unresolve`,
 `/auto_merge`, `/ready_for_review`, `/convert_to_draft`). Those are proxy-only
-and key off a comment id rather than GraphQL's thread node id, so anything
-built on them does not run off a normal machine — say so in a comment where
-they are used.
+and key off a comment id rather than GraphQL's thread node id, and github.com
+answers them with `404` — so anything built on them alone does not run off a
+normal machine, and anything built on GraphQL alone does not run in a cloud
+session. `Get-ReviewThreads` and `Resolve-ReviewThread` in `tools/GitHubApi.psm1`
+try the `ccr/` route and fall back to GraphQL on that `404`; go through them
+(or `tools/Resolve-PrThread.ps1`) rather than calling either transport directly.
 
 **`gh --paginate` breaks past the first page.** It follows GitHub's
 `Link: rel="next"`, which points at the numeric-ID form

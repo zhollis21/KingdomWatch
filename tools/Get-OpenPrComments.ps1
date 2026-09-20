@@ -12,10 +12,11 @@
     - GitHub CLI: https://cli.github.com/ (authenticated via `gh auth login`)
 
 .NOTES
-    - Thread resolution (resolved/outdated) comes from the proxy's ccr/ route,
-      which is the only way to read it from a Claude Code session: the
-      equivalent is GraphQL-only on github.com, and GraphQL is refused there.
-      See AGENTS.md, "Calling the GitHub API from a Claude Code cloud session".
+    - Thread resolution (resolved/outdated) has no REST endpoint on github.com.
+      Get-ReviewThreads (GitHubApi.psm1) reads it from the proxy's ccr/ route
+      in a Claude Code cloud session, where GraphQL is refused, and from
+      GraphQL everywhere else, where the ccr/ route does not exist. See
+      AGENTS.md, "Calling the GitHub API from a Claude Code cloud session".
     - Output file is UTF-8 encoded
 #>
 
@@ -58,12 +59,10 @@ foreach ($prItem in $openPRs) {
     $PRNum = $prItem.number
 
     # ---- Thread resolution map ----
-    # The ccr/ route is proxy-only and has no equivalent on github.com, where
-    # this is GraphQL's reviewThreads. It keys threads by comment id rather than
-    # by GraphQL's thread node id, which happens to be exactly what this report
-    # wants: comment_ids[0] is the thread's first comment, same as the old
-    # comments(first:1){databaseId}.
-    $threads = @(Invoke-GhJson "$REPO_PATH/pulls/$PRNum/ccr/review_threads")
+    # Keyed by the thread's opening comment id, whichever transport answered
+    # (the proxy's ccr/ route in a cloud session, GraphQL on a normal machine -
+    # see Get-ReviewThreads).
+    $threads = @(Get-ReviewThreads -Owner $OWNER -Repo $REPO_NAME -PullNumber $PRNum)
 
     $threadMap = @{}
     foreach ($thread in $threads) {
