@@ -177,6 +177,35 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
+        public void A_refused_export_still_clears_the_buffer_it_was_handed()
+        {
+            // "Cleared before use" has to hold on the refusal path too. The
+            // export is taken into a reused buffer once per check over a long
+            // run; a refusal that left the previous answer in it would hand a
+            // caller that catches the throw a stale queue dressed as this one.
+            var clock = new SimulationClock(new IdAllocator());
+            ScheduleTask(clock, Noon, 1UL);
+
+            var pending = new List<ScheduledEvent>();
+            clock.CopyPendingTo(pending);
+            Assume.That(pending, Has.Count.EqualTo(1));
+
+            clock.AdvanceTo(Midnight, new Recorder((_, c) =>
+            {
+                try
+                {
+                    c.CopyPendingTo(pending);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Refused, as it should be.
+                }
+            }));
+
+            Assert.That(pending, Is.Empty);
+        }
+
+        [Test]
         public void The_pending_events_cannot_be_exported_mid_publish()
         {
             var clock = new SimulationClock(new IdAllocator());

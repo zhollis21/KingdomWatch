@@ -333,6 +333,11 @@ namespace KingdomWatch.Core.Clock
                 throw new ArgumentNullException(nameof(into));
             }
 
+            // Cleared before the guard, not after: "cleared before use" has to
+            // hold on the refusal path too, or a reused buffer keeps the
+            // previous answer through the throw.
+            into.Clear();
+
             if (!AtCheckpoint)
             {
                 throw new InvalidOperationException(
