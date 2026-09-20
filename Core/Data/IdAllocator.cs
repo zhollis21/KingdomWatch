@@ -18,8 +18,11 @@ namespace KingdomWatch.Core.Data
     /// unambiguously "none". Each kind counts independently, which keeps ids
     /// small and readable in logs and tests.
     ///
-    /// Saving and loading is issue #15. This type exposes its state through
-    /// Peek/Resume; it does not serialize anything itself.
+    /// This type exposes its state through Peek/Resume and serializes nothing
+    /// itself. A restore resumes the counters first, then rebuilds the clock
+    /// from its pending events (<see cref="Clock.SimulationClock"/>, #15),
+    /// which refuses an id the allocator has not yet passed. The format on
+    /// disk is issue #42.
     /// </remarks>
     public sealed class IdAllocator
     {

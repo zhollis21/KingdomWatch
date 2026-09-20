@@ -1442,6 +1442,8 @@ Snapshot permitted
 
 **Serialize pending scheduled events** where they represent genuine future commitments — birth due dates, task completion, threshold crossings. Rebuilding them from entity state can silently shift history across a version change.
 
+As built (#15), the checkpoint is a property of the clock rather than a protocol the driver follows: `SimulationClock.AtCheckpoint` is true exactly when no `AdvanceTo` is running and no domain event is mid-publish. The first line of the box is what `AdvanceTo` already guarantees on return — it drains everything due on or before its target, including the same-instant reactions handlers booked into later phases, so a cascade cannot be left half-run between calls. The death cascade itself is one synchronous call (`Deaths.Die`), not a chain the clock could stop inside. The export a snapshot is built from (`CopyPendingTo`) refuses to run off a checkpoint, and a clock is rebuilt from that export with every event keeping its `EventId`, so the bookings systems hold still name the same events afterwards. The "world invariants hold" line runs in the harness and the tests (`WorldValidator` at every checkpoint of a seed sweep), not on the phone; on device the structural rule is the whole gate. Suspension is not the hazard it reads as: the simulation is single-threaded, so a platform pause lands between calls, never inside one. What the gate guards is a driver that saves from inside a handler. Writing a snapshot to disk, and rebuilding every system from one, is #42.
+
 ---
 
 ## 18. Rendering and platform

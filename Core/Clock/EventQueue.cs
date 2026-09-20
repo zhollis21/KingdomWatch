@@ -70,6 +70,24 @@ namespace KingdomWatch.Core.Clock
         }
 
         /// <summary>
+        /// Enqueues an event that already has an id - one coming back from a
+        /// snapshot (#15). Returns false, and enqueues nothing, when that id
+        /// is already live: <see cref="Enqueue"/> can trust the allocator
+        /// never to repeat itself, but a restored list is data, and data can
+        /// be wrong.
+        /// </summary>
+        internal bool TryEnqueueRestored(ScheduledEvent scheduled)
+        {
+            if (_live.Contains(scheduled.Id))
+            {
+                return false;
+            }
+
+            Enqueue(scheduled);
+            return true;
+        }
+
+        /// <summary>
         /// Drops an event. Returns false when the id was never queued or has
         /// already been dispatched or cancelled, so a caller re-predicting a
         /// threshold can tell whether it beat the crossing.

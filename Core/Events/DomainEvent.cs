@@ -13,7 +13,7 @@ namespace KingdomWatch.Core.Events
     /// One fixed-size shape for every kind, mirroring
     /// <see cref="ScheduledEvent"/>, rather than a type per kind. Fixed size is
     /// what lets the journal hold events in one array, the determinism hash
-    /// (#13) fold them without knowing their kind, and a save (#15) write them
+    /// (#13) fold them without knowing their kind, and a save (#42) write them
     /// without a type registry - and it keeps publishing allocation-free. A
     /// subscriber switches on <see cref="Kind"/> and looks up any further
     /// detail - the father of a newborn, the cause of a death - in the stores.

@@ -22,7 +22,7 @@ namespace KingdomWatch.Core.Clock
     /// in the same simulated second, or a batch of birth checks scheduled "in
     /// thirty days" from a shared origin. A heap breaks such a tie on its array
     /// layout: identical on replay today, reordered the first time the queue is
-    /// rebuilt from a save (#15) or compacted, and invisible to the
+    /// rebuilt from a snapshot (#15) or compacted, and invisible to the
     /// cross-platform hash because desktop and IL2CPP execute the same
     /// operations and agree on the same wrong answer.
     ///
