@@ -488,6 +488,10 @@ namespace KingdomWatch.Core.Tests.Validation
             {
                 Assert.That(() => validator.CheckPeople(null!, clock, world.Settings), Throws.ArgumentNullException);
                 Assert.That(() => validator.CheckPeople(people, null!, world.Settings), Throws.ArgumentNullException);
+                Assert.That(
+                    () => validator.CheckPeople(people, clock, null!),
+                    Throws.ArgumentNullException,
+                    "the stage rule is not silently skipped for want of settings");
                 Assert.That(() => validator.CheckHouseholds(null!, people, clock), Throws.ArgumentNullException);
                 Assert.That(
                     () => validator.CheckHouseholds(world.Households, null!, clock), Throws.ArgumentNullException);

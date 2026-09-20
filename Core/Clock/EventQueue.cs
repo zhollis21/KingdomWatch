@@ -92,6 +92,13 @@ namespace KingdomWatch.Core.Clock
         /// fresh one each time. Nothing here runs under
         /// <see cref="SimulationClock.AdvanceTo"/>, so this is not a tick-loop
         /// path, but the allocation would be just as pointless.
+        ///
+        /// <paramref name="into"/> is the caller's to check. There is no null
+        /// guard here because <see cref="SimulationClock.CopyPendingTo"/> is
+        /// the only caller and already throws for one - and this class is
+        /// internal on purpose, with no InternalsVisibleTo, so a guard added
+        /// here could never be reached by a test either. A second caller
+        /// inside Core would be taking on that check, not inheriting it.
         /// </remarks>
         internal void CopyLiveTo(List<ScheduledEvent> into)
         {

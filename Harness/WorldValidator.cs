@@ -91,6 +91,7 @@ namespace KingdomWatch.Harness
         {
             Require(people, nameof(people));
             Require(clock, nameof(clock));
+            Require(settings, nameof(settings));
 
             var now = clock.Now;
             var records = people.RecordSpan();
@@ -163,18 +164,18 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.BornInFuture, now, record.Id,
                         "was born at tick " + record.BornTick + ", which is ahead of now.");
                 }
-                else if (settings is object && Enum.IsDefined(typeof(AgeStage), record.AgeStage))
+                else if (Enum.IsDefined(typeof(AgeStage), record.AgeStage))
                 {
                     // Aging refreshes the stage at boundaries only, so a
                     // worldgen that seeded the wrong one stays wrong until the
                     // next birthday rather than being corrected (#11).
-                    var expected = settings.StageAt(people.GetAgeYears(record.Handle, now));
+                    var age = people.GetAgeYears(record.Handle, now);
+                    var expected = settings.StageAt(age);
 
                     if (expected != record.AgeStage)
                     {
                         Add(ValidationRule.AgeStageStale, now, record.Id,
-                            "is " + record.AgeStage + " at age "
-                            + people.GetAgeYears(record.Handle, now) + ", which is " + expected + ".");
+                            "is " + record.AgeStage + " at age " + age + ", which is " + expected + ".");
                     }
                 }
             }
@@ -225,10 +226,12 @@ namespace KingdomWatch.Harness
                             "lists " + id + " more than once.");
                     }
 
-                    if (people.GetHousehold(member) != household.Id)
+                    var named = people.GetHousehold(member);
+
+                    if (named != household.Id)
                     {
                         Add(ValidationRule.HouseholdMembership, now, household.Id,
-                            "lists " + id + ", who names " + people.GetHousehold(member) + ".");
+                            "lists " + id + ", who names " + named + ".");
                     }
                 }
             }
@@ -419,7 +422,8 @@ namespace KingdomWatch.Harness
                 // Section 5: Jobs alone writes the field, exactly while the
                 // person has a task, and nothing in Jobs reads it back - it is
                 // a mirror for readers and for this check.
-                var mirrored = people.GetJob(person) != JobKind.None;
+                var job = people.GetJob(person);
+                var mirrored = job != JobKind.None;
                 var working = jobs.HasTask(person);
 
                 if (mirrored != working)
@@ -427,7 +431,7 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.JobMirrorStale, now, people.GetId(person),
                         working
                             ? "is on a task with no job recorded."
-                            : "records job " + people.GetJob(person) + " with no task.");
+                            : "records job " + job + " with no task.");
                 }
             }
 
