@@ -69,6 +69,7 @@ There is no coverage target and no gate. Coverage is a tool for finding untested
 
 So write tests against the input space, not the line count. For each public entry point, ask what a caller can actually pass rather than what the docs say they should:
 
+- **Widening what something accepts or reports includes its documentation.** When a rule starts firing for a second case, or a type starts accepting a third kind of owner, the summary that named the first one becomes wrong in the same commit — and it is wrong in the way nobody notices, because it still reads as a sentence about the code. Three consecutive review rounds on #91 found exactly this, and on two of them the drift had been introduced by the round before, while fixing the same class. Re-read the doc of anything whose reach you changed, and audit the set rather than the line you touched.
 - **Enums are the classic trap.** An enum parameter looks like the type system pins it to the declared members, but an enum is an int with names and `(EntityKind)999` casts in silently. Any public API taking an enum must reject undefined values — see `EnumGuard`.
 - **Sentinels and boundaries.** Zero, negative, `MaxValue`, the empty collection, the default struct — and any state where two "is this empty/none/valid?" predicates could disagree with each other.
 - **Values that bypass the guards.** A collection handed out through a read-only interface can still be downcast and mutated unless it is genuinely read-only.

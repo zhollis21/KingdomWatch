@@ -23,6 +23,8 @@ namespace KingdomWatch.Core.Data
     /// </remarks>
     public readonly struct PendingBooking : IEquatable<PendingBooking>, IComparable<PendingBooking>
     {
+        private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(ScheduledEventKind));
+
         public PendingBooking(EntityId owner, ScheduledEventKind kind, EventId booked)
         {
             if (owner.IsNone)
@@ -30,10 +32,18 @@ namespace KingdomWatch.Core.Data
                 throw new ArgumentException("A booking is for somebody.", nameof(owner));
             }
 
-            if (kind == ScheduledEventKind.None)
+            // EnumGuard, not just a None check, the way EntityId guards its
+            // own kind. ScheduledEventKind is the sharpest case in the
+            // project's "never renumber a persisted enum" rule, because its
+            // numeric value *is* the scheduler's priority - and CompareTo
+            // below sorts on it, so a cast-in value would order itself
+            // between two real kinds and move the canonical sequence
+            // WorldHash.AddBookings folds in. That is a determinism bug
+            // rather than a bad argument.
+            if (!EnumGuard.IsDefined(DefinedKinds, (int)kind) || kind == ScheduledEventKind.None)
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(kind), kind, "A booking names the kind of event it booked.");
+                    nameof(kind), kind, "Not a defined ScheduledEventKind, or None.");
             }
 
             if (booked.IsNone)
@@ -48,7 +58,11 @@ namespace KingdomWatch.Core.Data
             Booked = booked;
         }
 
-        /// <summary>The community or person the stream runs for.</summary>
+        /// <summary>
+        /// Who the stream runs for: a person, a band or settlement, or a
+        /// household - <c>Fertility</c>'s birth check is keyed by household,
+        /// as the remarks above say.
+        /// </summary>
         public EntityId Owner { get; }
 
         /// <summary>What kind of event is booked.</summary>

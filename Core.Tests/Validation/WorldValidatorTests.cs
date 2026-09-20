@@ -467,6 +467,10 @@ namespace KingdomWatch.Core.Tests.Validation
                     Throws.InstanceOf<ArgumentOutOfRangeException>(),
                     "None is the absence of a rule, not one to report");
                 Assert.That(
+                    () => new ValidationFinding((ValidationRule)999, default, EntityId.None, "x"),
+                    Throws.InstanceOf<ArgumentOutOfRangeException>(),
+                    "a rule nobody declared would print as a number nobody could trace");
+                Assert.That(
                     () => new ValidationFinding(ValidationRule.BornInFuture, default, EntityId.None, null!),
                     Throws.ArgumentNullException);
             });
@@ -529,6 +533,15 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(
                     () => new PendingBooking(owner, ScheduledEventKind.None, new EventId(1UL)),
                     Throws.InstanceOf<ArgumentOutOfRangeException>());
+
+                // An enum parameter looks pinned by the type system and is
+                // not. This one is worse than most: CompareTo sorts on the
+                // numeric value, so a cast-in kind would order itself between
+                // two real ones and move the sequence the world hash folds in.
+                Assert.That(
+                    () => new PendingBooking(owner, (ScheduledEventKind)999, new EventId(1UL)),
+                    Throws.InstanceOf<ArgumentOutOfRangeException>(),
+                    "a kind nobody declared is not a kind");
                 Assert.That(
                     () => new PendingBooking(owner, ScheduledEventKind.MealDue, EventId.None),
                     Throws.ArgumentException,

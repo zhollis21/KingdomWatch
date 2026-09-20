@@ -92,10 +92,16 @@ namespace KingdomWatch.Harness
     {
         public ValidationFinding(ValidationRule rule, SimulationTime at, EntityId subject, string detail)
         {
-            if (rule == ValidationRule.None)
+            // Enum.IsDefined rather than Core's EnumGuard, which is internal
+            // to that assembly; this type never leaves the desktop, so the
+            // reflection cost does not reach anything that has to be fast or
+            // deterministic. The rule still stands: an enum parameter is an
+            // int with names, and a cast-in value would print as a number in
+            // a report nobody could trace back.
+            if (rule == ValidationRule.None || !Enum.IsDefined(typeof(ValidationRule), rule))
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(rule), rule, "A finding names the rule it broke; None is the absence of one.");
+                    nameof(rule), rule, "Not a defined ValidationRule, or None.");
             }
 
             Rule = rule;
