@@ -110,7 +110,10 @@ function Test-ProxyOnlyRouteMissing {
       the caller.
     #>
     param([Parameter(Mandatory)][string]$Message)
-    $Message -match 'HTTP 404' -or $Message -match '"status":\s*"404"'
+    # gh appends `gh: Not Found (HTTP 404)` to the body it echoes, and the body
+    # itself carries "status": "404" - quoted today, matched unquoted too so
+    # the detector never rests on one spelling.
+    $Message -match '\bHTTP 404\b' -or $Message -match '"status":\s*"?404\b'
 }
 
 function Get-ReviewThreads {
