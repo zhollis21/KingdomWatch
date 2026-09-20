@@ -99,6 +99,10 @@ namespace KingdomWatch.Core.Clock
 
         private bool _dispatching;
         private bool _publishing;
+
+        // Set when a handler or subscriber throws out of its call, and never
+        // cleared - see AtCheckpoint.
+        private bool _faulted;
         private bool _busClaimed;
         private bool _hasCurrent;
         private ScheduledEvent _current;
@@ -215,7 +219,20 @@ namespace KingdomWatch.Core.Clock
         ///
         /// Both flags live here rather than one on the clock and one on the
         /// bus so that a single question has a single answer. The bus reports
-        /// through <see cref="Publishing"/>.
+        /// through <see cref="Publishing"/> and <see cref="EndPublish"/>.
+        ///
+        /// **A fault is permanent.** When a handler or subscriber throws out
+        /// of its call, the in-flight flags are put back - but the world is
+        /// not. The event was dequeued and the mutation was partway through;
+        /// a driver that catches the exception and asks this question would
+        /// otherwise hear "yes" over exactly the half-state the flags exist
+        /// to hide. So the clock remembers, and this stays false for the rest
+        /// of its life. It still advances and publishes: a thrown tick means
+        /// the world is being discarded (see <see cref="Lifecycle.Households.Form"/>),
+        /// and the gate is where that is enforced, not the clock at large.
+        /// A refusal the handler catches - a nested advance, scheduling in the
+        /// past - is not a fault: the handler completed, and what it leaves
+        /// is whole.
         ///
         /// What this does NOT guard is a driver that stops between two
         /// <see cref="AdvanceTo"/> calls at the same instant - that is a
@@ -224,7 +241,7 @@ namespace KingdomWatch.Core.Clock
         /// single-threaded, so a platform pause lands between calls, never
         /// inside one.
         /// </remarks>
-        public bool AtCheckpoint => !_dispatching && !_publishing;
+        public bool AtCheckpoint => !_dispatching && !_publishing && !_faulted;
 
         /// <summary>
         /// The allocator scheduled events draw their ids from. Internal so
@@ -264,6 +281,17 @@ namespace KingdomWatch.Core.Clock
         {
             get => _publishing;
             set => _publishing = value;
+        }
+
+        /// <summary>
+        /// Called by <see cref="Events.DomainEventBus"/> as a publish ends,
+        /// however it ends. A publish that did not complete - a subscriber
+        /// threw - is a fault, for the reason <see cref="AtCheckpoint"/> gives.
+        /// </summary>
+        internal void EndPublish(bool completed)
+        {
+            _faulted |= !completed;
+            _publishing = false;
         }
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
@@ -309,9 +337,10 @@ namespace KingdomWatch.Core.Clock
             {
                 throw new InvalidOperationException(
                     "The pending events can only be read at a checkpoint, and the clock is "
-                    + (_dispatching ? "mid-dispatch" : "mid-publish")
+                    + (_dispatching ? "mid-dispatch" : _publishing ? "mid-publish" : "faulted")
                     + ": what is due has already been partly acted on, and a snapshot of it would be "
-                    + "the half-state section 17 forbids. Use TryPeekNext from inside a handler.");
+                    + "the half-state section 17 forbids. Use TryPeekNext from inside a handler; a "
+                    + "world that threw out of a tick is discarded, not saved.");
             }
 
             _queue.CopyLiveTo(into);
@@ -453,12 +482,19 @@ namespace KingdomWatch.Core.Clock
                     _current = due;
                     _hasCurrent = true;
 
+                    // Completed, not "did not throw": a handler that catches
+                    // one of this clock's own refusals and carries on has
+                    // finished its work, and the world it leaves is whole.
+                    var completed = false;
+
                     try
                     {
                         handler.Handle(due, this);
+                        completed = true;
                     }
                     finally
                     {
+                        _faulted |= !completed;
                         _hasCurrent = false;
                         _current = default;
                     }

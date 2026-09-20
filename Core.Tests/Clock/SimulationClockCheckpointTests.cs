@@ -73,6 +73,81 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
+        public void A_clock_whose_handler_threw_is_never_at_a_checkpoint_again()
+        {
+            // The event was dequeued and the handler got partway through
+            // mutating the world before it threw. The finally blocks put the
+            // in-flight flags back, but they cannot put the world back - so a
+            // driver that catches and then snapshots would serialize exactly
+            // the half-state section 17 forbids. The fault is remembered.
+            var clock = new SimulationClock(new IdAllocator());
+            var pending = new List<ScheduledEvent>();
+            ScheduleTask(clock, Noon, 1UL);
+            ScheduleTask(clock, Dusk, 2UL);
+
+            Assert.That(
+                () => clock.AdvanceTo(Midnight, new Recorder((_, _) => throw new InvalidOperationException("mid-cascade"))),
+                Throws.InvalidOperationException.With.Message.EqualTo("mid-cascade"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(clock.AtCheckpoint, Is.False);
+                Assert.That(
+                    () => clock.CopyPendingTo(pending),
+                    Throws.InvalidOperationException.With.Message.Contains("faulted"));
+                Assert.That(pending, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void A_clock_whose_subscriber_threw_is_never_at_a_checkpoint_again()
+        {
+            // Same rule for the other stream: Deaths publishes first and
+            // mutates after, so a subscriber that throws leaves the event
+            // announced, some subscribers unheard, and the mutation not made.
+            var clock = new SimulationClock(new IdAllocator());
+            var bus = new DomainEventBus(clock);
+            var pending = new List<ScheduledEvent>();
+            bus.Subscribe(new Listener(_ => throw new InvalidOperationException("mid-publish")));
+
+            Assert.That(
+                () => bus.Publish(DomainEventKind.PersonBorn, Person(1UL), EntityId.None),
+                Throws.InvalidOperationException.With.Message.EqualTo("mid-publish"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(clock.AtCheckpoint, Is.False);
+                Assert.That(
+                    () => clock.CopyPendingTo(pending),
+                    Throws.InvalidOperationException.With.Message.Contains("faulted"));
+            });
+        }
+
+        [Test]
+        public void A_refusal_the_handler_catches_is_not_a_fault()
+        {
+            // The clock's own guards throw INTO the handler - scheduling in
+            // the past, a nested advance. A handler that catches one and
+            // carries on finished its work; the world it leaves is whole.
+            var clock = new SimulationClock(new IdAllocator());
+            ScheduleTask(clock, Noon, 1UL);
+
+            clock.AdvanceTo(Midnight, new Recorder((_, c) =>
+            {
+                try
+                {
+                    c.AdvanceTo(Dusk, new Recorder());
+                }
+                catch (InvalidOperationException)
+                {
+                    // Refused, as it should be; the handler completes.
+                }
+            }));
+
+            Assert.That(clock.AtCheckpoint, Is.True);
+        }
+
+        [Test]
         public void The_pending_events_cannot_be_exported_mid_dispatch()
         {
             var clock = new SimulationClock(new IdAllocator());

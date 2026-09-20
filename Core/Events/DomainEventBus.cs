@@ -171,16 +171,23 @@ namespace KingdomWatch.Core.Events
             _sealed = true;
             _clock.Publishing = true;
 
+            // Completed, not "did not throw": a subscriber that catches a
+            // refused nested publish and carries on has heard the event, and
+            // the ones after it still get their turn.
+            var completed = false;
+
             try
             {
                 for (var i = 0; i < _subscribers.Count; i++)
                 {
                     _subscribers[i].On(in published);
                 }
+
+                completed = true;
             }
             finally
             {
-                _clock.Publishing = false;
+                _clock.EndPublish(completed);
             }
 
             return published.Id;
