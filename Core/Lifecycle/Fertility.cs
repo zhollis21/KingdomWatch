@@ -133,6 +133,37 @@ namespace KingdomWatch.Core.Lifecycle
         public int TrackedCount => _groups.Count;
 
         /// <summary>
+        /// Fills <paramref name="into"/> with every community a newborn may be placed in, in the order they were
+        /// tracked. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// For the validator (issue 13), which cannot otherwise tell that a
+        /// tracked community still exists, or that the people it holds are
+        /// alive. The list is the caller's so a check taken once per
+        /// simulated day reuses one buffer.
+        ///
+        /// Read-only in the list sense only: the entries are the live
+        /// communities, and <see cref="ICommunity"/> can add and remove
+        /// members. Same as <see cref="Lifecycle.Households.All"/>. It is
+        /// handed out for reading, and writing through it is a caller bug
+        /// rather than something this can prevent.
+        /// </remarks>
+        public void CopyTrackedTo(List<ICommunity> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _groups.Count; i++)
+            {
+                into.Add(_groups[i]);
+            }
+        }
+
+        /// <summary>
         /// How many households have a <c>BirthCheck</c> booked. Exposed for
         /// the same reason <see cref="TrackedCount"/> is: bookkeeping kept by
         /// hand is worth being able to assert on directly, and an entry that

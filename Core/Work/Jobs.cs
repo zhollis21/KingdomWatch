@@ -214,6 +214,37 @@ namespace KingdomWatch.Core.Work
         /// <summary>How many bands have work days scheduled.</summary>
         public int TrackedCount => _tracked.Count;
 
+        /// <summary>
+        /// Fills <paramref name="into"/> with every community with work days scheduled, in the order they were
+        /// tracked. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// For the validator (issue 13), which cannot otherwise tell that a
+        /// tracked community still exists, or that the people it holds are
+        /// alive. The list is the caller's so a check taken once per
+        /// simulated day reuses one buffer.
+        ///
+        /// Read-only in the list sense only: the entries are the live
+        /// communities, and <see cref="ICommunity"/> can add and remove
+        /// members. Same as <see cref="Lifecycle.Households.All"/>. It is
+        /// handed out for reading, and writing through it is a caller bug
+        /// rather than something this can prevent.
+        /// </remarks>
+        public void CopyTrackedTo(List<ICommunity> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                into.Add(_tracked[i].Group);
+            }
+        }
+
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
             IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
@@ -285,6 +316,41 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>Whether this person is on a task.</summary>
         public bool HasTask(PersonHandle person) => SlotOf(person) is object;
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with the worker of every task in
+        /// progress, in slot order. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The validator's "no dead person has active tasks" rule (section 5)
+        /// cannot be answered from <see cref="PersonStore"/>: the death
+        /// cascade removes the record (<see cref="Lifecycle.Deaths.Die"/>),
+        /// so a task left behind belongs to a person who can no longer be
+        /// enumerated. It has to be read from this side.
+        ///
+        /// A slot keeps its handle, generation included, so a worker whose
+        /// slot has since been reused is still distinguishable here - which
+        /// is what makes the rule checkable rather than merely stated.
+        /// </remarks>
+        public void CopyTaskWorkersTo(List<PersonHandle> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _slots.Length; i++)
+            {
+                var slot = _slots[i];
+
+                if (slot is object && !slot.Task.IsNone)
+                {
+                    into.Add(slot.Task.Worker);
+                }
+            }
+        }
 
         /// <summary>This person's task. Throws if they have none.</summary>
         public WorkTask TaskOf(PersonHandle person) => RequireSlot(person).Task;
