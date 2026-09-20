@@ -179,6 +179,7 @@ namespace KingdomWatch.Core.Lifecycle
 
             EndPregnancy(person);
             EndMortalityCheck(person);
+            EndAgeStage(person);
             _jobs.Vacate(person);
             LeaveHousehold(person);
             LeaveGroup(person);
@@ -218,6 +219,26 @@ namespace KingdomWatch.Core.Lifecycle
 
             _bus.Clock.Cancel(booked);
             _people.SetPendingMortalityCheck(person, EventId.None);
+        }
+
+        // And the same for the next stage boundary. Aging was the one
+        // periodic stream #80 missed - it rebooks from inside its own handler
+        // like the rest, but discarded the id it booked, so a boundary for
+        // someone who had died stayed in the queue until the day it came due
+        // and was silently dropped. Harmless to behaviour and a standing
+        // breach of section 5's "no scheduled event targets a dead handle",
+        // found by the validator's seed sweep (#13) on every seed it ran.
+        private void EndAgeStage(PersonHandle person)
+        {
+            var booked = _people.GetPendingAgeStage(person);
+
+            if (booked.IsNone)
+            {
+                return;
+            }
+
+            _bus.Clock.Cancel(booked);
+            _people.SetPendingAgeStage(person, EventId.None);
         }
 
         // Out of the household; then, if nobody grown is left, the dependents

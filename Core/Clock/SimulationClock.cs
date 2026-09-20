@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Core.Clock
@@ -142,6 +143,42 @@ namespace KingdomWatch.Core.Clock
 
         /// <summary>Events still due. Cancelled ones are not counted.</summary>
         public int ScheduledCount => _queue.Count;
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with every event still due, ordered
+        /// by <see cref="ScheduledEvent.CompareTo"/> - the order they will be
+        /// dispatched in. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The queue is a heap, so its array order is an implementation
+        /// detail that compaction rewrites (<see cref="EventQueue"/>). What
+        /// makes a stable answer possible is that
+        /// <see cref="ScheduledEvent"/>'s ordering is *total* - it ends at
+        /// <see cref="ScheduledEvent.Id"/>, which is unique - so sorting by it
+        /// is a property of the events rather than of the container, and no
+        /// two entries can tie. That also means the sort needs no stability
+        /// guarantee, which is why <see cref="List{T}.Sort()"/> is enough.
+        ///
+        /// The caller supplies the list because the two things that want this
+        /// - the world hash (section 5's canonical serialization, which asks
+        /// for exactly this order) and the validator's scheduler rules - take
+        /// it repeatedly over one run.
+        ///
+        /// This is deliberately not an <c>IEnumerable</c> property. Handing
+        /// out a lazy view of the queue would let a caller hold it across a
+        /// <see cref="AdvanceTo"/> and read a half-dispatched world.
+        /// </remarks>
+        /// <param name="into">The list to fill. Cleared before use.</param>
+        public void CopyPendingTo(List<ScheduledEvent> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            _queue.CopyLiveTo(into);
+            into.Sort();
+        }
 
         /// <summary>
         /// Books an event and returns its durable id, which is what

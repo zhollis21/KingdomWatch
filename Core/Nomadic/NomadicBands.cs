@@ -194,6 +194,77 @@ namespace KingdomWatch.Core.Nomadic
         public int TrackedCount => _tracked.Count;
 
         /// <summary>
+        /// Fills <paramref name="into"/> with every wandering band, in the order they were
+        /// tracked. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// For the validator (issue 13), which cannot otherwise tell that a
+        /// tracked community still exists, or that the people it holds are
+        /// alive. The list is the caller's so a check taken once per
+        /// simulated day reuses one buffer.
+        ///
+        /// Read-only in the list sense only: the entries are the live
+        /// communities, and <see cref="ICommunity"/> can add and remove
+        /// members. Same as <see cref="Lifecycle.Households.All"/>. It is
+        /// handed out for reading, and writing through it is a caller bug
+        /// rather than something this can prevent.
+        /// </remarks>
+        public void CopyTrackedTo(List<ICommunity> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                into.Add(_tracked[i].Band);
+            }
+        }
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with every council or arrival this system has
+        /// booked and not yet seen come due (#80). Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The validator confirms each one is still in the queue, and the
+        /// world hash folds them in: a world that agrees on its people and
+        /// disagrees on what it has booked for them has already diverged, it
+        /// has just not shown yet.
+        /// </remarks>
+        public void CopyBookingsTo(List<PendingBooking> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                var council = _tracked[i].PendingCouncil;
+                var arrival = _tracked[i].PendingArrival;
+
+                if (!council.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Band.Id, ScheduledEventKind.CouncilDue, council));
+                }
+
+                // A band on the move has both: the council that sent it and
+                // the arrival that ends the journey.
+                if (!arrival.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Band.Id, ScheduledEventKind.BandArrival, arrival));
+                }
+            }
+        }
+
+        /// <summary>
         /// A band makes its first camp where it stands and starts
         /// wandering: wood is embodied, <see cref="DomainEventKind.CampPitched"/>
         /// announced, and its first council booked for the next

@@ -95,6 +95,68 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>How many communities pair off.</summary>
         public int TrackedCount => _tracked.Count;
 
+        /// <summary>
+        /// Fills <paramref name="into"/> with every community that pairs off, in the order they were
+        /// tracked. Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// For the validator (issue 13), which cannot otherwise tell that a
+        /// tracked community still exists, or that the people it holds are
+        /// alive. The list is the caller's so a check taken once per
+        /// simulated day reuses one buffer.
+        ///
+        /// Read-only in the list sense only: the entries are the live
+        /// communities, and <see cref="ICommunity"/> can add and remove
+        /// members. Same as <see cref="Lifecycle.Households.All"/>. It is
+        /// handed out for reading, and writing through it is a caller bug
+        /// rather than something this can prevent.
+        /// </remarks>
+        public void CopyTrackedTo(List<ICommunity> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                into.Add(_tracked[i].Community);
+            }
+        }
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with every courtship round this system has
+        /// booked and not yet seen come due (#80). Clears the list first.
+        /// </summary>
+        /// <remarks>
+        /// The validator confirms each one is still in the queue, and the
+        /// world hash folds them in: a world that agrees on its people and
+        /// disagrees on what it has booked for them has already diverged, it
+        /// has just not shown yet.
+        /// </remarks>
+        public void CopyBookingsTo(List<PendingBooking> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                var booked = _tracked[i].PendingCourtship;
+
+                if (!booked.IsNone)
+                {
+                    into.Add(new PendingBooking(
+                        _tracked[i].Community.Id, ScheduledEventKind.CourtshipDue, booked));
+                }
+            }
+        }
+
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
             IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;

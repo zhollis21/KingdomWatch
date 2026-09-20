@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using NUnit.Framework;
@@ -16,6 +17,82 @@ namespace KingdomWatch.Core.Tests.Clock
         private static EntityId Person(ulong value) => new EntityId(EntityKind.Person, value);
 
         private static SimulationClock NewClock() => new SimulationClock(new IdAllocator());
+
+        [Test]
+        public void Copying_the_pending_events_gives_them_in_dispatch_order()
+        {
+            // The queue is a heap, so its array order is an implementation
+            // detail compaction rewrites. What makes a stable answer possible
+            // is that ScheduledEvent's ordering is total, ending at a unique
+            // id - so the order is a property of the events.
+            var clock = NewClock();
+
+            ScheduleTask(clock, Midnight, 3UL);
+            ScheduleTask(clock, Noon, 1UL);
+            ScheduleTask(clock, Dusk, 2UL);
+
+            var pending = new List<ScheduledEvent>();
+            clock.CopyPendingTo(pending);
+
+            Assert.That(
+                pending.Select(static e => e.Time),
+                Is.EqualTo(new[] { Noon, Dusk, Midnight }));
+        }
+
+        [Test]
+        public void Copying_the_pending_events_leaves_out_the_cancelled()
+        {
+            // Cancellation is lazy: the entry stays in the array to be
+            // discarded when it surfaces. Anything walking the queue has to
+            // apply the same test dispatch does, or it reports commitments
+            // the world no longer has - and the world hash would fold them in.
+            var clock = NewClock();
+
+            ScheduleTask(clock, Noon, 1UL);
+            var doomed = ScheduleTask(clock, Dusk, 2UL);
+            ScheduleTask(clock, Midnight, 3UL);
+
+            Assert.That(clock.Cancel(doomed), Is.True);
+
+            var pending = new List<ScheduledEvent>();
+            clock.CopyPendingTo(pending);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(pending, Has.Count.EqualTo(clock.ScheduledCount));
+                Assert.That(pending.Select(static e => e.Id), Does.Not.Contain(doomed));
+            });
+        }
+
+        [Test]
+        public void Copying_the_pending_events_clears_what_was_there()
+        {
+            var clock = NewClock();
+            ScheduleTask(clock, Noon, 1UL);
+
+            var pending = new List<ScheduledEvent>();
+            clock.CopyPendingTo(pending);
+            clock.CopyPendingTo(pending);
+
+            Assert.That(pending, Has.Count.EqualTo(1), "the list is filled, not appended to");
+        }
+
+        [Test]
+        public void Copying_the_pending_events_of_an_empty_queue_empties_the_list()
+        {
+            var clock = NewClock();
+            var pending = new List<ScheduledEvent> { default };
+
+            clock.CopyPendingTo(pending);
+
+            Assert.That(pending, Is.Empty);
+        }
+
+        [Test]
+        public void Copying_the_pending_events_refuses_a_null_list()
+        {
+            Assert.That(() => NewClock().CopyPendingTo(null!), Throws.ArgumentNullException);
+        }
 
         private static EventId ScheduleTask(
             SimulationClock clock, SimulationTime time, ulong person) =>

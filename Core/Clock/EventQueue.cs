@@ -77,6 +77,43 @@ namespace KingdomWatch.Core.Clock
         internal bool Cancel(EventId id) => _live.Remove(id);
 
         /// <summary>
+        /// Fills <paramref name="into"/> with every entry still live, in the
+        /// array's own order. The caller orders them; see
+        /// <see cref="SimulationClock.CopyPendingTo"/>.
+        /// </summary>
+        /// <remarks>
+        /// Cancellation is lazy, so the array holds entries that are no longer
+        /// due. Filtering on <see cref="_live"/> is what separates the two, and
+        /// it is the same test <see cref="DiscardCancelledRoot"/> applies one
+        /// entry at a time during dispatch.
+        ///
+        /// The caller supplies the list so that a validator or a hash taken
+        /// once per simulated day reuses one buffer rather than allocating a
+        /// fresh one each time. Nothing here runs under
+        /// <see cref="SimulationClock.AdvanceTo"/>, so this is not a tick-loop
+        /// path, but the allocation would be just as pointless.
+        ///
+        /// <paramref name="into"/> is the caller's to check. There is no null
+        /// guard here because <see cref="SimulationClock.CopyPendingTo"/> is
+        /// the only caller and already throws for one - and this class is
+        /// internal on purpose, with no InternalsVisibleTo, so a guard added
+        /// here could never be reached by a test either. A second caller
+        /// inside Core would be taking on that check, not inheriting it.
+        /// </remarks>
+        internal void CopyLiveTo(List<ScheduledEvent> into)
+        {
+            into.Clear();
+
+            for (var i = 0; i < _count; i++)
+            {
+                if (_live.Contains(_heap[i].Id))
+                {
+                    into.Add(_heap[i]);
+                }
+            }
+        }
+
+        /// <summary>
         /// The next event due, without removing it. False when nothing is
         /// pending.
         /// </summary>

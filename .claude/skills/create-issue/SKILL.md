@@ -298,8 +298,10 @@ a stale spec is worse than an issue holding none.
 
 ### Voice
 
-Write it as the user's own repo notes. No agent branding, no "I found", no
-attribution footers — see `AGENTS.md`.
+Write it as the user's own repo notes: what is wrong with the code, not a
+report of the session that noticed it. "`Jobs` rescans every member on each
+pick" is checkable next year; "I found that Jobs rescans" dates the moment
+and tells a reader nothing they can act on.
 
 ---
 

@@ -9,6 +9,7 @@ using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Validation;
 using KingdomWatch.Core.WorldGen;
 using KingdomWatch.Harness;
 using NUnit.Framework;
@@ -180,9 +181,10 @@ namespace KingdomWatch.Core.Tests.Rng
             // are keyed on durable ids and their results feed back into the
             // state being compared.
             //
-            // The digest is a stand-in for the canonical world hash #13 owns.
-            // Once that exists, this assertion should become "the same hash"
-            // and stop enumerating fields by hand.
+            // Compared on the canonical world hash (#13), which is what
+            // section 5 asks for. This file used to enumerate the fields by
+            // hand; the hash covers households and the pending queue too, so
+            // the comparison is strictly wider than it was.
             // Large enough to deal children: a band of twelve leaves every
             // couple outside the window TryChildAges needs, so BandChildAge
             // and BandChildSex are never drawn at all.
@@ -195,8 +197,8 @@ namespace KingdomWatch.Core.Tests.Rng
 
             Assert.Multiple(() =>
             {
-                Assert.That(watched, Is.EqualTo(unwatched));
-                Assert.That(watched, Does.Contain("|"), "the run produced no people to compare");
+                Assert.That(watched.Hash, Is.EqualTo(unwatched.Hash));
+                Assert.That(watched.People, Is.GreaterThan(0), "the run produced no people to compare");
 
                 // The detector is attached anyway, so its answer is free; an
                 // observer whose findings nobody reads is just overhead.
@@ -205,9 +207,12 @@ namespace KingdomWatch.Core.Tests.Rng
             });
         }
 
-        // Sorted by durable id and serialised in a fixed field order, the way
-        // section 5 asks a canonical hash to be built.
-        private static string Run(IRandomDrawObserver? observer, int size, long years)
+        // The canonical world hash (#13), which is what section 5 asks a
+        // comparison like this to be made on. It replaced a digest this file
+        // built by hand - sorted by durable id, fields in a fixed order, the
+        // same shape - and the population count comes back with it because a
+        // hash cannot say on its own whether the run produced anybody.
+        private static (ulong Hash, int People) Run(IRandomDrawObserver? observer, int size, long years)
         {
             var world = new DemographicWorld(
                 DemographicSettings.Default, WorldSeed, new TerrainGrid(16, 16, TerrainKind.Plains), observer);
@@ -232,27 +237,27 @@ namespace KingdomWatch.Core.Tests.Rng
 
             world.AdvanceYears(years);
 
-            var lines = new List<string>();
-            var records = world.People.RecordSpan();
+            // Pending events as well as people: an observer that scheduled
+            // something would leave the two runs agreeing on everyone alive
+            // and disagreeing on what the world has booked, which is a
+            // divergence that has not shown yet rather than no divergence.
+            var bookings = new List<PendingBooking>();
+            var scratch = new List<PendingBooking>();
 
-            for (var i = 0; i < records.Length; i++)
-            {
-                var record = records[i];
+            world.Hunger.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
+            world.Fertility.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
+            world.Matchmaking.CopyBookingsTo(scratch);
+            bookings.AddRange(scratch);
 
-                if (record.Id.IsNone)
-                {
-                    continue;
-                }
+            var hash = new WorldHash()
+                .AddPeople(world.People)
+                .AddHouseholds(world.Households, world.People)
+                .AddBookings(bookings)
+                .AddPending(world.Clock);
 
-                lines.Add(
-                    record.Id + "/" + record.Sex + "/" + record.AgeStage + "/" + record.BornTick
-                    + "/" + record.Health + "/" + record.Position + "/" + record.Household
-                    + "/" + record.BirthCulture + "/" + record.Assimilation + "/" + record.Job
-                    + "/" + record.PregnancyDue + "/" + record.PendingMortalityCheck);
-            }
-
-            lines.Sort(StringComparer.Ordinal);
-            return string.Join("|", lines);
+            return (hash.Value, world.People.Count);
         }
 
         [Test]
@@ -407,7 +412,7 @@ namespace KingdomWatch.Core.Tests.Rng
             Assert.Multiple(() =>
             {
                 Assert.That(meddler.Struck, Is.True, "the meddler never got a draw to act on");
-                Assert.That(meddled, Is.Not.EqualTo(clean));
+                Assert.That(meddled.Hash, Is.Not.EqualTo(clean.Hash));
             });
         }
 

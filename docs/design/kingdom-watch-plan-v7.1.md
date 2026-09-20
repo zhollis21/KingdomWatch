@@ -341,7 +341,7 @@ KingdomWatch.Game/          Unity 6.6 → 6.7  · consumes Core
 Core contents:
 
 ```
-  World.cs
+  World.cs             <- not built yet; the systems are still wired per caller (#17)
   Clock/                <- simulation clock, event scheduler, phase ordering
   Systems/              <- Needs, Jobs, Skills, Social, Households, Politics,
                            Economy, Seasons, Logistics, Combat, Relations,
@@ -385,7 +385,17 @@ Resource conservation audit balances.
 
 Then fuzz thousands of seeds. When you get *"seed 39274 broke at year 347 because an orphan was adopted into a household deleted six ticks earlier,"* the simulator screaming immediately beats quietly corrupting itself for another 150 years.
 
+**Where it lives (#13).** `Harness/WorldValidator.cs`, not `Core` — the checks are scoped to harness runs, and Core's public surface is the simulation's API rather than a home for diagnostics. `Core.Tests` references `Harness`, so the tests reach it the same way they reach `DrawCollisionDetector`. The seed sweep is `Core.Tests/Validation/SeedSweepTests.cs` for now, because the harness has no world to run until #17: `Harness/Program.cs` drives a scheduler soak with no people in it, while the composition roots that do assemble a world are test helpers. The sweep moves to the harness when #17 lands.
+
+Most of the list above is checkable today. The exceptions wait on the systems that introduce them — polities and rulers with #39, reservation ownership with #24 — and were deliberately not written as rules that cannot fail, because a rule nobody has seen fire reads as coverage. Two more are wired but unreachable: `Genealogy.Record` refuses a non-person parent, refuses an unrecorded one, and writes each person once, so neither an invalid parent nor a kinship cycle can be built through it. They become live when #42 rebuilds a world from a save, which is exactly the path §17 warns can shift history.
+
+One rule is broader than §5 states it. "Every scheduler reference resolves" is asked of both sides: of the queue, that each event still due names a primary entity that resolves — a person, a band or settlement, or a household, since six of the eleven scheduled kinds are owned by a community or a household rather than by a person; and of the systems, that every id a periodic stream recorded as booked is an id the queue still holds. The second half is what #80 exists because of, and it covers all nine places the pattern is used — three fields on `PersonRecord` and six records the streams keep for the communities they run for.
+
+The rules go beyond this list where review has found something worth pinning: `PersonStore`'s `Count`/`Handle` integrity, `AgeStage` and `Sex` being defined values, `AgeStage` agreeing with `DemographicSettings.StageAt`, nobody born in the future, the job mirror agreeing with the task, and every record-named pending event still being in the queue. That last one found the bug that proved the sweep's worth on its first run: `Aging` booked each stage boundary without recording its id, so nothing cancelled one when its person died — the stream #80 missed, invisible because the handler drops a boundary for a person the store no longer holds.
+
 **Cross-platform determinism check.** Produce a periodic world-state hash and run the same seed on desktop .NET and on Android under IL2CPP.
+
+The hash is `Core/Validation/WorldHash.cs` (#13) — in `Core` rather than the harness precisely so the Unity build can run the same compiled code. Running it under IL2CPP and comparing is #90, which waits on #72 putting `Core` into a Unity build at all. It folds in people, households, settlements and the pending queue, each section tagged and counted so a partial comparison cannot read as agreement, and it mixes with `SplitMix64` rather than a BCL digest: a hash whose job is to prove two runtimes agree should not have a third implementation sitting between them. A system whose state it does not fold in is a system whose divergence it will not catch, silently — so adding one is part of adding a system.
 
 **The hash must be canonical, not a hash of raw memory or layout** — sort by durable ID, serialize deterministic fields in a defined order, hash that. Otherwise desktop and IL2CPP disagree because representation differs even when the logical world is identical. Determinism is the foundation of the debugging strategy, so confirming the harness and the build reach identical state is worth doing early — before there is much state to diverge.
 

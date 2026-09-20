@@ -180,4 +180,3 @@ same id is what both the reply and the resolve call take.
 - Every valid finding is a class, not a line: search the branch for its siblings before fixing it (Step 2b)
 - Skip threads already marked resolved unless the user asks to revisit them
 - Resolve each thread as you finish with it (fixed or agreed non-issue), and keep the PR description current
-- No AI attribution in replies, resolutions, or the PR description — see `AGENTS.md`
