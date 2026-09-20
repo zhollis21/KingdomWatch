@@ -285,8 +285,8 @@ gh api repos/zhollis21/KingdomWatch/issues/<N>/comments -f body='<!-- kickoff-fi
 ...'
 ```
 
-Write it in the user's own voice as plain repo notes — no agent branding, per
-`AGENTS.md`. One consolidated comment per issue, not one per finding. If
+Write it in the user's own voice as plain repo notes. One consolidated
+comment per issue, not one per finding. If
 verification turned up nothing worth persisting, post nothing; silence is a
 perfectly good result.
 

@@ -113,7 +113,6 @@ When presenting 2+ approaches to the user, list them clearly with tradeoffs for 
 
 ### Output style
 
-- **No AI attribution or agent branding anywhere in generated project artifacts.** This includes branch names, commit messages, PR titles, PR descriptions, issue bodies, comments, and release notes. Avoid labels such as "Claude", "Codex", "Copilot", "AI-generated", or similar unless the user explicitly asks for them.
 - Be terse. Skip pleasantries and preamble.
 
 ## Local Tools
