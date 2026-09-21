@@ -17,13 +17,10 @@ needed (#78).
 this file, and the M1 slice — Food, Wood, Stone, gathering only — stands as
 #52 built it.
 
-**This is the second pass, not the first.** The first draft named ten
-resources to hit §9's estimate, including Clay, Pottery and Hide. A second
-look, working from a rougher building/resource sketch, cut all three: none of
-them had a use that another resource didn't already cover, and padding to a
-round number is not a reason to track a resource separately. Seven is the
-number that survived scrutiny, not a target hit — §9's "~10" is corrected
-below to match.
+**Seven resources, not ten.** §9 estimates "~10"; seven is what earns a
+place here. Clay, Pottery and Hide didn't — none of them had a use that
+another resource didn't already cover — and padding to a round number is not
+a reason to track one separately. §9's "~10" is corrected below to match.
 
 > **Table order is presentational.** `ResourceKind` and `JobKind` are
 > append-only and persisted, and the order in which the values below are
@@ -53,11 +50,10 @@ the graph inspectable and the deadlock surface small.
 | Charcoal | *appended later* | 1 | Wood, burnt in a pit | The efficient fuel — see §2. No building raises its yield; a pit is a pit. |
 | Metal | *appended later* | 2 | Ore + Charcoal, smelted | §9's `iron_tools` chain. Feeds Tools, Weapons and Armor (§6). |
 
-Cut after the first pass: **Clay, Pottery, Hide.** Clay and Pottery existed
-only to make storage capacity a resource instead of a building stat, which §5
-now handles directly. Hide existed only as a second output of Hunt with
-nothing that consumed it. None of the three is missed by anything else in
-this document.
+**Deliberately absent: Clay, Pottery, Hide.** Clay and Pottery would only
+make storage capacity a resource instead of a building stat, which §5
+handles directly. Hide would only be a second output of Hunt with nothing to
+consume it. None of the three earns tracking on its own.
 
 ### Chains
 
@@ -79,10 +75,9 @@ this document.
 Three of these are what `PrimitiveTier` already ships — Forage, Gather wood,
 Gather stone — with their placeholder quantities and durations unchanged.
 
-**No `degrades_to` column.** The first pass gave `Smelt` a degradation path
-(stone tools, then bone tools) because it was thinking about individual items
-degrading. Section 6 below settles that Weapons, Armor and Tools have no
-per-item quality at all, so there is nothing to degrade *to* — a settlement
+**No `degrades_to` column.** §6 below settles that Weapons, Armor and Tools
+have no per-item quality at all, so there is nothing for an individual item
+to degrade *to* — a settlement
 with no reachable Ore simply keeps crafting Stone-tier equivalents at
 whichever tier-zero form the relevant capability already has (§7's
 reachability rule), which is a **material-tier fallback**, not a degraded
@@ -321,10 +316,9 @@ levied soldier's sword.
 **No per-item quality.** Every Weapon, Armor piece or Tool of a given kind is
 functionally identical, whoever made it. A smith's skill tier changes only
 how fast the smithy can produce or replace them — throughput, not quality —
-which is the same rule §7 states for every production capability. This
-resolves what the first pass left as "how real does equipment need to be": a
-master smith's value is keeping more of the population equipped at once, not
-making any one soldier individually stronger.
+which is the same rule §7 states for every production capability. A master
+smith's value is keeping more of the population equipped at once, not making
+any one soldier individually stronger.
 
 **Destroyed on death, uniformly — no inheritance.** Tools, Weapons and Armor
 alike return to nothing when their holder dies; there is no transfer-to-
@@ -338,10 +332,9 @@ into the household. This gives some wealth variation and makes a master's
 tools a real asset."* Tools are no longer inherited, so they can no longer be
 that asset. The design plan needs the tools-specific half of that sentence
 removed — general personal wealth still folds into the household and still
-gives variation; tools just aren't part of it anymore. This closes the
-"one fork left open" the first pass of this document left for #68: tools
-are neither pure ledger stock nor freely inheritable property, they are
-checked-out-while-in-use and gone at death.
+gives variation; tools just aren't part of it anymore. This settles #68's
+open question for tools specifically: neither pure ledger stock nor freely
+inheritable property, they are checked-out-while-in-use and gone at death.
 
 **The material-tier fallback still exists.** A settlement with no reachable
 Ore is not without equipment — whichever capability's tier-zero form (§7)
