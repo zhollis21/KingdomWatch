@@ -644,7 +644,7 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 **Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth, tools, and status.
 
-On death, personal wealth folds into the household. This gives some wealth variation and makes a master's tools a real asset, without the machinery of full dynastic inheritance law.
+On death, personal wealth folds into the household. This gives some wealth variation, without the machinery of full dynastic inheritance law. Tools, Weapons and Armor are the exception: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
 As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth, no tools — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
 
@@ -782,9 +782,9 @@ This feeds decision provenance directly: *"Oakshire declared war — border clai
 
 ## 9. Economy, technology, and seasons
 
-**Target ~10 resources with two-step chains, defined as data.**
+**Target as many resources as their chains earn, with two-step chains, defined as data.** The original estimate here was ~10; the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settled on seven after two of the original ten — Clay and Pottery, plus a third, Hide — turned out to have no use that another resource didn't already cover. Padding toward a round number was never a reason to track one separately.
 
-**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the ten resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
+**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
 
 ```
 recipe: iron_tools
@@ -863,7 +863,7 @@ At 10 resources the deadlock surface is real. Every recipe needs a substitution 
 
 Full seasons turn the economy from a rate into a cycle:
 
-- **Storage is core** — granaries, stores, spoilage
+- **Storage is core** — granaries, stores, and the capacity limits that gate them. The [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles this without spoilage: nothing decays in storage, capacity is the only supply-side constraint
 - **Famine is a timing problem.** Adequate annual output can still starve a town in March — and you can watch the granary empty
 - **Campaigning season** — armies marching in winter starve
 - **Seasonal work reassignment** — farmers do something else in January
