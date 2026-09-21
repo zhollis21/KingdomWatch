@@ -64,7 +64,7 @@ the graph inspectable and the deadlock surface small.
 | Mine | — | Ore | mine | Gather ore |
 | Farm | — | Grain | farm plot | — |
 | Burn charcoal | Wood | Charcoal | — | (see §2 — Wood substitutes for *heating*, never for smelting) |
-| Smelt | Ore, Charcoal | Metal | smithy | — |
+| Smelt | Ore, Charcoal | Metal | smeltery | — |
 
 Three of these are what `PrimitiveTier` already ships — Forage, Gather wood,
 Gather stone — with their placeholder quantities and durations unchanged.
@@ -120,7 +120,7 @@ per unit of storage capacity (§5). Neither is required; both work.
 
 This is *not* two independent fuel pools. Charcoal is Wood, one processing
 step later, so a settlement that burns all its Wood into Charcoal for the
-smithy has exactly as little left to heat homes with as one that burned the
+smeltery has exactly as little left to heat homes with as one that burned the
 Wood directly — the finite resource is Wood itself, however it ends up being
 spent. **Charcoal has no substitute for smelting** (Metal needs it
 specifically, matching §9's `iron_tools` example), but for heating, Wood is a
@@ -159,7 +159,8 @@ carves out the roles that are not recipes at all.
 | Quarrier | quarry | Quarry |
 | Miner | mine | Mine |
 | Farmer | farm plot | Farm |
-| Smith | smithy | Smelt, and crafts Tools/Weapons/Armor (§6) |
+| Smelter | smeltery | Smelt |
+| Smith | smithy | Crafts Tools, Weapons and Armor from Metal (§6) |
 
 ### Not recipes at all
 
@@ -196,7 +197,8 @@ fixed numbers, so they are described rather than tabulated.
 | Lumber camp | Apprentice woodcraft | Wood | forest in reach | Wood at rate |
 | Quarry | Apprentice masonry | Wood | hills in reach | Stone at rate |
 | Mine | Journeyman masonry | Wood | hills in reach, a quarry | Ore |
-| Smithy | Journeyman metalworking | Stone | a house | Metal, Tools, Weapons, Armor |
+| Smeltery | Journeyman metalworking | Stone | a house | Metal, at rate |
+| Smithy | Journeyman metalworking | Stone | a house | Tools, Weapons, Armor, forged from Metal |
 | Shrine | Expert masonry | Stone | a quarry | Priests and attribution (§11); the first dressed-stone building |
 | Palisade → Wall | Apprentice construction → Expert masonry | Wood, then Stone, Metal | a house, then also a quarry, a smithy | Basic perimeter defense from early on; the stone tier is the last milestone — see §4a |
 | Wooden watchtower → Stone watchtower | Novice construction → Apprentice masonry | Wood, then Stone | a house, then also a quarry | Standing lookout — standalone from the wall, not a prerequisite for it |
@@ -207,17 +209,24 @@ fixed numbers, so they are described rather than tabulated.
 Masonry is the one capability that climbs the whole way: dry-stone stacking
 at tier zero, a quarry at apprentice, a mine at journeyman, dressed stone —
 the shrine and the wall — at expert. **Buildings that merely contain stone do
-not count as stone construction**, which is why the smithy is gated on
-metalworking rather than masonry even though it takes Stone as an input.
-Without that distinction the "first stone building" milestone fires on
-whichever building happens to list Stone among its inputs, which would put it
-before the smithy and inverted against the ladder in §7.
+not count as stone construction**, which is why the smeltery and the smithy
+are gated on metalworking rather than masonry even though both take Stone as
+an input. Without that distinction the "first stone building" milestone fires
+on whichever building happens to list Stone among its inputs, which would put
+it before the smithy and inverted against the ladder in §7.
 
-The smithy is deliberately gated on skill rather than on a lumber camp or a
-mine. Charcoal burns in a pit and surface ore is gathered like surface stone,
-so neither building is a precondition — making one a prerequisite would put
-the whole metal branch behind journeyman masonry, which is the
-chicken-and-egg §9 exists to prevent, reintroduced one rung up.
+**Smelting and smithing are gated on skill alone, and independently of each
+other.** Charcoal burns in a pit and surface ore is gathered like surface
+stone, so neither the smeltery nor a mine is a precondition for reaching
+Journeyman metalworking — making either one a prerequisite would put the
+whole metal branch behind journeyman masonry, which is the chicken-and-egg §9
+exists to prevent, reintroduced one rung up. The same independence holds
+between the two metalworking buildings themselves: the smithy does not
+require a smeltery to exist first. It only needs Metal in stock, and crude
+pit-smelting already supplies that — so a settlement can forge Tools before
+it ever builds a dedicated smeltery, exactly as reachability requires. The
+smeltery is a rate upgrade over the pit, the same relationship Quarry has to
+Gather stone.
 
 Placement preferences are §12's town planner (#23) and are not repeated here.
 This table says which buildings exist and what gates them; #23 says where
@@ -259,21 +268,26 @@ for a bundle of resources or items (§5). None of them produce anything.
 | Granary | Apprentice construction | a farm plot | Food, Grain |
 | Woodshed | Apprentice construction | a house | Wood, Charcoal |
 | Stoneyard | Apprentice construction | a house | Stone, Ore |
-| Vault | Journeyman construction | a smithy | Metal |
-| Armory | Apprentice construction | a smithy | Tools, Weapons, Armor |
+| Vault | Journeyman construction | a smeltery or a smithy | Metal, Tools |
+| Armory | Apprentice construction | a smithy | Weapons, Armor |
 
-The bundling groups kinds by what they're storage *for*, not by who makes
-them: Granary and Woodshed hold what a household consumes, Stoneyard holds
-bulk raw material, Vault and Armory hold what the smithy turns Metal into,
-split because a settlement's refined-metal reserve and its issued equipment
-are different things to reason about even though both come from the same
-building.
+The bundling groups kinds by what they're storage *for*, not just by who
+makes them: Granary and Woodshed hold what a household consumes, Stoneyard
+holds bulk raw material. Vault and Armory split the metalworking chain's
+output — smeltery and smithy together — along the line that actually
+matters for planning — **martial versus everything else** — rather than by
+which of the two buildings crafted it. Weapons and Armor are
+issued to a small, temporary subset of the population during a muster (§8);
+Tools are held continuously by a large share of it, in ordinary work. Sharing
+one capacity pool between the two would mean a settlement thick with
+Woodcutters' axes could crowd out its own ability to arm a muster, coupling
+two things that have no reason to compete for the same shelf space.
 
-Metal does not share the Stoneyard despite being mineral-derived, and does
-not share the Armory despite being crafted at the same building as the things
-the Armory holds — it is stockpile capacity for the *precursor*, which is a
-different planning concern (how much can the smithy draw on right now) from
-either raw ore reserves or issued equipment.
+Metal does not share the Stoneyard despite being mineral-derived — it is
+stockpile capacity for the *precursor* the smeltery produces, a different
+planning concern from raw ore reserves. It sits with Tools rather than with
+Weapons and Armor for the same martial/non-martial line: Metal in the Vault
+is potential of either kind, not yet committed to one.
 
 ---
 
@@ -313,10 +327,11 @@ to tune once there is a world to run them against.
 ## 6. Equipment: ownership and death
 
 Tools, Weapons and Armor are all crafted at the Smithy from Metal, and all
-draw on the Armory's shared capacity (§4). **The settlement owns the
-underlying stock; a person equips an instance from it** while they hold a job
-or a levy status that uses one — a Farmer's plow, a Woodcutter's axe, a
-levied soldier's sword.
+draw on storage capacity split along martial lines (§4) — Tools in the Vault
+alongside the Metal they're forged from, Weapons and Armor in the Armory.
+**The settlement owns the underlying stock; a person equips an instance from
+it** while they hold a job or a levy status that uses one — a Farmer's plow,
+a Woodcutter's axe, a levied soldier's sword.
 
 **No per-item quality.** Every Weapon, Armor piece or Tool of a given kind is
 functionally identical, whoever made it. A smith's skill tier changes only
@@ -328,7 +343,8 @@ any one soldier individually stronger.
 **Destroyed on death, uniformly — no inheritance.** Tools, Weapons and Armor
 alike return to nothing when their holder dies; there is no transfer-to-
 household step for any of the three. Leaving a job or a levy without dying is
-different — the item returns to the Armory's stock normally, the same as any
+different — the item returns to its storage building's stock normally (the
+Vault for a Tool, the Armory for a Weapon or Armor piece), the same as any
 other checked-out resource.
 
 **This makes §6 of the design plan wrong about tools specifically.** It
@@ -364,22 +380,23 @@ gates.
 | Foraging | Forage | — (no building form) |
 | Hunting | Hunt | — |
 | Woodcraft | Gather wood | Fell timber, at a lumber camp |
-| Construction | Camp | House, then storage and administrative buildings |
+| Construction | Camp | House, then storage, administrative and wood-tier defensive buildings |
 | Farming | Scatter-sown clearing | Farm plot |
-| Masonry | Dry-stone stacking | Quarry, then shrine and wall at expert |
-| Metalworking | Ore smelted in a campfire pit | Smithy |
+| Masonry | Dry-stone stacking | Quarry and the stone watchtower at apprentice, mine at journeyman, shrine and wall at expert |
+| Metalworking | Ore smelted in a campfire pit | Smeltery and smithy, independently |
 | Soldiering | Any untrained adult, weapon in hand | — (no building form, ever) |
 
 A crude form runs the same chain as its building form, worse and slower, and
 that is why only the building form appears in §1's chain table: a
 scatter-sown clearing and a farm plot both yield Grain, a campfire pit and a
-smithy both yield Metal. The crude form is not a separate recipe to balance,
-it is the same recipe without the building and at a penalty.
+smeltery both yield Metal. The crude form is not a separate recipe to
+balance, it is the same recipe without the building and at a penalty.
 
 Metalworking is the case §9 works through: a novice works metal badly at a
-pit, doing so builds skill, and at journeyman a smithy becomes viable — so
-the technology climb is paced by human learning time rather than a timer, and
-varies per world because it depends on who happens to be good at what.
+pit, doing so builds skill, and at journeyman both a smeltery and a smithy
+become viable — so the technology climb is paced by human learning time
+rather than a timer, and varies per world because it depends on who happens
+to be good at what.
 
 **Every capability but one only ever affects rate, never quality** (§6). The
 one exception is **Soldiering**, and it is not really an exception: the rule
@@ -500,7 +517,7 @@ flowchart LR
   Wood --> Warmth["Winter warmth"]:::sink
   Charcoal --> Warmth
 
-  Ore --> Smelt["Smelt<br/><i>smithy</i>"]:::built
+  Ore --> Smelt["Smelt<br/><i>smeltery</i>"]:::built
   Charcoal --> Smelt --> Metal["Metal"]:::crafted
   Metal --> Tools["Tools"]:::crafted
   Metal --> Weapons["Weapons"]:::crafted
@@ -533,6 +550,8 @@ flowchart LR
   Dry --> QuarryB["Quarry"]:::bld
   QuarryB --> Shrine["Shrine"]:::bld
   QuarryB --> MineB["Mine"]:::bld
+  Pit --> Smeltery["Smeltery"]:::bld
+  House --> Smeltery
   Pit --> Smithy["Smithy"]:::bld
   House --> Smithy
   QuarryB --> Wall["Wall<br/><i>stone tier</i>"]:::bld
