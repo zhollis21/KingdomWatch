@@ -198,8 +198,8 @@ fixed numbers, so they are described rather than tabulated.
 | Mine | Journeyman masonry | Wood | hills in reach, a quarry | Ore |
 | Smithy | Journeyman metalworking | Stone | a house | Metal, Tools, Weapons, Armor |
 | Shrine | Expert masonry | Stone | a quarry | Priests and attribution (§11); the first dressed-stone building |
-| Wall | Expert masonry | Stone, Metal | a quarry, a smithy | The last milestone |
-| Watch tower | Apprentice masonry | Stone | a quarry | Standing lookout — standalone from Wall, not a prerequisite for it |
+| Palisade → Wall | Apprentice construction → Expert masonry | Wood, then Stone, Metal | a house, then also a quarry, a smithy | Basic perimeter defense from early on; the stone tier is the last milestone — see §4a |
+| Wooden watchtower → Stone watchtower | Novice construction → Apprentice masonry | Wood, then Stone | a house, then also a quarry | Standing lookout — standalone from the wall, not a prerequisite for it |
 | Town Hall → Fort → Castle | Apprentice → Journeyman → Expert construction | Wood, then Stone | — | One administrative slot, tiering as population and defensive need cross thresholds — see §4a. Not a building the player or an AI queues an upgrade for. |
 | Marketplace | Apprentice construction | Wood | a house | Where the abstracted settlement-to-settlement trade edge (§12) attaches, and where social life happens outdoors (§12). No mechanics of its own. |
 | Dock | Apprentice construction | Wood | water in reach | Boat launch and cross-water traversal (#45, M9). Whether it also fishes for Food is open — see §9. |
@@ -223,7 +223,7 @@ Placement preferences are §12's town planner (#23) and are not repeated here.
 This table says which buildings exist and what gates them; #23 says where
 they go.
 
-#### 4a. One administrative building, not a tech tree
+#### 4a. Single slots that tier up, not a tech tree
 
 Town Hall → Fort → Castle is a single building slot that **tiers up as the
 settlement's own population and defensive need cross thresholds**, the same
@@ -237,6 +237,17 @@ granary responding to a farm that has outgrown storing surplus by hand.
 
 Houses tier the same way, independently, per household rather than per
 settlement.
+
+**The wall and the watchtower tier the same way, across two capabilities
+instead of one.** A settlement gets a Palisade and a wooden watchtower from
+Construction alone, long before anyone reaches Expert masonry — closing what
+would otherwise be a decades-long stretch (§9's pacing puts the stone Wall at
+year 70–100) with no built defense at all beyond §8's "anyone can fight."
+Reaching Expert masonry replaces the Palisade with a Wall, and Apprentice
+masonry replaces the wooden watchtower with a stone one. The stone tier is
+still what §9's milestone 6 fires on — a Palisade is infrastructure on the
+way there, not an earlier version of the achievement, the same way a farm
+plot existing doesn't bring forward "first stone building."
 
 ### Storage
 
@@ -524,7 +535,7 @@ flowchart LR
   QuarryB --> MineB["Mine"]:::bld
   Pit --> Smithy["Smithy"]:::bld
   House --> Smithy
-  QuarryB --> Wall["Wall"]:::bld
+  QuarryB --> Wall["Wall<br/><i>stone tier</i>"]:::bld
   Smithy --> Wall
 
   Camp --> M1["1 · first camp"]:::ms
@@ -537,7 +548,8 @@ flowchart LR
 
 Every building traces back into the tier-zero box, which is the reachability
 check in §7 drawn rather than asserted. Storage buildings (Woodshed,
-Stoneyard, Vault, Armory) and the lumber camp are omitted here — they gate no
+Stoneyard, Vault, Armory), the lumber camp, and the wood tiers of the wall
+and watchtower (Palisade, wooden watchtower) are omitted here — they gate no
 milestone — and appear in §4's tables instead.
 
 ---
@@ -555,9 +567,11 @@ milestone — and appear in §4's tables instead.
   tech ladder is a v2 consideration at earliest", and §20 leaves explicit
   technology progression deferred. Town Hall → Fort → Castle is demand-gated
   infrastructure (§4a), not a researched or purchased upgrade.
-- **The exact effect of being equipped, or of a Soldiering tier, on a fight's
-  outcome.** §8 states that both matter and that neither is the smith's
-  concern; the formula is #27/#28's, once a threat system exists to need one.
+- **The exact effect of being equipped, a Soldiering tier, or which tier of
+  wall or watchtower a settlement has, on a fight's outcome.** §8 states that
+  equipment and Soldiering both matter and that neither is the smith's
+  concern; §4a adds the wall and watchtower to that same open question. The
+  formula for all of it is #27/#28's, once a threat system exists to need one.
 - **Drinking water as a survival need.** Raised, not resolved — nothing here
   depends on it existing.
 - **Whether the Dock also produces Food, via fishing.** Its traversal role
