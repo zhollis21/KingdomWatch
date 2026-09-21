@@ -17,10 +17,9 @@ needed (#78).
 this file, and the M1 slice — Food, Wood, Stone, gathering only — stands as
 #52 built it.
 
-**Seven resources, not ten.** §9 estimates "~10"; seven is what earns a
-place here. Clay, Pottery and Hide didn't — none of them had a use that
-another resource didn't already cover — and padding to a round number is not
-a reason to track one separately. §9's "~10" is corrected below to match.
+**Seven resources, not ten.** §9 estimates "~10" — seven is what earns a
+place on its own merits below, not a target to fill. §9's "~10" is corrected
+to match.
 
 > **Table order is presentational.** `ResourceKind` and `JobKind` are
 > append-only and persisted, and the order in which the values below are
@@ -49,11 +48,6 @@ the graph inspectable and the deadlock surface small.
 | Ore | *appended later* | 0 | Surface nodules and bog iron, later mined | |
 | Charcoal | *appended later* | 1 | Wood, burnt in a pit | The efficient fuel — see §2. No building raises its yield; a pit is a pit. |
 | Metal | *appended later* | 2 | Ore + Charcoal, smelted | §9's `iron_tools` chain. Feeds Tools, Weapons and Armor (§6). |
-
-**Deliberately absent: Clay, Pottery, Hide.** Clay and Pottery would only
-make storage capacity a resource instead of a building stat, which §5
-handles directly. Hide would only be a second output of Hunt with nothing to
-consume it. None of the three earns tracking on its own.
 
 ### Chains
 
