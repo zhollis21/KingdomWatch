@@ -455,12 +455,23 @@ could softlock a world.
 | 5 | First stone building | A building requiring expert masonry completes — normally the hall — OR an expert mason exists |
 | 6 | First wall | A wall encloses a settlement, OR the settlement has stood a raid and an expert mason exists |
 
-Milestones 4, 5 and 6 carry an OR because each can softlock: a world with no
-reachable ore never builds a smithy or a wall, and a wholly peaceful world
-never needs a wall at all. The alternate condition is in every case the
-*capability* having been reached rather than the building existing, which is
-what the milestone is really measuring — and it is what keeps an ore-less map
-playable to the end of the ladder rather than stalling it at milestone 3.
+Milestones 5 and 6 carry an OR because each can softlock on infrastructure
+lagging behind skill: a settlement can reach expert masonry, or stand a raid
+while it has one, well before the specific building completes. The alternate
+condition is in every case the *capability* having been reached rather than
+the building existing, which is what the milestone is really measuring.
+
+Milestone 4's OR does not rescue an ore-less world, and no wording of it
+could: Metalworking has no ore-free path at any tier, crude or built (§7's
+crude form is literally "Ore smelted in a campfire pit"), the same way
+Farming has no farmland-free path. **A genuinely ore-less world never reaches
+milestone 4**, and never reaches milestone 6 through Wall's own primary
+condition either, since Wall needs Metal. Milestone 6's OR still reaches such
+a world if it has been raided, since expert masonry alone needs no ore, and
+milestone 5 (Hall) never needed Metal to begin with — so an ore-less,
+never-raided world stalls at milestone 5, not milestone 3. That is a real
+limit of that world, not a bug, the same way a forest-less band stays
+nomadic (§1) rather than being blocked.
 
 ### Target pacing
 

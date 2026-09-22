@@ -670,7 +670,7 @@ The decisions on top of that:
 
 As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
 
-Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). The steps that act on things not yet built join the cascade when they are: reservations (#24), apprenticeship and a master's tools (#22), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). The steps that act on things not yet built join the cascade when they are: reservations (#24), breaking an apprenticeship (#22), destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 
@@ -793,7 +793,6 @@ recipe: iron_tools
   outputs: [iron_tools x1]
   duration: 60
   substitutes: []
-  degrades_to: bone_tools
 ```
 
 Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-watch-economy-ladder.md), #78, settled the count and the set). Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (weight for hauling) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; the rest of the seven, and the Tools/Weapons/Armor the smithy forges from Metal, wait for #37 and #22.
@@ -802,9 +801,9 @@ Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-w
 
 ### Technology is a capability graph, not a tree
 
-**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers use stone tools because they have no smithy. Build a smithy — with a settlement, ore access, and a skilled person — and iron tools become possible.
+**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers work every job untooled because they have no smithy. Build a smithy — with a settlement, ore access, and a skilled person — and Tools become possible: a rate bonus on top of what already works, never a precondition for it (#78).
 
-The only addition needed is a **primitive tier**: foraging, stone tools, hide clothing, temporary camps. Buildable with no buildings.
+The only addition needed is a **primitive tier**, buildable with no buildings — foraging, hunting, gathering, dry-stone stacking, campfire smelting, temporary camps. The economy ladder (#78) settles the actual set, one crude form per capability.
 
 **This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → kiln → quarry → smithy → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
 
@@ -855,9 +854,9 @@ The payoff is still the game's progression arc — stone age band to castle town
 
 An explicit tech ladder is a v2 consideration at earliest.
 
-### Graceful degradation is mandatory
+### Graceful substitution is mandatory
 
-At seven resources the deadlock surface is real. Every recipe needs a substitution list and a degradation path. Harness test: 200 years with no settlement ever deadlocking.
+At seven resources the deadlock surface is real. Every recipe needs a substitution list — the economy ladder (#78) settled that a degradation path is not the mechanism: nothing in the ladder degrades, resource or equipment, and substitution alone is what the harness test below actually needs. Harness test: 200 years with no settlement ever deadlocking.
 
 ### Seasons
 
