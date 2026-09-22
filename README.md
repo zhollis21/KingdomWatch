@@ -2,7 +2,7 @@
 
 A god sim about watching. Six wandering bands arrive in an empty land, and over a few centuries they settle it, farm it, build on it, fall out over it, marry across it, starve in it, and tell stories about it. About 1,650 people at any one time, each one a real person with a name, a family, a trade, and a list of grudges.
 
-There is no magic in the world except you. You can strike, heal, bless, and nudge. You cannot build a barn or tell anyone what to do. The people know something is out there — they build shrines, ordain priests, and argue about what your last intervention *meant*.
+There is no magic in the world except you. You can strike, heal, bless, and nudge. You cannot build a barn or tell anyone what to do. The people know something is out there — they argue about what your last intervention *meant*, and stories of what you did spread and distort as they travel.
 
 > If something happens in the simulation, the player should be able to zoom in and see why.
 

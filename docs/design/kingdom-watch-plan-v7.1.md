@@ -12,7 +12,7 @@
 
 Six wandering bands — three per race — arrive in an empty land. Over centuries they settle, farm, build, learn trades, form households, split into rival polities, feud, trade, march, starve, and remember. Around 1,650 individuals at equilibrium, every one of them a real person with a name, traits, skills, relationships, grudges, and ambitions.
 
-There is no magic in the world except you. The people know it — they build shrines, ordain priests, and argue over what your interventions meant. Stories of your miracles spread along trade routes and distort as they travel.
+There is no magic in the world except you. The people know it — they argue over what your interventions meant, and stories of what you did spread along trade routes and distort as they travel.
 
 The player watches from any altitude and unlocks powers as the world reaches milestones.
 
@@ -58,7 +58,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Interbreeding | Couples yes, children no |
 | Culture | Starts shared, diverges; lives on **both settlements and people** |
 | Magic | None in the world — the god is the only supernatural force |
-| Religion | Open worship; **attribution is not omniscient**. Depth deferred to M5 |
+| Attribution | **Not omniscient** — witnessed events spread and distort with distance and time |
 | Warfare | Logistics, narrowly defined (§14). Sieges deferred |
 | Naval | Islands at launch; traversal abstraction from day one |
 | Fail state | Extinction ends the run — rare, mostly player-caused |
@@ -345,7 +345,7 @@ Core contents:
   Clock/                <- simulation clock, event scheduler, phase ordering
   Systems/              <- Needs, Jobs, Skills, Social, Households, Politics,
                            Economy, Seasons, Logistics, Combat, Relations,
-                           Attitudes, Faith, Knowledge, Culture, Founding,
+                           Attitudes, Knowledge, Culture, Founding,
                            TownPlanner, Reservations, Milestones
   Data/                 <- SoA storage, entity handles, recipes, race tables
   Events/               <- domain events, subscribers, decision provenance
@@ -417,7 +417,7 @@ public readonly struct EntityId {
 }
 
 // Durable event identity — never reused. Referenced by history, grievances,
-// miracles, rumors, decision provenance, and player bookmarks.
+// rumors, decision provenance, and player bookmarks.
 public readonly struct EventId {
     public readonly ulong Value;
 }
@@ -501,7 +501,7 @@ Settlement, household, and polity IDs must all be **dynamic**, not fixed slots.
 
 ### Domain events
 
-Too many systems react to the same occurrence for direct calls to stay maintainable. A single death touches households, job assignment, apprenticeship, inheritance, dynasty, marriage availability, the settlement skill pool, political succession, relationships, culture, the event feed, milestones, history, and faith.
+Too many systems react to the same occurrence for direct calls to stay maintainable. A single death touches households, job assignment, apprenticeship, inheritance, dynasty, marriage availability, the settlement skill pool, political succession, relationships, culture, the event feed, milestones, and history.
 
 Publish meaningful simulation events; interested systems subscribe and react deterministically:
 
@@ -512,7 +512,7 @@ WarDeclared · BattleEnded · DivineActWitnessed
 BridgeDestroyed · FamineStarted · FamineEnded
 ```
 
-This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, faith attribution, attitudes, and debugging from one mechanism.
+This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, attribution, attitudes, and debugging from one mechanism.
 
 **Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is still to come. A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
 
@@ -941,9 +941,9 @@ Cost: a structure that grows over 500 years. It must live inside the bounded-kno
 
 ---
 
-## 11. Religion and knowledge
+## 11. Knowledge and attribution
 
-There is no magic in the world. Every supernatural event has exactly one cause: the player. The people know this and worship openly. Shrines are buildings, priests are a job, faith is a culture value — almost nothing new to build.
+There is no magic in the world. Every supernatural event has exactly one cause: the player. The people know this, and react to it — with awe, fear, gratitude, or suspicion — through the same attitude and knowledge systems everything else runs through. Almost nothing new to build.
 
 ### Attribution is not omniscient
 
@@ -954,7 +954,7 @@ Divine event → witnesses → settlement knowledge
 → rumor propagation along trade routes → cultural interpretation
 ```
 
-Lightning-strike a wolf in an empty forest and nobody knows. Save Oakshire dramatically and the villagers see it; two years later traders tell Dunvale ("*they claim* their god protected them"); twenty years later it is the Miracle of Oakshire.
+Lightning-strike a wolf in an empty forest and nobody knows. Save Oakshire dramatically and the villagers see it; two years later traders tell Dunvale ("*they claim* their god protected them"); twenty years later it is the Storm at Oakshire, told as legend.
 
 This reuses trade networks, culture, and the event journal you already have, and it is the most on-theme system in the design. Don't build sophisticated rumor AI first — but leave room for knowledge propagation instead of global omniscience.
 
@@ -967,9 +967,9 @@ Historically important    → promoted to cultural memory, persists indefinitely
 Unimportant              → forgotten
 ```
 
-A wolf struck by lightning is forgotten in ten years. The Miracle of Oakshire is promoted and outlives everyone who saw it.
+A wolf struck by lightning is forgotten in ten years. The Storm at Oakshire is promoted and outlives everyone who saw it.
 
-**Possible unification, to investigate at M5 — not committed now.** Witness-tracked grievances (§10), rumor propagation, and religious miracles are starting to look like one concept with three meanings:
+**Possible unification, to investigate at M5 — not committed now.** Witness-tracked grievances (§10) and rumor propagation are starting to look like one concept with two meanings:
 
 ```
 HistoricalClaim / Memory
@@ -977,25 +977,16 @@ HistoricalClaim / Memory
     Confidence · KnownBy · CulturalImportance
 
 grievance = memory with a negative attitude effect
-miracle   = memory with religious meaning
 atrocity  = memory with political or racial meaning
 ```
+
+A divine act is just a memory like any other, its valence set by who it helped and who it hurt — §8's "Oakshire declared war" reasoning applies equally to "the god struck the raiders' captain."
 
 Deferred deliberately. **Cheap insurance in the meantime: key both grievances and knowledge claims on `OriginEventId`** so the two can converge later without a data migration. Don't let their internals diverge structurally before M5.
 
 ### Attribution splits opinion
 
-Smite a raider captain: the saved village builds a shrine, the raiders' home settlement curses you. One act, two responses, from the attitude system already required for race relations.
-
-### Depth deferred to M5
-
-**How heavy a role faith plays is deliberately undecided.** The structural facts above are cheap regardless. The range:
-
-- **Light** — flavour. Shrines and arguments, nothing mechanical
-- **Consequence** — faith modulates how the world *reacts* to you, never how powerful you are. Unlocks stay milestone-gated, avoiding the Black & White worshipper-farming trap
-- **Coercive** — faith is enforced. Smiting unbelievers works; fear substitutes for devotion
-
-One constraint holds in every case: **shrines cost real resources.** A settlement diverting stone and labour to shrines instead of granaries starves in a hard winter.
+Smite a raider captain: the saved village reveres you, the raiders' home settlement curses you. One act, two responses, from the attitude system already required for race relations.
 
 ---
 
@@ -1028,7 +1019,7 @@ Building placement preferences:
     farm        → fertile, outskirts
     lumber camp → forest edge
     smithy      → work district
-    shrine      → central, prominent
+    town hall   → central, prominent
     defenses    → perimeter
 ```
 
@@ -1086,7 +1077,7 @@ Buildings are opaque boxes — kills interior art, pathfinding, furniture, room 
 
 **Buildings report without simulating** (§6 on the tooltip caveat).
 
-**Push social life outdoors.** Wells, markets, squares, shrines, festivals, funerals. This is where relationships, grudges, and faith must *visibly* form. If they form invisibly indoors, the deepest systems become stat changes nobody sees.
+**Push social life outdoors.** Wells, markets, squares, festivals, funerals. This is where relationships and grudges must *visibly* form. If they form invisibly indoors, the deepest systems become stat changes nobody sees.
 
 ### Resource flow and traversal
 
@@ -1458,7 +1449,7 @@ Perspective affects camera behavior, selection, building footprint, occlusion, w
 
 Orthographic 3D is the likely winner — free depth sorting, easy zoom and tilt, one sprite set, real building height for walls. But let the prototype answer it.
 
-Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, shrines, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
+Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
 
 ### Unity version path
 
@@ -1526,7 +1517,7 @@ Then choose perspective.
 
 **M4 — one disruption.** Raiders and predators. Villagers flee, militia musters, fighting, burning, recovery, rebuilding.
 
-**M5 — god powers and faith.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Shrines, priests, witnessed attribution, and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes). Decide faith depth. Prove the loop on a touchscreen.
+**M5 — god powers.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Witnessed attribution and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes) let word of what you did spread and distort. Prove the loop on a touchscreen.
 
 **M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward 10 resources.
 
@@ -1544,13 +1535,13 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 
 **Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, wildlife, soil, finite stone and ore)
 
-**Before M5:** faith depth (light / consequence / coercive) · knowledge and rumor propagation ✓
+**Before M5:** knowledge and rumor propagation ✓
 
 **Before M7:** social and personal decision system ✓ (launch scope set) · political model and succession · culture on individuals and assimilation ✓
 
 **Launch polish:** event feed follow lists and search.
 
-**Investigate at M5:** unifying grievances, rumors, and miracles into a shared `HistoricalClaim` (§11).
+**Investigate at M5:** unifying grievances and rumors into a shared `HistoricalClaim` (§11).
 
 **Deferred:** siege model · extreme compression tuning beyond 10,000× · explicit technology progression · **natural map change over time** (shifting rivers, erosion, forest advance and retreat). The last is cheaper than it appears: the "shape terrain" power and runtime bridge edges already require mutable terrain, dynamic graph edges, and cache invalidation, so v2 supplies new causes rather than new machinery. Pairs well with bridges — a river that shifts course strands a bridge on dry land and opens an unbridged crossing elsewhere.
 

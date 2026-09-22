@@ -168,7 +168,6 @@ carves out the roles that are not recipes at all.
 |---|---|
 | Builder | Turns hauled materials into a building. Consumes, produces nothing. |
 | Hauler | Moves stock between site, store and workshop. |
-| Priest | Shrine attendance and attribution (§11). No economic output. |
 
 Milling is deliberately not a job. A quern is tier-zero household work, so
 Grain becomes Food without anyone holding a role for it.
@@ -199,7 +198,7 @@ fixed numbers, so they are described rather than tabulated.
 | Mine | Journeyman masonry | Wood | hills in reach, a quarry | Ore |
 | Smeltery | Journeyman metalworking | Stone | a house | Metal, at rate |
 | Smithy | Journeyman metalworking | Stone | a house | Tools, Weapons, Armor, forged from Metal |
-| Shrine | Expert masonry | Stone | a quarry | Priests and attribution (§11); the first dressed-stone building |
+| Hall | Expert masonry | Stone | a quarry | Where festivals and funerals happen (§12's outdoor social life); the first dressed-stone building |
 | Palisade → Wall | Apprentice construction → Expert masonry | Wood, then Stone, Metal | a house, then also a quarry, a smithy | Basic perimeter defense from early on; the stone tier is the last milestone — see §4a |
 | Wooden watchtower → Stone watchtower | Novice construction → Apprentice masonry | Wood, then Stone | a house, then also a quarry | Standing lookout — standalone from the wall, not a prerequisite for it |
 | Town Hall → Fort → Castle | Apprentice → Journeyman → Expert construction | Wood, then Stone | — | One administrative slot, tiering as population and defensive need cross thresholds — see §4a. Not a building the player or an AI queues an upgrade for. |
@@ -208,7 +207,7 @@ fixed numbers, so they are described rather than tabulated.
 
 Masonry is the one capability that climbs the whole way: dry-stone stacking
 at tier zero, a quarry at apprentice, a mine at journeyman, dressed stone —
-the shrine and the wall — at expert. **Buildings that merely contain stone do
+the hall and the wall — at expert. **Buildings that merely contain stone do
 not count as stone construction**, which is why the smeltery and the smithy
 are gated on metalworking rather than masonry even though both take Stone as
 an input. Without that distinction the "first stone building" milestone fires
@@ -382,7 +381,7 @@ gates.
 | Woodcraft | Gather wood | Fell timber, at a lumber camp |
 | Construction | Camp | House, then storage, administrative and wood-tier defensive buildings |
 | Farming | Scatter-sown clearing | Farm plot |
-| Masonry | Dry-stone stacking | Quarry and the stone watchtower at apprentice, mine at journeyman, shrine and wall at expert |
+| Masonry | Dry-stone stacking | Quarry and the stone watchtower at apprentice, mine at journeyman, hall and wall at expert |
 | Metalworking | Ore smelted in a campfire pit | Smeltery and smithy, independently |
 | Soldiering | Any untrained adult, weapon in hand | — (no building form, ever) |
 
@@ -446,7 +445,7 @@ could softlock a world.
 | 2 | First permanent structure | A house completes |
 | 3 | First farm | A farm plot yields its first Grain |
 | 4 | First smithy | A smithy completes, OR Metal is first smelted at a pit |
-| 5 | First stone building | A building requiring expert masonry completes — normally the shrine — OR an expert mason exists |
+| 5 | First stone building | A building requiring expert masonry completes — normally the hall — OR an expert mason exists |
 | 6 | First wall | A wall encloses a settlement, OR the settlement has stood a raid and has both a quarry and a smithy |
 
 Milestones 4, 5 and 6 carry an OR because each can softlock: a world with no
@@ -548,7 +547,7 @@ flowchart LR
   House --> Plot
   Plot --> Granary["Granary"]:::bld
   Dry --> QuarryB["Quarry"]:::bld
-  QuarryB --> Shrine["Shrine"]:::bld
+  QuarryB --> Hall["Hall"]:::bld
   QuarryB --> MineB["Mine"]:::bld
   Pit --> Smeltery["Smeltery"]:::bld
   House --> Smeltery
@@ -561,7 +560,7 @@ flowchart LR
   House --> M2["2 · first permanent structure"]:::ms
   Plot --> M3["3 · first farm"]:::ms
   Smithy --> M4["4 · first smithy"]:::ms
-  Shrine --> M5["5 · first stone building<br/><i>expert masonry</i>"]:::ms
+  Hall --> M5["5 · first stone building<br/><i>expert masonry</i>"]:::ms
   Wall --> M6["6 · first wall"]:::ms
 ```
 
