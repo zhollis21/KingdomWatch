@@ -38,14 +38,17 @@ to match.
 
 Seven kinds. Three exist; four are named here and appended by later issues.
 
-**Depth** is how many craft steps separate a kind from the world: a gathered
-kind is depth 0, and a crafted kind is one more than its shallowest input.
+**Depth** is how many craft steps separate a kind from the world. A recipe
+sits one step deeper than its *deepest* input, since it needs all of them; a
+kind takes its *shallowest* recipe, so anything that can be gathered is depth
+0 however else it is also made. Metal is depth 2 because Smelt needs Charcoal
+(depth 1) as well as Ore (depth 0); Food is depth 0 despite Mill.
 The plan's §9 "two-step chains" is the rule that nothing exceeds depth 2, which keeps
 the graph inspectable and the deadlock surface small.
 
 | Resource | Enum | Depth | Source | Notes |
 |---|---|---|---|---|
-| Food | `ResourceKind.Food = 1` | 0 | Foraged, hunted, or milled from Grain | No spoilage (§5 below). The only kind anyone dies without. |
+| Food | `ResourceKind.Food = 1` | 0 | Foraged, hunted, or milled from Grain | No spoilage (§5 below). Going without it kills; the only other lack that does is winter fuel (§2). |
 | Wood | `ResourceKind.Wood = 2` | 0 | Gathered deadfall, later felled at a lumber camp | Also winter fuel — see §2. |
 | Stone | `ResourceKind.Stone = 3` | 0 | Loose surface stone, later quarried | |
 | Grain | *appended later* | 0 | Harvested from a farm plot | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food; no spoilage of its own. |
@@ -85,33 +88,47 @@ precondition for it.
 
 The plan's §9 requires every recipe to have a substitution list, and a harness test of
 200 years with no settlement ever deadlocking. The property that makes that
-test passable is stated here so later additions can be checked against it:
+test passable is stated here so later additions can be checked against it,
+with the one exception, Wood, closed below:
 
 > **No survival-critical resource has a single source, and no single-source
 > resource is survival-critical.**
 
+A **source** here is an origin in the world, not a recipe. A building that
+works the same origin faster — Fell timber over Gather wood, Quarry over
+Gather stone, Mine over Gather ore — is not a second source: lose the forest
+and both wood recipes go with it.
+
 Food has three independent sources and two of them need no building, so a
 settlement that loses its farm forages or hunts instead.
 
-Four kinds have a single source — Wood, Grain, Charcoal and Metal — and none
-of them is survival-critical:
+Every other kind has a single source, and all but one of them are not
+survival-critical:
 
+- **Stone** and **Ore** are building and smelting material. Without them a
+  settlement builds in Wood and works untooled; nobody dies of either.
 - **Grain** exists only to become Food, which Forage and Hunt also supply
   directly. Losing farmland costs population capacity, not survival.
-- **Charcoal** has one source (Burn charcoal) and no substitute for smelting,
-  but Wood substitutes for its other use, heating (§2) — its one essential,
+- **Charcoal** comes only from Wood and has no substitute for smelting, but
+  Wood substitutes for its other use, heating (§2) — its one essential,
   unsubstitutable role isn't one anything's survival depends on.
 - **Metal** improves how fast a smithy re-equips people (§6); nobody needs a
   Tool, Weapon or Armor to work a job or to fight (§6, §8) — without Metal, a
   settlement runs at the untooled rate every job already has, not a blocked
   one.
-- **Wood** is needed to build and to keep warm rather than to live outright.
-  A band that can reach no forest stays nomadic and layers on extra clothing
-  and body heat instead, which #54 already models as an ordinary outcome
-  rather than a failure.
+
+**Wood is the one exception, and it is closed at world generation rather
+than in the recipe graph.** Winter fuel is survival-critical — going without
+it past a grace period kills (§2) — and whether it is burnt raw or as
+Charcoal, it all comes from forest. No recipe can give it a second origin,
+so the plan's §15 sanity check guarantees that origin instead: every starting band
+has forest in reach, alongside the water and arable land it already checks.
+After the start, #54's settling land check already refuses a site with no
+woodcutting in reach, so a band only ever settles where fuel is.
 
 **No building is gated on a single-source resource that survival depends on
-either**, which is the same rule one level up.
+either**, which is the same rule one level up — Wood again excepted, on the
+same worldgen guarantee.
 
 Adding an eighth resource means re-checking this list, not just adding a row.
 
@@ -138,8 +155,9 @@ The mechanism reuses one already built: `Hunger` (`Core/Needs/Hunger.cs`, #51)
 schedules one `MealDue` event per food holder per day and draws Food from the
 ledger. A `WarmthDue` event doing the same thing with Wood-or-Charcoal in
 winter is the same shape, not a new one — and, like hunger, going without it
-past a grace period costs health rather than killing outright, which is a
-believable way for a hard winter to actually kill people.
+past a grace period costs health, and health that reaches zero kills. That is
+what makes winter fuel survival-critical, and why Wood is the exception in
+§1.
 
 ---
 
@@ -221,8 +239,9 @@ an input. Without that distinction the "first stone building" milestone fires
 on whichever building happens to list Stone among its inputs, which would put
 it before the smithy and inverted against the ladder in §9.
 
-**Smelting and smithing are gated on skill alone, and independently of each
-other.** Charcoal burns in a pit and surface ore is gathered like surface
+**Neither metalworking building waits on other metal infrastructure, or on
+the other.** Beyond the Stone and the house both need, their gate is
+Journeyman metalworking. Charcoal burns in a pit and surface ore is gathered like surface
 stone, so neither the smeltery nor a mine is a precondition for reaching
 Journeyman metalworking — making either one a prerequisite would put the
 whole metal branch behind journeyman masonry, which is the chicken-and-egg the plan's §9
@@ -269,13 +288,22 @@ plot existing doesn't bring forward "first stone building."
 A different shape from the buildings above: each one only **raises capacity**
 for a bundle of resources or items (§5). None of them produce anything.
 
-| Building | Min skill | Prerequisite | Raises capacity for |
-|---|---|---|---|
-| Granary | Apprentice construction | a farm plot | Food, Grain |
-| Woodshed | Apprentice construction | a house | Wood, Charcoal |
-| Stoneyard | Apprentice construction | a house | Stone, Ore |
-| Vault | Journeyman construction | a smeltery or a smithy | Metal, Tools |
-| Armory | Apprentice construction | a smithy | Weapons, Armor |
+The same five gates apply. Labour surplus is the same per-settlement
+condition as above; demand is specific to storage — the building's bundle
+sitting at capacity, so the workers who make it keep stopping early (§5).
+
+| Building | Min skill | Inputs | Prerequisite | Raises capacity for |
+|---|---|---|---|---|
+| Granary | Apprentice construction | Wood | a farm plot | Food, Grain |
+| Woodshed | Apprentice construction | Wood | a house | Wood, Charcoal |
+| Stoneyard | Apprentice construction | Wood | a house | Stone, Ore |
+| Vault | Journeyman construction | Stone | a smeltery or a smithy | Metal, Tools |
+| Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
+
+The Vault and the Armory are built in Stone because they hold the most
+costly thing a settlement makes. Like the smeltery and the smithy, they are
+gated on construction rather than masonry, so neither counts toward the
+"first stone building" milestone.
 
 The bundling groups kinds by what they're storage *for*, not just by who
 makes them: Granary and Woodshed hold what a household consumes, Stoneyard
@@ -301,8 +329,7 @@ is potential of either kind, not yet committed to one.
 
 Every resource and item kind has a capacity. A base amount is always free —
 held by the band or settlement itself, at the Town Hall/Fort/Castle once one
-exists — and each storage building
-in §4 raises it further for its bundle.
+exists — and each storage building in §4 raises it further for its bundle.
 
 This generalizes something that already exists rather than inventing
 something new: `Core/Work/Jobs.cs:148,151` has `WoodCap = 200` and
@@ -475,8 +502,8 @@ condition either, since Wall needs Metal. Milestone 6's OR still reaches such
 a world if it has been raided, since expert masonry alone needs no ore, and
 milestone 5 (Hall) never needed Metal to begin with — so an ore-less,
 never-raided world stalls at milestone 5, not milestone 3. That is a real
-limit of that world, not a bug, the same way a forest-less band stays
-nomadic (§1) rather than being blocked.
+limit of that world, not a bug, the same way a band that never finds a site
+it can settle stays nomadic (#54) rather than being blocked.
 
 ### Target pacing
 

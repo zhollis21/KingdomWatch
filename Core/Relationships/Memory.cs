@@ -12,7 +12,7 @@ namespace KingdomWatch.Core.Relationships
     /// <remarks>
     /// Keyed on the originating event rather than on a person, per section
     /// 11's insurance for the possible M5 unification of grievances and
-    /// atrocities into one HistoricalClaim: if both key on the event that
+    /// knowledge claims into one HistoricalClaim: if both key on the event that
     /// caused them, converging them later is a rename and not a migration.
     /// Subject is who or what it is about - the raider, the settlement, the
     /// god - and may be <see cref="EntityId.None"/> when the event speaks for
