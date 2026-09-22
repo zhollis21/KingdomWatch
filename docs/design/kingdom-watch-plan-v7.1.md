@@ -46,7 +46,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Movement | **Soft avoidance** — agents never hard-block cells |
 | Polity attitudes | Polities hold **their own diplomatic state**, distinct from settlements |
 | Households | **First-class entity** — person → household → home |
-| Property | **Hybrid** — household owns the home, individuals own wealth and tools |
+| Property | **Hybrid** — household owns the home, individuals own wealth; tools and arms are settlement stock, checked out (#78) |
 | Kinship | Hard ban through grandparents; first cousins a **culture taboo** |
 | Grievances | **Witness-tracked**, not flat decay — inheritable across generations |
 | Animals | Livestock and monsters persistent; **game as regional populations** |
@@ -646,7 +646,7 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 On death, personal wealth folds into the household. This gives some wealth variation, without the machinery of full dynastic inheritance law. Tools, Weapons and Armor are the exception: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
-As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth, no tools — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
+As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
 
 ### Death cascade
 
@@ -805,7 +805,7 @@ Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-w
 
 The only addition needed is a **primitive tier**, buildable with no buildings — foraging, hunting, gathering, dry-stone stacking, campfire smelting, temporary camps. The economy ladder (#78) settles the actual set, one crude form per capability.
 
-**This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → kiln → quarry → smithy → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
+**This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → quarry → smithy → hall → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
 
 ```
 Building requires:
