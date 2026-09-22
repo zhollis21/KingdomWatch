@@ -95,11 +95,11 @@ namespace KingdomWatch.Core.Tests.Relationships
             var oakshire = ids.Next(EntityKind.Settlement);
             var dunvale = ids.Next(EntityKind.Settlement);
             var raid = ids.NextEvent();
-            var miracle = ids.NextEvent();
+            var legend = ids.NextEvent();
             var elder = ids.Next(EntityKind.Person);
             var other = ids.Next(EntityKind.Person);
             memories.Record(oakshire, raid, EntityId.None, -10, new[] { elder, other }, SimulationTime.Zero);
-            memories.Record(oakshire, miracle, EntityId.None, 10, new[] { elder }, SimulationTime.Zero);
+            memories.Record(oakshire, legend, EntityId.None, 10, new[] { elder }, SimulationTime.Zero);
             memories.Record(dunvale, raid, EntityId.None, -5, new[] { other, elder }, SimulationTime.Zero);
 
             memories.WitnessDied(elder);
@@ -107,7 +107,7 @@ namespace KingdomWatch.Core.Tests.Relationships
             Assert.Multiple(() =>
             {
                 Assert.That(memories.Witnesses(oakshire, raid).ToArray(), Is.EqualTo(new[] { other }));
-                Assert.That(memories.Witnesses(oakshire, miracle).Length, Is.Zero);
+                Assert.That(memories.Witnesses(oakshire, legend).Length, Is.Zero);
                 Assert.That(memories.Witnesses(dunvale, raid).ToArray(), Is.EqualTo(new[] { other }));
                 Assert.That(memories.Held(oakshire).Length, Is.EqualTo(2), "a death forgets nothing by itself");
             });
@@ -169,14 +169,14 @@ namespace KingdomWatch.Core.Tests.Relationships
             var ids = new IdAllocator();
             var memories = new Memories(Settings);
             var oakshire = ids.Next(EntityKind.Settlement);
-            var miracle = ids.NextEvent();
+            var legend = ids.NextEvent();
             var crowd = new[]
             {
                 ids.Next(EntityKind.Person), ids.Next(EntityKind.Person),
                 ids.Next(EntityKind.Person), ids.Next(EntityKind.Person),
             };
 
-            memories.Record(oakshire, miracle, EntityId.None, 50, crowd, SimulationTime.Zero);
+            memories.Record(oakshire, legend, EntityId.None, 50, crowd, SimulationTime.Zero);
 
             foreach (var person in crowd)
             {
@@ -187,7 +187,7 @@ namespace KingdomWatch.Core.Tests.Relationships
 
             Assert.Multiple(() =>
             {
-                Assert.That(memories.TryGet(oakshire, miracle, out var memory), Is.True, "outlives everyone who saw it");
+                Assert.That(memories.TryGet(oakshire, legend, out var memory), Is.True, "outlives everyone who saw it");
                 Assert.That(memory.Tier, Is.EqualTo(MemoryTier.Promoted));
                 Assert.That(memory.WitnessCount, Is.Zero);
             });

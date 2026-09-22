@@ -52,7 +52,7 @@ namespace KingdomWatch.Core.Data
         /// <summary>Handed to another ledger.</summary>
         public long Exported { get; }
 
-        /// <summary>Lost - spoiled, raided, burned down.</summary>
+        /// <summary>Lost - raided, burned down, or otherwise destroyed.</summary>
         public long Destroyed { get; }
 
         /// <summary>Built into something that is no longer stock.</summary>

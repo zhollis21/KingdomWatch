@@ -71,11 +71,11 @@ Gather stone — with their placeholder quantities and durations unchanged.
 
 **No `degrades_to` column.** §6 below settles that Weapons, Armor and Tools
 have no per-item quality at all, so there is nothing for an individual item
-to degrade *to* — a settlement
-with no reachable Ore simply keeps crafting Stone-tier equivalents at
-whichever tier-zero form the relevant capability already has (§7's
-reachability rule), which is a **material-tier fallback**, not a degraded
-version of a Metal item.
+to degrade *to* — and no fallback recipe is needed either, because nothing
+requires one in the first place. Every job already runs at a real,
+functioning rate with zero tools, the same way Forage and Gather wood run
+with zero inputs; a Tool is a bonus on top of that baseline, never a
+precondition for it.
 
 ### The rule that keeps it from deadlocking
 
@@ -89,19 +89,22 @@ test passable is stated here so later additions can be checked against it:
 Food has three independent sources and two of them need no building, so a
 settlement that loses its farm forages or hunts instead.
 
-Three kinds have a single source — Wood, Grain and Metal — and none of them
-is survival-critical:
+Four kinds have a single source — Wood, Grain, Charcoal and Metal — and none
+of them is survival-critical:
 
 - **Grain** exists only to become Food, which Forage and Hunt also supply
   directly. Losing farmland costs population capacity, not survival.
-- **Metal** improves how fast a smithy re-equips people (§6); Stone-tier
-  equipment does the same jobs, just with a settlement that stays smaller or
-  slower to muster.
+- **Charcoal** has one source (Burn charcoal) and no substitute for smelting,
+  but Wood substitutes for its other use, heating (§2) — its one essential,
+  unsubstitutable role isn't one anything's survival depends on.
+- **Metal** improves how fast a smithy re-equips people (§6); nobody needs a
+  Tool, Weapon or Armor to work a job or to fight (§6, §8) — without Metal, a
+  settlement runs at the untooled rate every job already has, not a blocked
+  one.
 - **Wood** is needed to build and to keep warm rather than to live outright.
   A band that can reach no forest stays nomadic and layers on extra clothing
   and body heat instead, which #54 already models as an ordinary outcome
-  rather than a failure. (Charcoal is not on this list — see §2: it has a
-  substitute for its one essential use.)
+  rather than a failure.
 
 **No building is gated on a single-source resource that survival depends on
 either**, which is the same rule one level up.
@@ -329,8 +332,11 @@ Tools, Weapons and Armor are all crafted at the Smithy from Metal, and all
 draw on storage capacity split along martial lines (§4) — Tools in the Vault
 alongside the Metal they're forged from, Weapons and Armor in the Armory.
 **The settlement owns the underlying stock; a person equips an instance from
-it** while they hold a job or a levy status that uses one — a Farmer's plow,
-a Woodcutter's axe, a levied soldier's sword.
+it** while they hold a job or a levy status that can use one — a Farmer's
+plow, a Woodcutter's axe, a levied soldier's sword. None of the three is
+required: every job and §8's levy both run at a real, working rate with
+nobody equipped at all. An item is a bonus on top of that baseline, never a
+precondition for it.
 
 **No per-item quality.** Every Weapon, Armor piece or Tool of a given kind is
 functionally identical, whoever made it. A smith's skill tier changes only
@@ -346,20 +352,21 @@ different — the item returns to its storage building's stock normally (the
 Vault for a Tool, the Armory for a Weapon or Armor piece), the same as any
 other checked-out resource.
 
-**This makes §6 of the design plan wrong about tools specifically.** It
-currently reads, in the property section: *"On death, personal wealth folds
-into the household. This gives some wealth variation and makes a master's
-tools a real asset."* Tools are no longer inherited, so they can no longer be
-that asset. The design plan needs the tools-specific half of that sentence
-removed — general personal wealth still folds into the household and still
-gives variation; tools just aren't part of it anymore. This settles #68's
-open question for tools specifically: neither pure ledger stock nor freely
-inheritable property, they are checked-out-while-in-use and gone at death.
+**This made §6 of the design plan wrong about tools specifically, and it has
+been corrected in the same change.** It used to read, in the property
+section: *"On death, personal wealth folds into the household. This gives
+some wealth variation and makes a master's tools a real asset."* Tools are no
+longer inherited, so they can no longer be that asset; general personal
+wealth still folds into the household and still gives variation, tools just
+aren't part of it. This settles #68's open question for tools specifically:
+neither pure ledger stock nor freely inheritable property, they are
+checked-out-while-in-use and gone at death.
 
-**The material-tier fallback still exists.** A settlement with no reachable
-Ore is not without equipment — whichever capability's tier-zero form (§7)
-still produces the Stone-tier equivalent, cruder but not blocked. That is a
-difference in material tier, never in the smith's individual skill.
+**No fallback is needed when Metal is unreachable.** A settlement with no
+reachable Ore is not without functioning jobs or a functioning levy — it is
+simply without the rate bonus a Tool, Weapon or Armor gives on top of the
+baseline every job and every fighter already has. Nothing degrades, because
+nothing was required to begin with.
 
 ---
 
@@ -444,9 +451,9 @@ could softlock a world.
 | 1 | First camp | A band's settling trigger fires (#54) |
 | 2 | First permanent structure | A house completes |
 | 3 | First farm | A farm plot yields its first Grain |
-| 4 | First smithy | A smithy completes, OR Metal is first smelted at a pit |
+| 4 | First smithy | A smithy completes, OR a Journeyman metalworker exists |
 | 5 | First stone building | A building requiring expert masonry completes — normally the hall — OR an expert mason exists |
-| 6 | First wall | A wall encloses a settlement, OR the settlement has stood a raid and has both a quarry and a smithy |
+| 6 | First wall | A wall encloses a settlement, OR the settlement has stood a raid and an expert mason exists |
 
 Milestones 4, 5 and 6 carry an OR because each can softlock: a world with no
 reachable ore never builds a smithy or a wall, and a wholly peaceful world
@@ -524,8 +531,10 @@ flowchart LR
 ```
 
 Green is taken from the world, blue is made, tan needs a building, red is a
-sink rather than a stock. Every blue node traces back to green in at most two
-hops, which is §9's two-step rule holding.
+sink rather than a stock. Every blue *resource* node traces back to green in
+at most two hops, which is §9's two-step rule holding — Tools, Weapons and
+Armor sit downstream of that rule rather than inside it, since §9's target is
+the resource chain, not what gets crafted from its far end.
 
 ### Capabilities and buildings
 
@@ -564,11 +573,13 @@ flowchart LR
   Wall --> M6["6 · first wall"]:::ms
 ```
 
-Every building traces back into the tier-zero box, which is the reachability
-check in §7 drawn rather than asserted. Storage buildings (Woodshed,
-Stoneyard, Vault, Armory), the lumber camp, and the wood tiers of the wall
-and watchtower (Palisade, wooden watchtower) are omitted here — they gate no
-milestone — and appear in §4's tables instead.
+Every building drawn here traces back into the tier-zero box, which is the
+reachability check in §7 drawn rather than asserted for the milestone-gating
+subgraph. Storage buildings (Woodshed, Stoneyard, Vault, Armory), the lumber
+camp, Town Hall/Fort/Castle, Marketplace, Dock, and the wood tiers of the
+wall and watchtower (Palisade, wooden watchtower) are omitted here — they
+gate no milestone — and appear in §4's tables instead, each with its own
+tier-zero form per §7.
 
 ---
 

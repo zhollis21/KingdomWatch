@@ -5,7 +5,7 @@ namespace KingdomWatch.Core.Data
 {
     /// <summary>
     /// Durable event identity. Never reused. Referenced by history, grievances,
-    /// miracles, rumors, decision provenance and player bookmarks, all of which
+    /// rumors, decision provenance and player bookmarks, all of which
     /// outlive the event itself.
     /// </summary>
     /// <remarks>

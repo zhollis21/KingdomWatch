@@ -6,11 +6,13 @@ namespace KingdomWatch.Core.Data
     /// <remarks>
     /// An enum rather than the data table section 9 sketches. The specific
     /// need for a data file - editing the resource set without a rebuild -
-    /// does not exist yet, and per-resource data (spoilage for seasons,
-    /// weight for hauling) can live in a table keyed by this enum when a
-    /// system first needs one. Every mutation funnels through the ledger, so
-    /// swapping this for a table id later is mechanical. Recipes ARE data;
-    /// see <see cref="Recipe"/> and <see cref="PrimitiveTier"/>.
+    /// does not exist yet, and per-resource data (weight for hauling) can
+    /// live in a table keyed by this enum when a system first needs one.
+    /// Every mutation funnels through the ledger, so swapping this for a
+    /// table id later is mechanical. Recipes ARE data; see
+    /// <see cref="Recipe"/> and <see cref="PrimitiveTier"/>. The economy
+    /// ladder (docs/design/kingdom-watch-economy-ladder.md, #78) settles
+    /// that nothing spoils; capacity is the only supply-side constraint.
     ///
     /// M1 ships the three gathered resources below (#12). Stone tools and
     /// hide clothing are deliberately absent: tools may turn out to be

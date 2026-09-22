@@ -39,7 +39,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Player role | Sandbox god, **powers only** — never direct commands |
 | Unlock structure | Linear track, milestone-gated with **OR-conditions** |
 | Unlock persistence | Resets each world — no meta-progression |
-| Economy | ~10 resources with chains, data-driven and extensible |
+| Economy | Seven resources with chains, data-driven and extensible |
 | Technology | **Emergent from the recipe graph** — no tech tree (v2 at earliest) |
 | Seasons | Full — harvest cycles, stores, winter mortality as an *outcome* |
 | Skills | **Five tiers** (novice→master); tier zero needs no building; apprenticeship transmits |
@@ -642,7 +642,7 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 ### Property
 
-**Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth, tools, and status.
+**Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth and status; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
 
 On death, personal wealth folds into the household. This gives some wealth variation, without the machinery of full dynastic inheritance law. Tools, Weapons and Armor are the exception: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
@@ -796,7 +796,7 @@ recipe: iron_tools
   degrades_to: bone_tools
 ```
 
-Start at 3–4 for M1, expand toward 10 by M6. Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (spoilage, weight) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; stone tools and hide clothing wait, since tools may be personal property (§6) rather than stock and hides have no source until hunting exists.
+Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-watch-economy-ladder.md), #78, settled the count and the set). Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (weight for hauling) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; the rest of the seven, and the Tools/Weapons/Armor the smithy forges from Metal, wait for #37 and #22.
 
 **As of #52, people gather them.** A `JobKind` — Forager, Woodcutter, StoneGatherer — is a row in `JobTable`: the recipe it runs and the terrain it runs on (plains or forest, forest, hills). A band's living adults and elders work, tierless and at full output, inside a dawn-to-dusk window (06:00–18:00, placeholders): a worker picks a job when free — at dawn and at each completion — and starts one task of it, at the band's cheapest-to-reach site for that job, if the task would end by dusk. Need is three thresholds read live: forage while food, counting what is on its way home, covers fewer than ten days; then wood and stone to a stock cap; then idle. The window is #21's daily schedule in miniature and the thresholds are #23's town planner in miniature; both replace their part without touching the other. Elders' reduced work and adolescents' assistance are #22's, with the skill tiers they belong to.
 
@@ -857,7 +857,7 @@ An explicit tech ladder is a v2 consideration at earliest.
 
 ### Graceful degradation is mandatory
 
-At 10 resources the deadlock surface is real. Every recipe needs a substitution list and a degradation path. Harness test: 200 years with no settlement ever deadlocking.
+At seven resources the deadlock surface is real. Every recipe needs a substitution list and a degradation path. Harness test: 200 years with no settlement ever deadlocking.
 
 ### Seasons
 
@@ -1519,7 +1519,7 @@ Then choose perspective.
 
 **M5 — god powers.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Witnessed attribution and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes) let word of what you did spread and distort. Prove the loop on a touchscreen.
 
-**M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward 10 resources.
+**M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward the full seven resources.
 
 **M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence. Save/load with versioning. Vertical slice.
 
@@ -1556,7 +1556,10 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 5. Movement and collision — do agents block one another?
 6. Resource regeneration rates — forests, game, soil fertility, finite ore
 7. Precise definition of a "major event" for offline halting
-8. Whether a master's tools pass to their apprentice or into the household
+8. ~~Whether a master's tools pass to their apprentice or into the household~~
+   — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78):
+   neither. Tools are checked out from the settlement, not owned, and are
+   destroyed with their holder rather than passed on.
 9. Whether a partially damaged bridge is repaired automatically or needs commissioning
 10. Whether long-lived succession stasis is a feature or needs compensation
 11. Political succession model — hereditary, elected, strongest household, or culture-dependent
