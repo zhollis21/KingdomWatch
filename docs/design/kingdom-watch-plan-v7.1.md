@@ -787,10 +787,10 @@ This feeds decision provenance directly: *"Oakshire declared war — border clai
 **The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
 
 ```
-recipe: iron_tools
-  inputs:  [iron x2, charcoal x1]
-  building: smithy
-  outputs: [iron_tools x1]
+recipe: smelt
+  inputs:  [ore x2, charcoal x1]
+  building: smeltery
+  outputs: [metal x1]
   duration: 60
   substitutes: []
 ```

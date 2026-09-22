@@ -13,9 +13,10 @@ condition, which left #22, #23, #26, #37 and #53 each inventing the piece they
 needed (#78).
 
 **This is a map, not a schema.** Nothing here is implemented. `ResourceKind`,
-`JobKind`, `Recipe` and `PrimitiveTier` are untouched by the change that added
-this file, and the M1 slice — Food, Wood, Stone, gathering only — stands as
-#52 built it.
+`JobKind`, `Recipe` and `PrimitiveTier` keep their enum values and behavior
+exactly as #52 built them — only doc comments citing this document have
+changed, to stay accurate about what's settled. The M1 slice — Food, Wood,
+Stone, gathering only — stands.
 
 **Seven resources, not ten.** §9 estimates "~10" — seven is what earns a
 place on its own merits below, not a target to fill. §9's "~10" is corrected
@@ -47,7 +48,7 @@ the graph inspectable and the deadlock surface small.
 | Grain | *appended later* | 0 | Harvested from a farm plot | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food; no spoilage of its own. |
 | Ore | *appended later* | 0 | Surface nodules and bog iron, later mined | |
 | Charcoal | *appended later* | 1 | Wood, burnt in a pit | The efficient fuel — see §2. No building raises its yield; a pit is a pit. |
-| Metal | *appended later* | 2 | Ore + Charcoal, smelted | §9's `iron_tools` chain. Feeds Tools, Weapons and Armor (§6). |
+| Metal | *appended later* | 2 | Ore + Charcoal, smelted | §9's `smelt` example. Feeds Tools, Weapons and Armor (§6). |
 
 ### Chains
 
@@ -126,7 +127,7 @@ step later, so a settlement that burns all its Wood into Charcoal for the
 smeltery has exactly as little left to heat homes with as one that burned the
 Wood directly — the finite resource is Wood itself, however it ends up being
 spent. **Charcoal has no substitute for smelting** (Metal needs it
-specifically, matching §9's `iron_tools` example), but for heating, Wood is a
+specifically, matching §9's `smelt` example), but for heating, Wood is a
 straightforward if less efficient substitute — which is what keeps Charcoal
 off the single-source-and-critical list in §1.
 
@@ -390,7 +391,7 @@ gates.
 | Farming | Scatter-sown clearing | Farm plot |
 | Masonry | Dry-stone stacking | Quarry and the stone watchtower at apprentice, mine at journeyman, hall and wall at expert |
 | Metalworking | Ore smelted in a campfire pit | Smeltery and smithy, independently |
-| Soldiering | Any untrained adult, weapon in hand | — (no building form, ever) |
+| Soldiering | Any untrained adult, armed or not (§8) | — (no building form, ever) |
 
 A crude form runs the same chain as its building form, worse and slower, and
 that is why only the building form appears in §1's chain table: a
