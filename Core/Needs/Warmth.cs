@@ -94,9 +94,11 @@ namespace KingdomWatch.Core.Needs
         // A list, scanned by id, for the reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
 
-        // One evening's hearths, reused: the households at the fire, sorted by
-        // id, whether each has a dependent in it, and the place each takes in
-        // the lighting order.
+        // One evening's hearths, reused: every living member's seat (their
+        // household, and whether they are a dependent), then the households at
+        // the fire, sorted by id, whether each has a dependent in it, and the
+        // place each takes in the lighting order.
+        private readonly List<Seat> _seats = new List<Seat>();
         private readonly List<EntityId> _hearths = new List<EntityId>();
         private readonly List<bool> _hearthHasDependents = new List<bool>();
         private readonly List<int> _hearthRank = new List<int>();
@@ -120,7 +122,11 @@ namespace KingdomWatch.Core.Needs
         /// <see cref="Work.Jobs"/> can size a woodpile against it at dawn
         /// without depending on this instance. Clears
         /// <paramref name="scratch"/> first; what it leaves there is
-        /// the distinct households, in the order first met.
+        /// the distinct households, in id order.
+        ///
+        /// One sort rather than a membership check per member: a list scan
+        /// per member is members times households, every dawn, and grows
+        /// with the community the way #83's per-pick scan did.
         /// </remarks>
         public static int CountHearths(IReadOnlyList<PersonHandle> members, PersonStore people, List<EntityId> scratch)
         {
@@ -157,13 +163,27 @@ namespace KingdomWatch.Core.Needs
                 {
                     communal = true;
                 }
-                else if (!scratch.Contains(household))
+                else
                 {
                     scratch.Add(household);
                 }
             }
 
-            return scratch.Count + (communal ? 1 : 0);
+            // Sorted, a household's members are adjacent: keep the first of
+            // each run and drop the rest.
+            scratch.Sort();
+            var distinct = 0;
+
+            for (var i = 0; i < scratch.Count; i++)
+            {
+                if (distinct == 0 || scratch[i] != scratch[distinct - 1])
+                {
+                    scratch[distinct++] = scratch[i];
+                }
+            }
+
+            scratch.RemoveRange(distinct, scratch.Count - distinct);
+            return distinct + (communal ? 1 : 0);
         }
 
         /// <summary>
@@ -363,8 +383,11 @@ namespace KingdomWatch.Core.Needs
         // ranks them: households with a dependent first, then the rest, each
         // in id order. Returns whether anyone living is in no household and
         // so sits at the communal fire, which ranks after every hearth.
+        // Collect, sort once, then walk the runs - for the reason
+        // CountHearths does rather than an insertion per new household.
         private bool GatherHearths(IReadOnlyList<PersonHandle> members)
         {
+            _seats.Clear();
             _hearths.Clear();
             _hearthHasDependents.Clear();
             _hearthRank.Clear();
@@ -387,22 +410,27 @@ namespace KingdomWatch.Core.Needs
                     continue;
                 }
 
-                var dependent = AgeStages.IsDependent(_people.GetAgeStage(member));
-                var at = _hearths.BinarySearch(household);
+                _seats.Add(new Seat(household, AgeStages.IsDependent(_people.GetAgeStage(member))));
+            }
 
-                if (at >= 0)
+            // Seats compare by household alone, so a household's seats are
+            // adjacent whatever order the sort leaves them in, and the flag
+            // is an OR over the run, which no order changes.
+            _seats.Sort();
+
+            for (var i = 0; i < _seats.Count; i++)
+            {
+                var seat = _seats[i];
+                var last = _hearths.Count - 1;
+
+                if (last >= 0 && _hearths[last] == seat.Household)
                 {
-                    _hearthHasDependents[at] |= dependent;
+                    _hearthHasDependents[last] |= seat.IsDependent;
                     continue;
                 }
 
-                at = ~at;
-                _hearths.Insert(at, household);
-                _hearthHasDependents.Insert(at, dependent);
-            }
-
-            for (var i = 0; i < _hearths.Count; i++)
-            {
+                _hearths.Add(seat.Household);
+                _hearthHasDependents.Add(seat.IsDependent);
                 _hearthRank.Add(0);
             }
 
@@ -498,6 +526,23 @@ namespace KingdomWatch.Core.Needs
             }
 
             return -1;
+        }
+
+        // One living member at the fire: which hearth, and whether they are
+        // one of the dependents who put it first in the lighting order.
+        private readonly struct Seat : IComparable<Seat>
+        {
+            public Seat(EntityId household, bool isDependent)
+            {
+                Household = household;
+                IsDependent = isDependent;
+            }
+
+            public EntityId Household { get; }
+
+            public bool IsDependent { get; }
+
+            public int CompareTo(Seat other) => Household.CompareTo(other.Household);
         }
 
         private sealed class Tracked

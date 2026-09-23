@@ -441,6 +441,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             var birthday = w.BirthdayOf(person, 31L);
 
             w.AdvanceTo(birthday.Plus(-1L));
+
+            // The band's daily meals keep her fed - NewBand tracks Hunger with
+            // plenty of food - so the only thing wrong is the cold.
+            Assert.That(
+                w.People.GetLastFedAt(person).TicksUntil(w.Clock.Now), Is.LessThanOrEqualTo(Hunger.StarvationGrace),
+                "fed, so a zero-health birthday can only be the cold");
+
             w.People.SetHealth(person, 0);
             w.People.SetLastWarmedAt(person, SimulationTime.Zero);
             w.Advance(1L);

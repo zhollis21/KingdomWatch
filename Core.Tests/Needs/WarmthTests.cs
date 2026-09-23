@@ -272,6 +272,52 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void The_lighting_order_does_not_depend_on_the_order_members_are_listed()
+        {
+            // Four households formed oldest first, their members then listed
+            // youngest household first and interleaved, with the two families
+            // with a child in the middle. Hearths still count once each, and
+            // light children's homes first, then the rest oldest first.
+            var world = new World();
+            var staging = world.NewBand(0);
+            var oldCouple = world.NewFamily(staging, withChild: false, out var oldWife, out var oldHusband);
+            var firstFamily = world.NewFamily(staging, withChild: true, out var firstMother, out _);
+            var youngCouple = world.NewFamily(staging, withChild: false, out var youngWife, out var youngHusband);
+            var secondFamily = world.NewFamily(staging, withChild: true, out var secondMother, out _);
+
+            var band = world.NewBand(0);
+
+            for (var i = staging.Members.Count - 1; i >= 0; i--)
+            {
+                band.AddMember(staging.Members[i]);
+            }
+
+            band.RemoveMember(youngHusband);
+            band.AddMember(youngHusband);
+            band.RemoveMember(oldHusband);
+            band.AddMember(oldHusband);
+            world.Warmth.Track(band);
+
+            var scratch = new List<EntityId>();
+            var hearths = Warmth.CountHearths(band.Members, world.People, scratch);
+
+            world.AdvanceTo(FirstWinterNight.Plus(-1L));
+            band.SharedSupplies.Gather(ResourceKind.Wood, 3 * Warmth.FuelPerFire);
+            world.AdvanceTo(FirstWinterNight);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(hearths, Is.EqualTo(4));
+                Assert.That(scratch, Is.EqualTo(new[] { oldCouple.Id, firstFamily.Id, youngCouple.Id, secondFamily.Id }), "distinct, in id order");
+                Assert.That(world.People.GetLastWarmedAt(firstMother), Is.EqualTo(FirstWinterNight));
+                Assert.That(world.People.GetLastWarmedAt(secondMother), Is.EqualTo(FirstWinterNight));
+                Assert.That(world.People.GetLastWarmedAt(oldWife), Is.EqualTo(FirstWinterNight), "the older childless household next");
+                Assert.That(world.People.GetLastWarmedAt(youngWife), Is.LessThan(FirstWinterNight), "the younger one is out of wood");
+                Assert.That(world.People.GetLastWarmedAt(youngHusband), Is.LessThan(FirstWinterNight));
+            });
+        }
+
+        [Test]
         public void Cold_costs_health_only_past_the_grace_period()
         {
             var world = new World();

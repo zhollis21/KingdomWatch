@@ -22,9 +22,9 @@ namespace KingdomWatch.Core.Data
     ///
     /// **Foraging follows the seasons; nothing else does** (#53). Section 9's
     /// "famine is a timing problem" needs the one food source to be lean for
-    /// part of the year, so <see cref="Forage"/> is the spring yield and
-    /// <see cref="ForageIn"/> gives each season's: a richer summer and
-    /// autumn, a thin winter. Deadfall and surface stone are there all year.
+    /// part of the year. <see cref="Forage"/> is the spring yield, and
+    /// <see cref="ForageIn"/> returns the recipe for any season: richer in
+    /// summer and autumn, thin in winter. Deadfall and surface stone are there all year.
     /// A season's recipe differs from the others only in its output, so a
     /// task's duration never depends on when it starts.
     ///
@@ -78,18 +78,18 @@ namespace KingdomWatch.Core.Data
         // Indexed by Season.
         private static readonly Recipe[] ForageBySeason = { Forage, ForageSummer, ForageAutumn, ForageWinter };
 
+        private static readonly bool[] DefinedSeasons = EnumGuard.BuildMask(typeof(Season));
+
         /// <summary>The foraging recipe for a season.</summary>
         /// <exception cref="ArgumentOutOfRangeException">Not a defined season.</exception>
         public static Recipe ForageIn(Season season)
         {
-            var index = (int)season;
-
-            if (index < 0 || index >= ForageBySeason.Length)
+            if (!EnumGuard.IsDefined(DefinedSeasons, (int)season))
             {
                 throw new ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
             }
 
-            return ForageBySeason[index];
+            return ForageBySeason[(int)season];
         }
 
         private static Recipe ForageYielding(string name, int food) => new Recipe(

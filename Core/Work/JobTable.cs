@@ -25,6 +25,7 @@ namespace KingdomWatch.Core.Work
     {
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(JobKind));
         private static readonly bool[] DefinedTerrain = EnumGuard.BuildMask(typeof(TerrainKind));
+        private static readonly bool[] DefinedSeasons = EnumGuard.BuildMask(typeof(Season));
 
         // WorksOn as a mask per job, built once, for the pathfinder's nearest
         // search. Indexed by JobKind; None's slot is an empty mask nobody asks for.
@@ -49,7 +50,7 @@ namespace KingdomWatch.Core.Work
         /// </exception>
         public static Recipe Recipe(JobKind job, Season season)
         {
-            if (season > Season.Winter)
+            if (!EnumGuard.IsDefined(DefinedSeasons, (int)season))
             {
                 throw new ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
             }
