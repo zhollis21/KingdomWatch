@@ -20,8 +20,8 @@ namespace KingdomWatch.Core.Settlements
     /// </summary>
     /// <remarks>
     /// The handover is the whole job. <see cref="Deaths"/>,
-    /// <see cref="Fertility"/>, <see cref="Hunger"/>, <see cref="Jobs"/> and
-    /// <see cref="Matchmaking"/> each see an <see cref="ICommunity"/>, so
+    /// <see cref="Fertility"/>, <see cref="Hunger"/>, <see cref="Warmth"/>,
+    /// <see cref="Jobs"/> and <see cref="Matchmaking"/> each see an <see cref="ICommunity"/>, so
     /// founding is an <c>Untrack</c> and a <c>Track</c> on each rather than
     /// any of them learning what a settlement is. Order matters only in that
     /// the settlement is fully populated and stocked before anything is
@@ -62,6 +62,7 @@ namespace KingdomWatch.Core.Settlements
         private readonly Deaths _deaths;
         private readonly Fertility _fertility;
         private readonly Hunger _hunger;
+        private readonly Warmth _warmth;
         private readonly Jobs _jobs;
         private readonly Matchmaking _matchmaking;
         private readonly KnownMaps _knownMaps;
@@ -74,6 +75,7 @@ namespace KingdomWatch.Core.Settlements
             Deaths deaths,
             Fertility fertility,
             Hunger hunger,
+            Warmth warmth,
             Jobs jobs,
             Matchmaking matchmaking,
             KnownMaps knownMaps)
@@ -82,6 +84,7 @@ namespace KingdomWatch.Core.Settlements
             _deaths = deaths ?? throw new ArgumentNullException(nameof(deaths));
             _fertility = fertility ?? throw new ArgumentNullException(nameof(fertility));
             _hunger = hunger ?? throw new ArgumentNullException(nameof(hunger));
+            _warmth = warmth ?? throw new ArgumentNullException(nameof(warmth));
             _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
             _matchmaking = matchmaking ?? throw new ArgumentNullException(nameof(matchmaking));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
@@ -145,6 +148,7 @@ namespace KingdomWatch.Core.Settlements
             _deaths.Untrack(band);
             _fertility.Untrack(band);
             _hunger.Untrack(band);
+            _warmth.Untrack(band);
             _matchmaking.Untrack(band);
 
             var settlement = new Settlement(_clock.Ids.Next(EntityKind.Settlement), band.Position);
@@ -193,6 +197,7 @@ namespace KingdomWatch.Core.Settlements
             _deaths.Track(settlement);
             _fertility.Track(settlement);
             _hunger.Track(settlement, inFamine);
+            _warmth.Track(settlement);
             _jobs.Track(settlement);
             _matchmaking.Track(settlement);
 
@@ -218,10 +223,10 @@ namespace KingdomWatch.Core.Settlements
         private void RequireTrackedEverywhere(MobileGroup band)
         {
             if (!_jobs.IsTracked(band) || !_deaths.IsTracked(band) || !_fertility.IsTracked(band)
-                || !_hunger.IsTracked(band) || !_matchmaking.IsTracked(band))
+                || !_hunger.IsTracked(band) || !_warmth.IsTracked(band) || !_matchmaking.IsTracked(band))
             {
                 throw new InvalidOperationException(
-                    band.Id + " is not on every tracker a settlement takes over from; founding hands over all five or none.");
+                    band.Id + " is not on every tracker a settlement takes over from; founding hands over all six or none.");
             }
         }
 

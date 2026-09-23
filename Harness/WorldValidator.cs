@@ -312,8 +312,8 @@ namespace KingdomWatch.Harness
         /// <param name="communities">
         /// Every band and settlement in the world. Most scheduled kinds are
         /// owned by a community rather than by a person - work days, meals,
-        /// courtship rounds, councils, arrivals - so without these the
-        /// majority of the queue's targets go unexamined.
+        /// evening fires, courtship rounds, councils, arrivals - so without
+        /// these the majority of the queue's targets go unexamined.
         /// </param>
         /// <param name="households">The registry a <c>BirthCheck</c> is booked against.</param>
         public WorldValidator CheckSchedule(
@@ -363,7 +363,8 @@ namespace KingdomWatch.Harness
         /// <see cref="CheckSchedule"/> asks this of the three ids a
         /// <see cref="PersonRecord"/> carries. The periodic streams keep the
         /// same kind of record for the communities they run for - a work day,
-        /// a meal, a courtship round, a council, an arrival, a birth check -
+        /// a meal, an evening's fires, a courtship round, a council, an
+        /// arrival, a birth check -
         /// and those are what this covers. A booking the queue has forgotten
         /// is a stream that has silently stopped; the owner is waiting for a
         /// wake-up that is never coming, and nothing else says so.
@@ -498,7 +499,7 @@ namespace KingdomWatch.Harness
         /// Distinct from <see cref="CheckCommunities"/>, which asks where
         /// people physically are and so refuses to see anyone twice. A
         /// community is legitimately tracked by several systems at once - a
-        /// band has work days, meals, birth checks and courtship all booked
+        /// band has work days, meals, fires, birth checks and courtship all booked
         /// against it - so this rule is only about the members resolving, and
         /// is called once per system with that system's own tracked set.
         /// </remarks>

@@ -35,7 +35,9 @@ namespace KingdomWatch.Core.Clock
     /// 200-year run is 24,000 days rather than 73,000. Day-scale numbers
     /// (gestation, a hunger grace period) are tuned to feel right against
     /// that year, not to match a calendar. The season split on top of it
-    /// is #53's. See docs/design/kingdom-watch-plan-v7.1.md section 4.
+    /// (#53) is read off the time rather than stored - see
+    /// <see cref="Clock.Season"/>. See docs/design/kingdom-watch-plan-v7.1.md
+    /// section 4.
     /// </remarks>
     public readonly struct SimulationTime : IEquatable<SimulationTime>, IComparable<SimulationTime>
     {
@@ -45,6 +47,8 @@ namespace KingdomWatch.Core.Clock
         public const long TicksPerDay = 24L * TicksPerHour;
         public const long DaysPerYear = 120L;
         public const long TicksPerYear = DaysPerYear * TicksPerDay;
+        public const long SeasonsPerYear = 4L;
+        public const long DaysPerSeason = DaysPerYear / SeasonsPerYear;
 
         /// <summary>The start of the world. Equal to <c>default</c>.</summary>
         public static readonly SimulationTime Zero = default;
@@ -71,6 +75,24 @@ namespace KingdomWatch.Core.Clock
 
         /// <summary>Whole years elapsed. Year 0 is the first year.</summary>
         public long YearNumber => Ticks / TicksPerYear;
+
+        /// <summary>Whole days elapsed within <see cref="YearNumber"/>, from 0.</summary>
+        public long DayOfYear => DayNumber % DaysPerYear;
+
+        /// <summary>The season this instant falls in. Day 0 is the first day of spring.</summary>
+        public Season Season => (Season)(DayOfYear / DaysPerSeason);
+
+        /// <summary>Whole days elapsed within <see cref="Season"/>, from 0.</summary>
+        public long DayOfSeason => DayOfYear % DaysPerSeason;
+
+        /// <summary>
+        /// Whole days from the start of today to the next first day of
+        /// spring: today counts, so the last day of winter is one and the
+        /// first day of spring is zero. Past the first day of spring it is
+        /// next year's spring, most of a year away - the number the lean
+        /// season's look-ahead reads in autumn and winter (#53).
+        /// </summary>
+        public long DaysUntilSpring => (DaysPerYear - DayOfYear) % DaysPerYear;
 
         public static SimulationTime FromSeconds(long seconds) =>
             new SimulationTime(Scale(seconds, TicksPerSecond, nameof(seconds)));
@@ -139,6 +161,18 @@ namespace KingdomWatch.Core.Clock
                 + ":" + Pad(tickOfDay % TicksPerMinute)
                 + " (tick " + Ticks.ToString(CultureInfo.InvariantCulture) + ")";
         }
+
+        /// <summary>
+        /// The date as a chronicle prints it: "day 7 of Spring, year 12".
+        /// Ordinal, where <see cref="ToString"/> is a count - the first day of
+        /// the world is day 1 of Spring, year 1. No wall clock and no tick:
+        /// this is for reading, and <see cref="ToString"/> stays the form a
+        /// bug report quotes.
+        /// </summary>
+        public string ToCalendarString() =>
+            "day " + (DayOfSeason + 1L).ToString(CultureInfo.InvariantCulture)
+            + " of " + Season
+            + ", year " + (YearNumber + 1L).ToString(CultureInfo.InvariantCulture);
 
         public static bool operator ==(SimulationTime left, SimulationTime right) => left.Equals(right);
 

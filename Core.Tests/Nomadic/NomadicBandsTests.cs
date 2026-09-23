@@ -199,6 +199,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
             w.Deaths.Track(band);
             w.Hunger.Track(band);
+            w.Warmth.Track(band);
             w.Jobs.Track(band);
             w.Nomads.Track(band);
             w.JoinAdults(band, 60);
@@ -214,6 +215,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(band.Members, Has.Count.GreaterThan(0), "nobody moved");
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Warmth.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
             });
 
@@ -425,8 +427,10 @@ namespace KingdomWatch.Core.Tests.Nomadic
         {
             var w = new WorkWorld();
             // Sixty people: the largest starting band, and the one section 15
-            // expects to settle first. Nobody has to work - the food lasts.
-            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(60) * 4);
+            // expects to settle first. Nobody has to work - the food and the
+            // wood last, the coming winter's included.
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(60) * 5);
+            band.SharedSupplies.Gather(ResourceKind.Wood, WorkWorld.PlentifulWood);
             var adults = w.JoinAdults(band, 60);
             var councilsToSettle = (NomadicBands.SettlingPressure + 59) / 60;
 
@@ -459,9 +463,12 @@ namespace KingdomWatch.Core.Tests.Nomadic
         public void A_band_under_pressure_at_land_that_fails_does_not_settle()
         {
             // Plains only: food underfoot, no wood anywhere. Pressure alone
-            // is not enough, and every hop lands on the same plains.
+            // is not enough, and every hop lands on the same plains. The band
+            // carries a woodpile so that its winters are not the subject: a
+            // band with no wood at all freezes, and the dead add no pressure.
             var w = new WorkWorld(1UL, WorkWorld.PlainsOnly());
             var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(60) * 4);
+            band.SharedSupplies.Gather(ResourceKind.Wood, WorkWorld.PlentifulWood);
             w.JoinAdults(band, 60);
             var councilsToPressure = (NomadicBands.SettlingPressure + 59) / 60;
 

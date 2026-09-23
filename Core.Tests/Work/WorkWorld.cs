@@ -53,10 +53,12 @@ namespace KingdomWatch.Core.Tests.Work
             ulong seed, TerrainGrid grid, DemographicSettings settings, IRandomDrawObserver? observer = null)
         {
             Demographics = new DemographicWorld(settings, seed, grid, observer);
+            Warmth = new Warmth(Clock, People);
             Founding = new Founding(
-                Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Jobs, Demographics.Matchmaking, KnownMaps);
+                Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Warmth, Jobs, Demographics.Matchmaking, KnownMaps);
             Nomads = new NomadicBands(
                 Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng, KnownMaps);
+            Router.Register(ScheduledEventKind.WarmthDue, Warmth);
             Router.Register(ScheduledEventKind.WorkDayDue, Jobs);
             Router.Register(ScheduledEventKind.TaskCompleted, Jobs);
             Router.Register(ScheduledEventKind.CouncilDue, Nomads);
@@ -105,6 +107,10 @@ namespace KingdomWatch.Core.Tests.Work
 
         internal Hunger Hunger => Demographics.Hunger;
 
+        // Here rather than in DemographicWorld: a world that works can cut
+        // the wood a winter burns, and one that only lives and dies cannot.
+        internal Warmth Warmth { get; }
+
         internal SimulationTime Now => Clock.Now;
 
         // A band standing at a position, tracked by everything that tracks
@@ -135,6 +141,7 @@ namespace KingdomWatch.Core.Tests.Work
             Deaths.Track(band);
             Demographics.Fertility.Track(band);
             Hunger.Track(band);
+            Warmth.Track(band);
             Jobs.Track(band);
             Demographics.Matchmaking.Track(band);
 
@@ -161,6 +168,7 @@ namespace KingdomWatch.Core.Tests.Work
             Deaths.Track(band);
             Demographics.Fertility.Track(band);
             Hunger.Track(band);
+            Warmth.Track(band);
             Jobs.Track(band);
             Demographics.Matchmaking.Track(band);
             Nomads.Track(band);
@@ -188,6 +196,11 @@ namespace KingdomWatch.Core.Tests.Work
 
         // Enough food that nobody forages for the length of any test here.
         internal static int PlentifulFood(int members) => members * Hunger.DailyRation * (Jobs.FoodTargetDays + 100);
+
+        // Wood enough that no season's woodpile target is ever reached for:
+        // Jobs.WoodCap plus a winter of fires for more hearths than any
+        // fixture holds. For the fixtures whose subject is not the cold.
+        internal const int PlentifulWood = Jobs.WoodCap + (100 * Warmth.FuelPerFire * (int)SimulationTime.DaysPerSeason);
 
         internal SimulationTime Today(long tickOfDay) => new SimulationTime(Now.Ticks - Now.TickOfDay + tickOfDay);
 

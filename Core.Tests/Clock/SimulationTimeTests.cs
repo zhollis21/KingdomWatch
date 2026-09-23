@@ -275,5 +275,64 @@ namespace KingdomWatch.Core.Tests.Clock
                 Assert.That(SimulationTime.Zero.ToString(), Is.EqualTo("day 0 00:00:00 (tick 0)"));
             });
         }
+
+        [Test]
+        public void A_year_is_four_seasons_of_thirty_days_starting_in_spring()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(SimulationTime.SeasonsPerYear, Is.EqualTo(4L));
+                Assert.That(SimulationTime.DaysPerSeason, Is.EqualTo(30L));
+                Assert.That(SimulationTime.DaysPerSeason * SimulationTime.SeasonsPerYear, Is.EqualTo(SimulationTime.DaysPerYear));
+                Assert.That(SimulationTime.Zero.Season, Is.EqualTo(Season.Spring));
+                Assert.That(SimulationTime.FromDays(29L).Season, Is.EqualTo(Season.Spring));
+                Assert.That(SimulationTime.FromDays(30L).Season, Is.EqualTo(Season.Summer));
+                Assert.That(SimulationTime.FromDays(60L).Season, Is.EqualTo(Season.Autumn));
+                Assert.That(SimulationTime.FromDays(90L).Season, Is.EqualTo(Season.Winter));
+                Assert.That(SimulationTime.FromDays(119L).Season, Is.EqualTo(Season.Winter));
+                Assert.That(SimulationTime.FromDays(120L).Season, Is.EqualTo(Season.Spring), "and round again");
+                Assert.That(SimulationTime.FromDays(90L).Plus(-1L).Season, Is.EqualTo(Season.Autumn), "a season turns at midnight");
+            });
+        }
+
+        [Test]
+        public void Day_of_year_and_day_of_season_count_from_zero_within_the_year()
+        {
+            var time = SimulationTime.FromYears(3L).Plus((97L * SimulationTime.TicksPerDay) + SimulationTime.TicksPerHour);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(time.YearNumber, Is.EqualTo(3L));
+                Assert.That(time.DayOfYear, Is.EqualTo(97L));
+                Assert.That(time.Season, Is.EqualTo(Season.Winter));
+                Assert.That(time.DayOfSeason, Is.EqualTo(7L));
+            });
+        }
+
+        [Test]
+        public void Days_until_spring_counts_today_and_is_zero_on_the_first_day_of_spring()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(SimulationTime.FromDays(119L).DaysUntilSpring, Is.EqualTo(1L), "the last day of winter");
+                Assert.That(SimulationTime.FromDays(90L).DaysUntilSpring, Is.EqualTo(30L), "the first day of winter");
+                Assert.That(SimulationTime.FromDays(60L).DaysUntilSpring, Is.EqualTo(60L));
+                Assert.That(SimulationTime.FromDays(120L).DaysUntilSpring, Is.Zero);
+                Assert.That(SimulationTime.FromDays(121L).DaysUntilSpring, Is.EqualTo(119L), "next year's spring");
+            });
+        }
+
+        [Test]
+        public void The_calendar_date_is_ordinal_and_names_the_season()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(SimulationTime.Zero.ToCalendarString(), Is.EqualTo("day 1 of Spring, year 1"));
+                Assert.That(
+                    SimulationTime.FromYears(11L).Plus((36L * SimulationTime.TicksPerDay) + SimulationTime.TicksPerHour).ToCalendarString(),
+                    Is.EqualTo("day 7 of Summer, year 12"));
+                Assert.That(SimulationTime.FromDays(119L).ToCalendarString(), Is.EqualTo("day 30 of Winter, year 1"));
+            });
+        }
     }
 }

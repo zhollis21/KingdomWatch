@@ -25,13 +25,14 @@ namespace KingdomWatch.Core.Tests.Settlements
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Founding(null!, w.Deaths, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, null!, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, null!, w.Hunger, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, null!, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, null!, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Jobs, null!, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Jobs, d.Matchmaking, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(null!, w.Deaths, d.Fertility, w.Hunger, w.Warmth, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, null!, d.Fertility, w.Hunger, w.Warmth, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, null!, w.Hunger, w.Warmth, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, null!, w.Warmth, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, null!, w.Jobs, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, null!, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, w.Jobs, null!, w.KnownMaps), Throws.ArgumentNullException);
+                Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, w.Jobs, d.Matchmaking, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -92,12 +93,15 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(() => w.Deaths.Untrack(band), Throws.InvalidOperationException);
                 Assert.That(() => d.Fertility.Untrack(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Hunger.DaysOfFood(band), Throws.InvalidOperationException);
+                Assert.That(w.Warmth.IsTracked(band), Is.False);
+                Assert.That(w.Warmth.IsTracked(settlement), Is.True);
                 Assert.That(() => w.Jobs.HasSite(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => d.Matchmaking.Untrack(band), Throws.InvalidOperationException);
                 Assert.That(w.Hunger.DaysOfFood(settlement), Is.Zero);
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
                 Assert.That(d.Fertility.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Warmth.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Jobs.TrackedCount, Is.EqualTo(1));
                 Assert.That(d.Matchmaking.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending), "each cancelled stream was rebooked for the settlement");
@@ -181,6 +185,7 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Demographics.Fertility.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Hunger.TrackedCount, Is.EqualTo(1));
+                Assert.That(w.Warmth.TrackedCount, Is.EqualTo(1));
                 Assert.That(w.Demographics.Matchmaking.TrackedCount, Is.EqualTo(1));
             });
         }
@@ -188,7 +193,7 @@ namespace KingdomWatch.Core.Tests.Settlements
         [Test]
         public void Founding_refuses_a_band_missing_from_any_tracker_before_touching_anything()
         {
-            // Five trackers, five ways to be missing from one. Each refusal
+            // Six trackers, six ways to be missing from one. Each refusal
             // leaves every other tracker holding the band, so a retry after
             // the wiring is fixed can succeed.
             var w = new WorkWorld();
@@ -200,6 +205,7 @@ namespace KingdomWatch.Core.Tests.Settlements
                 b => w.Deaths.Track(b),
                 b => d.Fertility.Track(b),
                 b => w.Hunger.Track(b),
+                b => w.Warmth.Track(b),
                 b => d.Matchmaking.Track(b),
             };
 
@@ -218,7 +224,7 @@ namespace KingdomWatch.Core.Tests.Settlements
                 }
 
                 var tracked = w.Jobs.TrackedCount + w.Deaths.TrackedCount + d.Fertility.TrackedCount
-                    + w.Hunger.TrackedCount + d.Matchmaking.TrackedCount;
+                    + w.Hunger.TrackedCount + w.Warmth.TrackedCount + d.Matchmaking.TrackedCount;
 
                 Assert.That(() => w.Founding.Found(band, Why), Throws.InvalidOperationException, "tracker " + missing + " missing");
 
@@ -226,7 +232,7 @@ namespace KingdomWatch.Core.Tests.Settlements
                 {
                     Assert.That(
                         w.Jobs.TrackedCount + w.Deaths.TrackedCount + d.Fertility.TrackedCount
-                        + w.Hunger.TrackedCount + d.Matchmaking.TrackedCount,
+                        + w.Hunger.TrackedCount + w.Warmth.TrackedCount + d.Matchmaking.TrackedCount,
                         Is.EqualTo(tracked), "nothing untracked when tracker " + missing + " was missing");
                     Assert.That(band.Members, Has.Count.EqualTo(1), "nobody moved when tracker " + missing + " was missing");
                     Assert.That(w.Founding.All, Is.Empty);

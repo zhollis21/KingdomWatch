@@ -178,6 +178,7 @@ namespace KingdomWatch.Core.Data
                 BirthCulture = birthCulture,
                 Assimilation = assimilation,
                 LastFedAt = lastFedAt,
+                LastWarmedAt = lastFedAt,
                 BornTick = bornTick,
                 PregnancyDue = EventId.None,
                 PendingMortalityCheck = EventId.None,
@@ -288,6 +289,11 @@ namespace KingdomWatch.Core.Data
 
         public void SetLastFedAt(PersonHandle handle, SimulationTime value) =>
             _people[SlotFor(handle)].LastFedAt = value;
+
+        public SimulationTime GetLastWarmedAt(PersonHandle handle) => _people[SlotFor(handle)].LastWarmedAt;
+
+        public void SetLastWarmedAt(PersonHandle handle, SimulationTime value) =>
+            _people[SlotFor(handle)].LastWarmedAt = value;
 
         public long GetBornTick(PersonHandle handle) => _people[SlotFor(handle)].BornTick;
 

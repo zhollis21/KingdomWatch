@@ -104,6 +104,16 @@ namespace KingdomWatch.Core.Data
         public Clock.SimulationTime LastFedAt;
 
         /// <summary>
+        /// When this person last slept by a lit fire. Written by
+        /// <see cref="Needs.Warmth"/> each evening - every evening outside
+        /// winter, and in winter only when their hearth is lit; how long ago
+        /// it was is what exposure integrates over, as
+        /// <see cref="LastFedAt"/> is for hunger (#53). Starts at
+        /// <see cref="LastFedAt"/>'s value, so a person is not born cold.
+        /// </summary>
+        public Clock.SimulationTime LastWarmedAt;
+
+        /// <summary>
         /// When this person was born, in ticks since the start of the world -
         /// negative for a founder born before it. Set at birth and never
         /// changed; age is the distance from here to now, computed when

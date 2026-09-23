@@ -179,6 +179,79 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void The_winter_ahead_is_none_in_spring_a_whole_one_through_autumn_and_what_is_left_of_it_in_winter()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.Zero), Is.Zero);
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(29L)), Is.Zero);
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(30L)), Is.EqualTo(SimulationTime.DaysPerSeason));
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(89L)), Is.EqualTo(SimulationTime.DaysPerSeason));
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(90L)), Is.EqualTo(SimulationTime.DaysPerSeason), "today counts");
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(119L)), Is.EqualTo(1L));
+                Assert.That(Jobs.WinterDaysAhead(SimulationTime.FromDays(120L)), Is.Zero);
+            });
+        }
+
+        [TestCase(0L, JobKind.Woodcutter, TestName = "In spring twenty days of food is plenty")]
+        [TestCase(30L, JobKind.Forager, TestName = "From summer twenty days of food is short of the winter ahead")]
+        public void From_summer_the_food_target_carries_the_coming_winter(long startDay, JobKind expected)
+        {
+            // Two people draw six a day, so 120 is twenty days: past the
+            // ten-day target in spring, well short of ten plus a winter's
+            // thirty once summer starts.
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(startDay));
+            var band = w.NewBand(WorkWorld.Camp, 120);
+            var first = w.Join(band, 30L);
+            w.Join(band, 31L);
+
+            w.AdvanceToDawn();
+
+            Assert.That(w.People.GetJob(first), Is.EqualTo(expected));
+        }
+
+        [TestCase(0L, 0, JobKind.StoneGatherer, TestName = "In spring the woodpile stops at the cap")]
+        [TestCase(30L, 0, JobKind.Woodcutter, TestName = "From summer the woodpile also holds a winter of fires")]
+        [TestCase(30L, 30, JobKind.StoneGatherer, TestName = "A winter of fires on top of the cap is enough")]
+        public void From_summer_the_wood_target_carries_a_winter_of_fires(long startDay, int beyondCap, JobKind expected)
+        {
+            // One person in no household: one communal fire, so a winter is
+            // thirty fires' worth of wood on top of the cap.
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(startDay));
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodCap + (beyondCap * Warmth.FuelPerFire));
+            var adult = w.Join(band, 30L);
+
+            w.AdvanceToDawn();
+
+            Assert.That(w.People.GetJob(adult), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void A_winter_forager_brings_home_the_winter_yield()
+        {
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason));
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var adult = w.Join(band, 30L);
+
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+            w.AdvanceTo(task.Start.Plus(task.TravelTicks + task.WorkTicks + task.ReturnTicks));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(task.Job, Is.EqualTo(JobKind.Forager));
+                Assert.That(task.WorkTicks, Is.EqualTo(PrimitiveTier.ForageWinter.Duration));
+                Assert.That(
+                    band.SharedSupplies.Flows(ResourceKind.Food).Gathered,
+                    Is.EqualTo((long)PrimitiveTier.ForageWinter.Outputs[0].Quantity));
+            });
+        }
+
+        [Test]
         public void What_is_on_its_way_home_counts_toward_the_food_target()
         {
             // Two people draw six a day; ten days is sixty. With 57 in store
@@ -925,6 +998,10 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.LessThanOrEqualTo(Jobs.WoodCap + PrimitiveTier.GatherWood.Outputs[0].Quantity * 30), "and stopped near the cap");
                 Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
                 Assert.That(w.Hunger.IsInFamine(band), Is.False);
+                Assert.That(
+                    w.Demographics.Published(DomainEventKind.PersonDied).FindAll(d => d.Reasons.Contains(ReasonCode.Froze)),
+                    Is.Empty,
+                    "and nobody froze: the woodpile carried the winter too");
             });
         }
 

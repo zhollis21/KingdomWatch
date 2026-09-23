@@ -22,8 +22,9 @@ namespace KingdomWatch.Core.Nomadic
     /// <remarks>
     /// Section 15's nomadic mode: movement, temporary camps, and a settling
     /// trigger driven by band size, land quality and seasonal pressure.
-    /// Foraging is <see cref="Jobs"/>'s. Seasons are #53's, so the trigger
-    /// here reads size and land only.
+    /// Foraging is <see cref="Jobs"/>'s. Seasons exist (#53), but feeding
+    /// them to the council is #96, so the trigger here reads size and land
+    /// only.
     ///
     /// **The council sits at <see cref="FirstLight"/>, an hour before the
     /// work pass.** Nobody is out - every task ends by dusk and none starts

@@ -1,3 +1,4 @@
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
@@ -16,6 +17,26 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(JobTable.Recipe(JobKind.Forager), Is.SameAs(PrimitiveTier.Forage));
                 Assert.That(JobTable.Recipe(JobKind.Woodcutter), Is.SameAs(PrimitiveTier.GatherWood));
                 Assert.That(JobTable.Recipe(JobKind.StoneGatherer), Is.SameAs(PrimitiveTier.GatherStone));
+            });
+        }
+
+        [Test]
+        public void Only_foraging_changes_with_the_season()
+        {
+            Assert.Multiple(() =>
+            {
+                foreach (Season season in System.Enum.GetValues(typeof(Season)))
+                {
+                    Assert.That(JobTable.Recipe(JobKind.Forager, season), Is.SameAs(PrimitiveTier.ForageIn(season)), season.ToString());
+                    Assert.That(JobTable.Recipe(JobKind.Woodcutter, season), Is.SameAs(PrimitiveTier.GatherWood), season.ToString());
+                    Assert.That(JobTable.Recipe(JobKind.StoneGatherer, season), Is.SameAs(PrimitiveTier.GatherStone), season.ToString());
+                }
+
+                Assert.That(JobTable.Recipe(JobKind.Forager), Is.SameAs(JobTable.Recipe(JobKind.Forager, Season.Spring)));
+                Assert.That(
+                    () => JobTable.Recipe(JobKind.Woodcutter, (Season)4), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(
+                    () => JobTable.Recipe(JobKind.None, Season.Winter), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
         }
 

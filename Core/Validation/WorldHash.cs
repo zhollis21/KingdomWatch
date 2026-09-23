@@ -130,6 +130,7 @@ namespace KingdomWatch.Core.Validation
                 Mix(record.BirthCulture);
                 Mix(record.Assimilation);
                 Mix(record.LastFedAt.Ticks);
+                Mix(record.LastWarmedAt.Ticks);
                 Mix((long)record.Job);
                 Mix(record.Household);
                 Mix(record.PregnancyDue);

@@ -12,9 +12,10 @@ namespace KingdomWatch.Core.Lifecycle
     /// <see cref="ScheduledEventKind.MortalityCheck"/> - each person's yearly
     /// roll against the life table, on their birthday - and answers
     /// <see cref="ScheduledEventKind.StarvationCritical"/>, the crossing
-    /// <see cref="Hunger"/> raises when a missed meal takes someone to zero.
-    /// Both end in <see cref="Deaths.Die"/>; the cascade is not repeated
-    /// here.
+    /// <see cref="Hunger"/> raises when a missed meal takes someone to zero,
+    /// and <see cref="ScheduledEventKind.ExposureCritical"/>, the one
+    /// <see cref="Warmth"/> raises for a cold night (#53). All three end in
+    /// <see cref="Deaths.Die"/>; the cascade is not repeated here.
     /// </summary>
     /// <remarks>
     /// **Once a year, not every tick.** Section 6: "every second, roll chance
@@ -51,8 +52,9 @@ namespace KingdomWatch.Core.Lifecycle
     /// **Why a death says what it does.** The table does not know what
     /// killed anyone, so the reason is read off the age: past the soft
     /// lifespan it is <see cref="ReasonCode.OldAge"/>, before it
-    /// <see cref="ReasonCode.Illness"/>, and a starvation crossing is
-    /// <see cref="ReasonCode.Starved"/>. Emitted at the decision site, as
+    /// <see cref="ReasonCode.Illness"/>, a starvation crossing is
+    /// <see cref="ReasonCode.Starved"/> and an exposure crossing
+    /// <see cref="ReasonCode.Froze"/>. Emitted at the decision site, as
     /// section 5 asks, so the chronicle can say why.
     ///
     /// Allocation-free after construction: a check reads a record, draws a
@@ -165,12 +167,16 @@ namespace KingdomWatch.Core.Lifecycle
                     Check(scheduled);
                     break;
                 case ScheduledEventKind.StarvationCritical:
-                    Starve(scheduled.PrimaryEntity);
+                    DieAtZero(scheduled.PrimaryEntity, ReasonCode.Starved);
+                    break;
+                case ScheduledEventKind.ExposureCritical:
+                    DieAtZero(scheduled.PrimaryEntity, ReasonCode.Froze);
                     break;
                 default:
                     throw new InvalidOperationException(
-                        "Mortality owns " + ScheduledEventKind.MortalityCheck + " and "
-                        + ScheduledEventKind.StarvationCritical + ", but was handed " + scheduled + ".");
+                        "Mortality owns " + ScheduledEventKind.MortalityCheck + ", "
+                        + ScheduledEventKind.StarvationCritical + " and " + ScheduledEventKind.ExposureCritical
+                        + ", but was handed " + scheduled + ".");
             }
         }
 
@@ -207,13 +213,13 @@ namespace KingdomWatch.Core.Lifecycle
             _people.SetPendingMortalityCheck(person, EventId.None);
 
             // Zero health is certain death whichever wake-up finds it. The
-            // meal that took them there shares this instant when it falls on
-            // a birthday - meals and birthdays both land on day boundaries -
-            // and this check sorts before the crossing it raised, so the roll
-            // would otherwise name an illness for what was starvation.
+            // meal or cold night that took them there can share this instant
+            // with a birthday, and this check sorts before the crossing it
+            // raised, so the roll would otherwise name an illness for what
+            // was starvation or exposure.
             if (_people.GetHealth(person) <= 0)
             {
-                _deaths.Die(person, new Reasons(ReasonCode.Starved));
+                _deaths.Die(person, new Reasons(ZeroHealthReason(person, _clock.Now)));
                 return;
             }
 
@@ -236,18 +242,33 @@ namespace KingdomWatch.Core.Lifecycle
             ScheduleNextCheck(person, id);
         }
 
-        // Health is read again rather than trusted from the meal: the
-        // crossing was booked in an earlier phase of the same instant, and
-        // although nothing today heals between the two, the check is what
-        // keeps that an accident of ordering rather than a dependency.
-        private void Starve(EntityId id)
+        // Health is read again rather than trusted from the meal or the
+        // night: the crossing was booked in an earlier phase of the same
+        // instant, and although nothing today heals between the two, the
+        // check is what keeps that an accident of ordering rather than a
+        // dependency. A person both hungry and cold whose two crossings land
+        // together dies to whichever is dispatched first, and the second
+        // finds nobody.
+        private void DieAtZero(EntityId id, ReasonCode reason)
         {
             if (!_people.TryGetHandle(id, out var person) || _people.GetHealth(person) > 0)
             {
                 return;
             }
 
-            _deaths.Die(person, new Reasons(ReasonCode.Starved));
+            _deaths.Die(person, new Reasons(reason));
+        }
+
+        // What took someone to zero, when a birthday rather than the crossing
+        // finds them there: cold when they have slept warm less recently than
+        // the grace allows and eaten within it, hunger otherwise - hunger was
+        // the only way to zero before #53, and stays the answer for anyone
+        // both starving and cold.
+        private ReasonCode ZeroHealthReason(PersonHandle person, SimulationTime now)
+        {
+            var cold = _people.GetLastWarmedAt(person).TicksUntil(now) > Warmth.ExposureGrace;
+            var hungry = _people.GetLastFedAt(person).TicksUntil(now) > Hunger.StarvationGrace;
+            return cold && !hungry ? ReasonCode.Froze : ReasonCode.Starved;
         }
 
         // The next birthday after now. Booked on the birthday rather than a

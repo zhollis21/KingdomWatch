@@ -102,5 +102,22 @@ namespace KingdomWatch.Core.Clock
         /// pending one.
         /// </summary>
         CourtshipDue = 12,
+
+        /// <summary>
+        /// A community's evening fires: in winter each hearth burns its wood
+        /// or goes cold. Owned by <see cref="Needs.Warmth"/>; the community
+        /// names the pending one (#53).
+        /// </summary>
+        WarmthDue = 13,
+
+        /// <summary>
+        /// A cold night has taken a person's health to zero. Raised by
+        /// <see cref="Needs.Warmth"/> at the evening that does it, for the
+        /// same instant in the lifecycle phase; answered by
+        /// <see cref="Lifecycle.Mortality"/> - the shape of
+        /// <see cref="StarvationCritical"/>, with its own kind so the death
+        /// can say why (#53).
+        /// </summary>
+        ExposureCritical = 14,
     }
 }
