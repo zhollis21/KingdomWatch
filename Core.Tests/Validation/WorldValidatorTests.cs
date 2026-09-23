@@ -185,9 +185,10 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void An_event_still_due_for_a_household_that_is_gone_is_caught()
         {
-            // Six of the eleven scheduled kinds are owned by a household or a
-            // community rather than by a person - work days, meals, courtship
-            // rounds, councils, arrivals, birth checks - and the rule skipped
+            // Seven of the thirteen scheduled kinds in use are owned by a
+            // household or a community rather than by a person - work days,
+            // meals, evening fires, courtship rounds, councils, arrivals,
+            // birth checks - and the rule skipped
             // every one of them until review said so.
             var world = Populated();
 
