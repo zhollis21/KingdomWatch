@@ -1246,8 +1246,9 @@ Worldgen must place viable homelands per race.
 Check for **brokenness only**:
 
 ```
-Every starting race has water, food potential, forest for fuel,
-building space, and reachable expansion area.
+Every starting race has water, food potential, building space,
+and reachable expansion area.
+Every starting band has forest in reach, for winter fuel.
 No unavoidable extinction. No runaway pathological growth.
 ```
 
@@ -1257,7 +1258,7 @@ No unavoidable extinction. No runaway pathological growth.
 
 **Not** "converges to our preferred equilibrium" — that would reject exactly the harsh mountainous worlds worth playing. A world that settles at 950 people is a legitimate world.
 
-**Run this as a cheap static check on device** (water, arable land, forest, connectivity, buildable area — milliseconds). Use the 100-year simulation as a **design-time tool in the harness** to validate the *generator* across thousands of seeds on desktop. Confidence without a load screen.
+**Run this as a cheap static check on device** (water, arable land, forest in reach of each band, connectivity, buildable area — milliseconds). Use the 100-year simulation as a **design-time tool in the harness** to validate the *generator* across thousands of seeds on desktop. Confidence without a load screen.
 
 Seed plus settings gives reproducible worlds.
 
