@@ -76,7 +76,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build roadmap and sync the blocked label
         shell: pwsh
@@ -88,9 +88,9 @@ jobs:
         shell: pwsh
         run: Get-Content site/README.md, site/next.md | Add-Content $env:GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
