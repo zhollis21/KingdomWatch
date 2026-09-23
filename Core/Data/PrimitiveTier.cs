@@ -13,10 +13,12 @@ namespace KingdomWatch.Core.Data
     /// </summary>
     /// <remarks>
     /// M1's three recipes are all gathering (#12): the world is the only
-    /// source of anything until crafting has a consumer. Section 9 also lists
-    /// stone tools and hide clothing at this tier; both wait, for the reasons
-    /// on <see cref="ResourceKind"/>. Temporary camps embody wood rather than
-    /// producing anything, so they are #54's, not a recipe here.
+    /// source of anything until crafting has a consumer. Section 9's own
+    /// "stone tools and hide clothing" example predates the economy ladder
+    /// (#78), which settled the actual tier-zero forms - see
+    /// <see cref="ResourceKind"/> and the ladder's capability graph.
+    /// Temporary camps embody wood rather than producing anything, so they
+    /// are #54's, not a recipe here.
     ///
     /// The quantities and durations are placeholders chosen to be plausible
     /// for a day's work, not tuned. Tuning is the harness's job once #17 can

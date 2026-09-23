@@ -7,8 +7,8 @@ namespace KingdomWatch.Core.Data
     /// </summary>
     /// <remarks>
     /// A role rather than a recipe index, although every M1 job is exactly
-    /// "run this gathering recipe": later jobs - builder, hauler, priest
-    /// (section 11) - are not recipes, so a recipe would be the wrong key.
+    /// "run this gathering recipe": later jobs - builder, hauler - are not
+    /// recipes, so a recipe would be the wrong key.
     /// <see cref="Work.JobTable"/> maps the jobs that are recipes to theirs.
     /// A person's job is written on their record and set by
     /// <see cref="Work.Jobs"/> alone; as built (#52) a person holds a job

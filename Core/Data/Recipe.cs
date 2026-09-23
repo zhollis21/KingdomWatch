@@ -11,10 +11,11 @@ namespace KingdomWatch.Core.Data
     /// </summary>
     /// <remarks>
     /// Deliberately the minimal shape. Section 9 also sketches
-    /// <c>building</c>, <c>substitutes</c> and <c>degrades_to</c>; those
-    /// arrive with the issues that give them meaning (buildings at M3, the
-    /// substitution and degradation paths with #37) rather than as empty
-    /// fields nothing reads.
+    /// <c>building</c> and <c>substitutes</c>; those arrive with the issues
+    /// that give them meaning (buildings at M3, substitution paths with
+    /// #37) rather than as empty fields nothing reads. The economy ladder
+    /// (#78) settled that <c>degrades_to</c> is not part of the design -
+    /// nothing degrades, resource or equipment.
     ///
     /// A recipe with no inputs is a gathering recipe - foraging, felling,
     /// quarrying - and its outputs come from the world rather than from

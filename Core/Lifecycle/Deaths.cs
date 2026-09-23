@@ -47,10 +47,10 @@ namespace KingdomWatch.Core.Lifecycle
     /// the next free hand sees the shortfall (see <see cref="Jobs"/>).
     ///
     /// **What is not here, and where it is.** Cancelling reservations (#24),
-    /// breaking an apprenticeship and passing on a master's tools (#22), and
-    /// folding personal wealth into the household (#68) each join this
-    /// cascade when the thing they act on exists. A step is added here, not
-    /// subscribed.
+    /// breaking an apprenticeship (#22), destroying a master's checked-out
+    /// Tools/Weapons/Armor rather than passing them on (#78), and folding
+    /// personal wealth into the household (#68) each join this cascade when
+    /// the thing they act on exists. A step is added here, not subscribed.
     ///
     /// Allocation-free after <see cref="Track"/>: genealogy walks are over
     /// spans, membership changes are list removals, and publishing is the

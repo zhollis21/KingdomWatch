@@ -7,7 +7,7 @@ namespace KingdomWatch.Core.Relationships
     /// <remarks>
     /// Forgotten is not a tier: a forgotten memory is removed. The tiers are
     /// a one-way ladder - Recent becomes Old, and either becomes Promoted -
-    /// and Promoted is permanent, which is the point of it: the Miracle of
+    /// and Promoted is permanent, which is the point of it: the Storm at
     /// Oakshire outlives everyone who saw it.
     ///
     /// Values are explicit and will be persisted with the memory. Append.

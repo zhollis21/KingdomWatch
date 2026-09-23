@@ -12,7 +12,7 @@
 
 Six wandering bands — three per race — arrive in an empty land. Over centuries they settle, farm, build, learn trades, form households, split into rival polities, feud, trade, march, starve, and remember. Around 1,650 individuals at equilibrium, every one of them a real person with a name, traits, skills, relationships, grudges, and ambitions.
 
-There is no magic in the world except you. The people know it — they build shrines, ordain priests, and argue over what your interventions meant. Stories of your miracles spread along trade routes and distort as they travel.
+There is no magic in the world except you. The people know it — they argue over what your interventions meant, and stories of what you did spread along trade routes and distort as they travel.
 
 The player watches from any altitude and unlocks powers as the world reaches milestones.
 
@@ -39,14 +39,14 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Player role | Sandbox god, **powers only** — never direct commands |
 | Unlock structure | Linear track, milestone-gated with **OR-conditions** |
 | Unlock persistence | Resets each world — no meta-progression |
-| Economy | ~10 resources with chains, data-driven and extensible |
+| Economy | Seven resources with chains, data-driven and extensible |
 | Technology | **Emergent from the recipe graph** — no tech tree (v2 at earliest) |
 | Seasons | Full — harvest cycles, stores, winter mortality as an *outcome* |
 | Skills | **Five tiers** (novice→master); tier zero needs no building; apprenticeship transmits |
 | Movement | **Soft avoidance** — agents never hard-block cells |
 | Polity attitudes | Polities hold **their own diplomatic state**, distinct from settlements |
 | Households | **First-class entity** — person → household → home |
-| Property | **Hybrid** — household owns the home, individuals own wealth and tools |
+| Property | **Hybrid** — household owns the home, individuals own wealth; tools and arms are settlement stock, checked out (#78) |
 | Kinship | Hard ban through grandparents; first cousins a **culture taboo** |
 | Grievances | **Witness-tracked**, not flat decay — inheritable across generations |
 | Animals | Livestock and monsters persistent; **game as regional populations** |
@@ -58,7 +58,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Interbreeding | Couples yes, children no |
 | Culture | Starts shared, diverges; lives on **both settlements and people** |
 | Magic | None in the world — the god is the only supernatural force |
-| Religion | Open worship; **attribution is not omniscient**. Depth deferred to M5 |
+| Attribution | **Not omniscient** — witnessed events spread and distort with distance and time |
 | Warfare | Logistics, narrowly defined (§14). Sieges deferred |
 | Naval | Islands at launch; traversal abstraction from day one |
 | Fail state | Extinction ends the run — rare, mostly player-caused |
@@ -345,7 +345,7 @@ Core contents:
   Clock/                <- simulation clock, event scheduler, phase ordering
   Systems/              <- Needs, Jobs, Skills, Social, Households, Politics,
                            Economy, Seasons, Logistics, Combat, Relations,
-                           Attitudes, Faith, Knowledge, Culture, Founding,
+                           Attitudes, Knowledge, Culture, Founding,
                            TownPlanner, Reservations, Milestones
   Data/                 <- SoA storage, entity handles, recipes, race tables
   Events/               <- domain events, subscribers, decision provenance
@@ -417,7 +417,7 @@ public readonly struct EntityId {
 }
 
 // Durable event identity — never reused. Referenced by history, grievances,
-// miracles, rumors, decision provenance, and player bookmarks.
+// rumors, decision provenance, and player bookmarks.
 public readonly struct EventId {
     public readonly ulong Value;
 }
@@ -501,7 +501,7 @@ Settlement, household, and polity IDs must all be **dynamic**, not fixed slots.
 
 ### Domain events
 
-Too many systems react to the same occurrence for direct calls to stay maintainable. A single death touches households, job assignment, apprenticeship, inheritance, dynasty, marriage availability, the settlement skill pool, political succession, relationships, culture, the event feed, milestones, history, and faith.
+Too many systems react to the same occurrence for direct calls to stay maintainable. A single death touches households, job assignment, apprenticeship, inheritance, dynasty, marriage availability, the settlement skill pool, political succession, relationships, culture, the event feed, milestones, and history.
 
 Publish meaningful simulation events; interested systems subscribe and react deterministically:
 
@@ -512,7 +512,7 @@ WarDeclared · BattleEnded · DivineActWitnessed
 BridgeDestroyed · FamineStarted · FamineEnded
 ```
 
-This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, faith attribution, attitudes, and debugging from one mechanism.
+This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, attribution, attitudes, and debugging from one mechanism.
 
 **Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is still to come. A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
 
@@ -642,11 +642,11 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 ### Property
 
-**Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth, tools, and status.
+**Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth and status; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
 
-On death, personal wealth folds into the household. This gives some wealth variation and makes a master's tools a real asset, without the machinery of full dynastic inheritance law.
+On death, personal wealth folds into the household. This gives some wealth variation, without the machinery of full dynastic inheritance law. Tools, Weapons and Armor are the exception: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
-As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth, no tools — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
+As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam whose only implementation is `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement); the housing stock that actually runs short is #69.
 
 ### Death cascade
 
@@ -670,7 +670,7 @@ The decisions on top of that:
 
 As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
 
-Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). The steps that act on things not yet built join the cascade when they are: reservations (#24), apprenticeship and a master's tools (#22), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). The steps that act on things not yet built join the cascade when they are: reservations (#24), breaking an apprenticeship (#22), destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 
@@ -782,29 +782,30 @@ This feeds decision provenance directly: *"Oakshire declared war — border clai
 
 ## 9. Economy, technology, and seasons
 
-**Target ~10 resources with two-step chains, defined as data.**
+**Target as many resources as their chains earn, with two-step chains, defined as data.** The original estimate here was ~10; the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settled on seven after two of the original ten — Clay and Pottery, plus a third, Hide — turned out to have no use that another resource didn't already cover. Padding toward a round number was never a reason to track one separately.
+
+**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
 
 ```
-recipe: iron_tools
-  inputs:  [iron x2, charcoal x1]
-  building: smithy
-  outputs: [iron_tools x1]
+recipe: smelt
+  inputs:  [ore x2, charcoal x1]
+  building: smeltery
+  outputs: [metal x1]
   duration: 60
   substitutes: []
-  degrades_to: bone_tools
 ```
 
-Start at 3–4 for M1, expand toward 10 by M6. Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (spoilage, weight) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; stone tools and hide clothing wait, since tools may be personal property (§6) rather than stock and hides have no source until hunting exists.
+Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-watch-economy-ladder.md), #78, settled the count and the set). Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (weight for hauling) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; the rest of the seven, and the Tools/Weapons/Armor the smithy forges from Metal, wait for #37 and #22.
 
 **As of #52, people gather them.** A `JobKind` — Forager, Woodcutter, StoneGatherer — is a row in `JobTable`: the recipe it runs and the terrain it runs on (plains or forest, forest, hills). A band's living adults and elders work, tierless and at full output, inside a dawn-to-dusk window (06:00–18:00, placeholders): a worker picks a job when free — at dawn and at each completion — and starts one task of it, at the band's cheapest-to-reach site for that job, if the task would end by dusk. Need is three thresholds read live: forage while food, counting what is on its way home, covers fewer than ten days; then wood and stone to a stock cap; then idle. The window is #21's daily schedule in miniature and the thresholds are #23's town planner in miniature; both replace their part without touching the other. Elders' reduced work and adolescents' assistance are #22's, with the skill tiers they belong to.
 
 ### Technology is a capability graph, not a tree
 
-**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers use stone tools because they have no smithy. Build a smithy — with a settlement, ore access, and a skilled person — and iron tools become possible.
+**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers work every job untooled because they have no smithy. Build a smithy — with a settlement, ore access, and a skilled person — and Tools become possible: a rate bonus on top of what already works, never a precondition for it (#78).
 
-The only addition needed is a **primitive tier**: foraging, stone tools, hide clothing, temporary camps. Buildable with no buildings.
+The only addition needed is a **primitive tier**, buildable with no buildings — foraging, hunting, gathering, dry-stone stacking, campfire smelting, temporary camps. The economy ladder (#78) settles the actual set, one crude form per capability.
 
-**This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → kiln → quarry → smithy → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
+**This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → quarry → smithy → hall → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
 
 ```
 Building requires:
@@ -853,15 +854,15 @@ The payoff is still the game's progression arc — stone age band to castle town
 
 An explicit tech ladder is a v2 consideration at earliest.
 
-### Graceful degradation is mandatory
+### Graceful substitution is mandatory
 
-At 10 resources the deadlock surface is real. Every recipe needs a substitution list and a degradation path. Harness test: 200 years with no settlement ever deadlocking.
+At seven resources the deadlock surface is real. Every recipe needs a substitution list — the economy ladder (#78) settled that a degradation path is not the mechanism: nothing in the ladder degrades, resource or equipment, and substitution alone is what the harness test below actually needs. Harness test: 200 years with no settlement ever deadlocking.
 
 ### Seasons
 
 Full seasons turn the economy from a rate into a cycle:
 
-- **Storage is core** — granaries, stores, spoilage
+- **Storage is core** — granaries, stores, and the capacity limits that gate them. The [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles this without spoilage: nothing decays in storage, capacity is the only supply-side constraint
 - **Famine is a timing problem.** Adequate annual output can still starve a town in March — and you can watch the granary empty
 - **Campaigning season** — armies marching in winter starve
 - **Seasonal work reassignment** — farmers do something else in January
@@ -939,9 +940,9 @@ Cost: a structure that grows over 500 years. It must live inside the bounded-kno
 
 ---
 
-## 11. Religion and knowledge
+## 11. Knowledge and attribution
 
-There is no magic in the world. Every supernatural event has exactly one cause: the player. The people know this and worship openly. Shrines are buildings, priests are a job, faith is a culture value — almost nothing new to build.
+There is no magic in the world. Every supernatural event has exactly one cause: the player. The people know this, and react to it — with awe, fear, gratitude, or suspicion — through the same attitude and knowledge systems everything else runs through. Almost nothing new to build.
 
 ### Attribution is not omniscient
 
@@ -952,7 +953,7 @@ Divine event → witnesses → settlement knowledge
 → rumor propagation along trade routes → cultural interpretation
 ```
 
-Lightning-strike a wolf in an empty forest and nobody knows. Save Oakshire dramatically and the villagers see it; two years later traders tell Dunvale ("*they claim* their god protected them"); twenty years later it is the Miracle of Oakshire.
+Lightning-strike a wolf in an empty forest and nobody knows. Save Oakshire dramatically and the villagers see it; two years later traders tell Dunvale ("*they claim* their god protected them"); twenty years later it is the Storm at Oakshire, told as legend.
 
 This reuses trade networks, culture, and the event journal you already have, and it is the most on-theme system in the design. Don't build sophisticated rumor AI first — but leave room for knowledge propagation instead of global omniscience.
 
@@ -965,9 +966,9 @@ Historically important    → promoted to cultural memory, persists indefinitely
 Unimportant              → forgotten
 ```
 
-A wolf struck by lightning is forgotten in ten years. The Miracle of Oakshire is promoted and outlives everyone who saw it.
+A wolf struck by lightning is forgotten in ten years. The Storm at Oakshire is promoted and outlives everyone who saw it.
 
-**Possible unification, to investigate at M5 — not committed now.** Witness-tracked grievances (§10), rumor propagation, and religious miracles are starting to look like one concept with three meanings:
+**Possible unification, to investigate at M5 — not committed now.** Witness-tracked grievances (§10) and rumor propagation are starting to look like one concept with two meanings:
 
 ```
 HistoricalClaim / Memory
@@ -975,25 +976,16 @@ HistoricalClaim / Memory
     Confidence · KnownBy · CulturalImportance
 
 grievance = memory with a negative attitude effect
-miracle   = memory with religious meaning
 atrocity  = memory with political or racial meaning
 ```
+
+A divine act is just a memory like any other, its valence set by who it helped and who it hurt — §8's "Oakshire declared war" reasoning applies equally to "the god struck the raiders' captain."
 
 Deferred deliberately. **Cheap insurance in the meantime: key both grievances and knowledge claims on `OriginEventId`** so the two can converge later without a data migration. Don't let their internals diverge structurally before M5.
 
 ### Attribution splits opinion
 
-Smite a raider captain: the saved village builds a shrine, the raiders' home settlement curses you. One act, two responses, from the attitude system already required for race relations.
-
-### Depth deferred to M5
-
-**How heavy a role faith plays is deliberately undecided.** The structural facts above are cheap regardless. The range:
-
-- **Light** — flavour. Shrines and arguments, nothing mechanical
-- **Consequence** — faith modulates how the world *reacts* to you, never how powerful you are. Unlocks stay milestone-gated, avoiding the Black & White worshipper-farming trap
-- **Coercive** — faith is enforced. Smiting unbelievers works; fear substitutes for devotion
-
-One constraint holds in every case: **shrines cost real resources.** A settlement diverting stone and labour to shrines instead of granaries starves in a hard winter.
+Smite a raider captain: the saved village reveres you, the raiders' home settlement curses you. One act, two responses, from the attitude system already required for race relations.
 
 ---
 
@@ -1026,7 +1018,7 @@ Building placement preferences:
     farm        → fertile, outskirts
     lumber camp → forest edge
     smithy      → work district
-    shrine      → central, prominent
+    town hall   → central, prominent
     defenses    → perimeter
 ```
 
@@ -1084,7 +1076,7 @@ Buildings are opaque boxes — kills interior art, pathfinding, furniture, room 
 
 **Buildings report without simulating** (§6 on the tooltip caveat).
 
-**Push social life outdoors.** Wells, markets, squares, shrines, festivals, funerals. This is where relationships, grudges, and faith must *visibly* form. If they form invisibly indoors, the deepest systems become stat changes nobody sees.
+**Push social life outdoors.** Wells, markets, squares, festivals, funerals. This is where relationships and grudges must *visibly* form. If they form invisibly indoors, the deepest systems become stat changes nobody sees.
 
 ### Resource flow and traversal
 
@@ -1256,6 +1248,7 @@ Check for **brokenness only**:
 ```
 Every starting race has water, food potential, building space,
 and reachable expansion area.
+Every starting band has forest in reach, for winter fuel.
 No unavoidable extinction. No runaway pathological growth.
 ```
 
@@ -1265,7 +1258,7 @@ No unavoidable extinction. No runaway pathological growth.
 
 **Not** "converges to our preferred equilibrium" — that would reject exactly the harsh mountainous worlds worth playing. A world that settles at 950 people is a legitimate world.
 
-**Run this as a cheap static check on device** (water, arable land, connectivity, buildable area — milliseconds). Use the 100-year simulation as a **design-time tool in the harness** to validate the *generator* across thousands of seeds on desktop. Confidence without a load screen.
+**Run this as a cheap static check on device** (water, arable land, forest in reach of each band, connectivity, buildable area — milliseconds). Use the 100-year simulation as a **design-time tool in the harness** to validate the *generator* across thousands of seeds on desktop. Confidence without a load screen.
 
 Seed plus settings gives reproducible worlds.
 
@@ -1456,7 +1449,7 @@ Perspective affects camera behavior, selection, building footprint, occlusion, w
 
 Orthographic 3D is the likely winner — free depth sorting, easy zoom and tilt, one sprite set, real building height for walls. But let the prototype answer it.
 
-Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, shrines, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
+Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
 
 ### Unity version path
 
@@ -1524,9 +1517,9 @@ Then choose perspective.
 
 **M4 — one disruption.** Raiders and predators. Villagers flee, militia musters, fighting, burning, recovery, rebuilding.
 
-**M5 — god powers and faith.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Shrines, priests, witnessed attribution, and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes). Decide faith depth. Prove the loop on a touchscreen.
+**M5 — god powers.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Witnessed attribution and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes) let word of what you did spread and distort. Prove the loop on a touchscreen.
 
-**M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward 10 resources.
+**M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward the full seven resources.
 
 **M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence. Save/load with versioning. Vertical slice.
 
@@ -1536,19 +1529,19 @@ Then choose perspective.
 
 ## 20. Systems requiring design before implementation
 
-Sequenced by when they block progress. Items now specified elsewhere in this document are marked ✓.
+Sequenced by when they block progress. Items now specified elsewhere in this document, or in its companion [economy ladder](kingdom-watch-economy-ladder.md), are marked ✓.
 
-**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **performance budgets — measured at M0, not yet set** · **capability-graph pacing and the skill chicken-and-egg**
+**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **performance budgets — measured at M0, not yet set** · **capability-graph pacing and the skill chicken-and-egg** ✓
 
 **Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, wildlife, soil, finite stone and ore)
 
-**Before M5:** faith depth (light / consequence / coercive) · knowledge and rumor propagation ✓
+**Before M5:** knowledge and rumor propagation ✓
 
 **Before M7:** social and personal decision system ✓ (launch scope set) · political model and succession · culture on individuals and assimilation ✓
 
 **Launch polish:** event feed follow lists and search.
 
-**Investigate at M5:** unifying grievances, rumors, and miracles into a shared `HistoricalClaim` (§11).
+**Investigate at M5:** unifying grievances and rumors into a shared `HistoricalClaim` (§11).
 
 **Deferred:** siege model · extreme compression tuning beyond 10,000× · explicit technology progression · **natural map change over time** (shifting rivers, erosion, forest advance and retreat). The last is cheaper than it appears: the "shape terrain" power and runtime bridge edges already require mutable terrain, dynamic graph edges, and cache invalidation, so v2 supplies new causes rather than new machinery. Pairs well with bridges — a river that shifts course strands a bridge on dry land and opens an unbridged crossing elsewhere.
 
@@ -1556,14 +1549,17 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 
 ## 21. Open questions
 
-1. **Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world
+1. ~~**Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world~~ — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78): each capability has a crude tier-zero form, so the climb is paced by how long real people take to reach journeyman, which varies per world. The targets there are placeholders until #17 and #22 measure them.
 2. **Performance budgets** — set as a fraction of the M0 baseline, fraction chosen before measuring
 3. Disease and plague as a system
 4. Siege model — walls, gates, duration, stores, assault, surrender
 5. Movement and collision — do agents block one another?
 6. Resource regeneration rates — forests, game, soil fertility, finite ore
 7. Precise definition of a "major event" for offline halting
-8. Whether a master's tools pass to their apprentice or into the household
+8. ~~Whether a master's tools pass to their apprentice or into the household~~
+   — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78):
+   neither. Tools are checked out from the settlement, not owned, and are
+   destroyed with their holder rather than passed on.
 9. Whether a partially damaged bridge is repaired automatically or needs commissioning
 10. Whether long-lived succession stasis is a feature or needs compensation
 11. Political succession model — hereditary, elected, strongest household, or culture-dependent
