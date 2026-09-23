@@ -159,6 +159,13 @@ past a grace period costs health, and health that reaches zero kills. That is
 what makes winter fuel survival-critical, and why Wood is the exception in
 §1.
 
+**As built (#53):** `Core/Needs/Warmth.cs`, Wood only until Charcoal is
+appended. The draw is one fire per household plus one communal fire for
+people in no household, not one per person. A household's hearth is what the
+House (§4) will shelter once #69 gives homes an identity. When the woodpile is
+short, households with dependents are lit first. `Jobs` sizes the woodpile
+for the coming winter from the first day of summer.
+
 ---
 
 ## 3. Jobs by tier
@@ -341,10 +348,10 @@ held by the band or settlement itself, at the Town Hall/Fort/Castle once one
 exists — and each storage building in §4 raises it further for its bundle.
 
 This generalizes something that already exists rather than inventing
-something new: `Core/Work/Jobs.cs:148,151` has `WoodCap = 200` and
+something new: `Core/Work/Jobs.cs:165,168` has `WoodCap = 200` and
 `StoneCap = 100` today — flat, per-band constants that tell a Woodcutter or
 StoneGatherer to stop gathering once the band's expected stock would reach
-them. That is a real cap, just an ad-hoc, unbuildable one covering two
+them (for wood, since #53, plus a winter's fuel from summer on). That is a real cap, just an ad-hoc, unbuildable one covering two
 resources. The system here replaces two special-cased numbers with one
 principled rule covering every kind.
 
@@ -530,7 +537,7 @@ first world run is #17.
 |---|---|---|
 | First camp | year 0 | Already fires at world start (#54) |
 | First permanent structure | year 3–5 | #17 |
-| First farm | year 8–15 | #17, then #53 once seasons gate sowing |
+| First farm | year 8–15 | #17; seasons (#53) gate sowing once farms exist |
 | **First journeyman, any craft** | **year 20–30** | #22, the number the plan's §15 names |
 | First smithy | year 30–40 | #22 |
 | First stone building | year 50–70 | #23 |

@@ -21,7 +21,8 @@ namespace KingdomWatch.Core.Work
     /// the choice is made when they are free.** Section 12's work manager
     /// decides need and citizens choose among posted jobs; here need is
     /// three thresholds read live - food below <see cref="FoodTargetDays"/>,
-    /// wood and stone below their caps - and "choosing" is taking the first
+    /// wood and stone below their caps, the first two raised ahead of winter
+    /// - and "choosing" is taking the first
     /// of <see cref="Priority"/> that is needed, reachable, and fits before
     /// dusk. It runs at dawn and at every completion, so a band whose food
     /// is covered by noon sends its afternoon hands to wood without waiting
@@ -32,6 +33,22 @@ namespace KingdomWatch.Core.Work
     /// a scan there made a day's work quadratic in population (#83). Skill
     /// weighting is #22's; a settlement-wide plan is #23's and replaces
     /// "decide need" without touching "choose".
+    ///
+    /// **A band provisions for winter** (#53). Winter foraging does not feed
+    /// the forager (<see cref="PrimitiveTier.ForageWinter"/>) and every
+    /// hearth burns wood each winter night (<see cref="Warmth"/>), so from
+    /// the first day of summer both thresholds rise by what the coming
+    /// winter will draw - a winter of meals for everyone living, and a
+    /// winter of fires for every hearth - and in winter they rise by what
+    /// is left of it (<see cref="WinterDaysAhead"/>). With no look-ahead a
+    /// band that keeps ten days of food starves every winter, which is
+    /// the winter-as-regulator section 6 warns against; with it, a famine
+    /// or a cold house is something that went wrong - too few hands, a band
+    /// grown since summer, a woodpile the foragers crowded out. Section 9's
+    /// "farmers do something else in January" falls out of the same rules:
+    /// once the stores are full, winter hands go to whatever is still needed.
+    /// A task's season is the one it starts in; no task outlives dusk and no
+    /// season turns before midnight, so it is also the one it ends in.
     ///
     /// **One task at a time, inside a dawn-to-dusk window.** A task is
     /// booked when it starts, never a day ahead, and is started only if it
@@ -193,6 +210,9 @@ namespace KingdomWatch.Core.Work
 
         // A list, scanned by id, for the same reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
+
+        // The dawn count's distinct households, reused (Warmth.CountHearths).
+        private readonly List<EntityId> _hearthScratch = new List<EntityId>();
 
         // One slot per person slot in the store, addressed by handle index
         // and checked against the handle's generation, so a recycled slot
@@ -492,7 +512,7 @@ namespace KingdomWatch.Core.Work
             if (slot is object)
             {
                 var task = slot.Task;
-                var recipe = JobTable.Recipe(task.Job);
+                var recipe = JobTable.Recipe(task.Job, task.Start.Season);
                 var tracked = TrackedFor(task.Holder);
                 _clock.Cancel(task.Completion);
 
@@ -638,7 +658,7 @@ namespace KingdomWatch.Core.Work
 
             // Gathering has no inputs in process, so completing is a Gather;
             // the ledger tallies it as such.
-            tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job));
+            tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job, task.Start.Season));
             slot.Clear();
             tracked.OnDuty[(int)task.Job]--;
             _people.SetJob(worker, JobKind.None);
@@ -661,7 +681,7 @@ namespace KingdomWatch.Core.Work
             }
 
             var now = _clock.Now;
-            var job = ChooseJob(tracked, TicksUntilDusk(now));
+            var job = ChooseJob(tracked, now);
 
             if (job == JobKind.None)
             {
@@ -669,7 +689,7 @@ namespace KingdomWatch.Core.Work
             }
 
             var site = SiteOf(tracked, job);
-            var recipe = JobTable.Recipe(job);
+            var recipe = JobTable.Recipe(job, now.Season);
             var end = now.Plus(TripTicks(site, recipe));
 
             // Inputs first: BeginRecipe refuses before it moves anything, and
@@ -699,8 +719,12 @@ namespace KingdomWatch.Core.Work
         // The first job in priority order that is needed, has a site, and
         // whose task would end by dusk. Need counts what is on its way home:
         // everyone with a task is about to deliver its output.
-        private JobKind ChooseJob(Tracked tracked, long ticksUntilDusk)
+        private JobKind ChooseJob(Tracked tracked, SimulationTime now)
         {
+            var ticksUntilDusk = TicksUntilDusk(now);
+            var season = now.Season;
+            var winterDays = WinterDaysAhead(now);
+
             // At least one: the dawn pass counts before anything starts, and
             // a pick follows either that pass - which only offers a living
             // member - or a completion, which only a worker started at that
@@ -717,12 +741,12 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                if (TripTicks(site, JobTable.Recipe(job)) > ticksUntilDusk)
+                if (TripTicks(site, JobTable.Recipe(job, season)) > ticksUntilDusk)
                 {
                     continue;
                 }
 
-                if (Needed(tracked, job, tracked.Group.SharedSupplies, living))
+                if (Needed(tracked, job, tracked.Group.SharedSupplies, living, winterDays))
                 {
                     return job;
                 }
@@ -761,19 +785,21 @@ namespace KingdomWatch.Core.Work
             }
 
             tracked.Living = living;
+            tracked.Hearths = Warmth.CountHearths(members, _people, _hearthScratch);
         }
 
         // Living is at least one wherever this is reached (see ChooseJob), so
         // the daily draw is never zero.
-        private bool Needed(Tracked tracked, JobKind job, ResourceLedger ledger, int living)
+        private bool Needed(Tracked tracked, JobKind job, ResourceLedger ledger, int living, long winterDays)
         {
             switch (job)
             {
                 case JobKind.Forager:
                     var dailyDraw = (long)Hunger.DailyRation * living;
-                    return Expected(tracked, ledger, ResourceKind.Food) / dailyDraw < FoodTargetDays;
+                    return Expected(tracked, ledger, ResourceKind.Food) / dailyDraw < FoodTargetDays + winterDays;
                 case JobKind.Woodcutter:
-                    return Expected(tracked, ledger, ResourceKind.Wood) < WoodCap;
+                    var winterFuel = (long)tracked.Hearths * Warmth.FuelPerFire * winterDays;
+                    return Expected(tracked, ledger, ResourceKind.Wood) < WoodCap + winterFuel;
                 case JobKind.StoneGatherer:
                     return Expected(tracked, ledger, ResourceKind.Stone) < StoneCap;
                 default:
@@ -796,7 +822,8 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                var outputs = JobTable.Recipe(job).Outputs;
+                // Everyone on duty started today, so today's season is theirs.
+                var outputs = JobTable.Recipe(job, _clock.Now.Season).Outputs;
 
                 for (var j = 0; j < outputs.Count; j++)
                 {
@@ -885,6 +912,25 @@ namespace KingdomWatch.Core.Work
         // caller can ask whether the clock has room for it; Track does not
         // ask, and lets Plus refuse a dawn past the end of time the way any
         // other booking past it is refused.
+        /// <summary>
+        /// The winter days the stores must still cover from today: none in
+        /// spring, a whole winter through summer and autumn, and in winter
+        /// what is left of it, today included. What the food and wood
+        /// thresholds rise by (#53).
+        /// </summary>
+        public static long WinterDaysAhead(SimulationTime now)
+        {
+            switch (now.Season)
+            {
+                case Season.Spring:
+                    return 0L;
+                case Season.Winter:
+                    return now.DaysUntilSpring;
+                default:
+                    return SimulationTime.DaysPerSeason;
+            }
+        }
+
         private static long TicksUntilDawn(SimulationTime now)
         {
             var sinceDawn = now.TickOfDay - Dawn;
@@ -1005,6 +1051,14 @@ namespace KingdomWatch.Core.Work
             /// alive at dawn, which is also the moment its sites were found.
             /// </summary>
             public int Living { get; set; }
+
+            /// <summary>
+            /// Hearths a winter night would light, as counted at dawn
+            /// (<see cref="Warmth.CountHearths"/>) - a snapshot for the same
+            /// reason as <see cref="Living"/>. Sizes the woodpile's winter
+            /// reserve.
+            /// </summary>
+            public int Hearths { get; set; }
 
             /// <summary>The WorkDayDue booked for this band's next dawn; None when the world ends first.</summary>
             public EventId PendingDawn { get; set; }

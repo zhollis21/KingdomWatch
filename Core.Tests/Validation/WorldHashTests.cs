@@ -58,6 +58,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 AssertMoves("birth culture", static (ref PersonRecord r) => r.BirthCulture++);
                 AssertMoves("assimilation", static (ref PersonRecord r) => r.Assimilation++);
                 AssertMoves("last fed", static (ref PersonRecord r) => r.LastFedAt = r.LastFedAt.Plus(1L));
+                AssertMoves("last warmed", static (ref PersonRecord r) => r.LastWarmedAt = r.LastWarmedAt.Plus(1L));
                 AssertMoves("job", static (ref PersonRecord r) => r.Job = r.Job == JobKind.Forager ? JobKind.Woodcutter : JobKind.Forager);
                 AssertMoves("household", static (ref PersonRecord r) => r.Household = new EntityId(EntityKind.Household, 999UL));
                 AssertMoves("pregnancy", static (ref PersonRecord r) => r.PregnancyDue = new EventId(9_999UL));

@@ -56,6 +56,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Router.Register(ScheduledEventKind.AgeStageDue, Aging);
             Router.Register(ScheduledEventKind.MortalityCheck, Mortality);
             Router.Register(ScheduledEventKind.StarvationCritical, Mortality);
+            Router.Register(ScheduledEventKind.ExposureCritical, Mortality);
             Router.Register(ScheduledEventKind.BirthCheck, Fertility);
             Router.Register(ScheduledEventKind.BirthDue, Fertility);
             Router.Register(ScheduledEventKind.MealDue, Hunger);

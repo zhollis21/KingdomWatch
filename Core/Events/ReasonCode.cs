@@ -45,5 +45,7 @@ namespace KingdomWatch.Core.Events
         PopulationPressure = 11,
         /// <summary>The camp can feed and build: food and wood both within reach (#54).</summary>
         LandSuitable = 12,
+        /// <summary>Died with health at zero from nights without a lit hearth (#53).</summary>
+        Froze = 13,
     }
 }

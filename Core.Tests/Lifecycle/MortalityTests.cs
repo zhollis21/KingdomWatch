@@ -389,6 +389,73 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void An_exposure_crossing_at_zero_health_is_death_with_the_reason_froze()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            var id = w.IdOf(person);
+            w.People.SetHealth(person, 0);
+
+            w.Clock.Schedule(w.Clock.Now.Plus(1L), Mortality.Phase, ScheduledEventKind.ExposureCritical, id, EntityId.None);
+            w.Advance(1L);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.People.IsAlive(person), Is.False);
+                Assert.That(deaths, Has.Count.EqualTo(1));
+                Assert.That(ReasonFor(deaths, id), Is.EqualTo(ReasonCode.Froze));
+            });
+        }
+
+        [Test]
+        public void An_exposure_crossing_for_someone_with_health_left_kills_nobody()
+        {
+            var w = new DemographicWorld(Immortal(), 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+
+            w.Clock.Schedule(
+                w.Clock.Now.Plus(1L), Mortality.Phase, ScheduledEventKind.ExposureCritical, w.IdOf(person), EntityId.None);
+            w.Advance(1L);
+
+            Assert.That(w.People.IsAlive(person), Is.True);
+        }
+
+        [Test]
+        public void A_birthday_that_finds_zero_health_names_the_cold_when_the_person_was_fed()
+        {
+            // A cold night can share an instant with a birthday as a meal
+            // can, and the check sorts first. Fed but long unwarmed reads as
+            // exposure; hungry reads as starvation, as it always did.
+            var settings = new DemographicSettings { AdultMortalityPerMille = 1000, ConceptionPerMille = 0 };
+            var w = new DemographicWorld(settings, 1UL);
+            var band = w.NewBand();
+            var person = w.NewPerson(30L, Sex.Female);
+            band.AddMember(person);
+            var id = w.IdOf(person);
+            var birthday = w.BirthdayOf(person, 31L);
+
+            w.AdvanceTo(birthday.Plus(-1L));
+            w.People.SetHealth(person, 0);
+            w.People.SetLastWarmedAt(person, SimulationTime.Zero);
+            w.Advance(1L);
+
+            var deaths = w.Published(DomainEventKind.PersonDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deaths, Has.Count.EqualTo(1));
+                Assert.That(deaths[0].Time, Is.EqualTo(birthday));
+                Assert.That(ReasonFor(deaths, id), Is.EqualTo(ReasonCode.Froze), "not Illness, and not Starved");
+            });
+        }
+
+        [Test]
         public void A_founder_the_clock_has_outrun_is_checked_on_the_next_birthday_and_dies_of_old_age()
         {
             // Three quarters of the way to the end of time, a founder born at

@@ -29,6 +29,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(1));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(200));
                 Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromHours(8)));
+                Assert.That(store.GetLastWarmedAt(handle), Is.EqualTo(SimulationTime.FromHours(8)), "nobody is born cold");
                 Assert.That(store.GetBornTick(handle), Is.EqualTo(-3L * SimulationTime.TicksPerYear));
                 Assert.That(store.GetPregnancyDue(handle), Is.EqualTo(EventId.None));
                 Assert.That(store.GetPendingMortalityCheck(handle), Is.EqualTo(EventId.None));
@@ -49,6 +50,7 @@ namespace KingdomWatch.Core.Tests.Data
             store.SetBirthCulture(handle, 4);
             store.SetAssimilation(handle, 5);
             store.SetLastFedAt(handle, SimulationTime.FromDays(6));
+            store.SetLastWarmedAt(handle, new SimulationTime(long.MaxValue));
             store.SetPregnancyDue(handle, new EventId(9UL));
             store.SetPendingMortalityCheck(handle, new EventId(ulong.MaxValue));
 
@@ -65,6 +67,7 @@ namespace KingdomWatch.Core.Tests.Data
                 Assert.That(store.GetBirthCulture(handle), Is.EqualTo(4));
                 Assert.That(store.GetAssimilation(handle), Is.EqualTo(5));
                 Assert.That(store.GetLastFedAt(handle), Is.EqualTo(SimulationTime.FromDays(6)));
+                Assert.That(store.GetLastWarmedAt(handle), Is.EqualTo(new SimulationTime(long.MaxValue)));
             });
         }
 
@@ -300,6 +303,7 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(() => store.GetBirthCulture(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetAssimilation(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetLastFedAt(subject), Throws.ArgumentException);
+                    Assert.That(() => store.GetLastWarmedAt(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetPregnancyDue(subject), Throws.ArgumentException);
                     Assert.That(() => store.GetPendingMortalityCheck(subject), Throws.ArgumentException);
                     Assert.That(
@@ -310,6 +314,8 @@ namespace KingdomWatch.Core.Tests.Data
                     Assert.That(() => store.SetAssimilation(subject, 1), Throws.ArgumentException);
                     Assert.That(
                         () => store.SetLastFedAt(subject, SimulationTime.FromDays(1L)), Throws.ArgumentException);
+                    Assert.That(
+                        () => store.SetLastWarmedAt(subject, SimulationTime.FromDays(1L)), Throws.ArgumentException);
                     Assert.That(
                         () => store.SetPregnancyDue(subject, new EventId(1UL)), Throws.ArgumentException);
                     Assert.That(

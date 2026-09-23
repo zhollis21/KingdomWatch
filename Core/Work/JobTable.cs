@@ -1,4 +1,5 @@
 using System;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Traversal;
 
@@ -29,16 +30,34 @@ namespace KingdomWatch.Core.Work
         // search. Indexed by JobKind; None's slot is an empty mask nobody asks for.
         private static readonly bool[][] TerrainByJob = BuildTerrainMasks();
 
-        /// <summary>The recipe one task of this job runs.</summary>
+        /// <summary>
+        /// The recipe one task of this job runs in spring - its base yield.
+        /// <see cref="Jobs"/> asks <see cref="Recipe(JobKind, Season)"/>.
+        /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
         /// Not a defined job, or <see cref="JobKind.None"/>, which runs nothing.
         /// </exception>
-        public static Recipe Recipe(JobKind job)
+        public static Recipe Recipe(JobKind job) => Recipe(job, Season.Spring);
+
+        /// <summary>
+        /// The recipe one task of this job runs in a season. Only foraging
+        /// changes with it (<see cref="PrimitiveTier.ForageIn"/>, #53).
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Not a defined job, or <see cref="JobKind.None"/>, which runs nothing;
+        /// or not a defined season.
+        /// </exception>
+        public static Recipe Recipe(JobKind job, Season season)
         {
+            if (season > Season.Winter)
+            {
+                throw new ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
+            }
+
             switch (job)
             {
                 case JobKind.Forager:
-                    return PrimitiveTier.Forage;
+                    return PrimitiveTier.ForageIn(season);
                 case JobKind.Woodcutter:
                     return PrimitiveTier.GatherWood;
                 case JobKind.StoneGatherer:

@@ -148,10 +148,13 @@ namespace KingdomWatch.Core.Tests.Validation
                     validator.CheckTracked(tracked, world.People, world.Clock);
                     world.Hunger.CopyTrackedTo(tracked);
                     validator.CheckTracked(tracked, world.People, world.Clock);
+                    world.Warmth.CopyTrackedTo(tracked);
+                    validator.CheckTracked(tracked, world.People, world.Clock);
 
                     bookings.Clear();
                     Gather(bookings, scratch, world.Jobs.CopyBookingsTo);
                     Gather(bookings, scratch, world.Hunger.CopyBookingsTo);
+                    Gather(bookings, scratch, world.Warmth.CopyBookingsTo);
                     Gather(bookings, scratch, world.Nomads.CopyBookingsTo);
                     Gather(bookings, scratch, world.Demographics.Fertility.CopyBookingsTo);
                     Gather(bookings, scratch, world.Demographics.Matchmaking.CopyBookingsTo);
