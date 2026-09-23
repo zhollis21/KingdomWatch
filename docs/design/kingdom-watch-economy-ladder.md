@@ -51,7 +51,7 @@ the graph inspectable and the deadlock surface small.
 | Food | `ResourceKind.Food = 1` | 0 | Foraged, hunted, or milled from Grain | No spoilage (§5 below). Going without it kills; the only other lack that does is winter fuel (§2). |
 | Wood | `ResourceKind.Wood = 2` | 0 | Gathered deadfall, later felled at a lumber camp | Also winter fuel — see §2. |
 | Stone | `ResourceKind.Stone = 3` | 0 | Loose surface stone, later quarried | |
-| Grain | *appended later* | 0 | Harvested from a farm plot | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food; no spoilage of its own. |
+| Grain | *appended later* | 0 | Harvested from a scatter-sown clearing, later a farm plot | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food; no spoilage of its own. |
 | Ore | *appended later* | 0 | Surface nodules and bog iron, later mined | |
 | Charcoal | *appended later* | 1 | Wood, burnt in a pit | The efficient fuel — see §2. No building raises its yield; a pit is a pit. |
 | Metal | *appended later* | 2 | Ore + Charcoal, smelted | The plan's §9 `smelt` example. Feeds Tools, Weapons and Armor (§6). |
@@ -69,9 +69,9 @@ the graph inspectable and the deadlock surface small.
 | Quarry | — | Stone | quarry | Gather stone |
 | Gather ore | — | Ore | — | — |
 | Mine | — | Ore | mine | Gather ore |
-| Farm | — | Grain | farm plot | — |
+| Farm | — | Grain | farm plot, or a clearing at a penalty (§7) | — |
 | Burn charcoal | Wood | Charcoal | — | (see §2 — Wood substitutes for *heating*, never for smelting) |
-| Smelt | Ore, Charcoal | Metal | smeltery | — |
+| Smelt | Ore, Charcoal | Metal | smeltery, or a campfire pit at a penalty (§7) | — |
 
 Three of these are what `PrimitiveTier` already ships — Forage, Gather wood,
 Gather stone — with their placeholder quantities and durations unchanged.
@@ -166,7 +166,7 @@ what makes winter fuel survival-critical, and why Wood is the exception in
 A job is a standing role, not a recipe index — `JobKind`'s remark already
 carves out the roles that are not recipes at all.
 
-### Tier zero — no building
+### Tier zero — no building needed
 
 | Job | Enum | Runs |
 |---|---|---|
@@ -175,6 +175,17 @@ carves out the roles that are not recipes at all.
 | StoneGatherer | `JobKind.StoneGatherer = 3` | Gather stone |
 | Hunter | *appended later* | Hunt |
 | OreGatherer | *appended later* | Gather ore |
+| Farmer | *appended later* | Farm — at a scatter-sown clearing, or at a farm plot once one exists |
+| CharcoalBurner | *appended later* | Burn charcoal |
+| Smelter | *appended later* | Smelt — at a campfire pit, or at a smeltery once one exists |
+
+Farmer and Smelter are tier-zero jobs because their recipes have a crude
+form (§7): the same recipe without the building, at a penalty. The farm plot
+and the smeltery raise the rate of a job that already exists rather than
+creating it, which is also how the farming and metalworking skill that gates
+those buildings gets learned in the first place. Lumberjack, Quarrier and
+Miner are different: their buildings run a different recipe from the
+gathering one, so they are separate jobs below.
 
 ### Building-gated
 
@@ -183,8 +194,6 @@ carves out the roles that are not recipes at all.
 | Lumberjack | lumber camp | Fell timber |
 | Quarrier | quarry | Quarry |
 | Miner | mine | Mine |
-| Farmer | farm plot | Farm |
-| Smelter | smeltery | Smelt |
 | Smith | smithy | Crafts Tools, Weapons and Armor from Metal (§6) |
 
 ### Not recipes at all
@@ -215,9 +224,9 @@ fixed numbers, so they are described rather than tabulated.
 
 | Building | Min skill | Inputs | Prerequisite | Enables |
 |---|---|---|---|---|
-| Camp | — | Wood | — | Settling at all (#54) |
+| Camp | — | Wood | — | A band's temporary shelter, pitched at every stop and kept on settling (#54); housing until houses exist |
 | House | Novice construction | Wood | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
-| Farm plot | Novice farming | Wood | cleared land, a house | Grain |
+| Farm plot | Novice farming | Wood | cleared land, a house | Grain, at rate |
 | Lumber camp | Apprentice woodcraft | Wood | forest in reach | Wood at rate |
 | Quarry | Apprentice masonry | Wood | hills in reach | Stone at rate |
 | Mine | Journeyman masonry | Wood | hills in reach, a quarry | Ore |
@@ -425,8 +434,8 @@ gates.
 | Soldiering | Any untrained adult, armed or not (§8) | — (no building form, ever) |
 
 A crude form runs the same chain as its building form, worse and slower, and
-that is why only the building form appears in §1's chain table: a
-scatter-sown clearing and a farm plot both yield Grain, a campfire pit and a
+that is why §1's chain table lists each recipe once, with the crude site
+beside the building: a scatter-sown clearing and a farm plot both yield Grain, a campfire pit and a
 smeltery both yield Metal. The crude form is not a separate recipe to
 balance, it is the same recipe without the building and at a penalty.
 
@@ -480,7 +489,7 @@ could softlock a world.
 
 | # | Milestone | Fires when |
 |---|---|---|
-| 1 | First camp | A band's settling trigger fires (#54) |
+| 1 | First camp | A band pitches its first camp — the first `CampPitched`, published when tracking starts (#54) |
 | 2 | First permanent structure | A house completes |
 | 3 | First farm | A farm plot yields its first Grain |
 | 4 | First smithy | A smithy completes, OR a Journeyman metalworker exists |
@@ -519,7 +528,7 @@ first world run is #17.
 
 | Milestone | Target | Confirmed by |
 |---|---|---|
-| First camp | year 0–2 | #17's first chronicle |
+| First camp | year 0 | Already fires at world start (#54) |
 | First permanent structure | year 3–5 | #17 |
 | First farm | year 8–15 | #17, then #53 once seasons gate sowing |
 | **First journeyman, any craft** | **year 20–30** | #22, the number the plan's §15 names |
