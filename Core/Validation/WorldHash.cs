@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
+using KingdomWatch.Core.Traversal;
 
 namespace KingdomWatch.Core.Validation
 {
@@ -18,8 +20,9 @@ namespace KingdomWatch.Core.Validation
     /// desktop .NET and Android IL2CPP reach the same number from the same
     /// seed, and they will not agree on slot order, array capacity, dictionary
     /// iteration or object addresses even when the logical world is identical.
-    /// So nothing here reads a container's own order: people and households
-    /// are sorted by <see cref="EntityId"/>, pending events by
+    /// So nothing here reads a container's own order where that order is only
+    /// storage: people and households are sorted by <see cref="EntityId"/>,
+    /// pending events by
     /// <see cref="ScheduledEvent.CompareTo"/>, and the fields of each record
     /// are folded in a fixed order written out longhand rather than reflected
     /// over.
@@ -27,7 +30,9 @@ namespace KingdomWatch.Core.Validation
     /// **Storage handles are deliberately not hashed.** A
     /// <see cref="PersonHandle"/> is a slot index and a generation - the
     /// representation section 5 warns about, not the logical world. A
-    /// household's members are hashed as the durable ids they resolve to.
+    /// household's members are hashed as the durable ids they resolve to, in
+    /// the order the household lists them - that order is behaviour, not
+    /// representation (see <c>MixMembers</c>).
     ///
     /// **Integer arithmetic only.** Core contains no <c>float</c>,
     /// <c>double</c> or <c>decimal</c>, which is what makes this tractable at
@@ -65,16 +70,22 @@ namespace KingdomWatch.Core.Validation
             Settlements = 3,
             Pending = 4,
             Bookings = 5,
+            Bands = 6,
+            KnownMaps = 7,
+            Terrain = 8,
+            Ids = 9,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
         // run would otherwise allocate these on every take.
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(ResourceKind));
+        private static readonly bool[] DefinedEntityKinds = EnumGuard.BuildMask(typeof(EntityKind));
 
         private readonly List<PersonRecord> _people = new List<PersonRecord>();
-        private readonly List<EntityId> _ids = new List<EntityId>();
         private readonly List<Household> _households = new List<Household>();
         private readonly List<Settlement> _settlements = new List<Settlement>();
+        private readonly List<MobileGroup> _bands = new List<MobileGroup>();
+        private readonly List<EntityId> _holders = new List<EntityId>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
 
@@ -220,6 +231,164 @@ namespace KingdomWatch.Core.Validation
         }
 
         /// <summary>
+        /// Folds in every band given, ordered by durable id: where it stands
+        /// and is heading, who leads it, its members and its shared supplies.
+        /// </summary>
+        /// <remarks>
+        /// A band is the world's only kind of community until it settles, and
+        /// what it carries and where it is going decide its next council and
+        /// its next day's work (#17). The caller passes the bands it has -
+        /// the ones still wandering - since nothing owns every band ever made.
+        /// </remarks>
+        public WorldHash AddBands(IReadOnlyList<MobileGroup> bands, PersonStore people)
+        {
+            if (bands is null)
+            {
+                throw new ArgumentNullException(nameof(bands));
+            }
+
+            if (people is null)
+            {
+                throw new ArgumentNullException(nameof(people));
+            }
+
+            _bands.Clear();
+
+            for (var i = 0; i < bands.Count; i++)
+            {
+                _bands.Add(bands[i]);
+            }
+
+            _bands.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Open(Section.Bands, _bands.Count);
+
+            for (var i = 0; i < _bands.Count; i++)
+            {
+                var band = _bands[i];
+
+                Mix(band.Id);
+                Mix((long)band.Purpose);
+                Mix(band.Position);
+
+                // Heading nowhere and heading to the origin are different.
+                Mix(band.Destination.HasValue ? 1 : 0);
+                Mix(band.Destination ?? default);
+
+                // The leader as the durable id it resolves to, for the reason
+                // members are: a handle is a storage position.
+                Mix(people.IsAlive(band.Leader) ? people.GetId(band.Leader) : EntityId.None);
+                MixMembers(band.Members, people);
+                MixSupplies(band.SharedSupplies);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every holder's known map, ordered by durable id: which
+        /// cells it has seen, 64 to a word in cell-index order.
+        /// </summary>
+        /// <remarks>
+        /// Known cells decide where a community looks for work and where a
+        /// band may settle (#81, #84), so two worlds that saw different land
+        /// have diverged even while their people agree.
+        /// </remarks>
+        public WorldHash AddKnownMaps(KnownMaps maps)
+        {
+            if (maps is null)
+            {
+                throw new ArgumentNullException(nameof(maps));
+            }
+
+            maps.CopyHoldersTo(_holders);
+            Open(Section.KnownMaps, _holders.Count);
+
+            for (var i = 0; i < _holders.Count; i++)
+            {
+                var known = maps.For(_holders[i]);
+                Mix(_holders[i]);
+                Mix(known.Length);
+                var word = 0UL;
+
+                for (var cell = 0; cell < known.Length; cell++)
+                {
+                    if (known[cell])
+                    {
+                        word |= 1UL << (cell & 63);
+                    }
+
+                    if ((cell & 63) == 63 || cell == known.Length - 1)
+                    {
+                        Mix(word);
+                        word = 0UL;
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the map: its size and every cell's terrain, in cell-index
+        /// order.
+        /// </summary>
+        /// <remarks>
+        /// Worldgen draws it from the seed, the pathfinder and every site
+        /// search read it, and bridges (#35) will rewrite cells mid-run, so a
+        /// world that disagrees on one cell has diverged (the #103 review).
+        /// </remarks>
+        public WorldHash AddTerrain(TerrainGrid grid)
+        {
+            if (grid is null)
+            {
+                throw new ArgumentNullException(nameof(grid));
+            }
+
+            Open(Section.Terrain, grid.CellCount);
+            Mix(grid.Width);
+            Mix(grid.Height);
+
+            for (var i = 0; i < grid.CellCount; i++)
+            {
+                Mix((long)grid[grid.PositionAt(i)]);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the next id each entity kind and the event stream will
+        /// hand out.
+        /// </summary>
+        /// <remarks>
+        /// They belong to no system, so no other section reaches them, and the
+        /// next person, household or event is named by them: two worlds one id
+        /// apart have diverged before the id is ever seen (the #103 review).
+        /// Kinds are walked over the enum's own numbering, as supplies are.
+        /// </remarks>
+        public WorldHash AddIds(IdAllocator ids)
+        {
+            if (ids is null)
+            {
+                throw new ArgumentNullException(nameof(ids));
+            }
+
+            Open(Section.Ids, DefinedEntityKinds.Length);
+
+            for (var kind = 1; kind < DefinedEntityKinds.Length; kind++)
+            {
+                if (DefinedEntityKinds[kind])
+                {
+                    Mix((long)kind);
+                    Mix(ids.PeekNext((EntityKind)kind));
+                }
+            }
+
+            Mix(ids.PeekNextEvent());
+            return this;
+        }
+
+        /// <summary>
         /// Folds in every booking a system is holding - the "state names the
         /// event it booked" record each periodic stream keeps (#80) - in
         /// their own canonical order.
@@ -303,26 +472,22 @@ namespace KingdomWatch.Core.Validation
         }
 
         // Members are stored as handles, which are storage positions rather
-        // than identity, so they are resolved to durable ids and sorted. A
-        // membership list that differs only in order is the same world.
+        // than identity, so they are resolved to durable ids - in the order
+        // the list holds them, not sorted. Every member list's order is part
+        // of its container's determinism contract (MobileGroup, Settlement,
+        // Household): Hunger feeds, Jobs picks, Matchmaking proposes and
+        // Fertility finds a couple in that order, so the same people listed
+        // differently is a different world (the #103 review).
         private void MixMembers(IReadOnlyList<PersonHandle> members, PersonStore people)
         {
-            _ids.Clear();
+            Mix(members.Count);
 
             for (var i = 0; i < members.Count; i++)
             {
                 // A member the store no longer holds is corruption, and the
                 // validator's job to report. Hashing None keeps the two sides
                 // comparable rather than throwing on one of them.
-                _ids.Add(people.IsAlive(members[i]) ? people.GetId(members[i]) : EntityId.None);
-            }
-
-            _ids.Sort();
-            Mix(_ids.Count);
-
-            for (var i = 0; i < _ids.Count; i++)
-            {
-                Mix(_ids[i]);
+                Mix(people.IsAlive(members[i]) ? people.GetId(members[i]) : EntityId.None);
             }
         }
 

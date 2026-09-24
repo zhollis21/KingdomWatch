@@ -22,9 +22,12 @@ namespace KingdomWatch.Core.Work
     /// decides need and citizens choose among posted jobs; here need is
     /// three thresholds read live - food below <see cref="FoodTargetDays"/>,
     /// wood and stone below their caps, the first two raised ahead of winter
-    /// - and "choosing" is taking the first
-    /// of <see cref="Priority"/> that is needed, reachable, and fits before
-    /// dusk. It runs at dawn and at every completion, so a band whose food
+    /// - and "choosing" is taking, of the jobs that are needed, reachable,
+    /// and fit before dusk, the one whose store is furthest below its target
+    /// as a share of it, <see cref="Priority"/> breaking a tie. Taking the
+    /// first needed job instead sent every hand to food for as long as food
+    /// was short, and a settlement short of food all year froze with an empty
+    /// woodpile (#17). It runs at dawn and at every completion, so a band whose food
     /// is covered by noon sends its afternoon hands to wood without waiting
     /// for tomorrow. What is already on its way home counts toward the
     /// threshold, so a round of pickers cannot all see the same shortfall and
@@ -44,7 +47,7 @@ namespace KingdomWatch.Core.Work
     /// band that keeps ten days of food starves every winter, which is
     /// the winter-as-regulator section 6 warns against; with it, a famine
     /// or a cold house is something that went wrong - too few hands, a band
-    /// grown since summer, a woodpile the foragers crowded out. Section 9's
+    /// grown since summer. Section 9's
     /// "farmers do something else in January" falls out of the same rules:
     /// once the stores are full, winter hands go to whatever is still needed.
     /// A task's season is the one it starts in; no task outlives dusk and no
@@ -716,9 +719,15 @@ namespace KingdomWatch.Core.Work
             return true;
         }
 
-        // The first job in priority order that is needed, has a site, and
-        // whose task would end by dusk. Need counts what is on its way home:
-        // everyone with a task is about to deliver its output.
+        // Of the jobs that are needed, have a site, and whose task would end by
+        // dusk, the one whose store is furthest below its target, as a share
+        // of that target; an even shortfall goes in priority order. Need
+        // counts what is on its way home: everyone with a task is about to
+        // deliver its output, so a round of pickers spreads across the short
+        // stores rather than all filling the first. Taking the first needed
+        // job instead sent every hand to food while food was short, and a
+        // settlement short of food all year froze with an empty woodpile
+        // (#17's first 200-year runs).
         private JobKind ChooseJob(Tracked tracked, SimulationTime now)
         {
             var ticksUntilDusk = TicksUntilDusk(now);
@@ -728,8 +737,11 @@ namespace KingdomWatch.Core.Work
             // At least one: the dawn pass counts before anything starts, and
             // a pick follows either that pass - which only offers a living
             // member - or a completion, which only a worker started at that
-            // pass can reach. So the daily draw in Needed is never zero.
+            // pass can reach. So the daily draw in TargetOf is never zero.
             var living = tracked.Living;
+            var chosen = JobKind.None;
+            long chosenShort = 0L;
+            long chosenTarget = 1L;
 
             for (var i = 0; i < Priority.Count; i++)
             {
@@ -746,13 +758,25 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                if (Needed(tracked, job, tracked.Group.SharedSupplies, living, winterDays))
+                var target = TargetOf(tracked, job, living, winterDays);
+                var shortBy = target - Expected(tracked, tracked.Group.SharedSupplies, ResourceOf(job));
+
+                // Needed at all, and strictly further short than the best so
+                // far - compared as fractions by cross-multiplying. Food's
+                // target is up to 120 per person and wood's about 10, so the
+                // products fit a long until some 88 million people share one
+                // community. Checked so that a world past that throws rather
+                // than quietly sending hands to the wrong store (the #103
+                // review).
+                if (shortBy > 0L && checked(shortBy * chosenTarget) > checked(chosenShort * target))
                 {
-                    return job;
+                    chosen = job;
+                    chosenShort = shortBy;
+                    chosenTarget = target;
                 }
             }
 
-            return JobKind.None;
+            return chosen;
         }
 
         // One walk of the membership per band per dawn, where a walk per pick
@@ -788,20 +812,33 @@ namespace KingdomWatch.Core.Work
             tracked.Hearths = Warmth.CountHearths(members, _people, _hearthScratch);
         }
 
-        // Living is at least one wherever this is reached (see ChooseJob), so
-        // the daily draw is never zero.
-        private bool Needed(Tracked tracked, JobKind job, ResourceLedger ledger, int living, long winterDays)
+        // The stock a job's store is worked up to. Living is at least one
+        // wherever this is reached (see ChooseJob), so food's is never zero.
+        private static long TargetOf(Tracked tracked, JobKind job, int living, long winterDays)
         {
             switch (job)
             {
                 case JobKind.Forager:
-                    var dailyDraw = (long)Hunger.DailyRation * living;
-                    return Expected(tracked, ledger, ResourceKind.Food) / dailyDraw < FoodTargetDays + winterDays;
+                    return (long)Hunger.DailyRation * living * (FoodTargetDays + winterDays);
                 case JobKind.Woodcutter:
-                    var winterFuel = (long)tracked.Hearths * Warmth.FuelPerFire * winterDays;
-                    return Expected(tracked, ledger, ResourceKind.Wood) < WoodCap + winterFuel;
+                    return WoodCap + ((long)tracked.Hearths * Warmth.FuelPerFire * winterDays);
                 case JobKind.StoneGatherer:
-                    return Expected(tracked, ledger, ResourceKind.Stone) < StoneCap;
+                    return StoneCap;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
+            }
+        }
+
+        private static ResourceKind ResourceOf(JobKind job)
+        {
+            switch (job)
+            {
+                case JobKind.Forager:
+                    return ResourceKind.Food;
+                case JobKind.Woodcutter:
+                    return ResourceKind.Wood;
+                case JobKind.StoneGatherer:
+                    return ResourceKind.Stone;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
             }

@@ -39,6 +39,29 @@ namespace KingdomWatch.Core.Relationships
         /// <summary>How many people are recorded.</summary>
         public int Count => _parents.Count;
 
+        /// <summary>
+        /// Everyone recorded, the dead included, sorted by durable id,
+        /// replacing whatever the list held - for the validator, which walks
+        /// every record and must not read the dictionary's own order.
+        /// Allocates only if the list has to grow.
+        /// </summary>
+        public void CopyRecordedTo(List<EntityId> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            foreach (var person in _parents.Keys)
+            {
+                into.Add(person);
+            }
+
+            into.Sort();
+        }
+
         public bool IsRecorded(EntityId person)
         {
             RelationshipGuard.RequirePerson(person, nameof(person));

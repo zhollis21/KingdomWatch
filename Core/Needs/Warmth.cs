@@ -54,8 +54,9 @@ namespace KingdomWatch.Core.Needs
     /// instant in the lifecycle phase, and <see cref="Lifecycle.Mortality"/>
     /// answers it with the death - exactly <see cref="Hunger"/>'s starvation
     /// crossing, with its own kind so the death reads
-    /// <see cref="Events.ReasonCode.Froze"/>. Health never recovers yet, for
-    /// cold as for hunger.
+    /// <see cref="Events.ReasonCode.Froze"/>. What the cold takes, a meal
+    /// eaten mends (<see cref="Hunger.RecoveryPerMeal"/>), at half the rate a
+    /// dark night takes it.
     ///
     /// No domain events: the chronicle hears about the cold through the
     /// deaths it causes and the ledger's consumption flows. No randomness.

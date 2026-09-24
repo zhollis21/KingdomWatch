@@ -529,15 +529,15 @@ describes, not tuned. Nothing here should be read as a balance decision.**
 
 They exist because the plan's §15 calls time to first journeyman "a critical pacing
 number" and says to tune it in the harness early, and until something states
-a target there is nothing to tune toward. `Harness/` currently has only
-`SchedulerSoak.cs` as a workload, so none of these has been measured — the
-first world run is #17.
+a target there is nothing to tune toward. The first world run (#17) could only
+measure the first row: nothing in M1 builds, so every building milestone waits
+on #100's building model, and the skill milestones on #22.
 
 | Milestone | Target | Confirmed by |
 |---|---|---|
-| First camp | year 0 | Already fires at world start (#54) |
-| First permanent structure | year 3–5 | #17 |
-| First farm | year 8–15 | #17; seasons (#53) gate sowing once farms exist |
+| First camp | year 0 | Fires at world start (#54); tested on every seed by #17 |
+| First permanent structure | year 3–5 | #100 (buildings), #23 |
+| First farm | year 8–15 | #100, #22; seasons (#53) gate sowing once farms exist |
 | **First journeyman, any craft** | **year 20–30** | #22, the number the plan's §15 names |
 | First smithy | year 30–40 | #22 |
 | First stone building | year 50–70 | #23 |

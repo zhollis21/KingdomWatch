@@ -47,8 +47,8 @@ namespace KingdomWatch.Core.Clock
     ///
     /// Position alone still cannot bound a cascade that climbs - reacting for
     /// one person, then the next, then the next - so
-    /// <see cref="MaxCascadePerAdvance"/> puts a ceiling on how far one call may
-    /// cascade at a single instant. Between them, a runaway fails loudly
+    /// <see cref="MaxCascadeDepth"/> puts a ceiling on how deep reactions may
+    /// chain at a single instant. Between them, a runaway fails loudly
     /// instead of hanging.
     ///
     /// Not thread-safe, and not intended to be. The simulation is
@@ -70,19 +70,24 @@ namespace KingdomWatch.Core.Clock
     public sealed class SimulationClock
     {
         /// <summary>
-        /// How many same-instant reactions one <see cref="AdvanceTo"/> call
-        /// may cascade into before the clock calls it a runaway.
+        /// How deep a chain of same-instant reactions may go - a reaction to a
+        /// reaction to a reaction - before the clock calls it a runaway.
         /// </summary>
         /// <remarks>
-        /// This counts only reactions scheduled from inside a handler AT the
-        /// instant being dispatched - never events booked ahead of time - so a
-        /// legitimate same-tick batch does not consume any of it however large
-        /// the population grows. A cascade that deep is a system reacting to
-        /// its own reaction, and the alternative to failing is an
-        /// <see cref="AdvanceTo"/> that never returns.
+        /// A reaction is an event scheduled from inside a handler AT the
+        /// instant being dispatched, and its depth is one more than the event
+        /// whose handler scheduled it. Events booked ahead of time are depth
+        /// zero. The bound is on depth, not on how many reactions there are:
+        /// one meal that takes ten thousand people to zero raises ten thousand
+        /// crossings at its own instant, all at depth one, and that is a
+        /// famine rather than a runaway. A count bound threw on exactly that
+        /// once a community passed ten thousand (the #103 sibling sweep). A
+        /// chain this deep is a system reacting to its own reaction, and the
+        /// alternative to failing is an <see cref="AdvanceTo"/> that never
+        /// returns.
         ///
-        /// The budget is per call, and resets whenever the dispatched instant
-        /// changes within one. It does NOT carry across calls that happen to
+        /// Depths are per call, and forgotten whenever the dispatched instant
+        /// changes within one. They do NOT carry across calls that happen to
         /// dispatch at the same instant. That is deliberate: a paused player
         /// casting a power is an event at the frozen instant, dispatched by its
         /// own <see cref="AdvanceTo"/>, with a short cascade behind it - and a
@@ -92,7 +97,7 @@ namespace KingdomWatch.Core.Clock
         /// one instant has control between calls, can read <see cref="Now"/>,
         /// and can see for itself that time is not moving.
         /// </remarks>
-        public const int MaxCascadePerAdvance = 10_000;
+        public const int MaxCascadeDepth = 10_000;
 
         private readonly IdAllocator _ids;
         private readonly EventQueue _queue = new EventQueue();
@@ -107,8 +112,12 @@ namespace KingdomWatch.Core.Clock
         private bool _hasCurrent;
         private ScheduledEvent _current;
 
-        // Written by Schedule, reset by AdvanceTo - see MaxCascadePerAdvance.
-        private int _cascadeCount;
+        // Each same-instant reaction's depth, written by Schedule and read
+        // when it is dispatched; forgotten when the instant changes, so it
+        // holds at most one instant's reactions. The depth of the event being
+        // dispatched now. See MaxCascadeDepth.
+        private readonly Dictionary<EventId, int> _reactionDepths = new Dictionary<EventId, int>();
+        private int _currentDepth;
 
         /// <summary>
         /// Builds a clock starting at <see cref="SimulationTime.Zero"/>.
@@ -390,16 +399,18 @@ namespace KingdomWatch.Core.Clock
 
                 if (time == _current.Time)
                 {
-                    _cascadeCount++;
+                    var depth = _currentDepth + 1;
 
-                    if (_cascadeCount > MaxCascadePerAdvance)
+                    if (depth > MaxCascadeDepth)
                     {
                         throw new InvalidOperationException(
-                            "A cascade at " + time + " has scheduled more than "
-                            + MaxCascadePerAdvance + " reactions at that same instant without the "
+                            "A cascade at " + time + " has chained more than "
+                            + MaxCascadeDepth + " reactions deep at that same instant without the "
                             + "clock advancing, most recently " + scheduled
                             + ". Something is reacting to its own reaction.");
                     }
+
+                    _reactionDepths[scheduled.Id] = depth;
                 }
             }
             else if (time < Now)
@@ -464,15 +475,15 @@ namespace KingdomWatch.Core.Clock
             }
 
             _dispatching = true;
-            _cascadeCount = 0;
+            _reactionDepths.Clear();
 
             try
             {
                 var dispatched = 0;
 
                 // The instant currently being dispatched. Its starting value is
-                // irrelevant: the count was just zeroed, so whether the first
-                // event matches or not, it begins the call with a full budget.
+                // irrelevant: the depths were just forgotten, so whether the
+                // first event matches or not, it begins the call at depth zero.
                 var instant = SimulationTime.Zero;
 
                 while (_queue.TryDequeueDueBy(target, out var due))
@@ -480,9 +491,13 @@ namespace KingdomWatch.Core.Clock
                     if (due.Time != instant)
                     {
                         instant = due.Time;
-                        _cascadeCount = 0;
+                        _reactionDepths.Clear();
                     }
 
+                    // Booked ahead, or a reaction from an earlier call at this
+                    // instant: depth zero. A reaction from this instant carries
+                    // the depth Schedule gave it.
+                    _currentDepth = _reactionDepths.TryGetValue(due.Id, out var depth) ? depth : 0;
                     Now = due.Time;
                     _current = due;
                     _hasCurrent = true;

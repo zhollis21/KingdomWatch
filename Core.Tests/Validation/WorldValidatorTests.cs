@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
@@ -390,6 +391,194 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_line_of_mothers_too_deep_to_be_real_is_reported()
+        {
+            // The depth bound counts a mother edge as a generation too; the
+            // fathers test above cannot see one that does not.
+            var world = Populated();
+            var ancestor = world.IdOf(world.NewPerson(30L, Sex.Female));
+
+            for (var i = 0; i < 600; i++)
+            {
+                ancestor = world.IdOf(
+                    world.NewPersonBornAt(
+                        world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear,
+                        Sex.Female,
+                        AgeStage.Adult,
+                        ancestor,
+                        EntityId.None));
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Contain(ValidationRule.KinshipCycle));
+        }
+
+        [Test]
+        public void A_deep_line_is_reported_even_when_a_shallow_line_reaches_the_same_ancestor()
+        {
+            // The #103 review: a walk that visits each ancestor once, at the
+            // depth it first reaches them, hides a deep line behind a shallow
+            // one. X has 400 generations above her; P reaches X through her
+            // father in two generations and through her mother in 300, so
+            // P's deepest line is 700 generations.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            PersonHandle Born(Sex sex, EntityId mother, EntityId father) =>
+                world.NewPersonBornAt(born, sex, AgeStage.Adult, mother, father);
+
+            var above = world.IdOf(world.NewPerson(30L, Sex.Male));
+
+            for (var i = 1; i < 400; i++)
+            {
+                above = world.IdOf(Born(Sex.Male, EntityId.None, above));
+            }
+
+            var x = world.IdOf(Born(Sex.Female, EntityId.None, above));
+            var motherLine = x;
+
+            for (var i = 0; i < 299; i++)
+            {
+                motherLine = world.IdOf(Born(Sex.Female, motherLine, EntityId.None));
+            }
+
+            var father = world.IdOf(Born(Sex.Male, x, EntityId.None));
+            var p = world.IdOf(Born(Sex.Female, motherLine, father));
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            var reported = false;
+
+            foreach (var finding in validator.Findings)
+            {
+                reported |= finding.Rule == ValidationRule.KinshipCycle && finding.Subject == p;
+            }
+
+            Assert.That(reported, Is.True, "P's 700-generation line went unreported");
+        }
+
+        [Test]
+        public void Deep_lines_are_climbed_through_the_dead_on_both_sides()
+        {
+            // Only the youngest of each line is alive, so the check cannot
+            // borrow a depth it worked out for a living ancestor: it has to
+            // climb dead fathers and dead mothers itself. A rebuilt world
+            // (#42) is mostly dead ancestors.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+
+            PersonHandle Line(Sex sex, bool throughMothers)
+            {
+                var ancestors = new List<PersonHandle> { world.NewPerson(30L, sex) };
+
+                for (var i = 0; i < 600; i++)
+                {
+                    var parent = world.IdOf(ancestors[ancestors.Count - 1]);
+                    ancestors.Add(world.NewPersonBornAt(
+                        born, sex, AgeStage.Adult,
+                        throughMothers ? parent : EntityId.None,
+                        throughMothers ? EntityId.None : parent));
+                }
+
+                for (var i = 0; i < ancestors.Count - 1; i++)
+                {
+                    world.Deaths.Die(ancestors[i], new Reasons(ReasonCode.OldAge));
+                }
+
+                return ancestors[ancestors.Count - 1];
+            }
+
+            var fatherLine = world.IdOf(Line(Sex.Male, throughMothers: false));
+            var motherLine = world.IdOf(Line(Sex.Female, throughMothers: true));
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+            var reported = new List<EntityId>();
+
+            foreach (var finding in validator.Findings)
+            {
+                if (finding.Rule == ValidationRule.KinshipCycle)
+                {
+                    reported.Add(finding.Subject);
+                }
+            }
+
+            Assert.That(reported, Is.EquivalentTo(new[] { fatherLine, motherLine }));
+        }
+
+        [Test]
+        public void A_deep_line_with_nobody_left_alive_is_still_reported()
+        {
+            // The #103 review: the pass started only from the living, so a
+            // line made wholly of the dead - the shape a corrupt save (#42)
+            // would have - was never walked at all.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            var line = new List<PersonHandle> { world.NewPerson(30L, Sex.Male) };
+
+            for (var i = 0; i < 600; i++)
+            {
+                line.Add(world.NewPersonBornAt(
+                    born, Sex.Male, AgeStage.Adult, EntityId.None, world.IdOf(line[line.Count - 1])));
+            }
+
+            var youngest = world.IdOf(line[line.Count - 1]);
+
+            foreach (var person in line)
+            {
+                world.Deaths.Die(person, new Reasons(ReasonCode.OldAge));
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+            var reported = false;
+
+            foreach (var finding in validator.Findings)
+            {
+                reported |= finding.Rule == ValidationRule.KinshipCycle && finding.Subject == youngest;
+            }
+
+            Assert.That(reported, Is.True, "a dead line 600 generations deep went unwalked");
+        }
+
+        [Test]
+        public void A_wide_but_shallow_ancestry_is_not_a_cycle()
+        {
+            // #17's seed 1 stopped at year 267 on "more than 512 recorded
+            // ancestors": in a population of fourteen thousand, eleven
+            // generations of distinct forebears is ordinary. Ten generations
+            // of a full tree is 1,022 ancestors and only ten deep.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            var generation = new List<EntityId>();
+
+            for (var i = 0; i < 1024; i++)
+            {
+                generation.Add(world.IdOf(world.NewPersonBornAt(born, i % 2 == 0 ? Sex.Female : Sex.Male, AgeStage.Adult)));
+            }
+
+            while (generation.Count > 1)
+            {
+                var next = new List<EntityId>();
+
+                for (var i = 0; i < generation.Count; i += 2)
+                {
+                    next.Add(world.IdOf(world.NewPersonBornAt(
+                        born, next.Count % 2 == 0 ? Sex.Female : Sex.Male, AgeStage.Adult, generation[i], generation[i + 1])));
+                }
+
+                generation = next;
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Not.Contain(ValidationRule.KinshipCycle), validator.Report(11UL));
+        }
+
+        [Test]
         public void A_tracked_community_listing_somebody_the_store_lost_is_caught()
         {
             // The tracked set is what each system has events booked against,
@@ -605,7 +794,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // forwards and cannot be introduced by rewriting an existing link.
             //
             // KinshipCycle's other arm is reachable and tested: the walk's own
-            // bound fires on an ancestry too large to be real, which is what
+            // bound fires on a line of descent too deep to be real, which is what
             // An_ancestry_walk_follows_fathers_as_well_as_mothers drives.
             //
             // The rules stay because that guard is not the only way ancestry

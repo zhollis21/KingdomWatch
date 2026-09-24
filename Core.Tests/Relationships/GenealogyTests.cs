@@ -8,6 +8,29 @@ namespace KingdomWatch.Core.Tests.Relationships
     public sealed class GenealogyTests
     {
         [Test]
+        public void Everyone_recorded_is_listed_by_id_and_the_list_is_replaced()
+        {
+            // The validator walks every record, the dead included; the
+            // dictionary's order is storage, so the list is sorted by id.
+            var tree = new Genealogy();
+            var first = new EntityId(EntityKind.Person, 1UL);
+            var second = new EntityId(EntityKind.Person, 2UL);
+            var third = new EntityId(EntityKind.Person, 3UL);
+            tree.Record(third, EntityId.None, EntityId.None);
+            tree.Record(first, EntityId.None, EntityId.None);
+            tree.Record(second, first, EntityId.None);
+            var recorded = new System.Collections.Generic.List<EntityId> { third };
+
+            tree.CopyRecordedTo(recorded);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(recorded, Is.EqualTo(new[] { first, second, third }));
+                Assert.That(() => tree.CopyRecordedTo(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void Recording_a_child_links_both_directions()
         {
             var ids = new IdAllocator();

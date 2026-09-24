@@ -8,10 +8,12 @@ using NUnit.Framework;
 namespace KingdomWatch.Core.Tests.Performance
 {
     /// <summary>
-    /// The two guards #58 and #59 ask for, pointed at the only tick loop that
-    /// exists so far: <see cref="SchedulerSoak"/> driving
-    /// <see cref="SimulationClock.AdvanceTo"/>. When #17 lands, the same two
-    /// assertions move to the real run.
+    /// The two guards #58 and #59 ask for, pointed at the scheduler alone:
+    /// <see cref="SchedulerSoak"/> driving <see cref="SimulationClock.AdvanceTo"/>.
+    /// The real world (#17) is not held to zero allocations as a whole -
+    /// settling, journal growth and a growing population allocate by design -
+    /// so each system that runs under the clock carries its own allocation
+    /// test instead (<c>Core.Tests/Performance/</c>).
     /// </summary>
     [TestFixture]
     [Category("Performance")]

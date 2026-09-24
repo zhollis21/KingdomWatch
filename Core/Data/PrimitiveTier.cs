@@ -29,22 +29,26 @@ namespace KingdomWatch.Core.Data
     /// task's duration never depends on when it starts.
     ///
     /// The quantities and durations are placeholders chosen to be plausible
-    /// for a day's work, not tuned. Tuning is the harness's job once #17 can
-    /// run a chronicle; nothing here should be read as a balance decision.
+    /// for a day's work. Foraging's four yields are the first numbers the
+    /// harness tuned (#17): at 3/4/4/1 about one homeland in seven starved
+    /// within forty years, because a settlement with more dependents than
+    /// workers could not store a winter; 4/6/6/1 is the lowest tried where
+    /// none did across 64 seeds. Nothing here is a balance decision.
     /// </remarks>
     public static class PrimitiveTier
     {
         /// <summary>
-        /// Half a day's foraging feeds a person for about a day. The spring
-        /// yield, and the base the other seasons are measured against.
+        /// Half a day's foraging feeds a person for a day and a little over.
+        /// The spring yield, and the base the other seasons are measured
+        /// against.
         /// </summary>
-        public static readonly Recipe Forage = ForageYielding("Forage", 3);
+        public static readonly Recipe Forage = ForageYielding("Forage", 4);
 
         /// <summary>Summer's foraging: the land at its most generous.</summary>
-        public static readonly Recipe ForageSummer = ForageYielding("Forage (summer)", 4);
+        public static readonly Recipe ForageSummer = ForageYielding("Forage (summer)", 6);
 
         /// <summary>Autumn's foraging: nuts, late fruit, the last of the year's plenty.</summary>
-        public static readonly Recipe ForageAutumn = ForageYielding("Forage (autumn)", 4);
+        public static readonly Recipe ForageAutumn = ForageYielding("Forage (autumn)", 6);
 
         /// <summary>
         /// Winter's foraging: not enough to feed the forager, so a band that

@@ -384,6 +384,69 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void Each_meal_eaten_restores_health_up_to_full()
+        {
+            var world = new World();
+            var band = world.NewBand(1, 1000);
+            world.Hunger.Track(band);
+            var person = band.Members[0];
+            var hurt = (short)(Hunger.FullHealth - 3 * Hunger.RecoveryPerMeal + 1);
+            world.People.SetHealth(person, hurt);
+
+            world.RunDays(1L);
+            var afterOneMeal = world.People.GetHealth(person);
+            world.RunDays(10L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(afterOneMeal, Is.EqualTo(hurt + Hunger.RecoveryPerMeal));
+                Assert.That(world.People.GetHealth(person), Is.EqualTo(Hunger.FullHealth), "recovery stops at full");
+            });
+        }
+
+        [Test]
+        public void A_meal_never_raises_health_at_or_below_zero()
+        {
+            var world = new World();
+            var band = world.NewBand(2, 1000);
+            world.Hunger.Track(band);
+            var atZero = band.Members[0];
+            var belowZero = band.Members[1];
+            world.People.SetHealth(atZero, 0);
+            world.People.SetHealth(belowZero, -7);
+
+            world.RunDays(3L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetHealth(atZero), Is.Zero, "the crossing already raised stands");
+                Assert.That(world.People.GetHealth(belowZero), Is.EqualTo(-7));
+            });
+        }
+
+        [Test]
+        public void A_famine_bigger_than_the_cascade_bound_raises_every_crossing()
+        {
+            // Every member reaches zero at the same meal, so every crossing is
+            // a same-instant reaction to that one meal. The clock bounds how
+            // deep reactions chain, not how many one meal raises, so a big
+            // community's famine is a famine and not a runaway.
+            var members = SimulationClock.MaxCascadeDepth + 1;
+            var world = new World();
+            var band = world.NewBand(members, 0);
+            world.Hunger.Track(band);
+
+            foreach (var member in band.Members)
+            {
+                world.People.SetHealth(member, Hunger.StarvationDamagePerMeal);
+            }
+
+            world.RunDays(3L);
+
+            Assert.That(world.Starvation.Raised, Has.Count.EqualTo(members));
+        }
+
+        [Test]
         public void Starvation_floors_health_at_zero_and_leaves_a_lower_value_alone()
         {
             var world = new World();
@@ -452,9 +515,9 @@ namespace KingdomWatch.Core.Tests.Needs
             Assert.Multiple(() =>
             {
                 Assert.That(starved, Is.EqualTo(StartingHealth - Hunger.StarvationDamagePerMeal));
-                Assert.That(fed, Is.EqualTo(starved), "the meal itself heals nothing; nothing does yet");
-                Assert.That(withinGrace, Is.EqualTo(starved));
-                Assert.That(pastGrace, Is.EqualTo(starved - Hunger.StarvationDamagePerMeal));
+                Assert.That(fed, Is.EqualTo(starved + Hunger.RecoveryPerMeal));
+                Assert.That(withinGrace, Is.EqualTo(fed), "the grace runs from the meal, so missing the next two costs nothing");
+                Assert.That(pastGrace, Is.EqualTo(fed - Hunger.StarvationDamagePerMeal));
             });
         }
 

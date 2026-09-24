@@ -656,6 +656,40 @@ namespace KingdomWatch.Core.Tests.Clock
         }
 
         [Test]
+        public void One_handler_may_raise_any_number_of_reactions_at_its_own_instant()
+        {
+            // A famine or a cold night: one meal or one nightfall raises a
+            // crossing for every person it takes to zero, all at the same
+            // instant. That is breadth, not a runaway - the #103 sibling sweep
+            // found the count-based budget throwing on a community of 10,500.
+            const int Reactions = SimulationClock.MaxCascadeDepth + 500;
+            var clock = NewClock();
+            ScheduleTask(clock, Noon, 1UL);
+
+            var recorder = new Recorder((scheduled, running) =>
+            {
+                if (scheduled.Phase != SimulationPhase.Physical)
+                {
+                    return;
+                }
+
+                for (var i = 0; i < Reactions; i++)
+                {
+                    running.Schedule(
+                        scheduled.Time,
+                        SimulationPhase.Lifecycle,
+                        ScheduledEventKind.BirthCheck,
+                        new EntityId(EntityKind.Person, (ulong)i + 1UL),
+                        EntityId.None);
+                }
+            });
+
+            clock.AdvanceTo(Dusk, recorder);
+
+            Assert.That(recorder.Handled, Has.Count.EqualTo(Reactions + 1));
+        }
+
+        [Test]
         public void A_cascade_within_the_budget_is_left_alone()
         {
             var clock = NewClock();
@@ -664,7 +698,7 @@ namespace KingdomWatch.Core.Tests.Clock
 
             var recorder = new Recorder((scheduled, running) =>
             {
-                if (reactions >= SimulationClock.MaxCascadePerAdvance)
+                if (reactions >= SimulationClock.MaxCascadeDepth)
                 {
                     return;
                 }
@@ -677,7 +711,7 @@ namespace KingdomWatch.Core.Tests.Clock
 
             Assert.That(
                 recorder.Handled,
-                Has.Count.EqualTo(SimulationClock.MaxCascadePerAdvance + 1));
+                Has.Count.EqualTo(SimulationClock.MaxCascadeDepth + 1));
         }
 
         [Test]
@@ -687,7 +721,7 @@ namespace KingdomWatch.Core.Tests.Clock
             // them. A budget that accumulated instead of resetting would trip
             // partway through a perfectly healthy run - so this fails if the
             // reset is removed, which a shorter run would not.
-            const int Instants = SimulationClock.MaxCascadePerAdvance + 500;
+            const int Instants = SimulationClock.MaxCascadeDepth + 500;
 
             var clock = NewClock();
             var recorder = new Recorder((scheduled, running) =>
@@ -724,7 +758,7 @@ namespace KingdomWatch.Core.Tests.Clock
             // enough times while paused. More casts than the budget, each with
             // a cascade of one - the total far exceeds the cap, and none of it
             // may accumulate.
-            const int Casts = SimulationClock.MaxCascadePerAdvance + 500;
+            const int Casts = SimulationClock.MaxCascadeDepth + 500;
 
             var clock = NewClock();
             clock.AdvanceTo(Noon, new Recorder());
