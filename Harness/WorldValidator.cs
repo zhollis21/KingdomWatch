@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
@@ -54,6 +55,7 @@ namespace KingdomWatch.Harness
         private static readonly ResourceKind[] Kinds = DefinedKinds();
 
         private readonly List<ValidationFinding> _findings = new List<ValidationFinding>();
+        private readonly ReadOnlyCollection<ValidationFinding> _findingsView;
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly HashSet<EventId> _queued = new HashSet<EventId>();
         private readonly HashSet<EntityId> _seen = new HashSet<EntityId>();
@@ -65,11 +67,19 @@ namespace KingdomWatch.Harness
         private readonly HashSet<EntityId> _onLine = new HashSet<EntityId>();
         private readonly Stack<(EntityId Person, bool Expanded)> _walk = new Stack<(EntityId Person, bool Expanded)>();
         private readonly HashSet<EntityId> _missingParents = new HashSet<EntityId>();
+        private readonly List<EntityId> _recorded = new List<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
 
+        // Wrapped, not handed out raw: a List cast back from IReadOnlyList
+        // could have findings removed behind the report (the #103 review).
+        public WorldValidator()
+        {
+            _findingsView = _findings.AsReadOnly();
+        }
+
         /// <summary>Everything found since the last <see cref="Reset"/>.</summary>
-        public IReadOnlyList<ValidationFinding> Findings => _findings;
+        public IReadOnlyList<ValidationFinding> Findings => _findingsView;
 
         /// <summary>Whether the last pass found nothing.</summary>
         public bool IsClean => _findings.Count == 0;
@@ -303,6 +313,26 @@ namespace KingdomWatch.Harness
                 CheckParent(parents.Father, id, now);
 
                 if (GenerationsAbove(genealogy, id, now) > MaxGenerations)
+                {
+                    Add(ValidationRule.KinshipCycle, now, id,
+                        "has a line of descent more than " + MaxGenerations + " generations deep.");
+                }
+            }
+
+            // Then from every record, the dead included, so a cycle or an
+            // impossible line made wholly of the dead - what a corrupt save
+            // (#42) would hold - is walked too (the #103 review). Each person
+            // is still walked once. The dead are reported only where a line
+            // ends, so one line too deep is one finding, not one per ancestor.
+            genealogy.CopyRecordedTo(_recorded);
+
+            for (var i = 0; i < _recorded.Count; i++)
+            {
+                var id = _recorded[i];
+
+                if (GenerationsAbove(genealogy, id, now) > MaxGenerations
+                    && genealogy.Children(id).Length == 0
+                    && !people.TryGetHandle(id, out _))
                 {
                     Add(ValidationRule.KinshipCycle, now, id,
                         "has a line of descent more than " + MaxGenerations + " generations deep.");
@@ -637,8 +667,8 @@ namespace KingdomWatch.Harness
         // finished only once both parents are, and takes the greater of them
         // plus one. Remembering the first depth an ancestor was reached at
         // instead hid a deep line behind a shallow one (the #103 review).
-        // Cycles are found among the dead too, since the walk climbs every
-        // recorded ancestor rather than stopping at the living.
+        // Cycles are found among the dead too, because CheckGenealogy starts
+        // this from every record, not only from the living.
         //
         // Iterative, with the walk and the sets as fields reused across
         // checks: a genealogy thousands of generations deep must not blow the

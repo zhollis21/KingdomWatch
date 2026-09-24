@@ -272,6 +272,22 @@ namespace KingdomWatch.Core.Tests.Validation
             });
         }
         [Test]
+        public void The_run_s_years_and_the_validator_s_findings_cannot_be_written_through()
+        {
+            // The #103 review: a list handed out as IReadOnlyList can be cast
+            // back and edited, erasing years the chronicle and the sweep read.
+            // Wrapped, the way DrawCollisionDetector and Founding hand theirs out.
+            var run = new WorldRun(1UL).RunYears(1L);
+            var validator = new WorldValidator();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.Years, Is.Not.InstanceOf<List<YearSummary>>());
+                Assert.That(validator.Findings, Is.Not.InstanceOf<List<ValidationFinding>>());
+            });
+        }
+
+        [Test]
         public void The_chronicle_prints_each_year_and_each_band_s_first_camp_once()
         {
             var run = new WorldRun(1UL).RunYears(3L);

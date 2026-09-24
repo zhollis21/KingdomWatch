@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using KingdomWatch.Core;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
@@ -42,6 +43,7 @@ namespace KingdomWatch.Harness
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
         private readonly List<MobileGroup> _bands = new List<MobileGroup>();
         private readonly List<YearSummary> _years = new List<YearSummary>();
+        private readonly ReadOnlyCollection<YearSummary> _yearsView;
         private readonly WorldValidator _validator = new WorldValidator();
         private int _journalRead;
 
@@ -53,6 +55,7 @@ namespace KingdomWatch.Harness
         public WorldRun(World world)
         {
             World = world ?? throw new ArgumentNullException(nameof(world));
+            _yearsView = _years.AsReadOnly();
             FoundingWest = CountSide(true);
             FoundingEast = CountSide(false);
             ReadJournal(out _);
@@ -64,7 +67,7 @@ namespace KingdomWatch.Harness
 
         public int FoundingEast { get; }
 
-        public IReadOnlyList<YearSummary> Years => _years;
+        public IReadOnlyList<YearSummary> Years => _yearsView;
 
         public SimulationTime? FirstCamp { get; private set; }
 

@@ -762,9 +762,13 @@ namespace KingdomWatch.Core.Work
                 var shortBy = target - Expected(tracked, tracked.Group.SharedSupplies, ResourceOf(job));
 
                 // Needed at all, and strictly further short than the best so
-                // far - compared as fractions by cross-multiplying, which the
-                // targets are small enough to do in a long.
-                if (shortBy > 0L && shortBy * chosenTarget > chosenShort * target)
+                // far - compared as fractions by cross-multiplying. Food's
+                // target is up to 120 per person and wood's about 10, so the
+                // products fit a long until some 88 million people share one
+                // community. Checked so that a world past that throws rather
+                // than quietly sending hands to the wrong store (the #103
+                // review).
+                if (shortBy > 0L && checked(shortBy * chosenTarget) > checked(chosenShort * target))
                 {
                     chosen = job;
                     chosenShort = shortBy;

@@ -509,6 +509,41 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_deep_line_with_nobody_left_alive_is_still_reported()
+        {
+            // The #103 review: the pass started only from the living, so a
+            // line made wholly of the dead - the shape a corrupt save (#42)
+            // would have - was never walked at all.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            var line = new List<PersonHandle> { world.NewPerson(30L, Sex.Male) };
+
+            for (var i = 0; i < 600; i++)
+            {
+                line.Add(world.NewPersonBornAt(
+                    born, Sex.Male, AgeStage.Adult, EntityId.None, world.IdOf(line[line.Count - 1])));
+            }
+
+            var youngest = world.IdOf(line[line.Count - 1]);
+
+            foreach (var person in line)
+            {
+                world.Deaths.Die(person, new Reasons(ReasonCode.OldAge));
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+            var reported = false;
+
+            foreach (var finding in validator.Findings)
+            {
+                reported |= finding.Rule == ValidationRule.KinshipCycle && finding.Subject == youngest;
+            }
+
+            Assert.That(reported, Is.True, "a dead line 600 generations deep went unwalked");
+        }
+
+        [Test]
         public void A_wide_but_shallow_ancestry_is_not_a_cycle()
         {
             // #17's seed 1 stopped at year 267 on "more than 512 recorded
