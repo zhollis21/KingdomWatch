@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Relationships;
@@ -382,6 +383,29 @@ namespace KingdomWatch.Core.Tests.Relationships
             {
                 Assert.That(default(Memory).WitnessCount, Is.Zero);
                 Assert.That(default(Memory).Tier, Is.EqualTo(MemoryTier.None));
+            });
+        }
+
+        [Test]
+        public void Every_holder_is_listed_by_id_whatever_order_they_remembered_in()
+        {
+            // For the world hash (#104), which must not read the dictionary's
+            // own order.
+            var ids = new IdAllocator();
+            var memories = new Memories(Settings);
+            var oakshire = ids.Next(EntityKind.Settlement);
+            var mira = ids.Next(EntityKind.Person);
+            var bram = ids.Next(EntityKind.Person);
+            memories.Record(bram, ids.NextEvent(), mira, 10, ReadOnlySpan<EntityId>.Empty, SimulationTime.Zero);
+            memories.Record(oakshire, ids.NextEvent(), mira, -10, ReadOnlySpan<EntityId>.Empty, SimulationTime.Zero);
+            var into = new List<EntityId> { mira };
+
+            memories.CopyHoldersTo(into);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(into, Is.EqualTo(new[] { bram, oakshire }), "sorted by id; a person sorts before a settlement");
+                Assert.That(() => memories.CopyHoldersTo(null!), Throws.ArgumentNullException);
             });
         }
     }

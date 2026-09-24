@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.History;
 using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Needs;
+using KingdomWatch.Core.Nomadic;
+using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Work;
 
 namespace KingdomWatch.Core.Validation
 {
@@ -74,12 +79,20 @@ namespace KingdomWatch.Core.Validation
             KnownMaps = 7,
             Terrain = 8,
             Ids = 9,
+            Partnerships = 10,
+            Genealogy = 11,
+            Memories = 12,
+            Work = 13,
+            Councils = 14,
+            Famine = 15,
+            Journal = 16,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
         // run would otherwise allocate these on every take.
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(ResourceKind));
         private static readonly bool[] DefinedEntityKinds = EnumGuard.BuildMask(typeof(EntityKind));
+        private static readonly bool[] DefinedJobKinds = EnumGuard.BuildMask(typeof(JobKind));
 
         private readonly List<PersonRecord> _people = new List<PersonRecord>();
         private readonly List<Household> _households = new List<Household>();
@@ -88,6 +101,10 @@ namespace KingdomWatch.Core.Validation
         private readonly List<EntityId> _holders = new List<EntityId>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
+        private readonly List<EntityId> _ids = new List<EntityId>();
+        private readonly List<ICommunity> _communities = new List<ICommunity>();
+        private readonly List<PersonHandle> _workers = new List<PersonHandle>();
+        private readonly List<Worker> _workerIds = new List<Worker>();
 
         private ulong _state;
 
@@ -389,6 +406,325 @@ namespace KingdomWatch.Core.Validation
         }
 
         /// <summary>
+        /// Folds in every partnership, ended ones included: each person who
+        /// has ever been partnered, ordered by durable id, with their history
+        /// in the order it is kept.
+        /// </summary>
+        /// <remarks>
+        /// Households hash their members, not who is partnered with whom, and
+        /// Fertility and Matchmaking both read the links (#104). A record sits
+        /// in both partners' histories, so each is folded in twice - once from
+        /// each side, which is how the store holds it.
+        /// </remarks>
+        public WorldHash AddPartnerships(Partnerships partnerships)
+        {
+            if (partnerships is null)
+            {
+                throw new ArgumentNullException(nameof(partnerships));
+            }
+
+            partnerships.CopyPartneredTo(_ids);
+            Open(Section.Partnerships, _ids.Count);
+
+            for (var i = 0; i < _ids.Count; i++)
+            {
+                var history = partnerships.History(_ids[i]);
+                Mix(_ids[i]);
+                Mix(history.Length);
+
+                for (var j = 0; j < history.Length; j++)
+                {
+                    var record = history[j];
+
+                    Mix(record.First);
+                    Mix(record.Second);
+                    Mix(record.FormedBy);
+                    Mix(record.FormedAt.Ticks);
+                    Mix(record.EndedBy);
+                    Mix(record.EndedAt.Ticks);
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the family tree: everyone recorded, the dead included,
+        /// ordered by durable id, with their parents and their children in
+        /// the order they were recorded.
+        /// </summary>
+        /// <remarks>
+        /// Fertility's postpartum gate and Matchmaking's kinship ban read it,
+        /// and it outlives everyone in it, so a world that disagrees about
+        /// a dead grandparent has diverged (#104).
+        /// </remarks>
+        public WorldHash AddGenealogy(Genealogy genealogy)
+        {
+            if (genealogy is null)
+            {
+                throw new ArgumentNullException(nameof(genealogy));
+            }
+
+            genealogy.CopyRecordedTo(_ids);
+            Open(Section.Genealogy, _ids.Count);
+
+            for (var i = 0; i < _ids.Count; i++)
+            {
+                var parents = genealogy.Parents(_ids[i]);
+                var children = genealogy.Children(_ids[i]);
+
+                Mix(_ids[i]);
+                Mix(parents.Mother);
+                Mix(parents.Father);
+                Mix(children.Length);
+
+                for (var j = 0; j < children.Length; j++)
+                {
+                    Mix(children[j]);
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every memory: each holder ordered by durable id, with what
+        /// it remembers in the order it was recorded, and each memory's
+        /// witnesses in the order they were added.
+        /// </summary>
+        /// <remarks>
+        /// Nothing writes a memory in M1, so this is an empty count until
+        /// something does - added now so that the first writer is covered
+        /// without having to remember (#104).
+        /// </remarks>
+        public WorldHash AddMemories(Memories memories)
+        {
+            if (memories is null)
+            {
+                throw new ArgumentNullException(nameof(memories));
+            }
+
+            memories.CopyHoldersTo(_ids);
+            Open(Section.Memories, _ids.Count);
+
+            for (var i = 0; i < _ids.Count; i++)
+            {
+                var held = memories.Held(_ids[i]);
+                Mix(_ids[i]);
+                Mix(held.Length);
+
+                for (var j = 0; j < held.Length; j++)
+                {
+                    var memory = held[j];
+                    var witnesses = memory.WitnessList;
+
+                    Mix(memory.OriginEvent);
+                    Mix(memory.Holder);
+                    Mix(memory.Subject);
+                    Mix(memory.Valence);
+                    Mix((long)memory.Tier);
+                    Mix(memory.FormedAt.Ticks);
+                    Mix(witnesses.Count);
+
+                    for (var k = 0; k < witnesses.Count; k++)
+                    {
+                        Mix(witnesses[k]);
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the work in hand: every task under way, ordered by its
+        /// worker's durable id, with the route it walks; then every band Jobs
+        /// tracks, ordered by durable id, with its dawn counts, who is on each
+        /// job and what its last site search found.
+        /// </summary>
+        /// <remarks>
+        /// Only a task's completion reaches the queue, and a task's route and
+        /// timings decide where its worker stands (section 4's
+        /// reconstruction). The band side is state too: the site search is
+        /// refreshed when the band moves, not when its map grows, and the dawn
+        /// counts size a whole day's picks (#104).
+        /// </remarks>
+        public WorldHash AddWork(Jobs jobs, PersonStore people)
+        {
+            if (jobs is null)
+            {
+                throw new ArgumentNullException(nameof(jobs));
+            }
+
+            if (people is null)
+            {
+                throw new ArgumentNullException(nameof(people));
+            }
+
+            jobs.CopyTaskWorkersTo(_workers);
+            _workerIds.Clear();
+
+            for (var i = 0; i < _workers.Count; i++)
+            {
+                // A worker the store no longer holds is the validator's to
+                // report ("no dead person has active tasks"); None keeps the
+                // two sides comparable, as it does for members.
+                var worker = _workers[i];
+                _workerIds.Add(new Worker(people.IsAlive(worker) ? people.GetId(worker) : EntityId.None, worker));
+            }
+
+            _workerIds.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            jobs.CopyTrackedTo(_communities);
+            _communities.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Open(Section.Work, _workerIds.Count);
+            Mix(_communities.Count);
+
+            for (var i = 0; i < _workerIds.Count; i++)
+            {
+                var task = jobs.TaskOf(_workerIds[i].Handle);
+                var route = jobs.RouteOf(_workerIds[i].Handle);
+
+                Mix(_workerIds[i].Id);
+                Mix(task.Holder);
+                Mix((long)task.Job);
+                Mix(task.Start.Ticks);
+                Mix(task.TravelTicks);
+                Mix(task.WorkTicks);
+                Mix(task.ReturnTicks);
+                Mix(task.Origin);
+                Mix(task.Destination);
+                Mix(task.Completion);
+                MixRoute(route);
+            }
+
+            for (var i = 0; i < _communities.Count; i++)
+            {
+                var band = _communities[i];
+
+                Mix(band.Id);
+                Mix(jobs.LivingAtDawn(band));
+                Mix(jobs.HearthsAtDawn(band));
+                Mix(jobs.SitesFoundFrom(band));
+
+                // Over the enum's own numbering, as supplies are, and only
+                // the kinds that are jobs: None has no site.
+                for (var kind = 1; kind < DefinedJobKinds.Length; kind++)
+                {
+                    if (!JobTable.IsJob((JobKind)kind))
+                    {
+                        continue;
+                    }
+
+                    var job = (JobKind)kind;
+                    var survey = jobs.SurveyOf(band, job);
+                    var siteRoute = jobs.SiteRouteOf(band, job);
+
+                    Mix((long)kind);
+                    Mix(jobs.OnDuty(band, job));
+                    Mix(survey.Reachable ? 1 : 0);
+                    Mix(survey.Destination);
+                    Mix(survey.Cost);
+                    Mix(survey.ReturnCost);
+                    Mix(siteRoute.Count);
+
+                    for (var j = 0; j < siteRoute.Count; j++)
+                    {
+                        Mix(siteRoute[j]);
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every wandering band's council, ordered by durable id: the
+        /// pressure it has built toward settling, its days at camp and since
+        /// it last looked for another, and where it has been sent.
+        /// </summary>
+        /// <remarks>
+        /// These decide when a band moves and when it settles, and none of
+        /// them reaches the queue until it does (#104).
+        /// </remarks>
+        public WorldHash AddCouncils(NomadicBands nomads)
+        {
+            if (nomads is null)
+            {
+                throw new ArgumentNullException(nameof(nomads));
+            }
+
+            nomads.CopyTrackedTo(_communities);
+            _communities.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Open(Section.Councils, _communities.Count);
+
+            for (var i = 0; i < _communities.Count; i++)
+            {
+                var band = (MobileGroup)_communities[i];
+                var booked = nomads.BookedArrival(band);
+
+                Mix(band.Id);
+                Mix(nomads.PressureOf(band));
+                Mix(nomads.DaysAtCamp(band));
+                Mix(nomads.DaysSinceLook(band));
+                Mix(booked.HasValue ? 1 : 0);
+                Mix(booked ?? default);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in which communities are in famine, ordered by durable id.
+        /// </summary>
+        /// <remarks>
+        /// The flag decides whether the next meal publishes FamineStarted or
+        /// FamineEnded, so two worlds that disagree on it write different
+        /// histories later (#104).
+        /// </remarks>
+        public WorldHash AddFamine(Hunger hunger)
+        {
+            if (hunger is null)
+            {
+                throw new ArgumentNullException(nameof(hunger));
+            }
+
+            hunger.CopyTrackedTo(_communities);
+            _communities.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Open(Section.Famine, _communities.Count);
+
+            for (var i = 0; i < _communities.Count; i++)
+            {
+                Mix(_communities[i].Id);
+                Mix(hunger.IsInFamine(_communities[i]) ? 1 : 0);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the recorded history: how many events, and the digest the
+        /// journal keeps of them.
+        /// </summary>
+        /// <remarks>
+        /// No system reads the journal back, but it is what a save keeps and
+        /// what the chronicle prints, so two runs whose histories differ have
+        /// diverged. The journal folds each event in as it is recorded
+        /// (<see cref="EventJournal.Digest"/>), so this costs the same after
+        /// two centuries as after a day (#104).
+        /// </remarks>
+        public WorldHash AddJournal(EventJournal journal)
+        {
+            if (journal is null)
+            {
+                throw new ArgumentNullException(nameof(journal));
+            }
+
+            Open(Section.Journal, journal.Count);
+            Mix(journal.Digest);
+            return this;
+        }
+
+        /// <summary>
         /// Folds in every booking a system is holding - the "state names the
         /// event it booked" record each periodic stream keeps (#80) - in
         /// their own canonical order.
@@ -556,5 +892,30 @@ namespace KingdomWatch.Core.Validation
         }
 
         private void Mix(EventId id) => Mix(id.Value);
+
+        private void MixRoute(ReadOnlySpan<WorldPosition> route)
+        {
+            Mix(route.Length);
+
+            for (var i = 0; i < route.Length; i++)
+            {
+                Mix(route[i]);
+            }
+        }
+
+        // A task's worker as the durable id to sort by, and the handle Jobs
+        // is asked about it by.
+        private readonly struct Worker
+        {
+            public Worker(EntityId id, PersonHandle handle)
+            {
+                Id = id;
+                Handle = handle;
+            }
+
+            public EntityId Id { get; }
+
+            public PersonHandle Handle { get; }
+        }
     }
 }

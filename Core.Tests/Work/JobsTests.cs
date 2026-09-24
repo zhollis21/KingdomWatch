@@ -466,6 +466,75 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void The_dawn_counts_duty_and_site_survey_are_readable()
+        {
+            // What the world hash folds in for a band's working day (#104):
+            // the counts taken at dawn, who is on each job, and what the site
+            // search found - none of which reaches the queue.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
+            var adult = w.Join(band, 30L);
+            w.Join(band, 8L);
+
+            var unsurveyed = w.Jobs.SurveyOf(band, JobKind.Woodcutter);
+            w.AdvanceToDawn();
+            var hearths = Warmth.CountHearths(band.Members, w.People, new List<EntityId>());
+            var survey = w.Jobs.SurveyOf(band, JobKind.Woodcutter);
+            var route = w.Jobs.SiteRouteOf(band, JobKind.Woodcutter);
+
+            // A join after dawn is not in the dawn's snapshot.
+            w.Join(band, 40L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(unsurveyed.Reachable, Is.False, "nothing searched before the first dawn");
+                Assert.That(w.Jobs.LivingAtDawn(band), Is.EqualTo(2), "the dawn's count, not today's");
+                Assert.That(w.Jobs.HearthsAtDawn(band), Is.EqualTo(hearths));
+                Assert.That(w.Jobs.SitesFoundFrom(band), Is.EqualTo(WorkWorld.Camp));
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Woodcutter), Is.EqualTo(1), "the adult; the child does not work");
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.Zero);
+                Assert.That(survey.Reachable, Is.True);
+                Assert.That(survey.Destination, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(survey.Cost, Is.GreaterThan(0L));
+                Assert.That(survey.ReturnCost, Is.GreaterThan(0L));
+                Assert.That(route[0], Is.EqualTo(WorkWorld.Camp));
+                Assert.That(route[route.Count - 1], Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(w.Jobs.TaskOf(adult).Destination, Is.EqualTo(survey.Destination));
+            });
+
+            w.AdvanceTo(w.Today(Jobs.Dusk));
+            w.Jobs.Untrack(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Jobs.LivingAtDawn(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.HearthsAtDawn(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.SitesFoundFrom(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.OnDuty(band, JobKind.Forager), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.SurveyOf(band, JobKind.Forager), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.SiteRouteOf(band, JobKind.Forager), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.LivingAtDawn(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.HearthsAtDawn(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.SitesFoundFrom(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.OnDuty(null!, JobKind.Forager), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.SurveyOf(null!, JobKind.Forager), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.SiteRouteOf(null!, JobKind.Forager), Throws.ArgumentNullException);
+            });
+
+            w.Jobs.Track(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Jobs.OnDuty(band, JobKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.OnDuty(band, (JobKind)99), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.SurveyOf(band, JobKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.SurveyOf(band, (JobKind)99), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.SiteRouteOf(band, JobKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.SiteRouteOf(band, (JobKind)99), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
         public void Untracking_cancels_the_dawn_and_refuses_a_band_with_someone_out()
         {
             var w = new WorkWorld();

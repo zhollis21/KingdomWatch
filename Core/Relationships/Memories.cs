@@ -214,6 +214,29 @@ namespace KingdomWatch.Core.Relationships
         }
 
         /// <summary>
+        /// Every holder that remembers anything, sorted by durable id,
+        /// replacing whatever the list held - for the world hash, which must
+        /// not read the dictionary's own order. Allocates only if the list
+        /// has to grow.
+        /// </summary>
+        public void CopyHoldersTo(List<EntityId> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            foreach (var holder in _byHolder.Keys)
+            {
+                into.Add(holder);
+            }
+
+            into.Sort();
+        }
+
+        /// <summary>
         /// Everything the holder remembers, oldest-recorded first. Empty for a
         /// holder with no memories.
         /// </summary>

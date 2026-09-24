@@ -7,6 +7,7 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Validation;
 using KingdomWatch.Core.Work;
 using KingdomWatch.Harness;
 using NUnit.Framework;
@@ -156,6 +157,153 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(afterTerrain, Is.Not.EqualTo(before), "terrain");
                 Assert.That(run.Hash(), Is.Not.EqualTo(afterTerrain), "next ids");
             });
+        }
+
+        [Test]
+        public void The_run_s_hash_sees_each_relationship_store_and_the_history()
+        {
+            // The #104 sweep, over the systems a caller can change on their
+            // own. Ids and event ids are made up rather than allocated: the
+            // allocator is hashed too, and handing one out would move the hash
+            // whether or not the store under test was folded in.
+            var run = new WorldRun(1UL).RunYears(1L);
+            var world = run.World;
+            var stranger = new EntityId(EntityKind.Person, 1_000_000UL);
+            var another = new EntityId(EntityKind.Person, 1_000_001UL);
+            var hashes = new List<(string What, ulong Hash)> { ("before", run.Hash()) };
+
+            world.Partnerships.Form(stranger, another, new EventId(1_000_000UL), world.Now);
+            hashes.Add(("partnerships", run.Hash()));
+            world.Genealogy.Record(stranger, EntityId.None, EntityId.None);
+            hashes.Add(("genealogy", run.Hash()));
+            world.Memories.Record(stranger, new EventId(1_000_001UL), another, 5, ReadOnlySpan<EntityId>.Empty, world.Now);
+            hashes.Add(("memories", run.Hash()));
+            world.Journal.On(new DomainEvent(
+                new EventId(1_000_002UL), world.Now, DomainEventKind.PersonBorn, stranger, EntityId.None, Reasons.None));
+            hashes.Add(("journal", run.Hash()));
+
+            Assert.Multiple(() =>
+            {
+                for (var i = 1; i < hashes.Count; i++)
+                {
+                    Assert.That(hashes[i].Hash, Is.Not.EqualTo(hashes[i - 1].Hash), hashes[i].What);
+                }
+            });
+        }
+
+        [Test]
+        public void The_run_s_hash_sees_work_councils_and_famine_as_the_run_changes_them()
+        {
+            // The rest of the #104 sweep. Jobs, councils and famine have no
+            // writer of their own - every public way to change them changes a
+            // section that was already hashed too - so each is watched on its
+            // own, day by day through a live run, and has to be seen to move
+            // on a day its system acted. A section missing from the run's
+            // hash is caught by The_run_s_hash_is_every_section_in_order.
+            //
+            // The run is left to itself except for its first month, when the
+            // bands' food is taken each morning: a well-fed run need never
+            // starve (seed 1 does not in ten years), and the famine flag has
+            // to be seen to flip both ways through Hunger's own meal.
+            var run = new WorldRun(1UL);
+            var world = run.World;
+            var workMoved = false;
+            var councilMoved = false;
+            var famineStarted = 0;
+            var famineEnded = 0;
+            var famineMissed = new List<string>();
+            var communities = new List<ICommunity>();
+
+            for (var day = 0; day < SimulationTime.DaysPerYear; day++)
+            {
+                if (day < 30)
+                {
+                    world.Nomads.CopyTrackedTo(communities);
+
+                    foreach (var band in communities)
+                    {
+                        var food = band.SharedSupplies.Available(ResourceKind.Food);
+
+                        if (food > 0)
+                        {
+                            band.SharedSupplies.Consume(ResourceKind.Food, food);
+                        }
+                    }
+                }
+
+                var work = new WorldHash().AddWork(world.Jobs, world.People).Value;
+                var council = new WorldHash().AddCouncils(world.Nomads).Value;
+                var famine = new WorldHash().AddFamine(world.Hunger).Value;
+                world.Hunger.CopyTrackedTo(communities);
+                var trackedBefore = communities.Count;
+                var published = world.Journal.Count;
+
+                world.Advance(SimulationTime.TicksPerDay);
+
+                workMoved |= new WorldHash().AddWork(world.Jobs, world.People).Value != work;
+                councilMoved |= new WorldHash().AddCouncils(world.Nomads).Value != council;
+                world.Hunger.CopyTrackedTo(communities);
+
+                if (communities.Count != trackedBefore || !FamineTurned(world, published, ref famineStarted, ref famineEnded))
+                {
+                    continue;
+                }
+
+                if (new WorldHash().AddFamine(world.Hunger).Value == famine)
+                {
+                    famineMissed.Add("day " + day);
+                }
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(workMoved, Is.True, "work");
+                Assert.That(councilMoved, Is.True, "councils");
+                Assert.That(famineStarted, Is.GreaterThan(0), "no famine started to watch");
+                Assert.That(famineEnded, Is.GreaterThan(0), "no famine ended to watch");
+                Assert.That(famineMissed, Is.Empty, "famine turned and the section did not move");
+            });
+        }
+
+        [Test]
+        public void The_run_s_hash_is_every_section_in_order()
+        {
+            // Wiring, pinned: the run's hash is WorldHash over every system
+            // the world holds. A system given a section and never added here
+            // would pass its own tests and still be unhashed (#104).
+            var run = new WorldRun(2UL).RunYears(1L);
+            var world = run.World;
+            var bookings = new List<PendingBooking>();
+            var tracked = new List<ICommunity>();
+            var bands = new List<MobileGroup>();
+            world.CopyBookingsTo(bookings);
+            world.Nomads.CopyTrackedTo(tracked);
+
+            foreach (var band in tracked)
+            {
+                bands.Add((MobileGroup)band);
+            }
+
+            var expected = new WorldHash()
+                .AddTerrain(world.Grid)
+                .AddIds(world.Ids)
+                .AddPeople(world.People)
+                .AddHouseholds(world.Households, world.People)
+                .AddSettlements(world.Founding, world.People)
+                .AddBands(bands, world.People)
+                .AddKnownMaps(world.KnownMaps)
+                .AddPartnerships(world.Partnerships)
+                .AddGenealogy(world.Genealogy)
+                .AddMemories(world.Memories)
+                .AddWork(world.Jobs, world.People)
+                .AddCouncils(world.Nomads)
+                .AddFamine(world.Hunger)
+                .AddJournal(world.Journal)
+                .AddBookings(bookings)
+                .AddPending(world.Clock)
+                .Value;
+
+            Assert.That(run.Hash(), Is.EqualTo(expected));
         }
 
         [Test]
@@ -348,6 +496,31 @@ namespace KingdomWatch.Core.Tests.Validation
             }
 
             return -1;
+        }
+
+        // Whether anything published since the journal held this many events
+        // started or ended a famine, counting each.
+        private static bool FamineTurned(World world, int since, ref int started, ref int ended)
+        {
+            var turned = false;
+
+            for (var i = since; i < world.Journal.Count; i++)
+            {
+                var kind = world.Journal[i].Kind;
+
+                if (kind == DomainEventKind.FamineStarted)
+                {
+                    started++;
+                    turned = true;
+                }
+                else if (kind == DomainEventKind.FamineEnded)
+                {
+                    ended++;
+                    turned = true;
+                }
+            }
+
+            return turned;
         }
     }
 }

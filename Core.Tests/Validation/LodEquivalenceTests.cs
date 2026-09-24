@@ -31,9 +31,10 @@ namespace KingdomWatch.Core.Tests.Validation
     /// one resolved offscreen) - needs a second path to exist first, and is
     /// tracked separately.
     ///
-    /// The hash does not yet cover every system (#104), so the journal is
-    /// compared too: a divergence in partnerships, genealogy or famine shows
-    /// up there as an event that one run published and the other did not.
+    /// The journal is compared event by event as well as through the hash,
+    /// which folds in only its digest (#104). A digest says two histories
+    /// differ; the comparison says at which event, which is where a failure
+    /// here has to be read from.
     /// </remarks>
     [TestFixture]
     public sealed class LodEquivalenceTests
@@ -86,8 +87,9 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void A_different_history_is_caught_by_the_journal_comparison()
         {
-            // The same, for the journal: the hash does not fold it in (#104),
-            // so the comparison over it has to be seen to fail on its own.
+            // The same, for the journal comparison: it is the diagnostic that
+            // names the first event two runs disagree on, so it has to be seen
+            // to fail on its own rather than only alongside the hash.
             var first = Run(1UL, OneJump);
             var second = Run(2UL, OneJump);
 

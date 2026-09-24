@@ -113,6 +113,29 @@ namespace KingdomWatch.Core.Relationships
                 : ReadOnlySpan<Partnership>.Empty;
         }
 
+        /// <summary>
+        /// Everyone who has ever been partnered, sorted by durable id,
+        /// replacing whatever the list held - for the world hash, which must
+        /// not read the dictionary's own order. Allocates only if the list
+        /// has to grow.
+        /// </summary>
+        public void CopyPartneredTo(List<EntityId> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            foreach (var person in _byPerson.Keys)
+            {
+                into.Add(person);
+            }
+
+            into.Sort();
+        }
+
         private void RequireUnpartnered(EntityId person, string paramName)
         {
             var active = ActiveIndex(person);

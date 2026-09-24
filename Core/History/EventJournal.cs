@@ -1,5 +1,7 @@
 using System;
+using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Rng;
 
 namespace KingdomWatch.Core.History
 {
@@ -24,11 +26,20 @@ namespace KingdomWatch.Core.History
     /// with the clock, and the clock only moves forward, so a violation here
     /// is a bug in one of them - and cheaper to catch at the journal than to
     /// find in a chronicle that reads out of order.
+    ///
+    /// **The digest is the journal's side of the world hash (#104).** Every
+    /// event is folded into <see cref="Digest"/> as it is recorded, so the
+    /// hash reads one number however long the history has grown, rather
+    /// than walking every entry each time it is taken. The fold is
+    /// <see cref="SplitMix64"/> over each field in a fixed order, the same
+    /// idiom as the hash itself, and it is part of what a save has to carry:
+    /// it cannot be rebuilt from a journal that has been compacted (#74).
     /// </remarks>
     public sealed class EventJournal : IDomainEventSubscriber
     {
         private DomainEvent[] _events;
         private int _count;
+        private ulong _digest;
 
         /// <param name="capacity">
         /// Entries to preallocate. Growth past it works but allocates.
@@ -45,6 +56,12 @@ namespace KingdomWatch.Core.History
         }
 
         public int Count => _count;
+
+        /// <summary>
+        /// Every event recorded so far, folded in order into one number. Two
+        /// journals with the same digest recorded the same history.
+        /// </summary>
+        public ulong Digest => _digest;
 
         public DomainEvent this[int index]
         {
@@ -89,6 +106,37 @@ namespace KingdomWatch.Core.History
 
             _events[_count] = published;
             _count++;
+            Fold(published);
+        }
+
+        // Longhand and in a fixed order, for the reason WorldHash folds its
+        // records that way: a reflective walk would reorder itself the first
+        // time someone adds a field.
+        private void Fold(in DomainEvent published)
+        {
+            Mix(published.Id.Value);
+            Mix(published.Time.Ticks);
+            Mix((long)published.Kind);
+            Mix(published.PrimaryEntity);
+            Mix(published.SecondaryEntity);
+
+            var reasons = published.Reasons;
+            Mix(reasons.Count);
+
+            for (var i = 0; i < reasons.Count; i++)
+            {
+                Mix((long)reasons[i]);
+            }
+        }
+
+        private void Mix(ulong value) => _digest = SplitMix64.Mix(_digest ^ value);
+
+        private void Mix(long value) => Mix(unchecked((ulong)value));
+
+        private void Mix(EntityId id)
+        {
+            Mix((long)id.Kind);
+            Mix(id.Value);
         }
     }
 }

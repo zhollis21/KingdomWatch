@@ -139,13 +139,14 @@ namespace KingdomWatch.Harness
 
         /// <summary>
         /// The canonical hash of every section <see cref="WorldHash"/> has:
-        /// people, households, settlements, wandering bands, known maps, every
-        /// stream's bookings (the #97 review note on #17) and the pending queue.
+        /// terrain, next ids, people, households, settlements, wandering
+        /// bands, known maps, partnerships, genealogy, memories, work in hand,
+        /// band councils, famine, the recorded history, every stream's
+        /// bookings (the #97 review note on #17) and the pending queue.
         /// </summary>
         /// <remarks>
-        /// Not yet everything the world holds. Partnerships, genealogy,
-        /// memories, job task routes, band councils and famine flags have no
-        /// section yet (#104).
+        /// Every system in <see cref="World"/> with durable state has a
+        /// section (#104). One gained later needs one here too (AGENTS.md).
         /// </remarks>
         public ulong Hash()
         {
@@ -166,6 +167,13 @@ namespace KingdomWatch.Harness
                 .AddSettlements(World.Founding, World.People)
                 .AddBands(_bands, World.People)
                 .AddKnownMaps(World.KnownMaps)
+                .AddPartnerships(World.Partnerships)
+                .AddGenealogy(World.Genealogy)
+                .AddMemories(World.Memories)
+                .AddWork(World.Jobs, World.People)
+                .AddCouncils(World.Nomads)
+                .AddFamine(World.Hunger)
+                .AddJournal(World.Journal)
                 .AddBookings(_bookings)
                 .AddPending(World.Clock)
                 .Value;

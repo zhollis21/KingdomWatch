@@ -128,5 +128,64 @@ namespace KingdomWatch.Core.Tests.History
                 Assert.That(journal[1].Reasons.Contains(ReasonCode.FoodShortage), Is.True);
             });
         }
+
+        [Test]
+        public void The_digest_is_the_history_folded_in_order()
+        {
+            // The journal's side of the world hash (#104): the same events in
+            // the same order give the same digest, however the array grew,
+            // and any field of any event, or their order, moves it.
+            DomainEvent With(
+                ulong id = 1UL,
+                SimulationTime? time = null,
+                DomainEventKind kind = DomainEventKind.PersonBorn,
+                ulong primary = 1UL,
+                ulong secondary = 0UL,
+                Reasons reasons = default) =>
+                new DomainEvent(
+                    new EventId(id),
+                    time ?? Noon,
+                    kind,
+                    Person(primary),
+                    secondary == 0UL ? EntityId.None : Person(secondary),
+                    reasons);
+
+            ulong DigestOf(int capacity, params DomainEvent[] events)
+            {
+                var journal = new EventJournal(capacity);
+
+                foreach (var published in events)
+                {
+                    journal.On(published);
+                }
+
+                return journal.Digest;
+            }
+
+            var tail = With(2UL, Dusk);
+            var baseline = DigestOf(8, With(), tail);
+            var two = new Reasons(ReasonCode.FoodShortage, ReasonCode.SpouseDied);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new EventJournal(1).Digest, Is.Zero, "nothing recorded yet");
+                Assert.That(DigestOf(1, With(), tail), Is.EqualTo(baseline), "growth is not history");
+                Assert.That(DigestOf(8, With()), Is.Not.EqualTo(baseline), "one event fewer");
+                Assert.That(DigestOf(8, With(id: 3UL), tail), Is.Not.EqualTo(baseline), "id");
+                Assert.That(DigestOf(8, With(time: SimulationTime.FromHours(13L)), tail), Is.Not.EqualTo(baseline), "time");
+                Assert.That(DigestOf(8, With(kind: DomainEventKind.PersonDied), tail), Is.Not.EqualTo(baseline), "kind");
+                Assert.That(DigestOf(8, With(primary: 5UL), tail), Is.Not.EqualTo(baseline), "primary");
+                Assert.That(DigestOf(8, With(secondary: 5UL), tail), Is.Not.EqualTo(baseline), "secondary");
+                Assert.That(DigestOf(8, With(reasons: two), tail), Is.Not.EqualTo(baseline), "reasons");
+                Assert.That(
+                    DigestOf(8, With(reasons: new Reasons(ReasonCode.SpouseDied, ReasonCode.FoodShortage)), tail),
+                    Is.Not.EqualTo(DigestOf(8, With(reasons: two), tail)),
+                    "reason order");
+                Assert.That(
+                    DigestOf(8, With(2UL), With(1UL, primary: 2UL)),
+                    Is.Not.EqualTo(DigestOf(8, With(1UL, primary: 2UL), With(2UL))),
+                    "event order");
+            });
+        }
     }
 }

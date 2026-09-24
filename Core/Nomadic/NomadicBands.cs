@@ -351,6 +351,20 @@ namespace KingdomWatch.Core.Nomadic
         /// <summary>Days since this band last made camp.</summary>
         public int DaysAtCamp(MobileGroup band) => TrackedFor(band).DaysAtCamp;
 
+        /// <summary>Days since this band last looked for a new camp, or last made one.</summary>
+        public int DaysSinceLook(MobileGroup band) => TrackedFor(band).DaysSinceLook;
+
+        /// <summary>
+        /// The cell the council sent this band to, or null when no arrival is
+        /// booked. The arrival is refused unless the band's destination still
+        /// names it.
+        /// </summary>
+        public WorldPosition? BookedArrival(MobileGroup band)
+        {
+            var tracked = TrackedFor(band);
+            return tracked.PendingArrival.IsNone ? (WorldPosition?)null : tracked.Booked;
+        }
+
         /// <summary>
         /// How many of the three jobs this band would find a site for from a
         /// position, counting only cells the band knows. Throws for a position

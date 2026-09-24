@@ -1,8 +1,11 @@
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
+using KingdomWatch.Core.History;
 using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Nomadic;
@@ -452,6 +455,332 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Partnerships_are_folded_in_whatever_order_they_were_formed()
+        {
+            // Who is partnered with whom is read by Fertility and Matchmaking,
+            // and households hash their members, not the links (#104).
+            var ids = new IdAllocator();
+            var aldric = ids.Next(EntityKind.Person);
+            var mira = ids.Next(EntityKind.Person);
+            var bram = ids.Next(EntityKind.Person);
+            var tove = ids.Next(EntityKind.Person);
+            var first = ids.NextEvent();
+            var second = ids.NextEvent();
+
+            var forward = new Partnerships();
+            forward.Form(aldric, mira, first, SimulationTime.FromDays(1));
+            forward.Form(bram, tove, second, SimulationTime.FromDays(2));
+
+            var backward = new Partnerships();
+            backward.Form(bram, tove, second, SimulationTime.FromDays(2));
+            backward.Form(aldric, mira, first, SimulationTime.FromDays(1));
+
+            var before = new WorldHash().AddPartnerships(forward).Value;
+            forward.End(aldric, mira, ids.NextEvent(), SimulationTime.FromDays(3));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new WorldHash().AddPartnerships(backward).Value, Is.EqualTo(before), "forming order is not the world");
+                Assert.That(new WorldHash().AddPartnerships(forward).Value, Is.Not.EqualTo(before), "an ending is");
+                Assert.That(new WorldHash().AddPartnerships(new Partnerships()).Value, Is.Not.EqualTo(before), "and so is having none");
+            });
+        }
+
+        [Test]
+        public void Genealogy_is_folded_in_parents_and_children_alike()
+        {
+            // Founders recorded in either order are the same tree; a child
+            // recorded, or two siblings recorded the other way round, is not.
+            var ids = new IdAllocator();
+            var mother = ids.Next(EntityKind.Person);
+            var father = ids.Next(EntityKind.Person);
+            var elder = ids.Next(EntityKind.Person);
+            var younger = ids.Next(EntityKind.Person);
+
+            Genealogy Tree(bool foundersForward, params EntityId[] children)
+            {
+                var tree = new Genealogy();
+                tree.Record(foundersForward ? mother : father, EntityId.None, EntityId.None);
+                tree.Record(foundersForward ? father : mother, EntityId.None, EntityId.None);
+
+                foreach (var child in children)
+                {
+                    tree.Record(child, mother, father);
+                }
+
+                return tree;
+            }
+
+            var before = new WorldHash().AddGenealogy(Tree(true, elder)).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new WorldHash().AddGenealogy(Tree(false, elder)).Value, Is.EqualTo(before), "founding order is not the world");
+                Assert.That(new WorldHash().AddGenealogy(Tree(true, elder, younger)).Value, Is.Not.EqualTo(before), "a child recorded");
+                Assert.That(
+                    new WorldHash().AddGenealogy(Tree(true, younger, elder)).Value,
+                    Is.Not.EqualTo(new WorldHash().AddGenealogy(Tree(true, elder, younger)).Value),
+                    "children are kept in the order they were recorded");
+            });
+        }
+
+        [Test]
+        public void Memories_are_folded_in_with_their_witnesses()
+        {
+            // Nothing writes one in M1; the section is there for the first
+            // thing that does (#104).
+            var settings = new MemorySettings(4, SimulationTime.TicksPerDay, SimulationTime.TicksPerDay * 10, 4);
+            var ids = new IdAllocator();
+            var oakshire = ids.Next(EntityKind.Settlement);
+            var mira = ids.Next(EntityKind.Person);
+            var bram = ids.Next(EntityKind.Person);
+            var raid = ids.NextEvent();
+            var feast = ids.NextEvent();
+
+            Memories Remember(bool oakshireFirst)
+            {
+                var memories = new Memories(settings);
+                var witnesses = new[] { mira };
+
+                if (oakshireFirst)
+                {
+                    memories.Record(oakshire, raid, bram, -40, witnesses, SimulationTime.Zero);
+                    memories.Record(mira, feast, bram, 10, witnesses, SimulationTime.Zero);
+                }
+                else
+                {
+                    memories.Record(mira, feast, bram, 10, witnesses, SimulationTime.Zero);
+                    memories.Record(oakshire, raid, bram, -40, witnesses, SimulationTime.Zero);
+                }
+
+                return memories;
+            }
+
+            var remembered = Remember(true);
+            var before = new WorldHash().AddMemories(remembered).Value;
+            var empty = new WorldHash().AddMemories(new Memories(settings)).Value;
+            remembered.Teach(oakshire, raid, bram);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(before, Is.Not.EqualTo(empty), "something remembered");
+                Assert.That(new WorldHash().AddMemories(Remember(false)).Value, Is.EqualTo(before), "recording order across holders is not the world");
+                Assert.That(new WorldHash().AddMemories(remembered).Value, Is.Not.EqualTo(before), "a witness taught");
+            });
+        }
+
+        [Test]
+        public void Work_in_hand_and_each_band_s_working_day_are_folded_in()
+        {
+            // A task's route and timings, and the band's dawn counts and site
+            // search, none of which reaches the queue (#104). Driven through
+            // Jobs' own handlers, the way a run changes them.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
+            var adults = w.JoinAdults(band, 2);
+
+            ulong Hash() => new WorldHash().AddWork(w.Jobs, w.People).Value;
+
+            var tracked = Hash();
+            w.AdvanceToDawn();
+            var working = Hash();
+            w.Jobs.Vacate(adults[0]);
+            var vacated = Hash();
+
+            // Moved by hand after dawn: the next pick refreshes the search
+            // from here, and until it does the old one is what is held.
+            band.Position = WorkWorld.ForestCell;
+            var moved = Hash();
+            w.Jobs.RefreshSites(band);
+            var refreshed = Hash();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(working, Is.Not.EqualTo(tracked), "dawn assigned tasks and found sites");
+                Assert.That(vacated, Is.Not.EqualTo(working), "a task given up");
+                Assert.That(moved, Is.EqualTo(vacated), "the band's position is the bands section's, not this one's");
+                Assert.That(refreshed, Is.Not.EqualTo(moved), "a fresh site search");
+            });
+        }
+
+        [Test]
+        public void Work_is_folded_in_whatever_order_bands_were_tracked()
+        {
+            static ulong HashWith(bool westFirst)
+            {
+                var w = new WorkWorld();
+                var ids = w.Demographics.Base.Ids;
+                var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+
+                foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
+                {
+                    w.KnownMaps.Track(band.Id);
+                    w.KnownMaps.Reveal(band.Id, band.Position, Jobs.RevealRadius);
+                    w.Jobs.Track(band);
+                }
+
+                w.Join(west, 30L);
+                w.Join(east, 30L);
+                w.AdvanceToDawn();
+                return new WorldHash().AddWork(w.Jobs, w.People).Value;
+            }
+
+            Assert.That(HashWith(false), Is.EqualTo(HashWith(true)));
+        }
+
+        [Test]
+        public void Tasks_are_folded_in_by_worker_id_not_by_storage_slot()
+        {
+            // The same two people, stored in each other's slots: a slot index
+            // is representation (section 5), so the worlds must agree. Member
+            // order is behaviour and is kept the same in both.
+            static ulong HashWith(bool firstInFirstSlot)
+            {
+                var w = new WorkWorld();
+                var band = w.NewBand(WorkWorld.Camp, 0);
+                WorkWorld.FillWoodAndStone(band);
+                var first = new EntityId(EntityKind.Person, 1_000UL);
+                var second = new EntityId(EntityKind.Person, 1_001UL);
+                var bornTick = w.Now.Ticks - (30L * SimulationTime.TicksPerYear);
+
+                PersonHandle Add(EntityId id) =>
+                    w.People.Add(id, WorkWorld.Camp, 100, AgeStage.Adult, Sex.Male, 0, 0, w.Now, bornTick);
+
+                var one = firstInFirstSlot ? Add(first) : Add(second);
+                var other = firstInFirstSlot ? Add(second) : Add(first);
+                band.AddMember(firstInFirstSlot ? one : other);
+                band.AddMember(firstInFirstSlot ? other : one);
+                w.AdvanceToDawn();
+                Assert.That(w.Jobs.HasTask(one) && w.Jobs.HasTask(other), Is.True, "both out foraging");
+                return new WorldHash().AddWork(w.Jobs, w.People).Value;
+            }
+
+            Assert.That(HashWith(false), Is.EqualTo(HashWith(true)));
+        }
+
+        [Test]
+        public void Famine_is_folded_in_whatever_order_communities_were_tracked()
+        {
+            static ulong HashWith(bool westFirst)
+            {
+                var w = new WorkWorld();
+                var ids = w.Demographics.Base.Ids;
+                var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+
+                foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
+                {
+                    w.Hunger.Track(band, inFamine: band == west);
+                }
+
+                return new WorldHash().AddFamine(w.Hunger).Value;
+            }
+
+            Assert.That(HashWith(false), Is.EqualTo(HashWith(true)));
+        }
+
+        [Test]
+        public void A_band_s_council_is_folded_in()
+        {
+            // Pressure and days at camp decide when a band moves and settles
+            // (#104); a council adds to both.
+            var w = new WorkWorld();
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            ulong Hash() => new WorldHash().AddCouncils(w.Nomads).Value;
+
+            var before = Hash();
+            w.AdvanceToFirstLight();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Nomads.DaysAtCamp(band), Is.EqualTo(1), "the council sat");
+                Assert.That(Hash(), Is.Not.EqualTo(before));
+            });
+        }
+
+        [Test]
+        public void Councils_are_folded_in_whatever_order_bands_were_tracked()
+        {
+            static ulong HashWith(bool westFirst)
+            {
+                var w = new WorkWorld();
+                var ids = w.Demographics.Base.Ids;
+                var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+                w.Join(west, 30L);
+                w.Join(west, 31L);
+                w.Join(east, 30L);
+
+                foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
+                {
+                    w.Nomads.Track(band);
+                }
+
+                w.AdvanceToFirstLight();
+                return new WorldHash().AddCouncils(w.Nomads).Value;
+            }
+
+            Assert.That(HashWith(false), Is.EqualTo(HashWith(true)));
+        }
+
+        [Test]
+        public void Famine_is_folded_in()
+        {
+            // The flag decides whether the next meal publishes FamineStarted
+            // or FamineEnded (#104). A band with no food and nobody old enough
+            // to forage, fed through Hunger's own handler, is the way a run
+            // sets it.
+            var w = new WorkWorld();
+            var hungry = w.NewBand(WorkWorld.Camp, 0);
+            var fed = w.NewBand(WorkWorld.HillsCell, WorkWorld.PlentifulFood(1));
+            w.Join(hungry, 8L);
+            w.JoinAdults(fed, 1);
+
+            ulong Hash() => new WorldHash().AddFamine(w.Hunger).Value;
+
+            var before = Hash();
+            w.Advance(SimulationTime.TicksPerDay);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Hunger.IsInFamine(hungry), Is.True, "the empty band went hungry");
+                Assert.That(w.Hunger.IsInFamine(fed), Is.False);
+                Assert.That(Hash(), Is.Not.EqualTo(before));
+            });
+        }
+
+        [Test]
+        public void The_recorded_history_is_folded_in()
+        {
+            // The count and the digest both: two histories of the same length
+            // that differ in one event are different worlds.
+            static EventJournal Journal(params DomainEventKind[] kinds)
+            {
+                var journal = new EventJournal(4);
+
+                for (var i = 0; i < kinds.Length; i++)
+                {
+                    journal.On(new DomainEvent(
+                        new EventId((ulong)i + 1UL), SimulationTime.Zero, kinds[i],
+                        new EntityId(EntityKind.Person, 1UL), EntityId.None, Reasons.None));
+                }
+
+                return journal;
+            }
+
+            var born = new WorldHash().AddJournal(Journal(DomainEventKind.PersonBorn)).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new WorldHash().AddJournal(Journal()).Value, Is.Not.EqualTo(born), "nothing recorded");
+                Assert.That(new WorldHash().AddJournal(Journal(DomainEventKind.PersonDied)).Value, Is.Not.EqualTo(born), "another event");
+            });
+        }
+
+        [Test]
         public void Every_section_refuses_null()
         {
             var world = Populate(Build());
@@ -470,6 +799,14 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(() => new WorldHash().AddKnownMaps(null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddTerrain(null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddIds(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddPartnerships(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddGenealogy(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddMemories(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddWork(null!, world.People), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddWork(new WorkWorld().Jobs, null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddCouncils(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddFamine(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddJournal(null!), Throws.ArgumentNullException);
             });
         }
 
