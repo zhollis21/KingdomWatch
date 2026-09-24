@@ -241,6 +241,8 @@ Run the same battle visible vs offscreen
 
 Outcomes need not be bit-identical where detailed positioning legitimately matters — but they must obey **explicitly defined equivalence rules**. Otherwise you eventually ship *"zooming into battles makes your kingdom more likely to win,"* which players will swear is happening long before you believe them.
 
+**Built at #14, as far as M1 has two things to compare.** Core has one simulation path: stepped detail and compression are both `SimulationClock.AdvanceTo`, with a near target or a distant one, and there is no visibility input yet. So in M1 "scheduled versus compressed" means *how a run is cut into advances*, and the rule is the strictest one available: the same seed reaches an **identical** world — the same canonical hash and the same journal, event for event — whether ten years run as one jump, a year at a time, a day at a time, or in ragged steps that line up with no cadence (`Core.Tests/Validation/LodEquivalenceTests.cs`). What that catches is a system doing work per advance call rather than per scheduled event, which would make the player's speed setting an input to the simulation. The rules for where outcomes may legitimately differ need the second path to exist first: stepped movement against a task's reconstructed position is #105 (after #25), and the same battle visible versus offscreen is #106 (after #27).
+
 ### Scheduled → stepped transitions
 
 Because people are never destroyed there is no *person*-materialization problem — but there is a **task**-materialization problem.
