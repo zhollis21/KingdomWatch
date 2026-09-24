@@ -78,14 +78,11 @@ namespace KingdomWatch.Core.Tests.Validation
 
             foreach (var run in Runs)
             {
-                foreach (var year in run.Years)
+                if (run.WestDiedOut != null || run.EastDiedOut != null)
                 {
-                    if (year.West == 0 || year.East == 0)
-                    {
-                        report.AppendLine(
-                            "seed " + run.World.Seed + ", year " + year.Year + ": west " + year.West + ", east " + year.East);
-                        break;
-                    }
+                    report.AppendLine(
+                        "seed " + run.World.Seed + ": west died out " + (run.WestDiedOut?.ToString() ?? "never")
+                        + ", east " + (run.EastDiedOut?.ToString() ?? "never"));
                 }
             }
 
@@ -242,6 +239,38 @@ namespace KingdomWatch.Core.Tests.Validation
             });
         }
 
+        [TestCase(0, TestName = "A west that dies out is a failed run even when it validates clean")]
+        [TestCase(1, TestName = "An east that dies out is a failed run even when it validates clean")]
+        public void A_homeland_that_dies_out_is_a_failed_run_even_when_it_validates_clean(int side)
+        {
+            // The #103 review: the harness exited 0 on a world where a
+            // homeland had died out, because it read only the validator.
+            // Everyone on one side of the river dies before the first year.
+            var run = new WorldRun(1UL);
+            var communities = new List<ICommunity>();
+            run.World.Nomads.CopyTrackedTo(communities);
+            var band = (MobileGroup)communities[side];
+
+            foreach (var member in new List<PersonHandle>(band.Members))
+            {
+                run.World.Deaths.Die(member, new Reasons(ReasonCode.Illness));
+            }
+
+            run.RunYears(2L);
+            var text = new StringWriter();
+            Chronicle.Write(run, text);
+            var died = side == 0 ? run.WestDiedOut : run.EastDiedOut;
+            var lived = side == 0 ? run.EastDiedOut : run.WestDiedOut;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.IsClean, Is.True, "a world can die out without breaking a rule");
+                Assert.That(died, Is.EqualTo(1L), "the first year that ended with nobody there");
+                Assert.That(lived, Is.Null);
+                Assert.That(run.Held, Is.False);
+                Assert.That(text.ToString(), Does.Contain((side == 0 ? "West" : "East") + " died out in year 1."));
+            });
+        }
         [Test]
         public void The_chronicle_prints_each_year_and_each_band_s_first_camp_once()
         {

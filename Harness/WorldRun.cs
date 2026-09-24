@@ -75,6 +75,21 @@ namespace KingdomWatch.Harness
 
         public bool IsClean => Failure is null;
 
+        /// <summary>The first year that ended with nobody west of the river, or null.</summary>
+        public long? WestDiedOut { get; private set; }
+
+        /// <summary>The first year that ended with nobody east of the river, or null.</summary>
+        public long? EastDiedOut { get; private set; }
+
+        /// <summary>
+        /// Whether the run passed what M1 asks of it (section 19): it broke no
+        /// invariant, and neither homeland died out. A world can die out
+        /// without breaking a rule, so <see cref="IsClean"/> alone is not a
+        /// pass (the #103 review). Settling is not part of it: a short run
+        /// ends before any band settles, and that is not a failure.
+        /// </summary>
+        public bool Held => IsClean && WestDiedOut is null && EastDiedOut is null;
+
         /// <summary>
         /// Advances year by year, validating after each, and stops at the first
         /// year that breaks an invariant: a world past its first break is not
@@ -100,7 +115,19 @@ namespace KingdomWatch.Harness
             {
                 World.Advance(SimulationTime.TicksPerYear);
                 ReadJournal(out var tally);
-                _years.Add(new YearSummary(World.Now.YearNumber, CountSide(true), CountSide(false), tally));
+                var summary = new YearSummary(World.Now.YearNumber, CountSide(true), CountSide(false), tally);
+                _years.Add(summary);
+
+                if (summary.West == 0 && WestDiedOut is null)
+                {
+                    WestDiedOut = summary.Year;
+                }
+
+                if (summary.East == 0 && EastDiedOut is null)
+                {
+                    EastDiedOut = summary.Year;
+                }
+
                 Validate();
             }
 

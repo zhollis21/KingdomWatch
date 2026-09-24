@@ -73,6 +73,16 @@ namespace KingdomWatch.Harness
                     + " (" + Tally(year.Tally) + ")");
             }
 
+            if (run.WestDiedOut is long west)
+            {
+                output.WriteLine("West died out in year " + west + ".");
+            }
+
+            if (run.EastDiedOut is long east)
+            {
+                output.WriteLine("East died out in year " + east + ".");
+            }
+
             if (run.Failure != null)
             {
                 output.WriteLine("Stopped: " + run.Failure);

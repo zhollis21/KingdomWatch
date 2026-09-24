@@ -87,13 +87,13 @@ namespace KingdomWatch.Harness
             Console.WriteLine();
             Console.WriteLine($"  Hash: {run.Hash():x16}");
             Console.WriteLine($"  Wall: {N(stopwatch.ElapsedMilliseconds)} ms");
-            return run.IsClean ? 0 : 1;
+            return run.Held ? 0 : 1;
         }
 
         private static int Sweep(int seeds, int years)
         {
             Console.WriteLine($"  Sweep: {N(seeds)} seeds, {N(years)} years each");
-            var broken = 0;
+            var failed = 0;
             var stopwatch = Stopwatch.StartNew();
 
             for (var seed = 1UL; seed <= (ulong)seeds; seed++)
@@ -105,17 +105,18 @@ namespace KingdomWatch.Harness
                     $"  seed {seed}: west {run.FoundingWest}->{last.West} [{westLow}..{westHigh}], "
                     + $"east {run.FoundingEast}->{last.East} [{eastLow}..{eastHigh}], "
                     + $"settled {Year(run.FirstSettlement)}, hash {run.Hash():x16}"
+                    + DiedOut("west", run.WestDiedOut) + DiedOut("east", run.EastDiedOut)
                     + (run.IsClean ? string.Empty : " BROKEN " + run.Failure));
 
-                if (!run.IsClean)
+                if (!run.Held)
                 {
-                    broken++;
+                    failed++;
                 }
             }
 
             stopwatch.Stop();
             Console.WriteLine($"  Wall: {N(stopwatch.ElapsedMilliseconds)} ms");
-            return broken == 0 ? 0 : 1;
+            return failed == 0 ? 0 : 1;
         }
 
         private static int Soak(int entities, int years)
@@ -152,6 +153,8 @@ namespace KingdomWatch.Harness
 
             return (westLow, westHigh, eastLow, eastHigh);
         }
+
+        private static string DiedOut(string side, long? year) => year is null ? string.Empty : " DIED OUT " + side + " y" + year;
 
         private static string Year(SimulationTime? time) => time is null ? "never" : "y" + time.Value.YearNumber;
 
