@@ -60,9 +60,9 @@ namespace KingdomWatch.Core.WorldGen
     /// caller passes.
     ///
     /// Tracking the band - on <see cref="Hunger"/>, <see cref="Jobs"/>,
-    /// <see cref="Nomadic.NomadicBands"/> and the rest - is the world's
-    /// wiring (#17), not the generator's: it makes a band, and hands it
-    /// back.
+    /// <see cref="Nomadic.NomadicBands"/> and the rest - is
+    /// <see cref="World.AddBand"/>'s, not the generator's: it makes a band,
+    /// and hands it back.
     ///
     /// Generation allocates, freely; it runs once per band per world.
     /// </remarks>

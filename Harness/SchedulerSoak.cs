@@ -17,8 +17,9 @@ namespace KingdomWatch.Harness
     /// normal case and what keeps the queue's cancel-and-compact path busy.
     ///
     /// This is a soak of the scheduler, not a world. The numbers it produces
-    /// describe <c>EventQueue</c> and <c>AdvanceTo</c>, nothing else, and it
-    /// is replaced by the real two-band run when #17 lands.
+    /// describe <c>EventQueue</c> and <c>AdvanceTo</c>, nothing else. The
+    /// harness runs the two-band world by default now (#17); this stays
+    /// behind <c>--soak</c> as the scheduler's own throughput figure.
     ///
     /// Everything here is plain arithmetic on preallocated arrays. The
     /// zero-allocation test wraps this handler together with the clock, so

@@ -367,13 +367,14 @@ namespace KingdomWatch.Core.Tests.Needs
         {
             // The whole chain in a world that works: plains only, so nobody
             // can cut wood, and food enough that hunger is not the cause.
-            // Two nights of grace, then ten nights at ten health each: the
-            // twelfth winter night is the last.
+            // Two nights of grace, then each cold night takes ten and each
+            // day's meal gives five back: ninety to lose at five a day from
+            // the third night, so the twenty-first winter night is the last.
             var w = new WorkWorld(1UL, WorkWorld.PlainsOnly());
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1) * 2);
             var person = w.Join(band, 30L);
             var id = w.People.GetId(person);
-            var fatal = FirstWinterNight.Plus(11L * Day);
+            var fatal = FirstWinterNight.Plus(20L * Day);
 
             w.AdvanceTo(fatal.Plus(-1L));
             var justBefore = w.People.GetHealth(person);

@@ -11,7 +11,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
     /// The whole loop, run: people are born, grow up, pair off, have
     /// children of their own and die, for a century, on the default table.
     /// A smoke test that the mechanism holds together over time - not the
-    /// population-stability test #17 owns, and not a statement about the
+    /// population-stability test (#17's <c>WorldRunTests</c>), and not a statement about the
     /// numbers, which are placeholders.
     /// </summary>
     [TestFixture]

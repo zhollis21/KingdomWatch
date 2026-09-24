@@ -33,10 +33,10 @@ namespace KingdomWatch.Harness
     /// with the issues that introduce them (#39, #24), and a rule that cannot
     /// fail is worse than an absent one because it reads as coverage.
     ///
-    /// Checks are separate methods rather than one <c>Validate(world)</c>
-    /// because there is no world type to pass: the systems are wired per
-    /// caller (#17 is where that changes). A caller runs the checks its world
-    /// has.
+    /// Checks are separate methods rather than one <c>Validate(world)</c>:
+    /// <see cref="Core.World"/> (#17) is one world, but the test fixtures
+    /// still wire their own with fewer systems in them. A caller runs the
+    /// checks its world has; <see cref="WorldRun"/> runs all of them.
     /// </remarks>
     public sealed class WorldValidator
     {

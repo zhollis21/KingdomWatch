@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Needs;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Lifecycle
@@ -413,8 +414,6 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 band.AddMember(man);
             }
 
-            w.People.SetHealth(frail, (short)(s.HealthFloor - 1));
-
             // The band eats daily, and the meal comes before the check on the
             // same day, so an unfed woman has to be in a band with nothing to
             // eat - and with health enough to be well above the floor after
@@ -427,7 +426,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             starving.AddMember(unfedMan);
             w.People.SetHealth(unfed, 500);
 
-            w.Advance(Check);
+            // A meal eaten mends health, so frailty set at the start would be
+            // eaten back above the floor by the check. Set it the tick before,
+            // low enough that the one meal that may fall between still leaves
+            // her under.
+            w.Advance(Check - 1L);
+            w.People.SetHealth(frail, (short)(s.HealthFloor - 1 - Hunger.RecoveryPerMeal));
+            w.Advance(1L);
             var unfedHealth = w.People.GetHealth(unfed);
 
             Assert.Multiple(() =>

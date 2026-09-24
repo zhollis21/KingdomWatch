@@ -341,7 +341,7 @@ KingdomWatch.Game/          Unity 6.6 → 6.7  · consumes Core
 Core contents:
 
 ```
-  World.cs             <- not built yet; the systems are still wired per caller (#17)
+  World.cs             <- every system wired once; the harness runs it, and Unity will (#17)
   Clock/                <- simulation clock, event scheduler, phase ordering
   Systems/              <- Needs, Jobs, Skills, Social, Households, Politics,
                            Economy, Seasons, Logistics, Combat, Relations,
@@ -385,7 +385,7 @@ Resource conservation audit balances.
 
 Then fuzz thousands of seeds. When you get *"seed 39274 broke at year 347 because an orphan was adopted into a household deleted six ticks earlier,"* the simulator screaming immediately beats quietly corrupting itself for another 150 years.
 
-**Where it lives (#13).** `Harness/WorldValidator.cs`, not `Core` — the checks are scoped to harness runs, and Core's public surface is the simulation's API rather than a home for diagnostics. `Core.Tests` references `Harness`, so the tests reach it the same way they reach `DrawCollisionDetector`. The seed sweep is `Core.Tests/Validation/SeedSweepTests.cs` for now, because the harness has no world to run until #17: `Harness/Program.cs` drives a scheduler soak with no people in it, while the composition roots that do assemble a world are test helpers. The sweep moves to the harness when #17 lands.
+**Where it lives (#13).** `Harness/WorldValidator.cs`, not `Core` — the checks are scoped to harness runs, and Core's public surface is the simulation's API rather than a home for diagnostics. `Core.Tests` references `Harness`, so the tests reach it the same way they reach `DrawCollisionDetector`. The seed sweep is `Harness/WorldRun.cs` (#17): it runs `Core/World.cs` a year at a time and validates after each. `KingdomWatch.Harness --seeds N --years N` is the long sweep; `Core.Tests/Validation/WorldRunTests.cs` runs eight seeds for a century in CI.
 
 Most of the list above is checkable today. The exceptions wait on the systems that introduce them — polities and rulers with #39, reservation ownership with #24 — and were deliberately not written as rules that cannot fail, because a rule nobody has seen fire reads as coverage. Two more are wired but unreachable: `Genealogy.Record` refuses a non-person parent, refuses an unrecorded one, and writes each person once, so neither an invalid parent nor a kinship cycle can be built through it. They become live when #42 rebuilds a world from a save, which is exactly the path §17 warns can shift history.
 
@@ -876,7 +876,7 @@ Balancing requires multi-year harness runs.
 - **Bands provision for winter.** `Jobs`' food target is ten days' draw. From the first day of summer it adds a whole winter's draw, and in winter it adds what is left of the winter. The wood target is the cap plus a winter of fires for every hearth in the band, raised the same way. Without that look-ahead a ten-day buffer starves every band every winter, which is the winter-as-regulator §6 rules out.
 - **Winter heating is `Warmth`**, `Hunger`'s shape as the economy ladder's §2 asked. Each winter evening a community burns one Wood per household hearth, plus one communal fire for anyone in no household. When wood is short, households with a dependent are lit first, then the rest in formation order, then the communal fire. Two dark nights are hardship, and from the third each costs health. Zero health raises `ExposureCritical`, and `Mortality` answers it with `Froze`.
 
-A famine or a cold house is now something that went wrong: too few hands, a band grown since summer, a woodpile the foragers crowded out. Every number is a placeholder until #17 runs a world. Livestock, fodder and campaigning season wait on §13 and M4. Charcoal as the efficient fuel waits on the resource being appended.
+A famine or a cold house is now something that went wrong: too few hands, a band grown since summer. A worker takes the store furthest below its target, so foragers no longer crowd out the woodpile (#17). Forage yields are the first numbers the harness tuned (#17); the rest are placeholders. Livestock, fodder and campaigning season wait on §13 and M4. Charcoal as the efficient fuel waits on the resource being appended.
 
 ---
 

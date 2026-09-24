@@ -202,6 +202,19 @@ namespace KingdomWatch.Core.Tests.Work
         // fixture holds. For the fixtures whose subject is not the cold.
         internal const int PlentifulWood = Jobs.WoodCap + (100 * Warmth.FuelPerFire * (int)SimulationTime.DaysPerSeason);
 
+        // Fills the stores a fixture is not about, so that the one it is about
+        // is the only one short: a worker takes the store furthest below its
+        // target, so an empty store the test never mentions would compete.
+        internal static void FillWood(MobileGroup band) => band.SharedSupplies.Gather(ResourceKind.Wood, PlentifulWood);
+
+        internal static void FillStone(MobileGroup band) => band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
+
+        internal static void FillWoodAndStone(MobileGroup band)
+        {
+            FillWood(band);
+            FillStone(band);
+        }
+
         internal SimulationTime Today(long tickOfDay) => new SimulationTime(Now.Ticks - Now.TickOfDay + tickOfDay);
 
         internal void AdvanceTo(SimulationTime time) => Clock.AdvanceTo(time, Router);

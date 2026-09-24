@@ -1,0 +1,234 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Work;
+using KingdomWatch.Harness;
+using NUnit.Framework;
+
+namespace KingdomWatch.Core.Tests.Validation
+{
+    /// <summary>
+    /// The M1 world (#17), run the way the harness runs it. Section 19 asks
+    /// for population stability and milestone firing; section 5 for a world
+    /// that holds its invariants across seeds.
+    /// </summary>
+    /// <remarks>
+    /// A century rather than the harness's two: every homeland that died out
+    /// in #17's tuning runs did so inside the first ten years, and past a
+    /// century the population has no ceiling yet (#69, #26), so the second
+    /// hundred years is minutes of CI that finds nothing the first did not.
+    /// The full run is <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
+    ///
+    /// "Stable" is survival only. Neither homeland may die out; there is no
+    /// upper bound to assert until housing or land can limit growth.
+    ///
+    /// This replaced the 30-year fixture sweeps: the validator checks every
+    /// rule they checked, after every year, on the world the harness runs.
+    /// </remarks>
+    [TestFixture]
+    public sealed class WorldRunTests
+    {
+        private const int Seeds = 8;
+        private const long Years = 100L;
+
+        // Each seed run once for the fixture: the tests over them read the
+        // same runs, and a century of eight worlds is the costly part.
+        private static readonly List<WorldRun> Runs = new List<WorldRun>();
+
+        [OneTimeSetUp]
+        public void RunEverySeed()
+        {
+            if (Runs.Count > 0)
+            {
+                return;
+            }
+
+            for (var seed = 1UL; seed <= Seeds; seed++)
+            {
+                Runs.Add(new WorldRun(seed).RunYears(Years));
+            }
+        }
+
+        [Test]
+        public void Every_seed_holds_its_invariants_every_year()
+        {
+            var report = new StringBuilder();
+
+            foreach (var run in Runs)
+            {
+                if (!run.IsClean)
+                {
+                    report.AppendLine(run.Failure);
+                }
+            }
+
+            Assert.That(report.ToString(), Is.Empty);
+        }
+
+        [Test]
+        public void Neither_homeland_dies_out_on_any_seed()
+        {
+            var report = new StringBuilder();
+
+            foreach (var run in Runs)
+            {
+                foreach (var year in run.Years)
+                {
+                    if (year.West == 0 || year.East == 0)
+                    {
+                        report.AppendLine(
+                            "seed " + run.World.Seed + ", year " + year.Year + ": west " + year.West + ", east " + year.East);
+                        break;
+                    }
+                }
+            }
+
+            Assert.That(report.ToString(), Is.Empty);
+        }
+
+        [Test]
+        public void The_milestones_M1_can_reach_fire_on_every_seed()
+        {
+            // Economy ladder section 9's first milestone, and first settlement
+            // standing in for the rest until buildings exist (#100).
+            Assert.Multiple(() =>
+            {
+                foreach (var run in Runs)
+                {
+                    Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "seed " + run.World.Seed + ": camp at world start");
+                    Assert.That(run.FirstSettlement, Is.Not.Null, "seed " + run.World.Seed + ": never settled");
+                }
+            });
+        }
+
+        [Test]
+        public void The_same_seed_reaches_the_same_hash_and_another_does_not()
+        {
+            var first = new WorldRun(3UL).RunYears(10L).Hash();
+            var again = new WorldRun(3UL).RunYears(10L).Hash();
+            var other = new WorldRun(4UL).RunYears(10L).Hash();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(again, Is.EqualTo(first));
+                Assert.That(other, Is.Not.EqualTo(first));
+            });
+        }
+
+        [Test]
+        public void The_bands_start_one_each_side_of_the_river_where_they_can_stand()
+        {
+            var world = World.TwoBands(5UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
+            var bands = new List<ICommunity>();
+            world.CopyCommunitiesTo(bands);
+
+            Assert.That(bands, Has.Count.EqualTo(2));
+            var river = RiverColumn(world.Grid, bands[0].Position.Y);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bands[0].Position.Y, Is.EqualTo(bands[1].Position.Y), "both on the middle row");
+                Assert.That(bands[0].Position.X, Is.LessThan(river));
+                Assert.That(bands[1].Position.X, Is.GreaterThan(river));
+                Assert.That(bands[0].Members, Has.Count.EqualTo(WorldRun.WestSize));
+                Assert.That(bands[1].Members, Has.Count.EqualTo(WorldRun.EastSize));
+                Assert.That(world.Pathfinder.IsPassable(bands[0].Position, Jobs.Mover), Is.True);
+                Assert.That(world.Pathfinder.IsPassable(bands[1].Position, Jobs.Mover), Is.True);
+            });
+        }
+
+        [Test]
+        public void The_bookings_gathered_cover_every_stream()
+        {
+            // The #97 review note on #17: the hash folds in whichever bookings
+            // its caller gathers, so the world's gathering must reach every
+            // stream. A day in, both bands are wandering and every stream has
+            // booked something.
+            var world = World.TwoBands(1UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
+            world.Advance(SimulationTime.TicksPerDay);
+            var bookings = new List<PendingBooking>();
+            world.CopyBookingsTo(bookings);
+
+            var kinds = new HashSet<ScheduledEventKind>();
+
+            foreach (var booking in bookings)
+            {
+                kinds.Add(booking.Kind);
+            }
+
+            Assert.That(kinds, Is.SupersetOf(new[]
+            {
+                ScheduledEventKind.MealDue,
+                ScheduledEventKind.WarmthDue,
+                ScheduledEventKind.WorkDayDue,
+                ScheduledEventKind.CouncilDue,
+                ScheduledEventKind.BirthCheck,
+                ScheduledEventKind.CourtshipDue,
+            }));
+        }
+
+        [Test]
+        public void A_run_refuses_a_missing_world_or_one_with_no_river_to_split()
+        {
+            var riverless = new World(1UL, new TerrainGrid(8, 8, TerrainKind.Plains), DemographicSettings.Default);
+            riverless.AddBand(12, new WorldPosition(3, 3));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => new WorldRun(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldRun(riverless), Throws.InvalidOperationException, "no homelands to count");
+            });
+        }
+
+        [Test]
+        public void The_chronicle_prints_each_year_and_each_band_s_first_camp_once()
+        {
+            var run = new WorldRun(1UL).RunYears(3L);
+            var text = new StringWriter();
+
+            Chronicle.Write(run, text);
+            var written = text.ToString();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(written, Does.StartWith("Year 0: west " + WorldRun.WestSize + ", east " + WorldRun.EastSize));
+                Assert.That(written, Does.Contain("Year 1: ").And.Contain("Year 2: ").And.Contain("Year 3: "));
+                Assert.That(Occurrences(written, "pitched its first camp"), Is.EqualTo(2), "one per band, not one per move");
+                Assert.That(written, Does.Not.Contain("PersonBorn").And.Not.Contain("PersonDied"), "folded into the year lines");
+                Assert.That(written, Does.Not.Contain(" other"), "every death this world publishes has a named cause");
+                Assert.That(() => Chronicle.Write(null!, text), Throws.ArgumentNullException);
+                Assert.That(() => Chronicle.Write(run, null!), Throws.ArgumentNullException);
+            });
+        }
+
+        private static int Occurrences(string text, string of)
+        {
+            var count = 0;
+
+            for (var at = text.IndexOf(of, StringComparison.Ordinal); at >= 0; at = text.IndexOf(of, at + 1, StringComparison.Ordinal))
+            {
+                count++;
+            }
+
+            return count;
+        }
+
+        private static int RiverColumn(TerrainGrid grid, int row)
+        {
+            for (var x = 0; x < grid.Width; x++)
+            {
+                if (grid[new WorldPosition(x, row)] == TerrainKind.SmallRiver)
+                {
+                    return x;
+                }
+            }
+
+            return -1;
+        }
+    }
+}

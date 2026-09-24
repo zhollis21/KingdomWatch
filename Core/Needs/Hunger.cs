@@ -61,6 +61,14 @@ namespace KingdomWatch.Core.Needs
     /// the router when the first person starves: a wake-up nobody answers
     /// is a wiring bug.
     ///
+    /// **A meal eaten mends.** Each meal restores
+    /// <see cref="RecoveryPerMeal"/> health, up to <see cref="FullHealth"/>,
+    /// whatever took it - hunger or <see cref="Warmth"/>'s cold. Without it a
+    /// single hard winter left its survivors under
+    /// <see cref="Lifecycle.DemographicSettings.HealthFloor"/> for life, too
+    /// frail ever to conceive again (#17's first 200-year runs). Health at or
+    /// below zero is not mended: its death has already been announced.
+    ///
     /// **No predicted "food runs out in N days" event.** Section 4 names food
     /// depletion as a threshold crossing, and the daily meal is the boundary
     /// that makes compression trustworthy today. A predicted crossing on top
@@ -87,9 +95,9 @@ namespace KingdomWatch.Core.Needs
     {
         /// <summary>
         /// Food one person draws at one meal, which is one per day - so also
-        /// their daily draw. Three matches <see cref="PrimitiveTier.Forage"/>,
-        /// which yields three and is documented as feeding a person for about
-        /// a day.
+        /// their daily draw. A spring <see cref="PrimitiveTier.Forage"/> yields
+        /// a little more than this, so one forager's trip feeds one person
+        /// with a margin toward the winter store.
         /// </summary>
         public const int DailyRation = 3;
 
@@ -105,6 +113,16 @@ namespace KingdomWatch.Core.Needs
 
         /// <summary>Health lost per missed meal once past the grace period.</summary>
         public const short StarvationDamagePerMeal = 10;
+
+        /// <summary>Health a person is born with, and the most a meal restores them to.</summary>
+        public const short FullHealth = 100;
+
+        /// <summary>
+        /// Health a meal eaten restores. Half a cold night's or a missed
+        /// meal's damage, so a week of hardship takes a fortnight of plenty
+        /// to undo.
+        /// </summary>
+        public const short RecoveryPerMeal = 5;
 
         /// <summary>
         /// Meals are resource changes, so they run in the physical phase and
@@ -399,6 +417,7 @@ namespace KingdomWatch.Core.Needs
                 {
                     ledger.Consume(ResourceKind.Food, DailyRation);
                     _people.SetLastFedAt(member, now);
+                    Recover(member);
                     fed++;
                     continue;
                 }
@@ -426,6 +445,21 @@ namespace KingdomWatch.Core.Needs
             }
 
             return stage == AgeStage.Elder ? Sitting.Elders : Sitting.Adults;
+        }
+
+        // A meal eaten mends whatever hunger or cold took, up to full. Health
+        // at or below zero is left alone: its crossing has been raised, and a
+        // meal served in the same pass must not undo the death it announced.
+        private void Recover(PersonHandle member)
+        {
+            var health = _people.GetHealth(member);
+
+            if (health <= 0 || health >= FullHealth)
+            {
+                return;
+            }
+
+            _people.SetHealth(member, (short)Math.Min(FullHealth, health + RecoveryPerMeal));
         }
 
         // Zero is as bad as starvation gets, so damage stops there - and the
