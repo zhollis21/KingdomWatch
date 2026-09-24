@@ -58,9 +58,13 @@ namespace KingdomWatch.Harness
         private readonly HashSet<EventId> _queued = new HashSet<EventId>();
         private readonly HashSet<EntityId> _seen = new HashSet<EntityId>();
         private readonly HashSet<EntityId> _known = new HashSet<EntityId>();
-        private readonly HashSet<EntityId> _ancestors = new HashSet<EntityId>();
-        private readonly Stack<(EntityId Ancestor, int Generations)> _pendingAncestors =
-            new Stack<(EntityId Ancestor, int Generations)>();
+        // The genealogy pass: each person's deepest line of descent once it is
+        // known, who is on the line being walked right now, the walk itself,
+        // and the missing parents already reported.
+        private readonly Dictionary<EntityId, int> _generations = new Dictionary<EntityId, int>();
+        private readonly HashSet<EntityId> _onLine = new HashSet<EntityId>();
+        private readonly Stack<(EntityId Person, bool Expanded)> _walk = new Stack<(EntityId Person, bool Expanded)>();
+        private readonly HashSet<EntityId> _missingParents = new HashSet<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
 
@@ -275,6 +279,10 @@ namespace KingdomWatch.Harness
             Require(clock, nameof(clock));
 
             var now = clock.Now;
+            _generations.Clear();
+            _onLine.Clear();
+            _walk.Clear();
+            _missingParents.Clear();
 
             foreach (var person in people.Alive())
             {
@@ -293,7 +301,12 @@ namespace KingdomWatch.Harness
 
                 CheckParent(parents.Mother, id, now);
                 CheckParent(parents.Father, id, now);
-                CheckAncestry(genealogy, id, now);
+
+                if (GenerationsAbove(genealogy, id, now) > MaxGenerations)
+                {
+                    Add(ValidationRule.KinshipCycle, now, id,
+                        "has a line of descent more than " + MaxGenerations + " generations deep.");
+                }
             }
 
             return this;
@@ -608,6 +621,11 @@ namespace KingdomWatch.Harness
             }
         }
 
+        // The deepest line of descent above a person, in generations, and
+        // every cycle and missing record found on the way - one pass over the
+        // whole genealogy per check, however many living people share an
+        // ancestor, because each person's depth is remembered once found.
+        //
         // Both parents, not one line. Walking mothers alone misses any cycle
         // that uses a father edge: if a's father is b and b's mother is a,
         // then walking a stops at a's own mother and walking b reaches a and
@@ -615,55 +633,63 @@ namespace KingdomWatch.Harness
         // their own ancestor, so it has to follow every edge that makes
         // somebody an ancestor.
         //
-        // The stack and the seen set are fields, reused across people, so a
-        // walk per living person per simulated day allocates nothing.
-        private void CheckAncestry(Genealogy genealogy, EntityId person, SimulationTime now)
+        // Depth is the deepest line, not the first one found: a person is
+        // finished only once both parents are, and takes the greater of them
+        // plus one. Remembering the first depth an ancestor was reached at
+        // instead hid a deep line behind a shallow one (the #103 review).
+        // Cycles are found among the dead too, since the walk climbs every
+        // recorded ancestor rather than stopping at the living.
+        //
+        // Iterative, with the walk and the sets as fields reused across
+        // checks: a genealogy thousands of generations deep must not blow the
+        // call stack, and a check per simulated year allocates only when a
+        // set outgrows the largest genealogy it has held.
+        private int GenerationsAbove(Genealogy genealogy, EntityId start, SimulationTime now)
         {
-            _ancestors.Clear();
-            _pendingAncestors.Clear();
-            _pendingAncestors.Push((person, 0));
-            _ancestors.Add(person);
-
-            while (_pendingAncestors.Count > 0)
+            if (_generations.TryGetValue(start, out var known))
             {
-                var (ancestor, generations) = _pendingAncestors.Pop();
-
-                // Each ancestor is reached once, by whichever line the walk
-                // found first, and every line it follows is real - so a depth
-                // past the bound is a line of descent that long, never an
-                // artefact of the order the tree was walked in.
-                if (generations > MaxGenerations)
-                {
-                    Add(ValidationRule.KinshipCycle, now, person,
-                        "has a line of descent more than " + MaxGenerations + " generations deep.");
-                    return;
-                }
-
-                var parents = genealogy.Parents(ancestor);
-
-                if (Reaches(genealogy, parents.Mother, person, generations + 1, now)
-                    || Reaches(genealogy, parents.Father, person, generations + 1, now))
-                {
-                    return;
-                }
+                return known;
             }
+
+            _walk.Push((start, false));
+
+            while (_walk.Count > 0)
+            {
+                var (person, expanded) = _walk.Pop();
+                var parents = genealogy.Parents(person);
+
+                if (expanded)
+                {
+                    // Both parents have been walked, since they were pushed
+                    // after this entry and so came off before it.
+                    _onLine.Remove(person);
+                    _generations[person] = Math.Max(Above(parents.Mother), Above(parents.Father));
+                    continue;
+                }
+
+                // Pushed twice, by two children, and finished in between.
+                if (_generations.ContainsKey(person))
+                {
+                    continue;
+                }
+
+                _walk.Push((person, true));
+                _onLine.Add(person);
+                Climb(genealogy, parents.Mother, person, now);
+                Climb(genealogy, parents.Father, person, now);
+            }
+
+            return _generations[start];
         }
 
-        // True when the walk should stop: either this parent closes a cycle
-        // back onto the person being checked, or it is somebody already seen
-        // on this walk - a diamond in the tree, which is ordinary, so only the
-        // first is reported.
-        private bool Reaches(Genealogy genealogy, EntityId parent, EntityId person, int generations, SimulationTime now)
+        // Queues a parent to be walked, unless there is nothing to walk:
+        // no parent, a parent with no record (reported once), a parent already
+        // finished, or one on the line being walked - which is a cycle.
+        private void Climb(Genealogy genealogy, EntityId parent, EntityId child, SimulationTime now)
         {
             if (parent.IsNone)
             {
-                return false;
-            }
-
-            if (parent == person)
-            {
-                Add(ValidationRule.KinshipCycle, now, person, "is their own ancestor.");
-                return true;
+                return;
             }
 
             // Genealogy.Parents throws for somebody it has no record of, and
@@ -674,18 +700,33 @@ namespace KingdomWatch.Harness
             // be able to say out loud.
             if (!genealogy.IsRecorded(parent))
             {
-                Add(ValidationRule.GenealogyMissing, now, parent,
-                    "is named as an ancestor of " + person + " and has no record of their own.");
-                return false;
+                if (_missingParents.Add(parent))
+                {
+                    Add(ValidationRule.GenealogyMissing, now, parent,
+                        "is named as a parent of " + child + " and has no record of their own.");
+                }
+
+                return;
             }
 
-            if (_ancestors.Add(parent))
+            if (_onLine.Contains(parent))
             {
-                _pendingAncestors.Push((parent, generations));
+                Add(ValidationRule.KinshipCycle, now, parent, "is their own ancestor.");
+                return;
             }
 
-            return false;
+            if (!_generations.ContainsKey(parent))
+            {
+                _walk.Push((parent, false));
+            }
         }
+
+        // A parent's contribution to a finished child's depth: none for no
+        // parent, a missing record, or the edge that closes a cycle - none of
+        // which has a depth of its own - and one more than the parent's
+        // deepest line otherwise.
+        private int Above(EntityId parent) =>
+            !parent.IsNone && _generations.TryGetValue(parent, out var generations) ? generations + 1 : 0;
 
         // Section 5's rule ends "unless it explicitly targets a durable
         // historical entity", and SecondaryEntity is where those live: a

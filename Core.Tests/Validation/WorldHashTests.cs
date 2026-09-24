@@ -6,6 +6,7 @@ using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Nomadic;
+using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Validation;
 using KingdomWatch.Core.Work;
 using NUnit.Framework;
@@ -197,13 +198,22 @@ namespace KingdomWatch.Core.Tests.Validation
             var before = new WorldHash().AddSettlements(world.Founding, world.People).Value;
 
             world.Founding.All[0].SharedSupplies.Open(ResourceKind.Stone, 7);
+            var afterStores = new WorldHash().AddSettlements(world.Founding, world.People).Value;
+
+            // Member order is the settlement's contract too (Settlement's own
+            // comment): the same people listed differently is a different world.
+            var settlement = world.Founding.All[0];
+            var first = settlement.Members[0];
+            settlement.RemoveMember(first);
+            settlement.AddMember(first);
 
             Assert.Multiple(() =>
             {
+                Assert.That(afterStores, Is.Not.EqualTo(before), "a settlement's stores are part of the world");
                 Assert.That(
                     new WorldHash().AddSettlements(world.Founding, world.People).Value,
-                    Is.Not.EqualTo(before),
-                    "a settlement's stores are part of the world");
+                    Is.Not.EqualTo(afterStores),
+                    "so is the order it lists its members in");
                 Assert.That(
                     () => new WorldHash().AddSettlements(world.Founding, null!),
                     Throws.ArgumentNullException);
@@ -315,6 +325,52 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_band_s_member_order_is_part_of_the_hash()
+        {
+            // Hunger feeds, Jobs picks and Matchmaking proposes in member
+            // order (MobileGroup's own contract), so the same people listed
+            // differently is a different world. The #103 review.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            var adults = w.JoinAdults(band, 3);
+            var bands = new List<MobileGroup> { band };
+            var before = new WorldHash().AddBands(bands, w.People).Value;
+
+            band.RemoveMember(adults[0]);
+            band.AddMember(adults[0]);
+
+            Assert.That(new WorldHash().AddBands(bands, w.People).Value, Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void A_household_s_member_order_is_part_of_the_hash()
+        {
+            // Fertility takes the first eligible couple in household order.
+            var world = Populate(Build());
+            Household? household = null;
+
+            foreach (var candidate in world.Households.All)
+            {
+                if (candidate.Members.Count >= 3)
+                {
+                    household = candidate;
+                    break;
+                }
+            }
+
+            Assert.That(household, Is.Not.Null, "the populated world has a family of three or more");
+            var before = new WorldHash().AddHouseholds(world.Households, world.People).Value;
+            var first = household!.Members[0];
+
+            world.Households.Leave(first);
+            world.Households.Join(household, first);
+
+            Assert.That(
+                new WorldHash().AddHouseholds(world.Households, world.People).Value,
+                Is.Not.EqualTo(before));
+        }
+
+        [Test]
         public void The_order_bands_arrive_in_is_not_part_of_the_hash()
         {
             var w = new WorkWorld();
@@ -362,6 +418,40 @@ namespace KingdomWatch.Core.Tests.Validation
             });
         }
         [Test]
+        public void Terrain_is_folded_in_cell_by_cell()
+        {
+            // The pathfinder and Jobs read it, worldgen draws it from the
+            // seed, and bridges (#35) will rewrite it: a world that disagrees
+            // on one cell has diverged. The #103 review.
+            var grid = WorkWorld.DefaultMap();
+            var before = new WorldHash().AddTerrain(grid).Value;
+
+            grid.Set(new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1), TerrainKind.Hills);
+
+            Assert.That(new WorldHash().AddTerrain(grid).Value, Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void The_next_ids_to_be_handed_out_are_folded_in()
+        {
+            // The next person, household or event id depends on these, and
+            // they belong to no system: a world that has handed out one more
+            // id than another has diverged even before the id is seen.
+            var ids = new IdAllocator();
+            var before = new WorldHash().AddIds(ids).Value;
+            ids.Next(EntityKind.Animal);
+            var afterEntity = new WorldHash().AddIds(ids).Value;
+            ids.NextEvent();
+            var afterEvent = new WorldHash().AddIds(ids).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(afterEntity, Is.Not.EqualTo(before), "an entity id handed out");
+                Assert.That(afterEvent, Is.Not.EqualTo(afterEntity), "an event id handed out");
+            });
+        }
+
+        [Test]
         public void Every_section_refuses_null()
         {
             var world = Populate(Build());
@@ -378,6 +468,8 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(() => new WorldHash().AddBands(null!, world.People), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddBands(new List<MobileGroup>(), null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddKnownMaps(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddTerrain(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddIds(null!), Throws.ArgumentNullException);
             });
         }
 

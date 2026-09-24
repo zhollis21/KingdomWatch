@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
@@ -412,6 +413,99 @@ namespace KingdomWatch.Core.Tests.Validation
                 .CheckGenealogy(world.Genealogy, world.People, world.Clock);
 
             Assert.That(RulesOf(validator), Does.Contain(ValidationRule.KinshipCycle));
+        }
+
+        [Test]
+        public void A_deep_line_is_reported_even_when_a_shallow_line_reaches_the_same_ancestor()
+        {
+            // The #103 review: a walk that visits each ancestor once, at the
+            // depth it first reaches them, hides a deep line behind a shallow
+            // one. X has 400 generations above her; P reaches X through her
+            // father in two generations and through her mother in 300, so
+            // P's deepest line is 700 generations.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            PersonHandle Born(Sex sex, EntityId mother, EntityId father) =>
+                world.NewPersonBornAt(born, sex, AgeStage.Adult, mother, father);
+
+            var above = world.IdOf(world.NewPerson(30L, Sex.Male));
+
+            for (var i = 1; i < 400; i++)
+            {
+                above = world.IdOf(Born(Sex.Male, EntityId.None, above));
+            }
+
+            var x = world.IdOf(Born(Sex.Female, EntityId.None, above));
+            var motherLine = x;
+
+            for (var i = 0; i < 299; i++)
+            {
+                motherLine = world.IdOf(Born(Sex.Female, motherLine, EntityId.None));
+            }
+
+            var father = world.IdOf(Born(Sex.Male, x, EntityId.None));
+            var p = world.IdOf(Born(Sex.Female, motherLine, father));
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            var reported = false;
+
+            foreach (var finding in validator.Findings)
+            {
+                reported |= finding.Rule == ValidationRule.KinshipCycle && finding.Subject == p;
+            }
+
+            Assert.That(reported, Is.True, "P's 700-generation line went unreported");
+        }
+
+        [Test]
+        public void Deep_lines_are_climbed_through_the_dead_on_both_sides()
+        {
+            // Only the youngest of each line is alive, so the check cannot
+            // borrow a depth it worked out for a living ancestor: it has to
+            // climb dead fathers and dead mothers itself. A rebuilt world
+            // (#42) is mostly dead ancestors.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+
+            PersonHandle Line(Sex sex, bool throughMothers)
+            {
+                var ancestors = new List<PersonHandle> { world.NewPerson(30L, sex) };
+
+                for (var i = 0; i < 600; i++)
+                {
+                    var parent = world.IdOf(ancestors[ancestors.Count - 1]);
+                    ancestors.Add(world.NewPersonBornAt(
+                        born, sex, AgeStage.Adult,
+                        throughMothers ? parent : EntityId.None,
+                        throughMothers ? EntityId.None : parent));
+                }
+
+                for (var i = 0; i < ancestors.Count - 1; i++)
+                {
+                    world.Deaths.Die(ancestors[i], new Reasons(ReasonCode.OldAge));
+                }
+
+                return ancestors[ancestors.Count - 1];
+            }
+
+            var fatherLine = world.IdOf(Line(Sex.Male, throughMothers: false));
+            var motherLine = world.IdOf(Line(Sex.Female, throughMothers: true));
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+            var reported = new List<EntityId>();
+
+            foreach (var finding in validator.Findings)
+            {
+                if (finding.Rule == ValidationRule.KinshipCycle)
+                {
+                    reported.Add(finding.Subject);
+                }
+            }
+
+            Assert.That(reported, Is.EquivalentTo(new[] { fatherLine, motherLine }));
         }
 
         [Test]

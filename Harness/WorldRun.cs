@@ -129,6 +129,8 @@ namespace KingdomWatch.Harness
             }
 
             return new WorldHash()
+                .AddTerrain(World.Grid)
+                .AddIds(World.Ids)
                 .AddPeople(World.People)
                 .AddHouseholds(World.Households, World.People)
                 .AddSettlements(World.Founding, World.People)

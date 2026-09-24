@@ -145,6 +145,23 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void The_run_s_hash_sees_the_terrain_and_the_next_ids()
+        {
+            var run = new WorldRun(1UL);
+            var before = run.Hash();
+
+            run.World.Grid.Set(new WorldPosition(0, 0), TerrainKind.Hills);
+            var afterTerrain = run.Hash();
+            run.World.Ids.Next(EntityKind.Animal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(afterTerrain, Is.Not.EqualTo(before), "terrain");
+                Assert.That(run.Hash(), Is.Not.EqualTo(afterTerrain), "next ids");
+            });
+        }
+
+        [Test]
         public void The_bands_start_one_each_side_of_the_river_where_they_can_stand()
         {
             var world = World.TwoBands(5UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
