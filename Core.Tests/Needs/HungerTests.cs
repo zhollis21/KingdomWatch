@@ -425,6 +425,28 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void A_famine_bigger_than_the_cascade_bound_raises_every_crossing()
+        {
+            // Every member reaches zero at the same meal, so every crossing is
+            // a same-instant reaction to that one meal. The clock bounds how
+            // deep reactions chain, not how many one meal raises, so a big
+            // community's famine is a famine and not a runaway.
+            var members = SimulationClock.MaxCascadeDepth + 1;
+            var world = new World();
+            var band = world.NewBand(members, 0);
+            world.Hunger.Track(band);
+
+            foreach (var member in band.Members)
+            {
+                world.People.SetHealth(member, Hunger.StarvationDamagePerMeal);
+            }
+
+            world.RunDays(3L);
+
+            Assert.That(world.Starvation.Raised, Has.Count.EqualTo(members));
+        }
+
+        [Test]
         public void Starvation_floors_health_at_zero_and_leaves_a_lower_value_alone()
         {
             var world = new World();
