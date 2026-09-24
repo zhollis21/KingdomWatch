@@ -390,6 +390,66 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_line_of_mothers_too_deep_to_be_real_is_reported()
+        {
+            // The depth bound counts a mother edge as a generation too; the
+            // fathers test above cannot see one that does not.
+            var world = Populated();
+            var ancestor = world.IdOf(world.NewPerson(30L, Sex.Female));
+
+            for (var i = 0; i < 600; i++)
+            {
+                ancestor = world.IdOf(
+                    world.NewPersonBornAt(
+                        world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear,
+                        Sex.Female,
+                        AgeStage.Adult,
+                        ancestor,
+                        EntityId.None));
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Contain(ValidationRule.KinshipCycle));
+        }
+
+        [Test]
+        public void A_wide_but_shallow_ancestry_is_not_a_cycle()
+        {
+            // #17's seed 1 stopped at year 267 on "more than 512 recorded
+            // ancestors": in a population of fourteen thousand, eleven
+            // generations of distinct forebears is ordinary. Ten generations
+            // of a full tree is 1,022 ancestors and only ten deep.
+            var world = Populated();
+            var born = world.Clock.Now.Ticks - 30L * SimulationTime.TicksPerYear;
+            var generation = new List<EntityId>();
+
+            for (var i = 0; i < 1024; i++)
+            {
+                generation.Add(world.IdOf(world.NewPersonBornAt(born, i % 2 == 0 ? Sex.Female : Sex.Male, AgeStage.Adult)));
+            }
+
+            while (generation.Count > 1)
+            {
+                var next = new List<EntityId>();
+
+                for (var i = 0; i < generation.Count; i += 2)
+                {
+                    next.Add(world.IdOf(world.NewPersonBornAt(
+                        born, next.Count % 2 == 0 ? Sex.Female : Sex.Male, AgeStage.Adult, generation[i], generation[i + 1])));
+                }
+
+                generation = next;
+            }
+
+            var validator = new WorldValidator()
+                .CheckGenealogy(world.Genealogy, world.People, world.Clock);
+
+            Assert.That(RulesOf(validator), Does.Not.Contain(ValidationRule.KinshipCycle), validator.Report(11UL));
+        }
+
+        [Test]
         public void A_tracked_community_listing_somebody_the_store_lost_is_caught()
         {
             // The tracked set is what each system has events booked against,
@@ -605,7 +665,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // forwards and cannot be introduced by rewriting an existing link.
             //
             // KinshipCycle's other arm is reachable and tested: the walk's own
-            // bound fires on an ancestry too large to be real, which is what
+            // bound fires on a line of descent too deep to be real, which is what
             // An_ancestry_walk_follows_fathers_as_well_as_mothers drives.
             //
             // The rules stay because that guard is not the only way ancestry

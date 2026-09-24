@@ -40,12 +40,12 @@ namespace KingdomWatch.Harness
     /// </remarks>
     public sealed class WorldValidator
     {
-        // A walk that has visited this many ancestors has found a cycle the
-        // seen-set somehow did not close, or a genealogy nobody meant to
-        // build; either way it is a finding, and an unbounded walk on corrupt
-        // data does not return. A count of people visited, not a depth: the
-        // walk follows both parents, so it covers a graph rather than a line.
-        private const int MaxAncestorsWalked = 512;
+        // A line of descent deeper than this is a genealogy nobody meant to
+        // build: 512 generations is some eight thousand years of sixteen-year
+        // generations. A depth, not a count of ancestors: the seen set already
+        // ends every walk, and a count grows with the population - #17's seed
+        // 1 passed 512 distinct forebears in year 267 with no cycle anywhere.
+        private const int MaxGenerations = 512;
 
         // Built once rather than per call. EnumGuard's mask - what
         // ResourceLedger and WorldHash index over - is internal to Core, and
@@ -59,7 +59,8 @@ namespace KingdomWatch.Harness
         private readonly HashSet<EntityId> _seen = new HashSet<EntityId>();
         private readonly HashSet<EntityId> _known = new HashSet<EntityId>();
         private readonly HashSet<EntityId> _ancestors = new HashSet<EntityId>();
-        private readonly Stack<EntityId> _pendingAncestors = new Stack<EntityId>();
+        private readonly Stack<(EntityId Ancestor, int Generations)> _pendingAncestors =
+            new Stack<(EntityId Ancestor, int Generations)>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
 
@@ -620,24 +621,28 @@ namespace KingdomWatch.Harness
         {
             _ancestors.Clear();
             _pendingAncestors.Clear();
-            _pendingAncestors.Push(person);
+            _pendingAncestors.Push((person, 0));
             _ancestors.Add(person);
-
-            var visited = 0;
 
             while (_pendingAncestors.Count > 0)
             {
-                if (++visited > MaxAncestorsWalked)
+                var (ancestor, generations) = _pendingAncestors.Pop();
+
+                // Each ancestor is reached once, by whichever line the walk
+                // found first, and every line it follows is real - so a depth
+                // past the bound is a line of descent that long, never an
+                // artefact of the order the tree was walked in.
+                if (generations > MaxGenerations)
                 {
                     Add(ValidationRule.KinshipCycle, now, person,
-                        "has more than " + MaxAncestorsWalked + " recorded ancestors.");
+                        "has a line of descent more than " + MaxGenerations + " generations deep.");
                     return;
                 }
 
-                var parents = genealogy.Parents(_pendingAncestors.Pop());
+                var parents = genealogy.Parents(ancestor);
 
-                if (Reaches(genealogy, parents.Mother, person, now)
-                    || Reaches(genealogy, parents.Father, person, now))
+                if (Reaches(genealogy, parents.Mother, person, generations + 1, now)
+                    || Reaches(genealogy, parents.Father, person, generations + 1, now))
                 {
                     return;
                 }
@@ -648,7 +653,7 @@ namespace KingdomWatch.Harness
         // back onto the person being checked, or it is somebody already seen
         // on this walk - a diamond in the tree, which is ordinary, so only the
         // first is reported.
-        private bool Reaches(Genealogy genealogy, EntityId parent, EntityId person, SimulationTime now)
+        private bool Reaches(Genealogy genealogy, EntityId parent, EntityId person, int generations, SimulationTime now)
         {
             if (parent.IsNone)
             {
@@ -676,7 +681,7 @@ namespace KingdomWatch.Harness
 
             if (_ancestors.Add(parent))
             {
-                _pendingAncestors.Push(parent);
+                _pendingAncestors.Push((parent, generations));
             }
 
             return false;
