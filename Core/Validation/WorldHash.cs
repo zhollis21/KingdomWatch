@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
@@ -65,6 +66,8 @@ namespace KingdomWatch.Core.Validation
             Settlements = 3,
             Pending = 4,
             Bookings = 5,
+            Bands = 6,
+            KnownMaps = 7,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
@@ -75,6 +78,8 @@ namespace KingdomWatch.Core.Validation
         private readonly List<EntityId> _ids = new List<EntityId>();
         private readonly List<Household> _households = new List<Household>();
         private readonly List<Settlement> _settlements = new List<Settlement>();
+        private readonly List<MobileGroup> _bands = new List<MobileGroup>();
+        private readonly List<EntityId> _holders = new List<EntityId>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
 
@@ -214,6 +219,104 @@ namespace KingdomWatch.Core.Validation
                 Mix(settlement.Position);
                 MixMembers(settlement.Members, people);
                 MixSupplies(settlement.SharedSupplies);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every band given, ordered by durable id: where it stands
+        /// and is heading, who leads it, its members and its shared supplies.
+        /// </summary>
+        /// <remarks>
+        /// A band is the world's only kind of community until it settles, and
+        /// what it carries and where it is going decide its next council and
+        /// its next day's work (#17). The caller passes the bands it has -
+        /// the ones still wandering - since nothing owns every band ever made.
+        /// </remarks>
+        public WorldHash AddBands(IReadOnlyList<MobileGroup> bands, PersonStore people)
+        {
+            if (bands is null)
+            {
+                throw new ArgumentNullException(nameof(bands));
+            }
+
+            if (people is null)
+            {
+                throw new ArgumentNullException(nameof(people));
+            }
+
+            _bands.Clear();
+
+            for (var i = 0; i < bands.Count; i++)
+            {
+                _bands.Add(bands[i]);
+            }
+
+            _bands.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Open(Section.Bands, _bands.Count);
+
+            for (var i = 0; i < _bands.Count; i++)
+            {
+                var band = _bands[i];
+
+                Mix(band.Id);
+                Mix((long)band.Purpose);
+                Mix(band.Position);
+
+                // Heading nowhere and heading to the origin are different.
+                Mix(band.Destination.HasValue ? 1 : 0);
+                Mix(band.Destination ?? default);
+
+                // The leader as the durable id it resolves to, for the reason
+                // members are: a handle is a storage position.
+                Mix(people.IsAlive(band.Leader) ? people.GetId(band.Leader) : EntityId.None);
+                MixMembers(band.Members, people);
+                MixSupplies(band.SharedSupplies);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every holder's known map, ordered by durable id: which
+        /// cells it has seen, 64 to a word in cell-index order.
+        /// </summary>
+        /// <remarks>
+        /// Known cells decide where a community looks for work and where a
+        /// band may settle (#81, #84), so two worlds that saw different land
+        /// have diverged even while their people agree.
+        /// </remarks>
+        public WorldHash AddKnownMaps(KnownMaps maps)
+        {
+            if (maps is null)
+            {
+                throw new ArgumentNullException(nameof(maps));
+            }
+
+            maps.CopyHoldersTo(_holders);
+            Open(Section.KnownMaps, _holders.Count);
+
+            for (var i = 0; i < _holders.Count; i++)
+            {
+                var known = maps.For(_holders[i]);
+                Mix(_holders[i]);
+                Mix(known.Length);
+                var word = 0UL;
+
+                for (var cell = 0; cell < known.Length; cell++)
+                {
+                    if (known[cell])
+                    {
+                        word |= 1UL << (cell & 63);
+                    }
+
+                    if ((cell & 63) == 63 || cell == known.Length - 1)
+                    {
+                        Mix(word);
+                        word = 0UL;
+                    }
+                }
             }
 
             return this;

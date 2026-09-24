@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
@@ -121,6 +122,29 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void The_run_s_hash_sees_a_wandering_band_s_stores_and_its_map()
+        {
+            // Before either band settles, a band's own state is most of the
+            // world. Copilot's review of #103: the run's hash left it out.
+            var run = new WorldRun(1UL);
+            var bands = new List<ICommunity>();
+            run.World.Nomads.CopyTrackedTo(bands);
+            var band = (MobileGroup)bands[0];
+            var before = run.Hash();
+
+            band.SharedSupplies.Gather(ResourceKind.Wood, 1);
+            var afterStores = run.Hash();
+            run.World.KnownMaps.Reveal(band.Id, new WorldPosition(0, 0), 0);
+            var afterMap = run.Hash();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(afterStores, Is.Not.EqualTo(before), "stores");
+                Assert.That(afterMap, Is.Not.EqualTo(afterStores), "map");
+            });
+        }
+
+        [Test]
         public void The_bands_start_one_each_side_of_the_river_where_they_can_stand()
         {
             var world = World.TwoBands(5UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
@@ -186,6 +210,22 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_run_refuses_a_negative_length_or_one_past_the_end_of_time_before_advancing()
+        {
+            var run = new WorldRun(1UL);
+            var start = run.World.Now;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => run.RunYears(-1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => run.RunYears(long.MaxValue / SimulationTime.TicksPerYear + 1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(run.World.Now, Is.EqualTo(start), "refused before the first year, not part-way");
+                Assert.That(run.Years, Is.Empty);
+                Assert.That(run.RunYears(0L).Years, Is.Empty, "zero is a valid, empty run");
+            });
+        }
+
+        [Test]
         public void The_chronicle_prints_each_year_and_each_band_s_first_camp_once()
         {
             var run = new WorldRun(1UL).RunYears(3L);
@@ -204,6 +244,23 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(() => Chronicle.Write(null!, text), Throws.ArgumentNullException);
                 Assert.That(() => Chronicle.Write(run, null!), Throws.ArgumentNullException);
             });
+        }
+
+        [Test]
+        public void The_chronicle_prints_an_event_at_the_final_year_boundary()
+        {
+            // AdvanceTo runs everything due on or before its target, so an
+            // event at exactly the first tick of a year belongs to the year
+            // just run - a founder's birthday death, and what it dissolves,
+            // lands there. Published by hand at that instant to stand for one.
+            var run = new WorldRun(1UL).RunYears(1L);
+            var bus = run.World.Bus;
+            bus.Publish(DomainEventKind.FamineStarted, new EntityId(EntityKind.Settlement, 999L), EntityId.None);
+            var text = new StringWriter();
+
+            Chronicle.Write(run, text);
+
+            Assert.That(text.ToString(), Does.Contain("y1 d0 famine in Settlement#999"));
         }
 
         private static int Occurrences(string text, string of)

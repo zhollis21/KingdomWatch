@@ -31,6 +31,27 @@ namespace KingdomWatch.Core.Tests.Knowledge
         }
 
         [Test]
+        public void Holders_are_listed_by_id_whatever_order_they_were_tracked_in_and_the_list_is_replaced()
+        {
+            // The hash and the validator walk holders; the dictionary's order
+            // is representation, so the list is sorted by durable id.
+            var maps = Fresh(out _);
+            maps.Track(Other);
+            maps.Track(Band);
+            maps.Track(Town);
+            var holders = new List<EntityId> { Other, Other };
+
+            maps.CopyHoldersTo(holders);
+
+            Assert.Multiple(() =>
+            {
+                // Settlement (3) sorts before MobileGroup (6); within a kind, by value.
+                Assert.That(holders, Is.EqualTo(new[] { Town, Band, Other }));
+                Assert.That(() => maps.CopyHoldersTo(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void A_grid_is_required()
         {
             Assert.That(() => new KnownMaps(null!), Throws.ArgumentNullException);

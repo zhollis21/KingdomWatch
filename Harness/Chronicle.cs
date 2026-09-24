@@ -45,9 +45,13 @@ namespace KingdomWatch.Harness
             {
                 var year = run.Years[y];
 
-                // Every entry up to the end of this year: the summary's
-                // population is counted at the year boundary.
-                for (; next < journal.Count && journal[next].Time.YearNumber < year.Year; next++)
+                // Every entry up to and including the boundary this year
+                // ended on: AdvanceTo runs what is due on or before its
+                // target, so an event at the first tick of the next year was
+                // dispatched by this year's advance and counted in its tally.
+                var boundary = year.Year * SimulationTime.TicksPerYear;
+
+                for (; next < journal.Count && journal[next].Time.Ticks <= boundary; next++)
                 {
                     var entry = journal[next];
 

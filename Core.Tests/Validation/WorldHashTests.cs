@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Validation;
+using KingdomWatch.Core.Work;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Validation
@@ -266,6 +268,100 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Wandering_bands_and_their_state_are_folded_in()
+        {
+            // A band is the world's only community until it settles, and its
+            // stores, route and leader drive every decision it makes next.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 30);
+            var adults = w.JoinAdults(band, 4);
+            band.Leader = adults[0];
+            var bands = new List<MobileGroup> { band };
+
+            ulong Hash() => new WorldHash().AddBands(bands, w.People).Value;
+
+            var before = Hash();
+            var changes = new List<(string What, ulong Hash)>();
+
+            band.Position = WorkWorld.ForestCell;
+            changes.Add(("position", Hash()));
+            band.Position = WorkWorld.Camp;
+
+            band.Destination = WorkWorld.HillsCell;
+            changes.Add(("destination", Hash()));
+
+            // The origin cell is what an unset destination would fold in as,
+            // so heading there must still differ from heading nowhere.
+            band.Destination = new WorldPosition(0, 0);
+            changes.Add(("destination at the origin", Hash()));
+            band.Destination = null;
+
+            band.Leader = adults[1];
+            changes.Add(("leader", Hash()));
+            band.Leader = adults[0];
+
+            band.SharedSupplies.Gather(ResourceKind.Wood, 1);
+            changes.Add(("supplies", Hash()));
+
+            Assert.Multiple(() =>
+            {
+                foreach (var (what, hash) in changes)
+                {
+                    Assert.That(hash, Is.Not.EqualTo(before), what);
+                }
+
+                Assert.That(new WorldHash().AddBands(new List<MobileGroup>(), w.People).Value, Is.Not.EqualTo(before));
+            });
+        }
+
+        [Test]
+        public void The_order_bands_arrive_in_is_not_part_of_the_hash()
+        {
+            var w = new WorkWorld();
+            var first = w.NewBand(WorkWorld.Camp, 0);
+            var second = w.NewBand(WorkWorld.HillsCell, 0);
+
+            Assert.That(
+                new WorldHash().AddBands(new List<MobileGroup> { second, first }, w.People).Value,
+                Is.EqualTo(new WorldHash().AddBands(new List<MobileGroup> { first, second }, w.People).Value));
+        }
+
+        [Test]
+        public void Known_maps_are_folded_in_whatever_order_holders_were_tracked()
+        {
+            // The maps live in a dictionary, whose order is the one thing the
+            // hash must never read. Two stores holding the same knowledge,
+            // tracked the other way round, have to agree.
+            var grid = WorkWorld.DefaultMap();
+            var west = new EntityId(EntityKind.MobileGroup, 1UL);
+            var east = new EntityId(EntityKind.MobileGroup, 2UL);
+
+            KnownMaps Maps(params EntityId[] order)
+            {
+                var maps = new KnownMaps(grid);
+
+                foreach (var holder in order)
+                {
+                    maps.Track(holder);
+                }
+
+                maps.Reveal(west, WorkWorld.Camp, 2);
+                maps.Reveal(east, WorkWorld.HillsCell, 2);
+                return maps;
+            }
+
+            var forward = Maps(west, east);
+            var backward = Maps(east, west);
+            var before = new WorldHash().AddKnownMaps(forward).Value;
+            forward.Reveal(west, new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1), 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(new WorldHash().AddKnownMaps(backward).Value, Is.EqualTo(before), "tracking order is not the world");
+                Assert.That(new WorldHash().AddKnownMaps(forward).Value, Is.Not.EqualTo(before), "a cell seen is");
+            });
+        }
+        [Test]
         public void Every_section_refuses_null()
         {
             var world = Populate(Build());
@@ -279,6 +375,9 @@ namespace KingdomWatch.Core.Tests.Validation
                     () => new WorldHash().AddHouseholds(world.Households, null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddSettlements(null!, world.People), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddPending(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddBands(null!, world.People), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddBands(new List<MobileGroup>(), null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddKnownMaps(null!), Throws.ArgumentNullException);
             });
         }
 

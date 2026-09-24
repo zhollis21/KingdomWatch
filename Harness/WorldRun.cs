@@ -40,6 +40,7 @@ namespace KingdomWatch.Harness
         private readonly List<ICommunity> _communities = new List<ICommunity>();
         private readonly List<ICommunity> _tracked = new List<ICommunity>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
+        private readonly List<MobileGroup> _bands = new List<MobileGroup>();
         private readonly List<YearSummary> _years = new List<YearSummary>();
         private readonly WorldValidator _validator = new WorldValidator();
         private int _journalRead;
@@ -81,6 +82,20 @@ namespace KingdomWatch.Harness
         /// </summary>
         public WorldRun RunYears(long years)
         {
+            if (years < 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(years), years, "Cannot run a negative number of years.");
+            }
+
+            // Refused before the first year rather than discovered part-way,
+            // as SchedulerSoak.RunDays does: a run that throws in its fortieth
+            // year has already changed the world it was asked to run.
+            if (years > (long.MaxValue - World.Now.Ticks) / SimulationTime.TicksPerYear)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(years), years, "That many years from " + World.Now + " would run past the end of simulation time.");
+            }
+
             for (var i = 0L; i < years && IsClean; i++)
             {
                 World.Advance(SimulationTime.TicksPerYear);
@@ -93,16 +108,32 @@ namespace KingdomWatch.Harness
         }
 
         /// <summary>
-        /// The canonical hash of everything the world holds now, every stream's
-        /// bookings included (#13, and the #97 review note on #17).
+        /// The canonical hash of every section <see cref="WorldHash"/> has:
+        /// people, households, settlements, wandering bands, known maps, every
+        /// stream's bookings (the #97 review note on #17) and the pending queue.
         /// </summary>
+        /// <remarks>
+        /// Not yet everything the world holds. Partnerships, genealogy,
+        /// memories, job task routes, band councils and famine flags have no
+        /// section yet (#104).
+        /// </remarks>
         public ulong Hash()
         {
             World.CopyBookingsTo(_bookings);
+            World.Nomads.CopyTrackedTo(_tracked);
+            _bands.Clear();
+
+            for (var i = 0; i < _tracked.Count; i++)
+            {
+                _bands.Add((MobileGroup)_tracked[i]);
+            }
+
             return new WorldHash()
                 .AddPeople(World.People)
                 .AddHouseholds(World.Households, World.People)
                 .AddSettlements(World.Founding, World.People)
+                .AddBands(_bands, World.People)
+                .AddKnownMaps(World.KnownMaps)
                 .AddBookings(_bookings)
                 .AddPending(World.Clock)
                 .Value;

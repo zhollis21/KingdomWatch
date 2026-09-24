@@ -88,6 +88,28 @@ namespace KingdomWatch.Core.Knowledge
         }
 
         /// <summary>
+        /// Every holder with a map, sorted by durable id, replacing whatever
+        /// the list held - for the world hash, which must not read the
+        /// dictionary's own order. Allocates only if the list has to grow.
+        /// </summary>
+        public void CopyHoldersTo(List<EntityId> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            foreach (var holder in _maps.Keys)
+            {
+                into.Add(holder);
+            }
+
+            into.Sort();
+        }
+
+        /// <summary>
         /// Forgets a holder's map entirely. For an entity that has ceased to
         /// exist - a band that founded a settlement has already handed its map
         /// over with <see cref="HandOver"/>.
