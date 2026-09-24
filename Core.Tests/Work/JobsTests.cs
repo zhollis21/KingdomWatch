@@ -499,6 +499,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(survey.ReturnCost, Is.GreaterThan(0L));
                 Assert.That(route[0], Is.EqualTo(WorkWorld.Camp));
                 Assert.That(route[route.Count - 1], Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(route, Is.Not.InstanceOf<List<WorldPosition>>(), "a view, not the list a task copies from");
                 Assert.That(w.Jobs.TaskOf(adult).Destination, Is.EqualTo(survey.Destination));
             });
 

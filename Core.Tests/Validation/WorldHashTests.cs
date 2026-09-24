@@ -560,12 +560,20 @@ namespace KingdomWatch.Core.Tests.Validation
             var before = new WorldHash().AddMemories(remembered).Value;
             var empty = new WorldHash().AddMemories(new Memories(settings)).Value;
             remembered.Teach(oakshire, raid, bram);
+            var taught = new WorldHash().AddMemories(remembered).Value;
+
+            // Aged, the way the owning system's compaction ages it: only the
+            // tier changes, so this is the tier being folded in.
+            remembered.Compact(oakshire, new SimulationTime(SimulationTime.TicksPerDay));
+            remembered.TryGet(oakshire, raid, out var aged);
 
             Assert.Multiple(() =>
             {
                 Assert.That(before, Is.Not.EqualTo(empty), "something remembered");
                 Assert.That(new WorldHash().AddMemories(Remember(false)).Value, Is.EqualTo(before), "recording order across holders is not the world");
-                Assert.That(new WorldHash().AddMemories(remembered).Value, Is.Not.EqualTo(before), "a witness taught");
+                Assert.That(taught, Is.Not.EqualTo(before), "a witness taught");
+                Assert.That(aged.Tier, Is.EqualTo(MemoryTier.Old), "the raid aged");
+                Assert.That(new WorldHash().AddMemories(remembered).Value, Is.Not.EqualTo(taught), "a tier changed");
             });
         }
 

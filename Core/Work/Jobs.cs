@@ -484,7 +484,7 @@ namespace KingdomWatch.Core.Work
         /// band's position first. Tasks copy it when they start.
         /// </summary>
         public IReadOnlyList<WorldPosition> SiteRouteOf(ICommunity group, JobKind job) =>
-            SiteOf(TrackedFor(group), job).Route;
+            SiteOf(TrackedFor(group), job).RouteView;
 
         /// <summary>Where the band stood when its sites were last found.</summary>
         public WorldPosition SitesFoundFrom(ICommunity group) => TrackedFor(group).SitesFrom;
@@ -1159,6 +1159,11 @@ namespace KingdomWatch.Core.Work
 
         private sealed class Site
         {
+            public Site()
+            {
+                RouteView = Route.AsReadOnly();
+            }
+
             public bool Reachable { get; set; }
 
             public WorldPosition Destination { get; set; }
@@ -1168,6 +1173,10 @@ namespace KingdomWatch.Core.Work
             public long ReturnCost { get; set; }
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
+
+            // Handed out by SiteRouteOf, so a caller cannot cast the list
+            // back and edit a route a task will copy.
+            public ReadOnlyCollection<WorldPosition> RouteView { get; }
         }
 
         // One person's task and the route it walks. The route buffer is kept
