@@ -6,9 +6,10 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
-    /// Who is, and was, partnered with whom. Permanent: a partnership that
-    /// ends is marked ended and kept, so a widow's history and a dynasty's
-    /// chronicle both still read correctly. See
+    /// Who is, and was, partnered with whom. A partnership that ends is
+    /// marked ended and kept for as long as either partner's genealogy
+    /// record is, so a widow's history and a dynasty's chronicle both still
+    /// read correctly. See
     /// docs/design/kingdom-watch-plan-v7.1.md section 6.
     /// </summary>
     /// <remarks>

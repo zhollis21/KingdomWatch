@@ -6,7 +6,8 @@ namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
     /// Who descends from whom. The one relationship kind that is not
-    /// forgotten while anyone alive descends through it: it is small, it is
+    /// forgotten while anyone alive descends through it or anything retained
+    /// refers to it: it is small, it is
     /// structural, and history, inheritance and the kinship ban all read from
     /// it long after the people in it are dead.
     /// See docs/design/kingdom-watch-plan-v7.1.md section 6.
