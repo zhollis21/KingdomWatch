@@ -421,7 +421,7 @@ public readonly struct EntityId {
 // Durable event identity — never reused. Referenced by history, grievances,
 // rumors, decision provenance, and player bookmarks.
 public readonly struct EventId {
-    public readonly EventIdKind Kind;  // scheduled or domain (§17, #116)
+    public readonly EventIdKind Kind;  // None (default), scheduled or domain (§17, #116)
     public readonly ulong Value;
 }
 ```
@@ -1430,11 +1430,11 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 **History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries. The rules below are settled (#74); the numbers in them are settings, sized by the M2 save measurement (#19) rather than guessed.
 
-*Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
+*Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last domain-event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
 
 *A folded id still resolves.* Scheduled and domain events draw from one counter, so an id names exactly one thing — but that also means an era's id range has gaps where scheduled events' ids fell, and a range alone cannot tell a folded domain event from a booking that happened to land between two of them. So **an event id carries its kind**, the way an `EntityId` does: scheduled or domain, as a field of its own beside the value. The clock asks the allocator for a scheduled id and the bus for a domain id, from the same counter, so the value alone still names exactly one thing and ids still compare by value alone — the scheduler's tiebreak (§5) is unchanged. Nothing is reserved, so no entry point — allocation, resuming a counter, loading a save — has a special range to keep out. This reverses #5's "an event is an event": what kind of thing an id names becomes a property of the id rather than of how old it is. Storing the kind as a field doubles `EventId` to 16 bytes; packing it into the value would keep 8 at the price of a reserved range, and waits for a measured need (#19).
 
-Event ids only ever increase in journal order — the bus allocates each one at publish — so an era owns a contiguous id range, and a domain-event id is found by binary search. The bus checks an event is valid before it allocates the id, so a refused publish consumes none, and every domain id inside an era's range was published (a subscriber that throws mid-notification leaves the world inconsistent by the bus's own account, and resolution does not try to make sense of it). Resolving any event id answers one of four things. The answer for a published domain id moves once — from in full to folded — but its kind never changes, and it always resolves to something:
+Domain-event ids only ever increase in journal order — the bus allocates each one at publish, and scheduled ids never enter the journal — so an era owns a contiguous id range, and a domain-event id is found by binary search. The bus checks an event is valid before it allocates the id, so a refused publish consumes none, and every domain id inside an era's range was published (a subscriber that throws mid-notification leaves the world inconsistent by the bus's own account, and resolution does not try to make sense of it). `EventId.None` stays `default`: its kind is `None`, as `EntityKind.None` is for `EntityId`, and a real kind always carries a nonzero value. Resolving any event id answers "no event" for `None` first, then one of four things. The answer for a published domain id moves once — from in full to folded — but its kind never changes, and it always resolves to something:
 
 ```
 Scheduled kind          → not a domain event (a scheduled booking)
