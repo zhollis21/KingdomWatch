@@ -59,7 +59,9 @@ namespace KingdomWatch.Core.History
 
         /// <summary>
         /// Every event recorded so far, folded in order into one number. Two
-        /// journals with the same digest recorded the same history.
+        /// journals with different digests recorded different histories; the
+        /// same digest is strong evidence of the same history, not proof - it
+        /// detects divergence, as the world hash does.
         /// </summary>
         public ulong Digest => _digest;
 

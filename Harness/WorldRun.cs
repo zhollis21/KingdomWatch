@@ -141,7 +141,8 @@ namespace KingdomWatch.Harness
         /// The canonical hash of every section <see cref="WorldHash"/> has:
         /// terrain, next ids, people, households, settlements, wandering
         /// bands, known maps, partnerships, genealogy, memories, work in hand,
-        /// band councils, famine, the recorded history, every stream's
+        /// band councils, famine, the recorded history, each system's tracked
+        /// communities (the #108 review), every stream's
         /// bookings (the #97 review note on #17) and the pending queue.
         /// </summary>
         /// <remarks>
@@ -174,6 +175,7 @@ namespace KingdomWatch.Harness
                 .AddCouncils(World.Nomads)
                 .AddFamine(World.Hunger)
                 .AddJournal(World.Journal)
+                .AddTracking(World.Deaths, World.Fertility, World.Warmth, World.Matchmaking)
                 .AddBookings(_bookings)
                 .AddPending(World.Clock)
                 .Value;
@@ -201,6 +203,8 @@ namespace KingdomWatch.Harness
             CheckTracked(world.Jobs.CopyTrackedTo);
             CheckTracked(world.Fertility.CopyTrackedTo);
             CheckTracked(world.Matchmaking.CopyTrackedTo);
+            CheckTracked(world.Deaths.CopyTrackedTo);
+            CheckTracked(world.Nomads.CopyTrackedTo);
 
             world.CopyBookingsTo(_bookings);
             _validator.CheckBookings(_bookings, world.Clock);

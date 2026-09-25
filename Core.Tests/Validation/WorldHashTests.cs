@@ -761,6 +761,68 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Each_system_s_tracked_communities_are_folded_in()
+        {
+            // Deaths strikes the dead from its communities and Fertility
+            // places newborns in them, and neither books anything per
+            // community, so the set is state nothing else reaches (the #108
+            // review). Warmth and Matchmaking's sets otherwise reach the hash
+            // only through their bookings. One system letting a band go moves
+            // the hash, whichever it is.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            w.NewBand(WorkWorld.HillsCell, 0);
+
+            ulong Hash() => new WorldHash()
+                .AddTracking(w.Deaths, w.Demographics.Fertility, w.Warmth, w.Demographics.Matchmaking)
+                .Value;
+
+            var hashes = new List<(string What, ulong Hash)> { ("tracked everywhere", Hash()) };
+            w.Deaths.Untrack(band);
+            hashes.Add(("deaths", Hash()));
+            w.Demographics.Fertility.Untrack(band);
+            hashes.Add(("fertility", Hash()));
+            w.Warmth.Untrack(band);
+            hashes.Add(("warmth", Hash()));
+            w.Demographics.Matchmaking.Untrack(band);
+            hashes.Add(("matchmaking", Hash()));
+
+            Assert.Multiple(() =>
+            {
+                for (var i = 1; i < hashes.Count; i++)
+                {
+                    Assert.That(hashes[i].Hash, Is.Not.EqualTo(hashes[i - 1].Hash), hashes[i].What);
+                }
+            });
+        }
+
+        [Test]
+        public void Tracked_communities_are_folded_in_whatever_order_they_were_tracked()
+        {
+            static ulong HashWith(bool westFirst)
+            {
+                var w = new WorkWorld();
+                var ids = w.Demographics.Base.Ids;
+                var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+
+                foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
+                {
+                    w.Deaths.Track(band);
+                    w.Demographics.Fertility.Track(band);
+                    w.Warmth.Track(band);
+                    w.Demographics.Matchmaking.Track(band);
+                }
+
+                return new WorldHash()
+                    .AddTracking(w.Deaths, w.Demographics.Fertility, w.Warmth, w.Demographics.Matchmaking)
+                    .Value;
+            }
+
+            Assert.That(HashWith(false), Is.EqualTo(HashWith(true)));
+        }
+
+        [Test]
         public void The_recorded_history_is_folded_in()
         {
             // The count and the digest both: two histories of the same length
@@ -792,6 +854,7 @@ namespace KingdomWatch.Core.Tests.Validation
         public void Every_section_refuses_null()
         {
             var world = Populate(Build());
+            var w = new WorkWorld();
 
             Assert.Multiple(() =>
             {
@@ -815,6 +878,10 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(() => new WorldHash().AddCouncils(null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddFamine(null!), Throws.ArgumentNullException);
                 Assert.That(() => new WorldHash().AddJournal(null!), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddTracking(null!, w.Demographics.Fertility, w.Warmth, w.Demographics.Matchmaking), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddTracking(w.Deaths, null!, w.Warmth, w.Demographics.Matchmaking), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddTracking(w.Deaths, w.Demographics.Fertility, null!, w.Demographics.Matchmaking), Throws.ArgumentNullException);
+                Assert.That(() => new WorldHash().AddTracking(w.Deaths, w.Demographics.Fertility, w.Warmth, null!), Throws.ArgumentNullException);
             });
         }
 

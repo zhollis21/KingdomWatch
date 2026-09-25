@@ -266,6 +266,34 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Validation_checks_the_communities_deaths_and_the_nomads_track()
+        {
+            // Every system's tracked set is checked for members the store no
+            // longer holds; Deaths and NomadicBands were the two left out (the
+            // #108 review). A stray community each one tracks alone, listing
+            // someone nobody holds, has to be reported.
+            static string? FailureWith(Action<World, MobileGroup> track)
+            {
+                var run = new WorldRun(1UL);
+                var world = run.World;
+                var bands = new List<ICommunity>();
+                world.Nomads.CopyTrackedTo(bands);
+                var stray = new MobileGroup(
+                    new EntityId(EntityKind.MobileGroup, 1_000_000UL), MobileGroupPurpose.NomadicBand, bands[0].Position);
+                stray.AddMember(new PersonHandle(1_000_000, 1));
+                track(world, stray);
+                run.RunYears(1L);
+                return run.Failure;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(FailureWith(static (world, stray) => world.Deaths.Track(stray)), Is.Not.Null.And.Contain("CommunityMemberMissing"), "deaths");
+                Assert.That(FailureWith(static (world, stray) => world.Nomads.Track(stray)), Is.Not.Null.And.Contain("CommunityMemberMissing"), "nomads");
+            });
+        }
+
+        [Test]
         public void The_run_s_hash_is_every_section_in_order()
         {
             // Wiring, pinned: the run's hash is WorldHash over every system
@@ -299,6 +327,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 .AddCouncils(world.Nomads)
                 .AddFamine(world.Hunger)
                 .AddJournal(world.Journal)
+                .AddTracking(world.Deaths, world.Fertility, world.Warmth, world.Matchmaking)
                 .AddBookings(bookings)
                 .AddPending(world.Clock)
                 .Value;

@@ -86,6 +86,7 @@ namespace KingdomWatch.Core.Validation
             Councils = 14,
             Famine = 15,
             Journal = 16,
+            Tracked = 17,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
@@ -725,6 +726,53 @@ namespace KingdomWatch.Core.Validation
         }
 
         /// <summary>
+        /// Folds in which communities each of Deaths, Fertility, Warmth and
+        /// Matchmaking tracks, each set ordered by durable id.
+        /// </summary>
+        /// <remarks>
+        /// Deaths strikes the dead from its communities and Fertility places
+        /// newborns in them, and neither books anything per community, so no
+        /// other section reaches their sets (the #108 review). Warmth and
+        /// Matchmaking's sets reach the bookings section only while each
+        /// community has an event booked, which it does not once its stream
+        /// has reached the end of time. Hunger, Jobs and NomadicBands are not
+        /// here: their own sections list the communities they track.
+        /// </remarks>
+        public WorldHash AddTracking(Deaths deaths, Fertility fertility, Warmth warmth, Matchmaking matchmaking)
+        {
+            if (deaths is null)
+            {
+                throw new ArgumentNullException(nameof(deaths));
+            }
+
+            if (fertility is null)
+            {
+                throw new ArgumentNullException(nameof(fertility));
+            }
+
+            if (warmth is null)
+            {
+                throw new ArgumentNullException(nameof(warmth));
+            }
+
+            if (matchmaking is null)
+            {
+                throw new ArgumentNullException(nameof(matchmaking));
+            }
+
+            Open(Section.Tracked, 4);
+            deaths.CopyTrackedTo(_communities);
+            MixTracked(_communities);
+            fertility.CopyTrackedTo(_communities);
+            MixTracked(_communities);
+            warmth.CopyTrackedTo(_communities);
+            MixTracked(_communities);
+            matchmaking.CopyTrackedTo(_communities);
+            MixTracked(_communities);
+            return this;
+        }
+
+        /// <summary>
         /// Folds in every booking a system is holding - the "state names the
         /// event it booked" record each periodic stream keeps (#80) - in
         /// their own canonical order.
@@ -892,6 +940,19 @@ namespace KingdomWatch.Core.Validation
         }
 
         private void Mix(EventId id) => Mix(id.Value);
+
+        // A system's tracked set, sorted by id: which communities it tracks is
+        // the world, the order it met them in is not.
+        private void MixTracked(List<ICommunity> tracked)
+        {
+            tracked.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+            Mix(tracked.Count);
+
+            for (var i = 0; i < tracked.Count; i++)
+            {
+                Mix(tracked[i].Id);
+            }
+        }
 
         private void MixRoute(ReadOnlySpan<WorldPosition> route)
         {
