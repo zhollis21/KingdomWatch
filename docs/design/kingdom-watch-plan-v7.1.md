@@ -681,12 +681,12 @@ Adoption walks the genealogy by degree — a surviving parent, then adult siblin
 
 | Kind | Contents | Retention |
 |---|---|---|
-| **Genealogy** | parent, child, sibling derivation, ancestry | Never decays. Permanent. |
-| **Partnership** | spouse or partner | Permanent, marked ended on death |
+| **Genealogy** | parent, child, sibling derivation, ancestry | Never decays. Kept while anyone alive descends through it or anything retained refers to it (§17) |
+| **Partnership** | spouse or partner | Marked ended on death; kept while either partner's genealogy record is (§17) |
 | **Social** | liking, friendship, resentment, familiarity | Bounded and decaying |
 | **Memory / grievance** | event-specific, witness-tracked | Tiered like other knowledge (§11) |
 
-The split matters because v6 marks dead relationship edges rather than deleting them. **A 300-year-old elf cannot retain unbounded relationship objects for everyone they have ever met.** Genealogy persists forever because it is small and structural; ordinary acquaintance decays and compacts.
+The split matters because v6 marks dead relationship edges rather than deleting them. **A 300-year-old elf cannot retain unbounded relationship objects for everyone they have ever met.** Genealogy persists for as long as anyone alive descends through it or anything retained refers to it, because it is small and structural; ordinary acquaintance decays and compacts.
 
 Retention thresholds are tuning work, not architecture — but the four-way split is architecture and must exist before relationships are written.
 
@@ -1434,7 +1434,7 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 *A folded id still resolves.* Scheduled and domain events draw from one counter, so an id names exactly one thing — but that also means an era's id range has gaps where scheduled events' ids fell, and a range alone cannot tell a folded domain event from a booking that happened to land between two of them. So **an event id carries its kind**, the way an `EntityId` does: scheduled or domain, as a field of its own beside the value. The clock asks the allocator for a scheduled id and the bus for a domain id, from the same counter, so the value alone still names exactly one thing and ids still compare by value alone — the scheduler's tiebreak (§5) is unchanged. Nothing is reserved, so no entry point — allocation, resuming a counter, loading a save — has a special range to keep out. This reverses #5's "an event is an event": what kind of thing an id names becomes a property of the id rather than of how old it is. Storing the kind as a field doubles `EventId` to 16 bytes; packing it into the value would keep 8 at the price of a reserved range, and waits for a measured need (#19).
 
-Event ids only ever increase in journal order — the bus allocates each one at publish — so an era owns a contiguous id range, and a domain-event id is found by binary search. Resolving any event id answers one of four things, and the same id gets the same answer before and after its fold:
+Event ids only ever increase in journal order — the bus allocates each one at publish — so an era owns a contiguous id range, and a domain-event id is found by binary search. The bus checks an event is valid before it allocates the id, so a refused publish consumes none, and every domain id inside an era's range was published (a subscriber that throws mid-notification leaves the world inconsistent by the bus's own account, and resolution does not try to make sense of it). Resolving any event id answers one of four things. The answer for a published domain id moves once — from in full to folded — but its kind never changes, and it always resolves to something:
 
 ```
 Scheduled kind          → not a domain event (a scheduled booking)
