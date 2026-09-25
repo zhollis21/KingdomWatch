@@ -10,12 +10,12 @@ namespace KingdomWatch.Core.History
     /// The chronicle, the feed and the determinism hash read from here.
     /// </summary>
     /// <remarks>
-    /// The minimal journal: one array, appended to, never compacted. Section
-    /// 17 wants old entries folded into era summaries and long-dead people
-    /// with no descendants reduced to stubs; that is a design of its own and
-    /// arrives with persistence, not here. Until then a 200-year run keeps
-    /// every event, which at a few kilobytes per simulated year is fine for
-    /// the headless harness.
+    /// The minimal journal: one array, appended to, never compacted yet.
+    /// Section 17 settles how it will be (#74): old events fold into eras
+    /// that each own a contiguous id range, so a folded id still resolves to
+    /// its era, and the digest below is left untouched by the fold. Until
+    /// that is built (#116) a 200-year run keeps every event, which at a few
+    /// kilobytes per simulated year is fine for the headless harness.
     ///
     /// Growth allocates, doubling like <c>EventQueue</c>. Size the capacity
     /// for the run: the allocation-checked tick loop (section 18) is measured

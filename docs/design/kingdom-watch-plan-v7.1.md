@@ -516,7 +516,7 @@ BridgeDestroyed · FamineStarted · FamineEnded
 
 This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, attribution, attitudes, and debugging from one mechanism.
 
-**Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is still to come. A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
+**Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is designed (#74) and not yet built (#116). A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
 
 ### Decision provenance
 
@@ -662,7 +662,7 @@ Transfer personal wealth to the household
 Emit PersonDied
 ```
 
-Death **never deletes a genealogy or partnership edge**: genealogy is untouched, and a partnership is marked ended — a grudge against a dead man still shapes how his family is treated. Social ties and memories follow their own retention rules instead (see Relationships, below): a tie toward the dead decays out, and the grudge itself is a memory.
+Death **never deletes a genealogy or partnership edge**: genealogy is untouched, and a partnership is marked ended — a grudge against a dead man still shapes how his family is treated. Only history compaction removes either, and only once nobody alive descends from the dead and nothing retained refers to them (§17). Social ties and memories follow their own retention rules instead (see Relationships, below): a tie toward the dead decays out, and the grudge itself is a memory.
 
 The decisions on top of that:
 
@@ -1427,7 +1427,35 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 ### Persistence
 
-**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries.
+**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries. The rules below are settled (#74); the numbers in them are settings, sized by the M2 save measurement (#19) rather than guessed.
+
+*Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
+
+*A folded id still resolves.* Event ids only ever increase in journal order — the bus allocates each one at publish — so an era owns a contiguous id range, and any id is found by binary search. Resolving an event id answers one of three things:
+
+```
+In the journal      → the event, in full
+Inside an era's range → folded into that era
+Neither             → unknown (never a domain event, or not yet published)
+```
+
+Resolution is defined for domain-event ids. Scheduled events draw from the same counter, so an era's range has gaps where their ids fell; those ids belong to transient bookings and are never resolved against history. A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal.
+
+*Holders copy what they show.* Folding loses the event's detail, so anything that will need to display it later — who, what, when — copies that when it takes the reference. Memories and partnerships already do (subject, valence and time; both partners and both times). A grievance, rumor or bookmark that holds only a bare id will, after the fold, only be able to say "something in the years 110–119".
+
+*The hash sees history, and compaction separately.* The journal's digest folds every event as it is recorded, so it is unchanged by folding; it cannot be rebuilt from a compacted journal, so the save carries it. The history section hashes the digest with the count of events *ever recorded*, not the count still held — the same number until the first fold, which is why today's hash uses the held count. The compaction state — how many events are held, and the eras — is hashed as its own section, so two worlds that fold differently are caught too.
+
+*Cadence.* Folding runs at the year boundary, outside the allocation-measured span of the tick loop (§18). It is a pure function of the journal, the settings and the current time; it shifts retained events down in place, and only growing the era array allocates.
+
+*People are already stubs; the prune rule bounds them.* A dead person leaves the person store at death. What remains is their genealogy record — an id and two parent links — and that is the stub. It may be pruned when all of these hold:
+
+- the person is dead, and **no living person descends from them**;
+- **nothing retained references them** — an event still held in full in the journal, a memory's subject, a rumor, a bookmark;
+- **every descendant is pruned first**, so the walk is bottom-up and a kept record never names a missing parent.
+
+Every current reader of the genealogy — the kinship ban, the heir search, postpartum, moving dependents — starts from a living person and filters to the living, and someone with no living descendant cannot be reached going up from anyone alive. Pruning changes none of them. An ended partnership is pruned together with the couple, once both partners are prunable; it does not hold them up on its own, or anyone ever married would be kept forever. Every dead person is referenced by their own death in the journal, so pruning follows the event fold and cannot run before it.
+
+The knowledge tiers of §11 (recent, old, promoted, forgotten) follow the same model, and memories already implement them.
 
 **Save versioning and migration.** You will ship updates over the months a world lives. A four-month-old world failing to load destroys the only thing that made the game valuable. Version field, migration chain, and tests loading old-format saves — from your *first* format.
 
@@ -1521,7 +1549,7 @@ Then choose perspective.
 
 **M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
-**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). Measure save size and cold load, and design history compaction against those numbers (#74) rather than after M3–M7 have each shaped the journal. **Go/no-go for mobile.**
+**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length. **Go/no-go for mobile.**
 
 **M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
