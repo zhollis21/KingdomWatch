@@ -1443,13 +1443,13 @@ Inside an era's range   → folded into that era
 Neither                 → unknown (not yet published)
 ```
 
-A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal. Adding the kind changes `EventId`'s shape, and every hash that folds one, once — when the fold is built (#116), not before.
+The kind is only worth trusting if it is always right, so every holder of an event id states which kind it holds and refuses anything else — the wrong kind, an undefined one, or `None` where `None` is not allowed — on construction and on every restore path. A `DomainEvent` holds a domain id, a `ScheduledEvent` a scheduled one, and so does everything that refers back to either. A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal. Adding the kind changes `EventId`'s shape, and every hash that folds one, once — when the fold is built (#116), not before.
 
 *Holders copy what they show.* Folding loses the event's detail, so anything that will need to display it later — who, what, when — copies that when it takes the reference. Memories and partnerships already do (subject, valence and time; both partners and both times). A grievance, rumor or bookmark that holds only a bare id will, after the fold, only be able to say "something in the years 110–119".
 
 *The hash sees history, and compaction separately.* The journal's digest folds every event as it is recorded, so it is unchanged by folding; it cannot be rebuilt from a compacted journal, so the save carries it. The history section hashes the digest with the count of events *ever recorded*, not the count still held — the same number until the first fold, which is why today's hash uses the held count. The compaction state — how many events are held, and the eras — is hashed as its own section, so two worlds that fold differently are caught too.
 
-*Cadence.* Folding runs at the year boundary, outside the allocation-measured span of the tick loop (§18). It is a pure function of the journal, the settings and the current time; it shifts retained events down in place, and only growing the era array allocates.
+*Cadence.* Folding is a scheduled year-boundary event, dispatched inside `AdvanceTo` like every other yearly system, so how a run is chunked cannot change it and the hash sees its result. It is a pure function of the journal, the settings and the current time. It runs inside the allocation-measured tick loop (§18), so it must allocate nothing at steady state: it shifts retained events down in place, and the era array is preallocated for the run the way the journal's capacity is — growing past it works but allocates, and the allocation test reports it. Pruning (below) runs on the same event.
 
 *People are already stubs; the prune rule bounds them.* A dead person leaves the person store at death. What remains is their genealogy record — an id and two parent links — and that is the stub. It may be pruned when all of these hold:
 
