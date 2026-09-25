@@ -5,9 +5,11 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
-    /// Who descends from whom. The one relationship kind that is never
-    /// forgotten: it is small, it is structural, and history, inheritance and
-    /// the kinship ban all read from it long after the people in it are dead.
+    /// Who descends from whom. The one relationship kind that is not
+    /// forgotten while anyone alive descends through it or anything retained
+    /// refers to it: it is small, it is
+    /// structural, and history, inheritance and the kinship ban all read from
+    /// it long after the people in it are dead.
     /// See docs/design/kingdom-watch-plan-v7.1.md section 6.
     /// </summary>
     /// <remarks>
@@ -24,6 +26,10 @@ namespace KingdomWatch.Core.Relationships
     ///
     /// Death changes nothing in this store. A dead parent is still a parent,
     /// and the ancestry of the living has to stay walkable through them.
+    /// Section 17's history compaction (#74) will prune only records nothing
+    /// alive can reach: dead, with no living descendant and nothing retained
+    /// referring to them, bottom-up so a kept record never loses a parent.
+    /// Until that is built (#117) every record is kept.
     ///
     /// Keyed by durable id, not handle: genealogy outlives the people in it.
     /// The dictionaries are looked up, never enumerated, by the simulation -

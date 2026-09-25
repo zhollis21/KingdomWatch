@@ -421,6 +421,7 @@ public readonly struct EntityId {
 // Durable event identity — never reused. Referenced by history, grievances,
 // rumors, decision provenance, and player bookmarks.
 public readonly struct EventId {
+    public readonly EventIdKind Kind;  // None (default), scheduled or domain (§17, #116)
     public readonly ulong Value;
 }
 ```
@@ -516,7 +517,7 @@ BridgeDestroyed · FamineStarted · FamineEnded
 
 This is a **domain-event layer, not event sourcing** — not every axe swing becomes an event. It feeds the history journal, milestone system, event feed, attribution, attitudes, and debugging from one mechanism.
 
-**Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is still to come. A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
+**Built at #8.** Every event is one fixed-size `DomainEvent` — id, time, kind, two entity slots, reasons — published through a `DomainEventBus` that notifies subscribers synchronously in subscription order, sealed at the first publish so that order is fixed by wiring rather than by anything that happens at run time. The bus **refuses a publish from inside a subscriber**: a subscriber that must react by causing more events books a clock event into a later phase at the same instant and publishes from there, which is the queuing §4 asks for done through the one queue that already orders everything. The `EventJournal` is simply the subscriber that remembers; §17's compaction is designed (#74) and not yet built (#116). A `ScheduledEventRouter` hands each scheduled wake-up to the system owning its kind, and that system publishes whatever the wake-up turned out to mean.
 
 ### Decision provenance
 
@@ -662,7 +663,7 @@ Transfer personal wealth to the household
 Emit PersonDied
 ```
 
-Death **never deletes a genealogy or partnership edge**: genealogy is untouched, and a partnership is marked ended — a grudge against a dead man still shapes how his family is treated. Social ties and memories follow their own retention rules instead (see Relationships, below): a tie toward the dead decays out, and the grudge itself is a memory.
+Death **never deletes a genealogy or partnership edge**: genealogy is untouched, and a partnership is marked ended — a grudge against a dead man still shapes how his family is treated. Only history compaction removes either, and only once nobody alive descends from the dead and nothing retained refers to them (§17). Social ties and memories follow their own retention rules instead (see Relationships, below): a tie toward the dead decays out, and the grudge itself is a memory.
 
 The decisions on top of that:
 
@@ -680,12 +681,12 @@ Adoption walks the genealogy by degree — a surviving parent, then adult siblin
 
 | Kind | Contents | Retention |
 |---|---|---|
-| **Genealogy** | parent, child, sibling derivation, ancestry | Never decays. Permanent. |
-| **Partnership** | spouse or partner | Permanent, marked ended on death |
+| **Genealogy** | parent, child, sibling derivation, ancestry | Never decays. Kept while anyone alive descends through it or anything retained refers to it (§17) |
+| **Partnership** | spouse or partner | Marked ended on death; kept while either partner's genealogy record is (§17) |
 | **Social** | liking, friendship, resentment, familiarity | Bounded and decaying |
 | **Memory / grievance** | event-specific, witness-tracked | Tiered like other knowledge (§11) |
 
-The split matters because v6 marks dead relationship edges rather than deleting them. **A 300-year-old elf cannot retain unbounded relationship objects for everyone they have ever met.** Genealogy persists forever because it is small and structural; ordinary acquaintance decays and compacts.
+The split matters because v6 marks dead relationship edges rather than deleting them. **A 300-year-old elf cannot retain unbounded relationship objects for everyone they have ever met.** Genealogy persists for as long as anyone alive descends through it or anything retained refers to it, because it is small and structural; ordinary acquaintance decays and compacts.
 
 Retention thresholds are tuning work, not architecture — but the four-way split is architecture and must exist before relationships are written.
 
@@ -1427,7 +1428,38 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 ### Persistence
 
-**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries.
+**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries. The rules below are settled (#74); the numbers in them are settings, sized by the M2 save measurement (#19) rather than guessed.
+
+*Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last domain-event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
+
+*A folded id still resolves.* Scheduled and domain events draw from one counter, so an id names exactly one thing — but that also means an era's id range has gaps where scheduled events' ids fell, and a range alone cannot tell a folded domain event from a booking that happened to land between two of them. So **an event id carries its kind**, the way an `EntityId` does: scheduled or domain, as a field of its own beside the value. The clock asks the allocator for a scheduled id and the bus for a domain id, from the same counter, so the value alone still names exactly one thing and ids still compare by value alone — the scheduler's tiebreak (§5) is unchanged. Nothing is reserved, so no entry point — allocation, resuming a counter, loading a save — has a special range to keep out. This reverses #5's "an event is an event": what kind of thing an id names becomes a property of the id rather than of how old it is. Storing the kind as a field doubles `EventId` to 16 bytes; packing it into the value would keep 8 at the price of a reserved range, and waits for a measured need (#19).
+
+Domain-event ids only ever increase in journal order — the bus allocates each one at publish, and scheduled ids never enter the journal — so an era owns a contiguous id range, and a domain-event id is found by binary search. The bus checks an event is valid before it allocates the id, so a refused publish consumes none, and every domain id inside an era's range was published (a subscriber that throws mid-notification leaves the world inconsistent by the bus's own account, and resolution does not try to make sense of it). `EventId.None` stays `default`: its kind is `None`, as `EntityKind.None` is for `EntityId`, and a real kind always carries a nonzero value. Resolving any event id answers "no event" for `None` first, then one of four things. The answer for a published domain id moves once — from in full to folded — but its kind never changes, and it always resolves to something:
+
+```
+Scheduled kind          → not a domain event (a scheduled booking)
+In the journal          → the event, in full
+Inside an era's range   → folded into that era
+Neither                 → unknown (not yet published)
+```
+
+The kind is only worth trusting if it is always right, so every holder of an event id states which kind it holds and refuses anything else — the wrong kind, an undefined one, or `None` where `None` is not allowed — on construction and on every restore path. A `DomainEvent` holds a domain id, a `ScheduledEvent` a scheduled one, and so does everything that refers back to either. A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal. Adding the kind changes `EventId`'s shape, and every hash that folds one, once — when the fold is built (#116), not before.
+
+*Holders copy what they show.* Folding loses the event's detail, so anything that will need to display it later — who, what, when — copies that when it takes the reference. Memories and partnerships already do (subject, valence and time; both partners and both times). A grievance, rumor or bookmark that holds only a bare id will, after the fold, only be able to say "something in the years 110–119".
+
+*The hash sees history, and compaction separately.* The journal's digest folds every event as it is recorded, so it is unchanged by folding; it cannot be rebuilt from a compacted journal, so the save carries it. The history section hashes the digest with the count of events *ever recorded*, not the count still held — the same number until the first fold, which is why today's hash uses the held count. The compaction state — how many events are held, and the eras — is hashed as its own section, so two worlds that fold differently are caught too.
+
+*Cadence.* Folding is a scheduled year-boundary event, dispatched inside `AdvanceTo` like every other yearly system, so how a run is chunked cannot change it and the hash sees its result. It is a pure function of the journal, the settings and the current time. It runs inside the allocation-measured tick loop (§18), so it must allocate nothing at steady state: it shifts retained events down in place, and the era array is preallocated for the run the way the journal's capacity is — growing past it works but allocates, and the allocation test reports it. Pruning (below) runs on the same event. Because the shift moves every held entry, **no reader keeps a position into the array**: the journal counts every event it has ever recorded — the same count the hash uses — and a reader keeps how many it has read, so the first held entry is that total less `Count` and a fold never moves a reader's place. A reader that has fallen behind a fold finds its count below the first held entry and fails loudly rather than skipping. Anything that needs every event in full — the harness chronicle, the event feed (#73) — reads as it goes rather than after the fact.
+
+*People are already stubs; the prune rule bounds them.* A dead person leaves the person store at death. What remains is their genealogy record — an id and two parent links — and that is the stub. It may be pruned when all of these hold:
+
+- the person is dead, and **no living person descends from them**;
+- **nothing retained references them** — an event still held in full in the journal, a memory's subject, a rumor, a bookmark;
+- **every descendant is pruned first**, so the walk is bottom-up and a kept record never names a missing parent.
+
+Every current reader of the genealogy — the kinship ban, the heir search, postpartum, moving dependents — starts from a living person and filters to the living, and someone with no living descendant cannot be reached going up from anyone alive. Pruning changes none of them. An ended partnership is pruned together with the couple, once both partners are prunable; it does not hold them up on its own, or anyone ever married would be kept forever. Every dead person is referenced by their own death in the journal, so pruning follows the event fold and cannot run before it.
+
+The knowledge tiers of §11 (recent, old, promoted, forgotten) follow the same model, and memories already implement them.
 
 **Save versioning and migration.** You will ship updates over the months a world lives. A four-month-old world failing to load destroys the only thing that made the game valuable. Version field, migration chain, and tests loading old-format saves — from your *first* format.
 
@@ -1521,7 +1553,7 @@ Then choose perspective.
 
 **M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
-**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). Measure save size and cold load, and design history compaction against those numbers (#74) rather than after M3–M7 have each shaped the journal. **Go/no-go for mobile.**
+**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length. **Go/no-go for mobile.**
 
 **M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 

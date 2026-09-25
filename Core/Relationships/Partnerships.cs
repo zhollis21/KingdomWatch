@@ -6,12 +6,18 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Relationships
 {
     /// <summary>
-    /// Who is, and was, partnered with whom. Permanent: a partnership that
-    /// ends is marked ended and kept, so a widow's history and a dynasty's
-    /// chronicle both still read correctly. See
+    /// Who is, and was, partnered with whom. A partnership that ends is
+    /// marked ended and kept for as long as either partner's genealogy
+    /// record is, so a widow's history and a dynasty's chronicle both still
+    /// read correctly. See
     /// docs/design/kingdom-watch-plan-v7.1.md section 6.
     /// </summary>
     /// <remarks>
+    /// Permanent for as long as the couple is: section 17's history
+    /// compaction (#74) will prune an ended partnership together with the
+    /// genealogy records of both partners, and never keeps them on its own.
+    /// Until that is built (#117) every record is kept.
+    ///
     /// Each record is held in both partners' lists, so <see cref="History"/>
     /// is one lookup and a span. Ending a partnership updates both copies;
     /// the alternative - one list of records plus per-person index lists -
