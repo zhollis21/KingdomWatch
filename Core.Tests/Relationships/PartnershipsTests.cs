@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Relationships;
@@ -268,6 +269,32 @@ namespace KingdomWatch.Core.Tests.Relationships
                 Assert.That(record.Involves(EntityId.None), Is.False);
                 Assert.That(() => record.PartnerOf(bram), Throws.ArgumentException);
                 Assert.That(() => record.PartnerOf(EntityId.None), Throws.ArgumentException);
+            });
+        }
+
+        [Test]
+        public void Everyone_ever_partnered_is_listed_by_id_whatever_order_they_were_partnered_in()
+        {
+            // For the world hash (#104), which must not read the dictionary's
+            // own order.
+            var ids = new IdAllocator();
+            var store = new Partnerships();
+            var aldric = ids.Next(EntityKind.Person);
+            var mira = ids.Next(EntityKind.Person);
+            var bram = ids.Next(EntityKind.Person);
+            var tove = ids.Next(EntityKind.Person);
+            ids.Next(EntityKind.Person);
+            store.Form(tove, bram, ids.NextEvent(), SimulationTime.FromDays(1));
+            store.Form(mira, aldric, ids.NextEvent(), SimulationTime.FromDays(2));
+            store.End(mira, aldric, ids.NextEvent(), SimulationTime.FromDays(3));
+            var into = new List<EntityId> { ids.Next(EntityKind.Person) };
+
+            store.CopyPartneredTo(into);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(into, Is.EqualTo(new[] { aldric, mira, bram, tove }), "sorted, the ended included, the never-partnered not");
+                Assert.That(() => store.CopyPartneredTo(null!), Throws.ArgumentNullException);
             });
         }
     }

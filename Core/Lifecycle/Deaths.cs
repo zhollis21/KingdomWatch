@@ -92,6 +92,38 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>How many communities the cascade will strike the dead from.</summary>
         public int TrackedCount => _groups.Count;
 
+        /// <summary>
+        /// Fills <paramref name="into"/> with every community the cascade will
+        /// strike the dead from, in the order they were tracked. Clears the
+        /// list first.
+        /// </summary>
+        /// <remarks>
+        /// For the validator, which checks that the people each one lists are
+        /// alive, and the world hash, which folds the set in (#104). The list
+        /// is the caller's so a check taken once per simulated day reuses one
+        /// buffer.
+        ///
+        /// Read-only in the list sense only: the entries are the live
+        /// communities, and <see cref="ICommunity"/> can add and remove
+        /// members. Same as <see cref="Households.All"/>. It is handed out for
+        /// reading, and writing through it is a caller bug rather than
+        /// something this can prevent.
+        /// </remarks>
+        public void CopyTrackedTo(List<ICommunity> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            into.Clear();
+
+            for (var i = 0; i < _groups.Count; i++)
+            {
+                into.Add(_groups[i]);
+            }
+        }
+
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
             IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;

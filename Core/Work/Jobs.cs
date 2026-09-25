@@ -469,6 +469,55 @@ namespace KingdomWatch.Core.Work
         }
 
         /// <summary>
+        /// What the band's last site search found for this job, reachable or
+        /// not. For the world hash; <see cref="SiteFor"/> is the question the
+        /// simulation asks.
+        /// </summary>
+        public SiteSurvey SurveyOf(ICommunity group, JobKind job)
+        {
+            var site = SiteOf(TrackedFor(group), job);
+            return new SiteSurvey(site.Reachable, site.Destination, site.Cost, site.ReturnCost);
+        }
+
+        /// <summary>
+        /// The route the band's last site search found for this job, the
+        /// band's position first. Tasks copy it when they start.
+        /// </summary>
+        public IReadOnlyList<WorldPosition> SiteRouteOf(ICommunity group, JobKind job) =>
+            SiteOf(TrackedFor(group), job).RouteView;
+
+        /// <summary>Where the band stood when its sites were last found.</summary>
+        public WorldPosition SitesFoundFrom(ICommunity group) => TrackedFor(group).SitesFrom;
+
+        /// <summary>
+        /// How many of the band are out on this job now. Rebuilt at dawn and
+        /// kept exact through the day.
+        /// </summary>
+        public int OnDuty(ICommunity group, JobKind job)
+        {
+            var tracked = TrackedFor(group);
+
+            if (!JobTable.IsJob(job))
+            {
+                throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job anyone is on.");
+            }
+
+            return tracked.OnDuty[(int)job];
+        }
+
+        /// <summary>
+        /// Living members as counted at the band's last dawn - the snapshot
+        /// that sizes the day's picks, not a live count.
+        /// </summary>
+        public int LivingAtDawn(ICommunity group) => TrackedFor(group).Living;
+
+        /// <summary>
+        /// Hearths as counted at the band's last dawn - the snapshot that
+        /// sizes the woodpile's winter reserve, not a live count.
+        /// </summary>
+        public int HearthsAtDawn(ICommunity group) => TrackedFor(group).Hearths;
+
+        /// <summary>
         /// Finds the band's sites again from where it stands now. The dawn
         /// pass does this; a band that moves between dawns does it itself.
         /// Tasks under way keep the route they left with.
@@ -1110,6 +1159,11 @@ namespace KingdomWatch.Core.Work
 
         private sealed class Site
         {
+            public Site()
+            {
+                RouteView = Route.AsReadOnly();
+            }
+
             public bool Reachable { get; set; }
 
             public WorldPosition Destination { get; set; }
@@ -1119,6 +1173,10 @@ namespace KingdomWatch.Core.Work
             public long ReturnCost { get; set; }
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
+
+            // Handed out by SiteRouteOf, so a caller cannot cast the list
+            // back and edit a route a task will copy.
+            public ReadOnlyCollection<WorldPosition> RouteView { get; }
         }
 
         // One person's task and the route it walks. The route buffer is kept

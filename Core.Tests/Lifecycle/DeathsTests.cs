@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
@@ -37,6 +38,27 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(() => w.Deaths.Track(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Deaths.Track(band), Throws.InvalidOperationException);
                 Assert.That(w.Deaths.TrackedCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public void The_tracked_groups_are_listed_in_the_order_they_were_tracked()
+        {
+            // For the validator and the world hash (#104), neither of which
+            // could otherwise see which communities the cascade strikes from.
+            var w = new HouseholdWorld();
+            var first = w.NewBand();
+            var second = w.NewBand();
+            var untracked = w.NewBand();
+            w.Deaths.Untrack(untracked);
+            var into = new List<ICommunity> { untracked };
+
+            w.Deaths.CopyTrackedTo(into);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(into, Is.EqualTo(new ICommunity[] { first, second }));
+                Assert.That(() => w.Deaths.CopyTrackedTo(null!), Throws.ArgumentNullException);
             });
         }
 

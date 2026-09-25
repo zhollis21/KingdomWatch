@@ -647,6 +647,48 @@ namespace KingdomWatch.Core.Tests.Nomadic
         }
 
         [Test]
+        public void The_council_s_look_and_booked_arrival_are_readable_and_follow_the_hop()
+        {
+            // What the world hash folds in for a council (#104): days since
+            // the last look, and the cell an arrival is booked to - only
+            // while one is.
+            var w = new WorkWorld();
+            var start = new WorldPosition(14, 8);
+            var band = w.NewWanderingBand(start, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays - 1);
+            var beforeLook = w.Nomads.DaysSinceLook(band);
+            var bookedBefore = w.Nomads.BookedArrival(band);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+            var sent = w.Nomads.BookedArrival(band);
+            var afterLook = w.Nomads.DaysSinceLook(band);
+
+            w.AdvanceTo(w.Today(Jobs.Dusk));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(beforeLook, Is.EqualTo(NomadicBands.CampDays - 1), "a day counted per council");
+                Assert.That(bookedBefore, Is.Null, "nothing booked before the look");
+                Assert.That(afterLook, Is.Zero, "the look resets it");
+                Assert.That(sent, Is.Not.Null.And.EqualTo(band.Position), "booked to where the band then arrived");
+                Assert.That(w.Nomads.BookedArrival(band), Is.Null, "and nothing once it has");
+                Assert.That(w.Nomads.DaysSinceLook(band), Is.Zero, "a new camp is a fresh look");
+            });
+
+            w.Nomads.Untrack(band);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Nomads.DaysSinceLook(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Nomads.BookedArrival(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Nomads.DaysSinceLook(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Nomads.BookedArrival(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void A_blocked_camp_looks_again_every_camp_days_not_every_dawn()
         {
             // Island for the first look, which finds nothing. A causeway
