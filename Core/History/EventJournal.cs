@@ -12,9 +12,9 @@ namespace KingdomWatch.Core.History
     /// <remarks>
     /// The minimal journal: one array, appended to, never compacted yet.
     /// Section 17 settles how it will be (#74): old events fold into eras
-    /// that each own a contiguous id range, and domain-event ids carry a
-    /// mark the scheduler's do not, so a folded id still resolves to its era
-    /// and a booking's id is never mistaken for one. The digest below is
+    /// that each own a contiguous id range, and an event id carries its kind
+    /// - scheduled or domain - so a folded id still resolves to its era and
+    /// a scheduled event's id is never mistaken for one. The digest below is
     /// left untouched by the fold. Until
     /// that is built (#116) a 200-year run keeps every event, which at a few
     /// kilobytes per simulated year is fine for the headless harness.

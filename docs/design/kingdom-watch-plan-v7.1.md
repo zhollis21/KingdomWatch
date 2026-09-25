@@ -421,6 +421,7 @@ public readonly struct EntityId {
 // Durable event identity — never reused. Referenced by history, grievances,
 // rumors, decision provenance, and player bookmarks.
 public readonly struct EventId {
+    public readonly EventIdKind Kind;  // scheduled or domain (§17, #116)
     public readonly ulong Value;
 }
 ```
@@ -1431,18 +1432,18 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 *Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
 
-*A folded id still resolves.* Scheduled and domain events draw from one counter, so an id names exactly one thing — but that also means an era's id range has gaps where scheduled events' ids fell, and a range alone cannot tell a folded domain event from a booking that happened to land between two of them. So **a domain-event id carries a mark in the id itself**: the bus sets a flag bit on every id it allocates, and the scheduler never does. The counter and its uniqueness are unchanged; what kind of thing an id names becomes a property of the id rather than of how old it is.
+*A folded id still resolves.* Scheduled and domain events draw from one counter, so an id names exactly one thing — but that also means an era's id range has gaps where scheduled events' ids fell, and a range alone cannot tell a folded domain event from a booking that happened to land between two of them. So **an event id carries its kind**, the way an `EntityId` does: scheduled or domain, as a field of its own beside the value. The clock asks the allocator for a scheduled id and the bus for a domain id, from the same counter, so the value alone still names exactly one thing and ids still compare by value alone — the scheduler's tiebreak (§5) is unchanged. Nothing is reserved, so no entry point — allocation, resuming a counter, loading a save — has a special range to keep out. This reverses #5's "an event is an event": what kind of thing an id names becomes a property of the id rather than of how old it is. Storing the kind as a field doubles `EventId` to 16 bytes; packing it into the value would keep 8 at the price of a reserved range, and waits for a measured need (#19).
 
 Event ids only ever increase in journal order — the bus allocates each one at publish — so an era owns a contiguous id range, and a domain-event id is found by binary search. Resolving any event id answers one of four things, and the same id gets the same answer before and after its fold:
 
 ```
-No domain-event mark    → not a domain event (a scheduled booking)
+Scheduled kind          → not a domain event (a scheduled booking)
 In the journal          → the event, in full
 Inside an era's range   → folded into that era
 Neither                 → unknown (not yet published)
 ```
 
-A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal. Marking changes every event id's value, and every hash that folds one, once — when the fold is built (#116), not before.
+A reference never dangles, and nothing registers, pins or releases anything: compaction is local to the journal. Adding the kind changes `EventId`'s shape, and every hash that folds one, once — when the fold is built (#116), not before.
 
 *Holders copy what they show.* Folding loses the event's detail, so anything that will need to display it later — who, what, when — copies that when it takes the reference. Memories and partnerships already do (subject, valence and time; both partners and both times). A grievance, rumor or bookmark that holds only a bare id will, after the fold, only be able to say "something in the years 110–119".
 
