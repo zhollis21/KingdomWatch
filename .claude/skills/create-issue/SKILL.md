@@ -137,7 +137,7 @@ intentionally thin right now and should grow as `Core`/`Game` get built:
 - **The Core/Game boundary** — `Core` must stay zero-Unity-dependency and
   single-targeted (`netstandard2.1`). A change that reaches for a Unity API
   inside `Core`, or multi-targets it, is a real problem, not a style nit.
-- **Milestone scope** — check which milestone (M0–M8) the affected area belongs
+- **Milestone scope** — check which milestone (M0–M9) the affected area belongs
   to and whether the issue is actually in-scope yet, or describes work that's
   intentionally deferred (design doc §19–21 lists what's deferred and why).
 
