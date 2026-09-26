@@ -6,7 +6,7 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Prototypes/Orthographic3D.unity
-    guid: d32dc11496e146f9acb9ae39af7d732f
+    path: Assets/Scenes/Oblique.unity
+    guid: 57f3c9cfc7ed48659a27cd861b8c7073
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

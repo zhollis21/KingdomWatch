@@ -1,0 +1,9 @@
+<!--
+  Keeps IL2CPP's managed code stripping from removing Core types the player
+  build does not reach statically (#72). Core is the simulation: a type
+  stripped from the device build but present in the harness is exactly the
+  divergence the world hash exists to catch, so none of it is stripped.
+-->
+<linker>
+  <assembly fullname="KingdomWatch.Core" preserve="all" />
+</linker>
