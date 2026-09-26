@@ -20,4 +20,21 @@
     <RootNamespace>KingdomWatch.Core</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    Unity consumes Core as a managed plug-in (#72): every build copies the
+    assembly into the Unity project, so the DLL Unity loads is the one this
+    build produced and the harness ran - one compilation, never a stale copy.
+    The destination is git-ignored; nothing binary is committed. Unity only
+    ever sees the copy, never this project, so Core stays Unity-free.
+  -->
+  <PropertyGroup>
+    <UnityPluginDir>$(MSBuildThisFileDirectory)../Game/Assets/KingdomWatch.Core/</UnityPluginDir>
+  </PropertyGroup>
+
+  <Target Name="CopyToUnity" AfterTargets="Build" Condition="Exists('$(MSBuildThisFileDirectory)../Game/Assets')">
+    <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb"
+          DestinationFolder="$(UnityPluginDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

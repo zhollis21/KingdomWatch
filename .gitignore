@@ -10,6 +10,9 @@ Game/[Bb]uild/
 Game/[Bb]uilds/
 Game/[Ll]ogs/
 Game/ProfilerCaptures/
+# Core's build copies its DLL (a managed plug-in) here on every dotnet build (#72).
+Game/Assets/KingdomWatch.Core/
+Game/Assets/KingdomWatch.Core.meta
 Game/[Uu]ser[Ss]ettings/
 *.log
 

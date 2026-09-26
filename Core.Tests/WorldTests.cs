@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Traversal;
@@ -101,6 +102,45 @@ namespace KingdomWatch.Core.Tests
             world.CopyBookingsTo(bookings);
 
             Assert.That(bookings, Has.Count.EqualTo(once).And.Count.GreaterThan(0));
+        }
+
+        [Test]
+        public void Hashing_twice_gives_the_same_value_as_a_fresh_world_at_the_same_point()
+        {
+            // The world reuses its buffers and its WorldHash between calls, so
+            // a second call only matches a fresh world's if every buffer is
+            // replaced rather than appended to and the hash is reset.
+            var world = World.M1(3UL);
+            world.Advance(SimulationTime.TicksPerYear);
+            var once = world.Hash();
+            var twice = world.Hash();
+
+            var fresh = World.M1(3UL);
+            fresh.Advance(SimulationTime.TicksPerYear);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(twice, Is.EqualTo(once));
+                Assert.That(fresh.Hash(), Is.EqualTo(once));
+            });
+        }
+
+        [Test]
+        public void The_M1_world_is_the_one_the_harness_runs()
+        {
+            // The Unity driver builds World.M1 and the harness builds
+            // WorldRun: the same seed has to give the same world, or the
+            // hashes the two print are not comparable.
+            var world = World.M1(1UL);
+            var run = new Harness.WorldRun(1UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Grid.Width, Is.EqualTo(World.M1Width));
+                Assert.That(world.Grid.Height, Is.EqualTo(World.M1Height));
+                Assert.That(world.People.Count, Is.EqualTo(World.M1WestSize + World.M1EastSize));
+                Assert.That(world.Hash(), Is.EqualTo(run.Hash()));
+            });
         }
     }
 }
