@@ -54,13 +54,11 @@ namespace KingdomWatch.Game
             // Terrain is static until bridges (section 12, M6) rewrite cells;
             // then this belongs in Refresh, behind a change check.
             DrawTerrain(world.Grid);
-            FrameCamera();
             Refresh(world);
         }
 
         public void Refresh(World world)
         {
-
             var used = 0;
             var now = world.Now;
             foreach (var person in world.People.Alive())
@@ -140,15 +138,38 @@ namespace KingdomWatch.Game
             return marker;
         }
 
-        private void FrameCamera()
+        // Fits the whole map, with a one-cell margin, into whichever part of
+        // the screen the panel leaves larger: beside it in landscape, below it
+        // in portrait. Called every frame, so a rotation or resize re-frames.
+        // `reserved` is in GUI coordinates (origin top-left, y down).
+        public void Frame(Rect reserved)
         {
-            if (sceneCamera == null) return;
-            var mapHeight = height * RowSquash;
+            if (sceneCamera == null || width == 0) return;
+            float screenWidth = Screen.width, screenHeight = Screen.height;
+            var mapWidth = width + 2f;
+            var mapHeight = height * RowSquash + 2f;
+
+            var beside = Rect.MinMaxRect(reserved.xMax, 0f, screenWidth, screenHeight);
+            var below = Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight);
+            var besideScale = Fit(beside, mapWidth, mapHeight);
+            var belowScale = Fit(below, mapWidth, mapHeight);
+            var area = besideScale >= belowScale ? beside : below;
+            var pixelsPerUnit = Mathf.Max(besideScale, belowScale);
+
             sceneCamera.orthographic = true;
-            // Fit the whole map in either orientation, with a one-cell margin.
-            sceneCamera.orthographicSize = Mathf.Max(mapHeight / 2f, width / 2f / sceneCamera.aspect) + 1f;
-            sceneCamera.transform.position = new Vector3(width / 2f, mapHeight / 2f, -10f);
+            sceneCamera.orthographicSize = screenHeight / (2f * pixelsPerUnit);
+            // Shift the camera so the map's centre lands on the area's centre;
+            // screen y runs up where GUI y runs down.
+            var offsetX = area.center.x - screenWidth / 2f;
+            var offsetY = (screenHeight - area.center.y) - screenHeight / 2f;
+            sceneCamera.transform.position = new Vector3(
+                width / 2f - offsetX / pixelsPerUnit,
+                height * RowSquash / 2f - offsetY / pixelsPerUnit,
+                -10f);
         }
+
+        private static float Fit(Rect area, float mapWidth, float mapHeight) =>
+            Mathf.Max(0.01f, Mathf.Min(area.width / mapWidth, area.height / mapHeight));
 
         private T Own<T>(T asset) where T : Object
         {

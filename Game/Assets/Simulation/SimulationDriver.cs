@@ -29,7 +29,15 @@ namespace KingdomWatch.Game
         private long hashedYear = -1;
         private ulong yearHash;
 
-        private float UiScale => Mathf.Max(1, Screen.height / 720f);
+        private const float PanelWidth = 360f;
+        private const float PanelHeight = 170f;
+        private const float PanelMargin = 12f;
+
+        // Scaled by the shorter side, so the panel fits a phone held either way.
+        private float UiScale => Mathf.Max(1, Mathf.Min(Screen.width, Screen.height) / 720f);
+
+        // The panel's footprint in screen pixels (GUI coordinates), margin included.
+        private Rect PanelScreenRect => new Rect(0f, 0f, (PanelWidth + 2f * PanelMargin) * UiScale, (PanelHeight + 2f * PanelMargin) * UiScale);
 
         private void Start()
         {
@@ -66,6 +74,12 @@ namespace KingdomWatch.Game
             if (view != null) view.Refresh(world);
         }
 
+        // Framed every frame, paused or not, so rotating the phone re-fits the map.
+        private void LateUpdate()
+        {
+            if (view != null) view.Frame(PanelScreenRect);
+        }
+
         private void SnapshotYear()
         {
             var year = world.Now.YearNumber;
@@ -78,7 +92,7 @@ namespace KingdomWatch.Game
         {
             if (world == null) return;
             GUI.matrix = Matrix4x4.Scale(Vector3.one * UiScale);
-            GUILayout.BeginArea(new Rect(12, 12, 360, 230), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(PanelMargin, PanelMargin, PanelWidth, PanelHeight), GUI.skin.box);
             GUILayout.Label("KINGDOM WATCH / CORE ON DEVICE");
             GUILayout.Label("Seed " + seed + " / " + MapWidth + "x" + MapHeight + " / year " + world.Now.YearNumber
                 + ", day " + (world.Now.DayOfYear + 1) + " (" + world.Now.Season + ")");
