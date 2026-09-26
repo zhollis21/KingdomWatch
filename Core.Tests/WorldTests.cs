@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Traversal;
@@ -101,6 +102,27 @@ namespace KingdomWatch.Core.Tests
             world.CopyBookingsTo(bookings);
 
             Assert.That(bookings, Has.Count.EqualTo(once).And.Count.GreaterThan(0));
+        }
+
+        [Test]
+        public void Hashing_twice_gives_the_same_value_as_a_fresh_world_at_the_same_point()
+        {
+            // The world reuses its buffers and its WorldHash between calls, so
+            // a second call only matches a fresh world's if every buffer is
+            // replaced rather than appended to and the hash is reset.
+            var world = World.TwoBands(3UL, 48, 48, 60, 45);
+            world.Advance(SimulationTime.TicksPerYear);
+            var once = world.Hash();
+            var twice = world.Hash();
+
+            var fresh = World.TwoBands(3UL, 48, 48, 60, 45);
+            fresh.Advance(SimulationTime.TicksPerYear);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(twice, Is.EqualTo(once));
+                Assert.That(fresh.Hash(), Is.EqualTo(once));
+            });
         }
     }
 }

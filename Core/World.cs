@@ -12,6 +12,7 @@ using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Validation;
 using KingdomWatch.Core.Work;
 using KingdomWatch.Core.WorldGen;
 
@@ -42,6 +43,10 @@ namespace KingdomWatch.Core
         private const int JournalCapacity = 1 << 16;
 
         private readonly List<PendingBooking> _scratch = new List<PendingBooking>();
+        private readonly List<PendingBooking> _hashBookings = new List<PendingBooking>();
+        private readonly List<ICommunity> _hashTracked = new List<ICommunity>();
+        private readonly List<MobileGroup> _hashBands = new List<MobileGroup>();
+        private readonly WorldHash _hash = new WorldHash();
 
         public World(ulong seed, TerrainGrid grid, DemographicSettings settings)
         {
@@ -207,6 +212,53 @@ namespace KingdomWatch.Core
         public void AdvanceTo(SimulationTime time) => Clock.AdvanceTo(time, Router);
 
         public void Advance(long ticks) => AdvanceTo(Now.Plus(ticks));
+
+        /// <summary>
+        /// The canonical hash of every section <see cref="WorldHash"/> has:
+        /// terrain, next ids, people, households, settlements, wandering
+        /// bands, known maps, partnerships, genealogy, memories, work in hand,
+        /// band councils, famine, the recorded history, each system's tracked
+        /// communities (the #108 review), every stream's
+        /// bookings (the #97 review note on #17) and the pending queue.
+        /// </summary>
+        /// <remarks>
+        /// Here rather than in the harness so the harness and the Unity build
+        /// (#72, #90) compare the same number. Every system in this class with
+        /// durable state has a section (#104); one gained later needs one here
+        /// too (AGENTS.md).
+        /// </remarks>
+        public ulong Hash()
+        {
+            CopyBookingsTo(_hashBookings);
+            Nomads.CopyTrackedTo(_hashTracked);
+            _hashBands.Clear();
+
+            for (var i = 0; i < _hashTracked.Count; i++)
+            {
+                _hashBands.Add((MobileGroup)_hashTracked[i]);
+            }
+
+            return _hash
+                .Reset()
+                .AddTerrain(Grid)
+                .AddIds(Ids)
+                .AddPeople(People)
+                .AddHouseholds(Households, People)
+                .AddSettlements(Founding, People)
+                .AddBands(_hashBands, People)
+                .AddKnownMaps(KnownMaps)
+                .AddPartnerships(Partnerships)
+                .AddGenealogy(Genealogy)
+                .AddMemories(Memories)
+                .AddWork(Jobs, People)
+                .AddCouncils(Nomads)
+                .AddFamine(Hunger)
+                .AddJournal(Journal)
+                .AddTracking(Deaths, Fertility, Warmth, Matchmaking)
+                .AddBookings(_hashBookings)
+                .AddPending(Clock)
+                .Value;
+        }
 
         /// <summary>
         /// Every pending event every stream is holding, in a fixed stream

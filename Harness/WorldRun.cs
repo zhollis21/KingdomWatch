@@ -7,7 +7,6 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
-using KingdomWatch.Core.Validation;
 
 namespace KingdomWatch.Harness
 {
@@ -41,7 +40,6 @@ namespace KingdomWatch.Harness
         private readonly List<ICommunity> _communities = new List<ICommunity>();
         private readonly List<ICommunity> _tracked = new List<ICommunity>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
-        private readonly List<MobileGroup> _bands = new List<MobileGroup>();
         private readonly List<YearSummary> _years = new List<YearSummary>();
         private readonly ReadOnlyCollection<YearSummary> _yearsView;
         private readonly WorldValidator _validator = new WorldValidator();
@@ -137,49 +135,8 @@ namespace KingdomWatch.Harness
             return this;
         }
 
-        /// <summary>
-        /// The canonical hash of every section <see cref="WorldHash"/> has:
-        /// terrain, next ids, people, households, settlements, wandering
-        /// bands, known maps, partnerships, genealogy, memories, work in hand,
-        /// band councils, famine, the recorded history, each system's tracked
-        /// communities (the #108 review), every stream's
-        /// bookings (the #97 review note on #17) and the pending queue.
-        /// </summary>
-        /// <remarks>
-        /// Every system in <see cref="World"/> with durable state has a
-        /// section (#104). One gained later needs one here too (AGENTS.md).
-        /// </remarks>
-        public ulong Hash()
-        {
-            World.CopyBookingsTo(_bookings);
-            World.Nomads.CopyTrackedTo(_tracked);
-            _bands.Clear();
-
-            for (var i = 0; i < _tracked.Count; i++)
-            {
-                _bands.Add((MobileGroup)_tracked[i]);
-            }
-
-            return new WorldHash()
-                .AddTerrain(World.Grid)
-                .AddIds(World.Ids)
-                .AddPeople(World.People)
-                .AddHouseholds(World.Households, World.People)
-                .AddSettlements(World.Founding, World.People)
-                .AddBands(_bands, World.People)
-                .AddKnownMaps(World.KnownMaps)
-                .AddPartnerships(World.Partnerships)
-                .AddGenealogy(World.Genealogy)
-                .AddMemories(World.Memories)
-                .AddWork(World.Jobs, World.People)
-                .AddCouncils(World.Nomads)
-                .AddFamine(World.Hunger)
-                .AddJournal(World.Journal)
-                .AddTracking(World.Deaths, World.Fertility, World.Warmth, World.Matchmaking)
-                .AddBookings(_bookings)
-                .AddPending(World.Clock)
-                .Value;
-        }
+        /// <summary>The world's canonical hash (<see cref="World.Hash"/>).</summary>
+        public ulong Hash() => World.Hash();
 
         private void Validate()
         {
