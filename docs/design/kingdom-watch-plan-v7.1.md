@@ -1559,7 +1559,7 @@ Then choose perspective.
 
 **M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
-**M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7). This was the stress-test milestone and the go/no-go for mobile; the stress test moved to M9.
+**M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7).
 
 **M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
