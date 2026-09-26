@@ -30,7 +30,7 @@ namespace KingdomWatch.Core.Relationships
     /// visits every holder, which is the one place this store enumerates a
     /// dictionary: the outcome is the same in any order, because each
     /// memory's list is edited independently, so hashing order cannot leak
-    /// into state. If M2 profiling minds the walk, #65 records the options;
+    /// into state. If a device profile minds the walk, #65 records the options;
     /// the likely fix is a witness-to-memory index, not a change to what it
     /// does.
     /// </remarks>

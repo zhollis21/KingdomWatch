@@ -15,8 +15,8 @@ namespace KingdomWatch.Core.Data
     /// Records also suit the three things already committed to - the
     /// WorldValidator, the canonical world hash (sort by durable id, serialize
     /// in a defined order) and versioned save migration - all of which are
-    /// fiddly over index-correlated arrays. Split hot fields out only if M2
-    /// profiling says so. See docs/design/kingdom-watch-plan-v7.1.md section 5.
+    /// fiddly over index-correlated arrays. Split hot fields out only if a
+    /// device profile says so. See docs/design/kingdom-watch-plan-v7.1.md section 5.
     ///
     /// Public mutable fields, not properties: <see cref="PersonStore"/> mutates
     /// records in place through the array indexer, and the accessors that do it

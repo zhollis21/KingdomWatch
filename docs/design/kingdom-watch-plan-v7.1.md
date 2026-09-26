@@ -2,7 +2,7 @@
 
 > **How to read this.** A living plan, not a specification. It records current best thinking and is expected to be revised as real code gets written and teaches us things. Treat its claims the way `/kickoff` treats an issue's — a well-informed hypothesis from someone who had context you may lack, worth taking seriously and not worth adopting unexamined. Where the code and this document disagree, that is a prompt to work out which one is wrong, not an automatic win for the document. §2's "Locked decisions" are the settled *game* questions, reopened deliberately rather than casually; everything else, including the code sketches below, is illustrative.
 
-> **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
+> **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets remain open (#20, M9). Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
 
@@ -430,7 +430,7 @@ public readonly struct EventId {
 
 The same split applies to households, settlements, polities, dynasties, and named animals or monsters.
 
-`EntityId` carries its `Kind` as an explicit field rather than packing a tag into the `ulong`. Two plain fields are easier to read, test and print (`Person#1234`) than masks and shifts, and they let the WorldValidator check that a durable reference points at the *right kind* of entity rather than merely resolving to something. The cost is 16 bytes instead of 8, which nothing currently measures as a problem — the whole population is ~105 KB. Revisit if M2 profiling disagrees.
+`EntityId` carries its `Kind` as an explicit field rather than packing a tag into the `ulong`. Two plain fields are easier to read, test and print (`Person#1234`) than masks and shifts, and they let the WorldValidator check that a durable reference points at the *right kind* of entity rather than merely resolving to something. The cost is 16 bytes instead of 8, which nothing currently measures as a problem — the whole population is ~105 KB. Revisit if a device profile disagrees.
 
 ```csharp
 public struct PersonRecord
@@ -492,7 +492,7 @@ Runtime cost is effectively zero — small accessors on a sealed class are inlin
 
 `PersonStore` also owns slot allocation, which is what makes `PersonHandle.Generation` mean anything. **Removal tombstones a slot in place rather than compacting the array.** Swapping the last record into the freed slot would be denser, but it moves a live person to a different index while other code still holds handles pointing at the old one — and those handles would still carry a matching generation, so they resolve silently to the wrong person. That is the exact corruption the handle/id split exists to prevent, so density loses. A freed slot keeps the generation it reached and hands the next occupant that plus one; clearing it would send the next occupant back to generation 1 and make a handle from the *first* occupant match the second.
 
-The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is an M2 question if profiling raises it, not a guess to make now.
+The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is a question for when a device profile raises it, not a guess to make now.
 
 The bulk path is allocation-free. The scattered path is not quite: `Alive()` allocates one iterator per enumeration, so it is not the tick-loop path. `Core.Tests/Performance/SchedulerSoakTests` holds the scheduler to the broader zero-allocation claim (#59); systems added later get the same test.
 
