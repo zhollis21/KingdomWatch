@@ -1,35 +1,43 @@
-# M0 town prototype
+# Running Core in Unity
 
-Orthographic 3D with sprite villagers was selected after comparing the views on desktop and a Pixel 10 Pro XL. The flat scene and view-switch code have been removed. The runtime prototype is presentation-only; it is not the deterministic simulation described in the design plan.
+`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.TwoBands`, a 48×48 placeholder map, bands of 60 and 45) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). It is a driver, not the game view: there is no pan, zoom or selection yet (#115), and no art.
+
+## Getting Core into Unity
+
+Unity loads Core as a managed plug-in. **Any `dotnet build` of Core copies `KingdomWatch.Core.dll` and its `.pdb` into `Game/Assets/KingdomWatch.Core/`**; that folder is git-ignored. So after a fresh clone, or after changing Core, build first:
+
+```
+dotnet build
+```
+
+Then let Unity reimport. The DLL Unity loads is the one the harness and tests ran: one compilation of Core, never a second one inside Unity (§5). `Game/Assets/link.xml` stops IL2CPP stripping any Core type from the player.
+
+On Windows, if the build fails to overwrite the DLL while the Editor is open, close the Editor or its Play mode and build again.
 
 ## Run
 
-Open `Game/` in Unity **6000.6.0f1**, open `Assets/Prototypes/Orthographic3D.unity`, and press Play. The saved scene contains a camera and `TownPrototype`; it generates 16 houses, 80 villagers, roads, trees, and a raised bridge at startup. Twenty villagers cluster in the market for selection testing. Geometry, materials, and pixel sprites are generated locally without external art dependencies.
+Open `Game/` in Unity **6000.6.0f1**, open `Assets/Scenes/Oblique.unity`, and press Play. The panel shows the year, day and season, how many people are alive, how many settlements exist, and the world hash at the most recent whole year. Slower, Pause and Faster change the speed between 1 and 120 sim days per real second.
 
-## Controls
+Each coloured cell is one terrain cell: plains, forest, hills, small river, deep water. The rows are squashed to give the ¾ tilt. People stand on their cells as upright markers (children are shorter and paler). A person on a task is drawn part-way along their route (`Jobs.PositionAt`), so movement hops from cell to cell until stepped movement exists (#25).
 
-- Drag to pan; mouse wheel or two-finger pinch to zoom.
-- Tap a person or house to select. Repeat a nearby tap within 1.5 seconds to cycle nearby targets.
-- Select a villager and press Follow villager. Dragging stops follow.
-- Town returns to the overview; Previous zoom restores the previous framing.
-- Camera rotation orbits through 360 degrees; tilt ranges from 25 to 80 degrees. Reset camera angle restores the original view.
-- Move sun automatically runs a 45-second lighting cycle. Disable it to pause, or drag Sun direction to choose an angle.
-- Inspect elevated bridge frames its stairs, supports, railings, and crossing villager.
+## Comparing with the harness
 
-## Android build and profiling
+The driver stops exactly on every year boundary, where the harness hashes, so the two can be compared:
 
-Android Build Support, SDK/NDK, and OpenJDK are required in Unity Hub. Connect an Android phone with USB debugging enabled and authorize the computer. Activate the Android build profile, select the phone under Run Device, and use Build And Run. The Android profile and global scene list both explicitly launch Orthographic3D. Save APKs in `Game/Builds/` (ignored by Git).
+```
+dotnet run --project Harness -c Release -- --seed 1 --years 3
+```
 
-The shared Android profile enables Development Build and Autoconnect Profiler. Deep Profiling is off. Keep the app running and select the Android player in the Profiler target dropdown. Device selection is local setup; no phone serial is committed. Raw captures belong in `Game/ProfilerCaptures/` (also ignored); keep written findings in `docs/`.
+That prints `Hash:` for the end of year 3, which should equal the panel's `Hash at year 3`. The seed is set on the `SimulationDriver` component. Checking this automatically, on device under IL2CPP, is #90.
 
-A ~17-minute on-device sustained capture (Pixel 10 Pro XL, `KingdomWatch_2026-09-09_14-46-30`, 17,443 frames) establishes a baseline for the current content (16 houses, 80 villagers, roads, trees, bridge): main thread median 9.42ms (~106 FPS), p95 12.07ms, p99 16.41ms, max 73.81ms (one spike); only 0.85% of sampled frames missed the 60 FPS threshold and 0.1% missed 30 FPS. Render thread stayed under 4.5ms throughout. See #3 for the full numbers.
+## Android build
 
-Not yet captured: a render-ceiling ramp test (N animated sprites until below 60 FPS) and an allocation/GC baseline. Both matter more once M2's stress-test content (~10k trees, ~500 buildings, 200 stepped agents) exists than they do against this scene, so they're deferred rather than blocking M0.
+Android Build Support, SDK/NDK, and OpenJDK are required in Unity Hub. Connect an Android phone with USB debugging enabled and authorize the computer. Activate the Android build profile, select the phone under Run Device, and use Build And Run. The global scene list launches `Oblique`. Save APKs in `Game/Builds/` (ignored by Git).
 
-## Rendering and limitations
+The shared Android profile enables Development Build and Autoconnect Profiler. Deep Profiling is off. Keep the app running and select the Android player in the Profiler target dropdown. Raw captures belong in `Game/ProfilerCaptures/` (also ignored); keep written findings in `docs/`.
 
-Houses and ground use matte URP Lit materials, directional sunlight, sky fill, and shadows. Villagers and trees remain unlit billboards facing the camera, without directional artwork. PC and Mobile URP shadow distance is 120 because the camera sits 70 units from its focus; this visual-test setting needs mobile profiling.
+## History: the M0 3D prototype
 
-Villagers follow looping motion and can cross geometry. Selection uses screen-space proximity, including occluded targets. Buildings use many separate primitive parts. There is no town AI, pathfinding, simulation, zoom-level aggregation, or performance harness. The immediate-mode controls are development UI. Rotating sunlight demonstrates shading, not astronomical day/night simulation.
+M0 compared a 2D scene with an orthographic 3D one (#1), picked 3D, and later reversed that at #72 (§18). The 3D prototype (`Orthographic3D.unity`, `TownPrototype.cs`) was removed then. It is in git history before #72.
 
-The user verified the prototype's appearance and operation on Android before the 2D cleanup. After cleanup, compilation and scene-reference checks were repeated; another Play-mode/device smoke test remains appropriate before merge.
+Its ~17-minute sustained capture on a Pixel 10 Pro XL (`KingdomWatch_2026-09-09_14-46-30`, 17,443 frames, 16 houses, 80 villagers) measured main thread median 9.42 ms (~106 FPS), p95 12.07 ms, p99 16.41 ms, max 73.81 ms. Only 0.85% of frames missed 60 FPS, and the render thread stayed under 4.5 ms (#3). Those numbers are for the 3D renderer and do not carry over; M2 measures the 2D one.

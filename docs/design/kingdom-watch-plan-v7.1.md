@@ -2,7 +2,7 @@
 
 > **How to read this.** A living plan, not a specification. It records current best thinking and is expected to be revised as real code gets written and teaches us things. Treat its claims the way `/kickoff` treats an issue's — a well-informed hypothesis from someone who had context you may lack, worth taking seriously and not worth adopting unexamined. Where the code and this document disagree, that is a prompt to work out which one is wrong, not an automatic win for the document. §2's "Locked decisions" are the settled *game* questions, reopened deliberately rather than casually; everything else, including the code sketches below, is illustrative.
 
-> **M0 decision, September 9, 2026:** Orthographic 3D with sprite villagers is selected following desktop and Android prototype trials. The flat 2D comparison has been retired. Current implementation and limitations are documented in [the town prototype guide](../town-prototype.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
+> **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
 
@@ -63,7 +63,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Naval | Islands at launch; traversal abstraction from day one |
 | Fail state | Extinction ends the run — rare, mostly player-caused |
 | Notification | Event feed only — no auto-jump, no push |
-| Art perspective | **Decided at M0** by two ugly prototypes on a real phone |
+| Art perspective | **¾ oblique 2D** (§18). M0's prototypes picked orthographic 3D (#1); reversed at #72 |
 | Platform | Android first; desktop an acceptable fallback |
 | Engine | **Start on Unity 6.6, move to 6.7 LTS when it ships** (late 2026), C# |
 | Frameworks | Core `netstandard2.1`; tests and harness `net10.0` |
@@ -1483,13 +1483,19 @@ As built (#15), the checkpoint is a property of the clock rather than a protocol
 
 ## 18. Rendering and platform
 
-### Art perspective is decided at M0, not deferred
+### Art perspective: ¾ oblique 2D
 
 Perspective affects camera behavior, selection, building footprint, occlusion, walls, trees, terrain, path readability, and zoom range — all things that bake in early.
 
-**M0 includes two intentionally hideous prototypes:** (A) 2D sprites and shapes, (B) orthographic 3D cubes and billboards. Same fake town, both on the phone, ten minutes of zooming and panning. Then choose.
+**M0 built two intentionally hideous prototypes:** (A) 2D sprites and shapes, (B) orthographic 3D cubes and billboards. Same fake town, both on the phone, ten minutes of zooming and panning. Orthographic 3D was chosen on September 9, 2026 (#1) for free depth sorting, easy zoom and tilt, one sprite set, and real building height for walls.
 
-Orthographic 3D is the likely winner — free depth sorting, easy zoom and tilt, one sprite set, real building height for walls. But let the prototype answer it.
+**Reversed at #72 (September 26, 2026): the game is ¾ oblique 2D.** The choice was made from a side-by-side mockup of one village drawn top-down, ¾ oblique, and 2D isometric.
+
+- **Core's grid carries straight over.** `TerrainGrid` is flat, one kind per cell, with no elevation, and bridges rewrite a cell. Oblique keeps square cells, drawn with rows squashed. Nothing in Core changes, and tap-to-cell stays one scale plus a height offset.
+- **Fronts show.** Building faces, doors, walls and bridges have visible height, so per-culture architecture (the deferred variants below) can be read on the map rather than only on tap. Top-down was cheaper, but it reduces every building to a roof.
+- **Costs accepted:** Y-sorting (whoever is further south draws in front), occlusion of whoever stands just north of something tall (selection must cycle, as M0 found anyway), and front-plus-roof art per building. There is no camera tilt or rotation, which 3D had for free. Isometric would have added a second wall face per building, four-direction villagers, and a diamond map on a rectangular screen.
+
+The M0 3D baseline (#3) measured a different renderer, so it does not carry over. M2 measures the 2D one.
 
 Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
 
