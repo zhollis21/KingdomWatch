@@ -33,6 +33,15 @@ namespace KingdomWatch.Core
     /// </remarks>
     public sealed class World
     {
+        // A map big enough for two bands to wander without meeting the edge
+        // every week, small enough that a 200-year run takes seconds.
+        public const int M1Width = 48;
+        public const int M1Height = 48;
+
+        // Section 15's largest two starting bands.
+        public const int M1WestSize = 60;
+        public const int M1EastSize = 45;
+
         // Placeholders, like every other tuning number: memories are not yet
         // written by anything in M1, so these only have to be valid.
         private static readonly MemorySettings MemoryDefaults = new MemorySettings(
@@ -101,6 +110,13 @@ namespace KingdomWatch.Core
             Router.Register(ScheduledEventKind.CouncilDue, Nomads);
             Router.Register(ScheduledEventKind.BandArrival, Nomads);
         }
+
+        /// <summary>
+        /// The M1 world at its standard size: what the harness sweeps and the
+        /// Unity driver runs (#72), defined once so the two cannot drift apart
+        /// and the hashes they print stay comparable.
+        /// </summary>
+        public static World M1(ulong seed) => TwoBands(seed, M1Width, M1Height, M1WestSize, M1EastSize);
 
         /// <summary>
         /// The M1 world (section 19): a <see cref="PlaceholderMap"/> with one

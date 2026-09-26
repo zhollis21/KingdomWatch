@@ -61,17 +61,20 @@ namespace KingdomWatch.Game
         {
             var used = 0;
             var now = world.Now;
-            foreach (var person in world.People.Alive())
+            // The span rather than People.Alive(): Alive allocates an iterator
+            // per call, and this runs every frame. Free slots have no id.
+            foreach (var record in world.People.RecordSpan())
             {
-                var at = PositionOf(world, person, now);
-                var stage = world.People.GetAgeStage(person);
-                var child = stage == AgeStage.Infant || stage == AgeStage.Child;
+                if (record.Id.IsNone) continue;
+                var person = record.Handle;
+                var at = PositionOf(world, person, record.Position, now);
+                var child = record.AgeStage == AgeStage.Infant || record.AgeStage == AgeStage.Child;
                 var marker = MarkerAt(used++);
                 // A per-person offset inside the cell keeps a band from
                 // collapsing onto one marker. Drawn from the id, not an rng:
                 // it is presentation and must never touch the simulation. Not
                 // GetHashCode: HashCode.Combine is seeded per process.
-                var id = (long)((world.People.GetId(person).Value * 0x9E3779B97F4A7C15UL) >> 40);
+                var id = (long)((record.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
                 var jitterX = ((id & 0xff) / 255f - 0.5f) * 0.7f;
                 var jitterY = (((id >> 8) & 0xff) / 255f - 0.5f) * 0.7f;
                 var cellY = at.Y + 0.5f + jitterY;
@@ -88,14 +91,14 @@ namespace KingdomWatch.Game
 
         // Where someone is drawn: part-way along their route while a task is
         // under way (Jobs.PositionAt), otherwise the cell they are stored at.
-        private static WorldPosition PositionOf(World world, PersonHandle person, SimulationTime now)
+        private static WorldPosition PositionOf(World world, PersonHandle person, WorldPosition stored, SimulationTime now)
         {
             if (world.Jobs.HasTask(person))
             {
                 var task = world.Jobs.TaskOf(person);
                 if (task.Start.CompareTo(now) <= 0 && now.CompareTo(task.End) < 0) return world.Jobs.PositionAt(person, now);
             }
-            return world.People.GetPosition(person);
+            return stored;
         }
 
         private void DrawTerrain(TerrainGrid grid)

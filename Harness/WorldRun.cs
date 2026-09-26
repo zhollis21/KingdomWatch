@@ -28,14 +28,12 @@ namespace KingdomWatch.Harness
     /// </remarks>
     public sealed class WorldRun
     {
-        // A map big enough for two bands to wander without meeting the edge
-        // every week, small enough that a 200-year run takes seconds.
-        public const int Width = 48;
-        public const int Height = 48;
-
-        // Section 15's largest two starting bands.
-        public const int WestSize = 60;
-        public const int EastSize = 45;
+        // The M1 world's standard size lives in Core (World.M1), where the
+        // Unity driver reads it too; these names are kept for the harness.
+        public const int Width = World.M1Width;
+        public const int Height = World.M1Height;
+        public const int WestSize = World.M1WestSize;
+        public const int EastSize = World.M1EastSize;
 
         private readonly List<ICommunity> _communities = new List<ICommunity>();
         private readonly List<ICommunity> _tracked = new List<ICommunity>();
@@ -46,7 +44,7 @@ namespace KingdomWatch.Harness
         private int _journalRead;
 
         public WorldRun(ulong seed)
-            : this(World.TwoBands(seed, Width, Height, WestSize, EastSize))
+            : this(World.M1(seed))
         {
         }
 

@@ -1,6 +1,6 @@
 # Running Core in Unity
 
-`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.TwoBands`, a 48×48 placeholder map, bands of 60 and 45) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). It is a driver, not the game view: there is no pan, zoom or selection yet (#115), and no art.
+`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.M1`: a 48×48 placeholder map, bands of 60 and 45, defined once in Core for both) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). It is a driver, not the game view: there is no pan, zoom or selection yet (#115), and no art.
 
 ## Getting Core into Unity
 
@@ -22,7 +22,7 @@ Each coloured cell is one terrain cell: plains, forest, hills, small river, deep
 
 ## Comparing with the harness
 
-The driver stops exactly on every year boundary, where the harness hashes, so the two can be compared:
+The driver steps through `YearStepper`, which stops exactly on every year boundary, where the harness hashes, so the two can be compared:
 
 ```
 dotnet run --project Harness -c Release -- --seed 1 --years 3
