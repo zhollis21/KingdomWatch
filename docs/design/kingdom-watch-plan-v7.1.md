@@ -2,7 +2,7 @@
 
 > **How to read this.** A living plan, not a specification. It records current best thinking and is expected to be revised as real code gets written and teaches us things. Treat its claims the way `/kickoff` treats an issue's — a well-informed hypothesis from someone who had context you may lack, worth taking seriously and not worth adopting unexamined. Where the code and this document disagree, that is a prompt to work out which one is wrong, not an automatic win for the document. §2's "Locked decisions" are the settled *game* questions, reopened deliberately rather than casually; everything else, including the code sketches below, is illustrative.
 
-> **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets and the M2 mobile gate remain open. Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
+> **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets remain open (#20, M9). Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
 
@@ -67,7 +67,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Platform | Android first; desktop an acceptable fallback |
 | Engine | **Start on Unity 6.6, move to 6.7 LTS when it ships** (late 2026), C# |
 | Frameworks | Core `netstandard2.1`; tests and harness `net10.0` |
-| Data layout | **Dense records** behind a **storage accessor layer**; split hot fields only if M2 measures a problem |
+| Data layout | **Dense records** behind a **storage accessor layer**; split hot fields only if a device profile measures a problem |
 
 ---
 
@@ -430,7 +430,7 @@ public readonly struct EventId {
 
 The same split applies to households, settlements, polities, dynasties, and named animals or monsters.
 
-`EntityId` carries its `Kind` as an explicit field rather than packing a tag into the `ulong`. Two plain fields are easier to read, test and print (`Person#1234`) than masks and shifts, and they let the WorldValidator check that a durable reference points at the *right kind* of entity rather than merely resolving to something. The cost is 16 bytes instead of 8, which nothing currently measures as a problem — the whole population is ~105 KB. Revisit if M2 profiling disagrees.
+`EntityId` carries its `Kind` as an explicit field rather than packing a tag into the `ulong`. Two plain fields are easier to read, test and print (`Person#1234`) than masks and shifts, and they let the WorldValidator check that a durable reference points at the *right kind* of entity rather than merely resolving to something. The cost is 16 bytes instead of 8, which nothing currently measures as a problem — the whole population is ~105 KB. Revisit if a device profile disagrees.
 
 ```csharp
 public struct PersonRecord
@@ -457,7 +457,7 @@ public struct PersonRecord
 
 `BornTick` is a raw `long` rather than a `SimulationTime` because that type refuses to be negative and worldgen seeds people who were forty before tick zero (#11). Age is the distance from it to now, computed when asked and never ticked; `AgeStage` is a reading of it that `Aging` (§6) refreshes at each boundary, kept as a field because every system branches on the stage far more often than anyone crosses one. `PregnancyDue` names the pending `BirthDue` event rather than keeping a due date of its own, so the record and the queue cannot disagree about whether someone is pregnant; the death cascade cancels the one and clears the other together.
 
-**Dense records now; split measured hot fields into parallel arrays only if M2 says so.**
+**Dense records now; split measured hot fields into parallel arrays only if a device profile says so.**
 
 Struct-of-arrays exists to avoid cache misses on datasets too large to hold. At ~1,650 people and roughly 64 bytes of fields, the entire population is about **105 KB — it fits in L2 cache**. Per-frame cost will be dominated by pathfinding, job assignment, and the 100–300 stepped visible agents, not by linear scans over everyone. Hand-writing a mini-ECS before there is a game is optimizing a problem that does not exist yet.
 
@@ -492,7 +492,7 @@ Runtime cost is effectively zero — small accessors on a sealed class are inlin
 
 `PersonStore` also owns slot allocation, which is what makes `PersonHandle.Generation` mean anything. **Removal tombstones a slot in place rather than compacting the array.** Swapping the last record into the freed slot would be denser, but it moves a live person to a different index while other code still holds handles pointing at the old one — and those handles would still carry a matching generation, so they resolve silently to the wrong person. That is the exact corruption the handle/id split exists to prevent, so density loses. A freed slot keeps the generation it reached and hands the next occupant that plus one; clearing it would send the next occupant back to generation 1 and make a handle from the *first* occupant match the second.
 
-The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is an M2 question if profiling raises it, not a guess to make now.
+The consequence is that the bulk span covers every allocated slot and can include unoccupied ones — hence `RecordSpan()` rather than the `AliveSpan()` this section originally sketched, since a name promising alive-only would eventually be believed. Callers skip slots whose `Id` is `None`. Defragmenting is a question for when a device profile raises it, not a guess to make now.
 
 The bulk path is allocation-free. The scattered path is not quite: `Alive()` allocates one iterator per enumeration, so it is not the tick-loop path. `Core.Tests/Performance/SchedulerSoakTests` holds the scheduler to the broader zero-allocation claim (#59); systems added later get the same test.
 
@@ -1428,7 +1428,7 @@ This is a user-experience preference, not a simulation law, and determinism is u
 
 ### Persistence
 
-**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries. The rules below are settled (#74); the numbers in them are settings, sized by the M2 save measurement (#19) rather than guessed.
+**History compaction.** Design before the accumulation. A person dead 300 years with no living descendants and no surviving event references compresses to a stub. The journal keeps recent events in full and folds older ones into era summaries. The rules below are settled (#74); the numbers in them are settings, sized by the save measurement (#19) rather than guessed. That measurement needs a save to measure, so it waits on save/load (#42, M7); until then the settings are placeholders.
 
 *Events fold into eras.* The journal keeps the last `RetainYears` of events in full. Anything older folds into an **era**: a fixed-size record of one contiguous span of `EraYears`, holding the first and last domain-event id it covers, its start and end time, and a count per event kind. Era boundaries fall on fixed calendar spans, never on "whenever compaction happened to run", so two worlds with the same seed fold into the same eras.
 
@@ -1495,7 +1495,7 @@ Perspective affects camera behavior, selection, building footprint, occlusion, w
 - **Fronts show.** Building faces, doors, walls and bridges have visible height, so per-culture architecture (the deferred variants below) can be read on the map rather than only on tap. Top-down was cheaper, but it reduces every building to a roof.
 - **Costs accepted:** Y-sorting (whoever is further south draws in front), occlusion of whoever stands just north of something tall (selection must cycle, as M0 found anyway), and front-plus-roof art per building. There is no camera tilt or rotation, which 3D had for free. Isometric would have added a second wall face per building, four-direction villagers, and a diamond map on a rectangular screen.
 
-The M0 3D baseline (#3) measured a different renderer, so it does not carry over. M2 measures the 2D one.
+The M0 3D baseline (#3) measured a different renderer, so it does not carry over. The 2D one is measured ahead of the stress test (#20, M9).
 
 Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
 
@@ -1537,7 +1537,7 @@ The mobile risk is **save size and cold load time on a six-month-old world**, pl
 - Personal Play Console accounts created after November 13, 2023 must run a closed test with 12+ testers opted in continuously for 14 days before production access
 - Test on a cheap real device from day one
 
-**Desktop fallback:** the engine-free core and quality-enum LOD make the switch cheap, but it changes the *game*, not just the tech. Design for mobile, decide at the stress-test gate.
+**Desktop fallback:** the engine-free core and quality-enum LOD make the switch cheap, but it changes the *game*, not just the tech. Design for mobile. The stress test was once the gate for this choice; it moved to M9 (September 26, 2026) because the game is being built for mobile either way, so it is now a pre-release check that the finished game fits the phone. Regular device builds and zero allocations in the tick loop carry the risk in between.
 
 ---
 
@@ -1559,7 +1559,7 @@ Then choose perspective.
 
 **M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
-**M2 — the ugly stress test.** No art. Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android. Threshold set *before* running. Core wired into the Unity build for the first time (#72). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length. **Go/no-go for mobile.**
+**M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7).
 
 **M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
@@ -1573,19 +1573,23 @@ Then choose perspective.
 
 **M8 — naval.** Boats, cross-water trade and transport, island archetype. *Largest single feature; the §12 traversal abstraction must exist from M1.*
 
+**M9 — pre-release performance: the ugly stress test.** Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android (#18). No finished art, but placeholders that cost what the art will: 16–24px sprites layered 3–5 deep per agent, across as many atlases as the art scope implies, animated. Thresholds set *before* running (#20): choose the budget fraction, measure the 2D baseline, then split the budget into sim ms and render ms per frame.
+
 ---
 
 ## 20. Systems requiring design before implementation
 
 Sequenced by when they block progress. Items now specified elsewhere in this document, or in its companion [economy ladder](kingdom-watch-economy-ladder.md), are marked ✓.
 
-**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **performance budgets — measured at M0, not yet set** · **capability-graph pacing and the skill chicken-and-egg** ✓
+**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **capability-graph pacing and the skill chicken-and-egg** ✓
 
 **Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, wildlife, soil, finite stone and ore)
 
 **Before M5:** knowledge and rumor propagation ✓
 
 **Before M7:** social and personal decision system ✓ (launch scope set) · political model and succession · culture on individuals and assimilation ✓
+
+**Before M9:** performance budgets (#20) — the fraction chosen before the 2D baseline is measured. The M0 measurements (#3) were of the 3D prototype and do not carry over.
 
 **Launch polish:** event feed follow lists and search.
 
@@ -1598,7 +1602,7 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 ## 21. Open questions
 
 1. ~~**Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world~~ — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78): each capability has a crude tier-zero form, so the climb is paced by how long real people take to reach journeyman, which varies per world. The targets there are placeholders until #17 and #22 measure them.
-2. **Performance budgets** — set as a fraction of the M0 baseline, fraction chosen before measuring
+2. **Performance budgets** — set as a fraction of a measured 2D baseline, fraction chosen before measuring; owned by #20, at M9
 3. Disease and plague as a system
 4. Siege model — walls, gates, duration, stores, assault, surrender
 5. Movement and collision — do agents block one another?

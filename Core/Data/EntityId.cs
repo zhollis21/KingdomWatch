@@ -13,7 +13,7 @@ namespace KingdomWatch.Core.Data
     /// than masks and shifts, and they let the validator check that a durable
     /// reference points at the right KIND of entity rather than merely
     /// resolving to something. That costs 16 bytes instead of 8, which nothing
-    /// measures as a problem at roughly 1,650 people - revisit if M2 profiling
+    /// measures as a problem at roughly 1,650 people - revisit if a device profile
     /// disagrees. See docs/design/kingdom-watch-plan-v7.1.md section 5.
     ///
     /// Contrast <see cref="PersonHandle"/>, which indexes into storage and IS

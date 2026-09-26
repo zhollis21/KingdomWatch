@@ -9,8 +9,8 @@ namespace KingdomWatch.Core.Traversal
     /// </summary>
     /// <remarks>
     /// A dense grid rather than an edge graph because section 12 asks for
-    /// grid A* locally, and because the things that will sit on the world at
-    /// M2 - trees, buildings, roads - are cell-shaped. One byte-sized enum per
+    /// grid A* locally, and because the things that will sit on the world
+    /// later - trees, buildings, roads - are cell-shaped. One byte-sized enum per
     /// cell is the whole representation; the meaning of a kind lives in
     /// <see cref="TerrainRules"/>.
     ///

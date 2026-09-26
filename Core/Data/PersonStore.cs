@@ -29,8 +29,8 @@ namespace KingdomWatch.Core.Data
     /// carry a matching generation, so they would resolve silently to the wrong
     /// person. That is the exact corruption the handle/id split exists to
     /// prevent, so density loses. The cost is that the bulk span can contain
-    /// unoccupied slots; defragmenting is an M2 question if profiling ever
-    /// raises it, not a guess to make now.
+    /// unoccupied slots; defragmenting is a question for when a device
+    /// profile raises it, not a guess to make now.
     ///
     /// An unoccupied slot is one whose <see cref="PersonRecord.Id"/> is
     /// <see cref="EntityId.None"/>. No parallel occupancy array: a durable id

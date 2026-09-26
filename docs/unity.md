@@ -28,7 +28,7 @@ The driver steps through `YearStepper`, which stops exactly on every year bounda
 dotnet run --project Harness -c Release -- --seed 1 --years 3
 ```
 
-That prints `Hash:` for the end of year 3, which should equal the panel's `Hash at year 3`. The seed is set on the `SimulationDriver` component. Checking this automatically, on device under IL2CPP, is #90.
+That prints `Hash:` for the end of year 3, which should equal the panel's `Hash at year 3`. The seed is set on the `SimulationDriver` component. The same check on an Android build (IL2CPP) matched at seed 1, year 6 (#90); it is manual, so re-run it when something that could diverge lands, such as a float in `Core` or a change to how the hash is built.
 
 ## Android build
 
@@ -40,4 +40,4 @@ The shared Android profile enables Development Build and Autoconnect Profiler. D
 
 M0 compared a 2D scene with an orthographic 3D one (#1), picked 3D, and later reversed that at #72 (§18). The 3D prototype (`Orthographic3D.unity`, `TownPrototype.cs`) was removed then. It is in git history before #72.
 
-Its ~17-minute sustained capture on a Pixel 10 Pro XL (`KingdomWatch_2026-09-09_14-46-30`, 17,443 frames, 16 houses, 80 villagers) measured main thread median 9.42 ms (~106 FPS), p95 12.07 ms, p99 16.41 ms, max 73.81 ms. Only 0.85% of frames missed 60 FPS, and the render thread stayed under 4.5 ms (#3). Those numbers are for the 3D renderer and do not carry over; M2 measures the 2D one.
+Its ~17-minute sustained capture on a Pixel 10 Pro XL (`KingdomWatch_2026-09-09_14-46-30`, 17,443 frames, 16 houses, 80 villagers) measured main thread median 9.42 ms (~106 FPS), p95 12.07 ms, p99 16.41 ms, max 73.81 ms. Only 0.85% of frames missed 60 FPS, and the render thread stayed under 4.5 ms (#3). Those numbers are for the 3D renderer and do not carry over; the 2D one is measured ahead of the stress test (#20, M9).
