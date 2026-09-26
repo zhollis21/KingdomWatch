@@ -28,7 +28,7 @@ The driver steps through `YearStepper`, which stops exactly on every year bounda
 dotnet run --project Harness -c Release -- --seed 1 --years 3
 ```
 
-That prints `Hash:` for the end of year 3, which should equal the panel's `Hash at year 3`. The seed is set on the `SimulationDriver` component. Checking this automatically, on device under IL2CPP, is #90.
+That prints `Hash:` for the end of year 3, which should equal the panel's `Hash at year 3`. The seed is set on the `SimulationDriver` component. The same check on an Android build (IL2CPP) matched at seed 1, year 6 (#90); it is manual, so re-run it when something that could diverge lands, such as a float in `Core` or a change to how the hash is built.
 
 ## Android build
 
