@@ -60,6 +60,9 @@ namespace KingdomWatch.Game
             view.Show(world);
             rig = new CameraRig(view.sceneCamera, world.Grid.Width, world.Grid.Height);
             input = new ViewInput(rig, view);
+            // Framed now, so input in the first frame never meets an unframed
+            // rig (zoom 0, where a pan divides by zero).
+            rig.Apply(PanelScreenRect);
         }
 
         private void Update()
