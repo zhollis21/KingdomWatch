@@ -34,6 +34,9 @@ namespace KingdomWatch.Game
         // free; the furthest the camera zooms out.
         public float FarthestPixelsPerCell { get; private set; }
 
+        // The farthest zoom at which panning, and so following, is unrestricted.
+        public float FreePanPixelsPerCell => FarthestPixelsPerCell * FreePanZoom;
+
         public float NearestPixelsPerCell => Mathf.Min(Screen.width, Screen.height) / NearestCellsAcross;
 
         // Clamps and applies. Called every frame, so a rotation or resize

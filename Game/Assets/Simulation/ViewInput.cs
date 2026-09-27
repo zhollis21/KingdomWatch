@@ -45,7 +45,6 @@ namespace KingdomWatch.Game
         private Vector2 pinchMiddle;
         private Vector2 lastTap;
         private float lastTapTime = float.NegativeInfinity;
-        private int cycle;
 
         public ViewInput(CameraRig rig, WorldView2D view)
         {
@@ -75,8 +74,9 @@ namespace KingdomWatch.Game
                 return;
             }
             Following = true;
-            // Following a person is only useful where people are drawn.
-            if (view.Selected.Kind == EntityKind.Person) rig.ZoomToAtLeast((WorldView2D.NearFrom + 4f) * uiScale);
+            // Following a person is only useful where people are drawn, and
+            // following anything needs a zoom the camera can move at.
+            rig.ZoomToAtLeast(view.Selected.Kind == EntityKind.Person ? (WorldView2D.NearFrom + 4f) * uiScale : rig.FreePanPixelsPerCell);
         }
 
         public void Deselect()
@@ -120,12 +120,16 @@ namespace KingdomWatch.Game
 
             Vector2 p;
             bool down, primary;
+            var cancelled = false;
             var mouse = Mouse.current;
             if (touches.Count == 1)
             {
                 var phase = touches[0].phase;
                 p = touches[0].screenPosition;
-                down = phase != UnityEngine.InputSystem.TouchPhase.Ended && phase != UnityEngine.InputSystem.TouchPhase.Canceled;
+                // The OS cancels a touch it takes over (a call, a system
+                // gesture): that ends the drag but is not a tap.
+                cancelled = phase == UnityEngine.InputSystem.TouchPhase.Canceled;
+                down = phase != UnityEngine.InputSystem.TouchPhase.Ended && !cancelled;
                 primary = true;
             }
             else if (mouse != null)
@@ -176,7 +180,7 @@ namespace KingdomWatch.Game
             if (!down && dragging)
             {
                 dragging = false;
-                if (!moved && tapButton) Tap(pointerLast, uiScale);
+                if (!moved && tapButton && !cancelled) Tap(pointerLast, uiScale);
             }
         }
 
@@ -212,8 +216,16 @@ namespace KingdomWatch.Game
             var radius = (view.Band == ZoomBand.Far ? CommunityPickRadius : PersonPickRadius) * uiScale;
             view.Pick(p, radius, candidates);
             var again = Vector2.Distance(p, lastTap) < CycleRadius * uiScale && Time.unscaledTime - lastTapTime < CycleSeconds;
-            cycle = again ? cycle + 1 : 0;
-            view.Selected = candidates.Count > 0 ? candidates[cycle % candidates.Count] : EntityId.None;
+            // A repeat tap takes whoever follows the current selection in this
+            // tap's list, not a count into the last one: people move between
+            // taps and the order shifts. Nothing selected starts at the nearest.
+            var next = 0;
+            if (again)
+            {
+                var current = candidates.IndexOf(view.Selected);
+                if (current >= 0) next = (current + 1) % candidates.Count;
+            }
+            view.Selected = candidates.Count > 0 ? candidates[next] : EntityId.None;
             Following = false;
             lastTap = p;
             lastTapTime = Time.unscaledTime;
