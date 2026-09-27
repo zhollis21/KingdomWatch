@@ -11,6 +11,10 @@ namespace KingdomWatch.Game
         // Closest zoom: this many cells across the screen's shorter side.
         private const float NearestCellsAcross = 4f;
 
+        // How many times the whole-map zoom panning is fully free: below it,
+        // the pan range narrows toward the whole-map framing.
+        private const float FreePanZoom = 2f;
+
         private readonly Camera camera;
         private readonly float mapWidth, mapHeight;
         private Vector2 focus;
@@ -47,19 +51,14 @@ namespace KingdomWatch.Game
             }
 
             pixelsPerCell = Mathf.Clamp(pixelsPerCell, FarthestPixelsPerCell, Mathf.Max(FarthestPixelsPerCell, NearestPixelsPerCell));
-            if (Mathf.Approximately(pixelsPerCell, FarthestPixelsPerCell))
-            {
-                // Fully zoomed out, the map sits beside or below the panel rather
-                // than under it. Not clamped: on a small portrait screen that
-                // centre lies past the map's edge.
-                focus = home;
-            }
-            else
-            {
-                // Zoomed in, panning stops once a map edge reaches the middle of the screen.
-                focus.x = Mathf.Clamp(focus.x, 0f, mapWidth);
-                focus.y = Mathf.Clamp(focus.y, 0f, mapHeight);
-            }
+            // Zoomed in, panning stops once a map edge reaches the middle of the
+            // screen. Zooming out narrows that range onto `home`, where the whole
+            // map sits beside or below the panel, so the map eases into place
+            // rather than jumping there on the last notch. `home` can lie past
+            // the map's edge on a small portrait screen, which lerping allows.
+            var t = Mathf.Clamp01(Mathf.Log(pixelsPerCell / FarthestPixelsPerCell) / Mathf.Log(FreePanZoom));
+            focus.x = Mathf.Clamp(focus.x, Mathf.Lerp(home.x, 0f, t), Mathf.Lerp(home.x, mapWidth, t));
+            focus.y = Mathf.Clamp(focus.y, Mathf.Lerp(home.y, 0f, t), Mathf.Lerp(home.y, mapHeight, t));
 
             camera.orthographic = true;
             camera.orthographicSize = Screen.height / (2f * pixelsPerCell);
