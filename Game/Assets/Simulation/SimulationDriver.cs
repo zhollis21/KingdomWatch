@@ -50,7 +50,13 @@ namespace KingdomWatch.Game
         {
             world = World.M1(unchecked((ulong)seed));
             SnapshotYear();
-            if (view == null) return;
+            // A scene missing a reference runs the simulation with no view,
+            // saying so once rather than throwing every frame.
+            if (view == null || view.sceneCamera == null || view.spriteShader == null)
+            {
+                Debug.LogError("SimulationDriver: no view drawn. Set SimulationDriver.view, and WorldView2D's sceneCamera and spriteShader.", this);
+                return;
+            }
             view.Show(world);
             rig = new CameraRig(view.sceneCamera, world.Grid.Width, world.Grid.Height);
             input = new ViewInput(rig, view);
@@ -132,10 +138,7 @@ namespace KingdomWatch.Game
         private void ViewPanel()
         {
             GUILayout.Label("Zoom: " + view.Band + (input.Following ? " (following)" : ""));
-            GUILayout.BeginHorizontal();
             if (GUILayout.Button("Whole map")) input.WholeMap();
-            if (GUILayout.Button("Previous zoom")) input.Previous();
-            GUILayout.EndHorizontal();
 
             var selected = view.Selected;
             if (selected.IsNone)

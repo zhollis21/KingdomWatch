@@ -15,8 +15,7 @@ namespace KingdomWatch.Game
     //   mouse     left, right or middle drag pans, wheel zooms about the
     //             middle of the screen, left click selects
     //   keyboard  WASD or arrows pan, Q/E or -/+ zoom, Esc clears the
-    //             selection, F follows, Backspace returns to the previous
-    //             framing, Home shows the whole map
+    //             selection, F follows, Home shows the whole map
     //
     // A repeat tap or click near the last one, soon after it, moves to the
     // next candidate under it (section 18: selection must cycle). None of
@@ -92,12 +91,6 @@ namespace KingdomWatch.Game
             rig.WholeMap();
         }
 
-        public void Previous()
-        {
-            Following = false;
-            rig.Previous();
-        }
-
         private void ReadPointer(Rect reserved, float uiScale)
         {
             var touches = Touch.activeTouches;
@@ -107,7 +100,10 @@ namespace KingdomWatch.Game
                 var b = touches[1].screenPosition;
                 var distance = Vector2.Distance(a, b);
                 var middle = (a + b) / 2f;
-                if (pinchDistance > 0f && distance > 0f)
+                // A finger that went down on the panel belongs to it, as a
+                // single touch does, so a pinch with one there moves nothing.
+                var onPanel = InPanel(reserved, touches[0].startScreenPosition) || InPanel(reserved, touches[1].startScreenPosition);
+                if (!onPanel && pinchDistance > 0f && distance > 0f)
                 {
                     rig.ZoomAt(middle, distance / pinchDistance);
                     rig.PanBy(middle - pinchMiddle);
@@ -208,7 +204,6 @@ namespace KingdomWatch.Game
 
             if (keys.escapeKey.wasPressedThisFrame) Deselect();
             if (keys.fKey.wasPressedThisFrame) ToggleFollow(uiScale);
-            if (keys.backspaceKey.wasPressedThisFrame) Previous();
             if (keys.homeKey.wasPressedThisFrame) WholeMap();
         }
 

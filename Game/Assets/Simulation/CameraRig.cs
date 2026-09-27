@@ -15,8 +15,6 @@ namespace KingdomWatch.Game
         private readonly float mapWidth, mapHeight;
         private Vector2 focus;
         private float pixelsPerCell;
-        private Vector2 previousFocus;
-        private float previousPixelsPerCell;
         private bool framed;
 
         public CameraRig(Camera camera, int width, int height)
@@ -45,16 +43,23 @@ namespace KingdomWatch.Game
             {
                 focus = home;
                 pixelsPerCell = homeScale;
-                previousFocus = focus;
-                previousPixelsPerCell = pixelsPerCell;
                 framed = true;
             }
 
             pixelsPerCell = Mathf.Clamp(pixelsPerCell, FarthestPixelsPerCell, Mathf.Max(FarthestPixelsPerCell, NearestPixelsPerCell));
-            // Fully zoomed out, the map sits beside the panel rather than under it.
-            if (Mathf.Approximately(pixelsPerCell, FarthestPixelsPerCell)) focus = home;
-            focus.x = Mathf.Clamp(focus.x, 0f, mapWidth);
-            focus.y = Mathf.Clamp(focus.y, 0f, mapHeight);
+            if (Mathf.Approximately(pixelsPerCell, FarthestPixelsPerCell))
+            {
+                // Fully zoomed out, the map sits beside or below the panel rather
+                // than under it. Not clamped: on a small portrait screen that
+                // centre lies past the map's edge.
+                focus = home;
+            }
+            else
+            {
+                // Zoomed in, panning stops once a map edge reaches the middle of the screen.
+                focus.x = Mathf.Clamp(focus.x, 0f, mapWidth);
+                focus.y = Mathf.Clamp(focus.y, 0f, mapHeight);
+            }
 
             camera.orthographic = true;
             camera.orthographicSize = Screen.height / (2f * pixelsPerCell);
@@ -80,36 +85,10 @@ namespace KingdomWatch.Game
         // Centres on a world point, used by following. Leaves zoom alone.
         public void CentreOn(Vector2 world) => focus = world;
 
-        // Zooms in to at least `pixels` per cell, remembering the framing it left.
-        public void ZoomToAtLeast(float pixels)
-        {
-            if (pixelsPerCell >= pixels) return;
-            Remember();
-            pixelsPerCell = pixels;
-        }
+        // Zooms in to at least `pixels` per cell; closer zooms are left alone.
+        public void ZoomToAtLeast(float pixels) => pixelsPerCell = Mathf.Max(pixelsPerCell, pixels);
 
-        public void WholeMap()
-        {
-            Remember();
-            pixelsPerCell = FarthestPixelsPerCell;
-        }
-
-        // Swaps the current framing with the remembered one, so pressing it twice returns.
-        public void Previous()
-        {
-            var f = focus;
-            var z = pixelsPerCell;
-            focus = previousFocus;
-            pixelsPerCell = previousPixelsPerCell;
-            previousFocus = f;
-            previousPixelsPerCell = z;
-        }
-
-        private void Remember()
-        {
-            previousFocus = focus;
-            previousPixelsPerCell = pixelsPerCell;
-        }
+        public void WholeMap() => pixelsPerCell = FarthestPixelsPerCell;
 
         private Vector2 ScreenToWorld(Vector2 screenPoint) =>
             focus + (screenPoint - new Vector2(Screen.width / 2f, Screen.height / 2f)) / pixelsPerCell;

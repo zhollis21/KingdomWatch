@@ -31,7 +31,6 @@ The game ships on phones and PCs, so both are controlled directly:
 | Select | Tap | Left click |
 | Clear selection | Clear button | Esc or Clear |
 | Follow | Follow button | F or Follow |
-| Previous framing | Previous zoom button | Backspace |
 | Whole map | Whole map button | Home |
 
 A repeat tap or click near the last one, within 1.5 seconds, moves to the next candidate under it, which is how you pick one person out of a crowd.
