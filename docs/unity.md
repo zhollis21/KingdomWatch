@@ -1,6 +1,6 @@
 # Running Core in Unity
 
-`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.M1`: a 48×48 placeholder map, bands of 60 and 45, defined once in Core for both) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). It is a driver, not the game view: there is no pan, zoom or selection yet (#115), and no art.
+`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.M1`: a 48×48 placeholder map, bands of 60 and 45, defined once in Core for both) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). You can pan, zoom and select (#115). There is no art yet (#121).
 
 ## Getting Core into Unity
 
@@ -19,6 +19,26 @@ On Windows, if the build fails to overwrite the DLL while the Editor is open, cl
 Open `Game/` in Unity **6000.6.0f1**, open `Assets/Scenes/Oblique.unity`, and press Play. The panel shows the year, day and season, how many people are alive, how many settlements exist, and the world hash at the most recent whole year. Slower, Pause and Faster change the speed between 1 and 120 sim days per real second.
 
 Each coloured cell is one terrain cell: plains, forest, hills, small river, deep water. The rows are squashed to give the ¾ tilt. People stand on their cells as upright markers (children are shorter and paler). A person on a task is drawn part-way along their route (`Jobs.PositionAt`), so movement hops from cell to cell until stepped movement exists (#25).
+
+## Camera and selection
+
+The game ships on phones and PCs, so both are controlled directly:
+
+| | Touch | Mouse and keyboard |
+|---|---|---|
+| Pan | Drag | Drag with any button, or WASD / arrows |
+| Zoom | Pinch (about the fingers) | Wheel, Q/E or -/+ (about the middle of the screen) |
+| Select | Tap | Left click |
+| Clear selection | Clear button | Esc or Clear |
+| Follow | Follow button | F or Follow |
+| Previous framing | Previous zoom button | Backspace |
+| Whole map | Whole map button | Home |
+
+A repeat tap or click near the last one, within 1.5 seconds, moves to the next candidate under it, which is how you pick one person out of a crowd.
+
+What is drawn depends on the zoom (design plan §16). The panel shows the current layer. **Far**, the whole-map zoom, shows one marker per settlement (pale) or band (red), labelled with its id and how many people it has (`Settlement 3 · 42`), and taps select those. Names replace the ids once Core names settlements (#109). **Near** and **Medium** show people, coloured by job: forager yellow-green, woodcutter brown, stone gatherer grey, none orange; children are pale. Medium will add buildings and roads once Core has them. The panel shows a selected person's age, health, job and community.
+
+The camera only reads. Panning, zooming and selecting never change the world, so the year hash is the same whatever you do with them.
 
 ## Comparing with the harness
 
