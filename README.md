@@ -29,8 +29,8 @@ dotnet test KingdomWatch.sln
 dotnet run --project Harness -c Release
 ```
 
-`Core/` is the sim (`netstandard2.1`, zero dependencies, deterministic), `Core.Tests/` proves it, `Harness/` runs it headless for centuries at a time. `Game/` is the Unity 6 project that will eventually draw it.
+`Core/` is the sim (`netstandard2.1`, zero dependencies, deterministic), `Core.Tests/` proves it, `Harness/` runs it headless for centuries at a time. `Game/` is the Unity 6 project that draws it.
 
 ## Stack
 
-Unity 6.6 → 6.7 LTS · C# · Android first, desktop as fallback.
+Unity 6.6 → 6.7 LTS · C# · Android and PC.
