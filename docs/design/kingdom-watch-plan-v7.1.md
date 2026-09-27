@@ -64,7 +64,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Fail state | Extinction ends the run — rare, mostly player-caused |
 | Notification | Event feed only — no auto-jump, no push |
 | Art perspective | **¾ oblique 2D** (§18). M0's prototypes picked orthographic 3D (#1); reversed at #72 |
-| Platform | Android first; desktop an acceptable fallback |
+| Platform | Android and PC both ship (#115); the phone sets the performance budget |
 | Engine | **Start on Unity 6.6, move to 6.7 LTS when it ships** (late 2026), C# |
 | Frameworks | Core `netstandard2.1`; tests and harness `net10.0` |
 | Data layout | **Dense records** behind a **storage accessor layer**; split hot fields only if a device profile measures a problem |
@@ -1537,7 +1537,7 @@ The mobile risk is **save size and cold load time on a six-month-old world**, pl
 - Personal Play Console accounts created after November 13, 2023 must run a closed test with 12+ testers opted in continuously for 14 days before production access
 - Test on a cheap real device from day one
 
-**Desktop fallback:** the engine-free core and quality-enum LOD make the switch cheap, but it changes the *game*, not just the tech. Design for mobile. The stress test was once the gate for this choice; it moved to M9 (September 26, 2026) because the game is being built for mobile either way, so it is now a pre-release check that the finished game fits the phone. Regular device builds and zero allocations in the tick loop carry the risk in between.
+**Mobile and PC both ship (September 26, 2026, #115).** PC was once a fallback, taken only if the phone could not carry the game. It is now a second target, not a change of game. Input is designed for touch and for mouse and keyboard from the start; neither is an adaptation of the other. The phone stays the harder target, so it still sets the budgets. The stress test moved to M9 (September 26, 2026) and is a pre-release check that the finished game fits the phone. Regular device builds and zero allocations in the tick loop carry the risk in between.
 
 ---
 
