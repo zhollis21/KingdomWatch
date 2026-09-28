@@ -33,10 +33,11 @@ namespace KingdomWatch.Core
     /// </remarks>
     public sealed class World
     {
-        // A map big enough for two bands to wander without meeting the edge
-        // every week, small enough that a 200-year run takes seconds.
-        public const int M1Width = 48;
-        public const int M1Height = 48;
+        // About five days' walk across at Jobs.TicksPerCostUnit - a region
+        // rather than a town, which is some 50 cells - so two bands wander
+        // for years without meeting the edge (#123).
+        public const int M1Width = 1080;
+        public const int M1Height = 1080;
 
         // Section 15's largest two starting bands.
         public const int M1WestSize = 60;

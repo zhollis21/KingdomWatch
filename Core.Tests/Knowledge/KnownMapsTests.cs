@@ -214,6 +214,50 @@ namespace KingdomWatch.Core.Tests.Knowledge
             Assert.That(maps.Knows(Band, new WorldPosition(Width, 0)), Is.False);
         }
 
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(5)]
+        public void RevealAlong_reveals_and_counts_exactly_what_a_square_at_every_cell_would(int radius)
+        {
+            // Straight, diagonal and backward steps, a cell walked twice, a
+            // jump that is not a step, and the map's edges on three sides:
+            // whatever shortcut RevealAlong takes between neighbouring cells
+            // must land on the same cells, and count them the same (#130).
+            var route = new List<WorldPosition>
+            {
+                new WorldPosition(0, 0), new WorldPosition(1, 0), new WorldPosition(2, 1), new WorldPosition(2, 2),
+                new WorldPosition(1, 3), new WorldPosition(1, 3), new WorldPosition(0, 4), new WorldPosition(1, 5),
+                new WorldPosition(8, 7), new WorldPosition(9, 8), new WorldPosition(10, 9), new WorldPosition(11, 9),
+                new WorldPosition(11, 8), new WorldPosition(10, 7), new WorldPosition(10, 3), new WorldPosition(4, 3),
+            };
+            var walked = Tracking(Band);
+            var squares = Tracking(Band);
+            // Something known beforehand, so "new" means new.
+            walked.Reveal(Band, new WorldPosition(5, 5), 1);
+            squares.Reveal(Band, new WorldPosition(5, 5), 1);
+
+            var counted = walked.RevealAlong(Band, route, radius);
+            var expected = 0;
+            foreach (var cell in route)
+            {
+                expected += squares.Reveal(Band, cell, radius);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(counted, Is.EqualTo(expected), "counted");
+                for (var y = 0; y < Height; y++)
+                {
+                    for (var x = 0; x < Width; x++)
+                    {
+                        var at = new WorldPosition(x, y);
+                        Assert.That(walked.Knows(Band, at), Is.EqualTo(squares.Knows(Band, at)), at.ToString());
+                    }
+                }
+            });
+        }
+
         [Test]
         public void RevealAlong_reveals_around_every_cell_of_a_route()
         {

@@ -90,12 +90,11 @@ namespace KingdomWatch.Core.Work
     /// site must be a cell the community knows; the route to it need not be,
     /// so a band can work something it has only glimpsed the near edge of.
     /// The trip then reveals <see cref="RevealRadius"/> around its whole
-    /// route, which is how a settled community's map grows at all once it
-    /// stops wandering. Only as far as the work goes, though: foraging on
-    /// plains is worked underfoot, so a settlement that knows no forest and
-    /// no hills makes no trips and learns nothing. Founding softens that - a
-    /// band only settles where it already knows food and wood - and #85's
-    /// deliberate scouting is section 12's real answer to it.
+    /// route. For a community founded by a band that adds nothing today: a
+    /// band sees <see cref="Nomadic.NomadicBands.RevealRadius"/> around its
+    /// camp, past every trip <see cref="MaxSiteRadius"/> allows, so a
+    /// settlement's map stays what its band saw (#123). #85's deliberate
+    /// scouting is section 12's answer to a map that must keep growing.
     ///
     /// **A task starts and ends where the band stood when it started.** The
     /// worker walks out from the band's position and back to it, and that
@@ -155,11 +154,17 @@ namespace KingdomWatch.Core.Work
         public const long Dusk = 18L * SimulationTime.TicksPerHour;
 
         /// <summary>
-        /// Ticks of walking per unit of route cost. At one, a plains cell
-        /// (cost 10, straight step 10) takes 100 ticks - under two minutes -
-        /// and a forest cell twice that. Placeholder; the cell has no size yet.
+        /// Ticks of walking per unit of route cost. At two, a plains cell
+        /// (cost 10, straight step 10) takes 200 ticks and a forest cell twice
+        /// that. Tuned for the screen rather than the tape measure (#123): a
+        /// cell is about 1.5 m, and at section 4's 1x - 180 ticks a real
+        /// second - 200 ticks a cell reads as a walk of about 1.35 m/s. A
+        /// real walking pace would be about one tick a cell, and would look a
+        /// hundred times too fast at every speed, since the clock itself runs
+        /// 180 times faster than life. Distances elsewhere are sized in
+        /// walking time against this, not in metres.
         /// </summary>
-        public const long TicksPerCostUnit = 1L;
+        public const long TicksPerCostUnit = 2L;
 
         /// <summary>Foragers are needed while the band's food, counting what is on its way home, covers fewer days than this.</summary>
         public const int FoodTargetDays = 10;
@@ -179,12 +184,13 @@ namespace KingdomWatch.Core.Work
         /// things that reveal, and this is how far they reveal.
         /// </summary>
         /// <remarks>
-        /// Its own constant rather than <see cref="Nomadic.NomadicBands.RevealRadius"/>,
-        /// which happens to be the same number today: a band on the march and
-        /// a forager on a day trip are different sights, and deliberate
-        /// scouting (#85) is likely to want to tell them apart. If the two are
-        /// ever meant to move together, say so here rather than leaving it to
-        /// coincidence.
+        /// Its own constant rather than <see cref="Nomadic.NomadicBands.RevealRadius"/>:
+        /// a band on the march and a forager on a day trip are different
+        /// sights, and deliberate scouting (#85) is likely to want to tell
+        /// them apart. The two matched until #123 widened the band's to a quarter
+        /// of a day's walk; this one was left alone, and while every trip starts
+        /// inside a band's sight it reveals nothing new, so its size does not
+        /// matter until something works from where no band stood.
         /// </remarks>
         public const int RevealRadius = 6;
 

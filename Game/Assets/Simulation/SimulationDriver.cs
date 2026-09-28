@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.InputSystem.EnhancedTouch;
 using EntityId = KingdomWatch.Core.Data.EntityId;
@@ -16,7 +17,16 @@ namespace KingdomWatch.Game
     // (section 4).
     public sealed class SimulationDriver : MonoBehaviour
     {
-        private static readonly int[] DaysPerSecondSteps = { 1, 5, 30, 120 };
+        // Section 4's ladder. 1x is eight real minutes a game-day - 180 ticks
+        // a real second, the pace Core's walking is tuned to read at (#123) -
+        // and 10,000x is about 21 days a second.
+        private static readonly int[] SpeedSteps = { 1, 5, 20, 100, 1000, 10000 };
+        private const double TicksPerSecondAtOneX = SimulationTime.TicksPerDay / (8.0 * 60.0);
+
+        // Named in a capture, so a slow frame says which part was slow (#132).
+        private static readonly ProfilerMarker SimulateMarker = new ProfilerMarker("KW.Simulate");
+        private static readonly ProfilerMarker YearHashMarker = new ProfilerMarker("KW.YearHash");
+        private static readonly ProfilerMarker InputMarker = new ProfilerMarker("KW.Input");
 
         public int seed = 1;
         public WorldView2D view;
@@ -24,7 +34,8 @@ namespace KingdomWatch.Game
         private World world;
         private CameraRig rig;
         private ViewInput input;
-        private int speedStep = 1;
+        // 1000x, about two days a second: fast enough to see a year go by.
+        private int speedStep = 4;
         private bool paused;
         private readonly YearStepper stepper = new YearStepper();
         private readonly List<ICommunity> bands = new List<ICommunity>();
@@ -72,7 +83,7 @@ namespace KingdomWatch.Game
             // A long frame (a hitch, a debugger pause) is capped rather than
             // caught up, so one slow frame cannot become a burst of sim years.
             var seconds = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
-            pendingTicks += seconds * DaysPerSecondSteps[speedStep] * (double)SimulationTime.TicksPerDay;
+            pendingTicks += seconds * SpeedSteps[speedStep] * TicksPerSecondAtOneX;
 
             var ticks = (long)pendingTicks;
             pendingTicks -= ticks;
@@ -82,7 +93,7 @@ namespace KingdomWatch.Game
             var target = stepper.Next(world.Now, ticks);
             if (target.Equals(world.Now)) return;
 
-            world.AdvanceTo(target);
+            using (SimulateMarker.Auto()) world.AdvanceTo(target);
             SnapshotYear();
         }
 
@@ -92,7 +103,7 @@ namespace KingdomWatch.Game
         {
             if (view == null || rig == null) return;
             var reserved = PanelScreenRect;
-            input.Process(reserved, UiScale, Time.unscaledDeltaTime);
+            using (InputMarker.Auto()) input.Process(reserved, UiScale, Time.unscaledDeltaTime);
             // Last frame's layer: snapping moves the zoom shown, never the zoom
             // the layers switch on, so this cannot feed back into the layer.
             rig.Snap = view.Band != ZoomBand.Far;
@@ -117,7 +128,7 @@ namespace KingdomWatch.Game
             var year = world.Now.YearNumber;
             if (world.Now.Ticks % SimulationTime.TicksPerYear != 0L || year == hashedYear) return;
             hashedYear = year;
-            yearHash = world.Hash();
+            using (YearHashMarker.Auto()) yearHash = world.Hash();
         }
 
         private void OnGUI()
@@ -130,11 +141,11 @@ namespace KingdomWatch.Game
                 + ", day " + (world.Now.DayOfYear + 1) + " (" + world.Now.Season + ")");
             GUILayout.Label("People " + world.People.Count + " / settlements " + world.Founding.All.Count);
             GUILayout.Label("Hash at year " + hashedYear + ": " + yearHash.ToString("x16"));
-            GUILayout.Label("Speed: " + DaysPerSecondSteps[speedStep] + " days/s" + (paused ? " (paused)" : ""));
+            GUILayout.Label("Speed: " + SpeedSteps[speedStep] + "x" + (paused ? " (paused)" : ""));
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Slower") && speedStep > 0) speedStep--;
             if (GUILayout.Button(paused ? "Run" : "Pause")) paused = !paused;
-            if (GUILayout.Button("Faster") && speedStep < DaysPerSecondSteps.Length - 1) speedStep++;
+            if (GUILayout.Button("Faster") && speedStep < SpeedSteps.Length - 1) speedStep++;
             GUILayout.EndHorizontal();
 
             if (view != null && input != null) ViewPanel();

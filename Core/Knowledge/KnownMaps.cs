@@ -153,6 +153,15 @@ namespace KingdomWatch.Core.Knowledge
                 throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
             }
 
+            return RevealBox(
+                map, (long)centre.X - radius, (long)centre.X + radius, (long)centre.Y - radius, (long)centre.Y + radius);
+        }
+
+        // Reveals the cells of a box, bounds inclusive, and answers how many
+        // were new. The arithmetic is done in long because centre +/- radius
+        // is exactly what overflows an int.
+        private int RevealBox(bool[] map, long left, long right, long top, long bottom)
+        {
             var revealed = 0;
 
             // Clipped to the grid before looping, not inside it. Iterating
@@ -160,12 +169,11 @@ namespace KingdomWatch.Core.Knowledge
             // than the part of it that exists: a radius of a million costs four
             // trillion steps on a map of a few hundred cells, and at
             // int.MaxValue the increment wraps past the bound and the loop
-            // never ends at all. The arithmetic is done in long because
-            // centre +/- radius is exactly what overflows an int.
-            var minX = (int)Math.Max(0L, (long)centre.X - radius);
-            var maxX = (int)Math.Min(_grid.Width - 1L, (long)centre.X + radius);
-            var minY = (int)Math.Max(0L, (long)centre.Y - radius);
-            var maxY = (int)Math.Min(_grid.Height - 1L, (long)centre.Y + radius);
+            // never ends at all.
+            var minX = (int)Math.Max(0L, left);
+            var maxX = (int)Math.Min(_grid.Width - 1L, right);
+            var minY = (int)Math.Max(0L, top);
+            var maxY = (int)Math.Min(_grid.Height - 1L, bottom);
 
             for (var y = minY; y <= maxY; y++)
             {
@@ -205,7 +213,7 @@ namespace KingdomWatch.Core.Knowledge
             // or for a radius Reveal rejects outright - and "it depends how
             // many cells you passed" is the wrong answer to whether an
             // argument is valid.
-            RequireMap(holder);
+            var map = RequireMap(holder);
 
             if (radius < 0)
             {
@@ -216,7 +224,33 @@ namespace KingdomWatch.Core.Knowledge
 
             for (var i = 0; i < route.Count; i++)
             {
-                revealed += Reveal(holder, route[i], radius);
+                var at = route[i];
+
+                if (i == 0 || Math.Abs((long)at.X - route[i - 1].X) > 1 || Math.Abs((long)at.Y - route[i - 1].Y) > 1)
+                {
+                    revealed += Reveal(holder, at, radius);
+                    continue;
+                }
+
+                // One step on from a cell whose square is already revealed:
+                // the new square adds only the column and row on its leading
+                // edges, so a long route costs its length times the radius
+                // rather than times the whole square - over a hundred times
+                // less for a band's quarter-day hop (#130).
+                var dx = at.X - route[i - 1].X;
+                var dy = at.Y - route[i - 1].Y;
+
+                if (dx != 0)
+                {
+                    var column = (long)at.X + ((long)dx * radius);
+                    revealed += RevealBox(map, column, column, (long)at.Y - radius, (long)at.Y + radius);
+                }
+
+                if (dy != 0)
+                {
+                    var row = (long)at.Y + ((long)dy * radius);
+                    revealed += RevealBox(map, (long)at.X - radius, (long)at.X + radius, row, row);
+                }
             }
 
             return revealed;

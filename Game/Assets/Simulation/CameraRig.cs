@@ -8,7 +8,8 @@ namespace KingdomWatch.Game
     // switch on, and the orthographic size is derived from it every frame.
     //
     // While the layer showing draws pixel art (#121), the zoom shown is the
-    // requested one rounded to a whole multiple of the art's 16 px, and the
+    // requested one rounded to a whole multiple of the art's 16 px, or to a
+    // half or a quarter of it (#130), and the
     // camera sits on whole screen pixels: every art pixel is then the same
     // square of screen pixels, and nothing shimmers as the map pans.
     public sealed class CameraRig
@@ -88,9 +89,39 @@ namespace KingdomWatch.Game
         // Moves the map with a finger or cursor: `delta` is in screen pixels.
         public void PanBy(Vector2 delta) => focus -= delta / PixelsPerCell;
 
-        // Zooms by `factor` about the middle of the screen.
-        public void ZoomBy(float factor) =>
-            pixelsPerCell = Mathf.Clamp(pixelsPerCell * factor, FarthestPixelsPerCell, Mathf.Max(FarthestPixelsPerCell, NearestPixelsPerCell));
+        // Zooms by `factor` about the middle of the screen. While the art is
+        // snapped, zooming moves a whole clean size at a time as soon as the
+        // request has moved StepAt from the one on show, rather than at the
+        // halfway point: below 16 px the sizes double, and a wheel notch that
+        // changed nothing on screen read as input swallowed (#130).
+        public void ZoomBy(float factor)
+        {
+            var target = pixelsPerCell * factor;
+            if (Snap && factor != 1f)
+            {
+                var shown = Snapped(pixelsPerCell);
+                // A request behind the size on show - left there by the last
+                // step the other way, or by coming in from the colour map -
+                // starts from what is on screen, so no input goes unseen.
+                if ((factor > 1f && pixelsPerCell < shown) || (factor < 1f && pixelsPerCell > shown)) target = shown * factor;
+                if (target >= shown * StepAt) target = NextSize(shown, true);
+                else if (target <= shown / StepAt) target = NextSize(shown, false);
+            }
+            pixelsPerCell = Mathf.Clamp(target, FarthestPixelsPerCell, Mathf.Max(FarthestPixelsPerCell, NearestPixelsPerCell));
+        }
+
+        // How far a zoom request must move from the size on show before the
+        // snapped art steps to the next one.
+        private const float StepAt = 1.15f;
+
+        // The clean size next above or below `shown`: 16 px steps from 16 up,
+        // halving below; below WorldView2D.SmallestArt, the colour map.
+        private static float NextSize(float shown, bool up)
+        {
+            if (up) return shown >= ArtSet.PixelsPerCell ? shown + ArtSet.PixelsPerCell : shown * 2f;
+            var down = shown > ArtSet.PixelsPerCell ? shown - ArtSet.PixelsPerCell : shown / 2f;
+            return down >= WorldView2D.SmallestArt ? down : WorldView2D.FarEdge / StepAt;
+        }
 
         // Zooms by `factor` while keeping the world point under `screenPoint`
         // still: a pinch zooms where the fingers are.
@@ -112,8 +143,17 @@ namespace KingdomWatch.Game
         private Vector2 ScreenToWorld(Vector2 screenPoint) =>
             focus + (screenPoint - new Vector2(Screen.width / 2f, Screen.height / 2f)) / PixelsPerCell;
 
-        private static float Snapped(float pixels) =>
-            Mathf.Max(ArtSet.PixelsPerCell, Mathf.Round(pixels / ArtSet.PixelsPerCell) * ArtSet.PixelsPerCell);
+        // Whole multiples of the art's 16 px, or below it a half, a quarter,
+        // down to WorldView2D.SmallestArt: each screen pixel then covers the
+        // same square of art pixels, so the art shrinks evenly (#130).
+        private static float Snapped(float pixels)
+        {
+            if (pixels >= ArtSet.PixelsPerCell * 0.75f)
+                return Mathf.Max(ArtSet.PixelsPerCell, Mathf.Round(pixels / ArtSet.PixelsPerCell) * ArtSet.PixelsPerCell);
+            float shown = ArtSet.PixelsPerCell;
+            while (shown / 2f >= WorldView2D.SmallestArt && pixels < shown * 0.75f) shown /= 2f;
+            return shown;
+        }
 
         // The camera position nearest `world` that puts screen pixel edges on
         // world positions the art is drawn at. The screen's middle is half a

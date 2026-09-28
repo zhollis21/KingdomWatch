@@ -71,7 +71,15 @@ namespace KingdomWatch.Core.Traversal
         {
             RequireKind(kind, nameof(kind));
             _cells[IndexOf(position)] = kind;
+            Rewrites++;
         }
+
+        /// <summary>
+        /// How many times a cell has been rewritten: unchanged means the map
+        /// is too, so what was worked out from it still holds (the world hash
+        /// keeps its terrain fold this way, #130).
+        /// </summary>
+        public long Rewrites { get; private set; }
 
         /// <summary>
         /// Row-major index of a position, for callers that keep per-cell

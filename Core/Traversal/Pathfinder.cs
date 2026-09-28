@@ -198,11 +198,36 @@ namespace KingdomWatch.Core.Traversal
         /// Either position is off the map, or the mover has no defined transport.
         /// </exception>
         public bool TryFindRoute(
-            WorldPosition from, WorldPosition to, Transport mover, List<WorldPosition> route, out long cost)
+            WorldPosition from, WorldPosition to, Transport mover, List<WorldPosition> route, out long cost) =>
+            TryFindRoute(from, to, mover, int.MaxValue, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindRoute(WorldPosition, WorldPosition, Transport, List{WorldPosition}, out long)"/>,
+        /// with the route kept inside a box <paramref name="radius"/> cells
+        /// around <paramref name="from"/>.
+        /// </summary>
+        /// <remarks>
+        /// What bounds a search that fails. Unbounded, a query for a cell
+        /// nothing connects to settles every cell the origin can reach before
+        /// it gives up - half the map, when a river runs its length - so a
+        /// caller asking about many cells near it, as a band's council does
+        /// (#123), bounds each by the box it is choosing within.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Either position is off the map, the radius is negative, or the
+        /// mover has no defined transport.
+        /// </exception>
+        public bool TryFindRoute(
+            WorldPosition from, WorldPosition to, Transport mover, int radius, List<WorldPosition> route, out long cost)
         {
             if (route is null)
             {
                 throw new ArgumentNullException(nameof(route));
+            }
+
+            if (radius < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
             }
 
             TransportGuard.RequireMover(mover);
@@ -231,7 +256,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, to, from, int.MaxValue);
+                Expand(current, mover, to, from, radius);
             }
 
             return false;

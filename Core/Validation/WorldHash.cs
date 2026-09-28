@@ -109,6 +109,12 @@ namespace KingdomWatch.Core.Validation
 
         private ulong _state;
 
+        // The last terrain fold: which grid, at how many rewrites, from which
+        // state to which (see AddTerrain).
+        private TerrainGrid? _terrainGrid;
+        private long _terrainRewrites;
+        private ulong _terrainFrom, _terrainTo;
+
         /// <summary>The hash of everything folded in since the last <see cref="Reset"/>.</summary>
         public ulong Value => _state;
 
@@ -362,6 +368,17 @@ namespace KingdomWatch.Core.Validation
                 throw new ArgumentNullException(nameof(grid));
             }
 
+            // The fold is a pure function of the state it starts from and the
+            // grid, and on a 1080-cell map it is most of a yearly hash (#130):
+            // the same grid, unrewritten, from the same state, lands where it
+            // landed last time.
+            if (ReferenceEquals(grid, _terrainGrid) && grid.Rewrites == _terrainRewrites && _state == _terrainFrom)
+            {
+                _state = _terrainTo;
+                return this;
+            }
+
+            var from = _state;
             Open(Section.Terrain, grid.CellCount);
             Mix(grid.Width);
             Mix(grid.Height);
@@ -371,6 +388,10 @@ namespace KingdomWatch.Core.Validation
                 Mix((long)grid[grid.PositionAt(i)]);
             }
 
+            _terrainGrid = grid;
+            _terrainRewrites = grid.Rewrites;
+            _terrainFrom = from;
+            _terrainTo = _state;
             return this;
         }
 
