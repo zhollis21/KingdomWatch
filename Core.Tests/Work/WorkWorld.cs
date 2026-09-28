@@ -22,19 +22,20 @@ namespace KingdomWatch.Core.Tests.Work
         // Sixteen by sixteen plains, with a forest cell and a hills cell a
         // known walk from Camp, and a river down column 12 cutting the far
         // strip off. Cheap to reason about: from Camp, the forest is four
-        // straight steps east (three plains entered at 100 ticks, one forest
-        // at 200) and the hills four straight steps south.
+        // straight steps east (three plains entered at a cost of 100, one
+        // forest at 200) and the hills four straight steps south. Costs, times
+        // the walking pace, are ticks.
         internal const int Width = 16;
         internal const int Height = 16;
         internal static readonly WorldPosition Camp = new WorldPosition(2, 2);
         internal static readonly WorldPosition ForestCell = new WorldPosition(6, 2);
         internal static readonly WorldPosition HillsCell = new WorldPosition(2, 6);
         internal const int RiverColumn = 12;
-        internal const long TicksToForest = 3L * 100L + 200L;
-        internal const long TicksToHills = 3L * 100L + 300L;
+        internal const long TicksToForest = ((3L * 100L) + 200L) * Jobs.TicksPerCostUnit;
+        internal const long TicksToHills = ((3L * 100L) + 300L) * Jobs.TicksPerCostUnit;
 
         // Home enters three plains and the plains camp cell, whichever the site.
-        internal const long TicksBack = 4L * 100L;
+        internal const long TicksBack = 4L * 100L * Jobs.TicksPerCostUnit;
 
         internal WorkWorld()
             : this(1UL, DefaultMap())
@@ -65,15 +66,19 @@ namespace KingdomWatch.Core.Tests.Work
             Router.Register(ScheduledEventKind.BandArrival, Nomads);
         }
 
-        internal static TerrainGrid DefaultMap()
+        internal static TerrainGrid DefaultMap() => DefaultMap(Width, RiverColumn);
+
+        // The same map stretched east, the river moved with it: for fixtures
+        // that need the far strip out of a band's sight from Camp.
+        internal static TerrainGrid DefaultMap(int width, int riverColumn)
         {
-            var grid = new TerrainGrid(Width, Height, TerrainKind.Plains);
+            var grid = new TerrainGrid(width, Height, TerrainKind.Plains);
             grid.Set(ForestCell, TerrainKind.Forest);
             grid.Set(HillsCell, TerrainKind.Hills);
 
             for (var y = 0; y < Height; y++)
             {
-                grid.Set(new WorldPosition(RiverColumn, y), TerrainKind.SmallRiver);
+                grid.Set(new WorldPosition(riverColumn, y), TerrainKind.SmallRiver);
             }
 
             return grid;

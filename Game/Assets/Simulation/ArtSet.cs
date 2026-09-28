@@ -115,7 +115,6 @@ namespace KingdomWatch.Game
         public Sprite Well { get; private set; }
         public Sprite Woodpile { get; private set; }
         public Sprite StonePile { get; private set; }
-        public Sprite[] Clouds { get; private set; }
 
         public static int ShoreMask(bool topLeft, bool topRight, bool bottomLeft, bool bottomRight) =>
             (topLeft ? 1 : 0) | (topRight ? 2 : 0) | (bottomLeft ? 4 : 0) | (bottomRight ? 8 : 0);
@@ -279,10 +278,9 @@ namespace KingdomWatch.Game
             var bigTent = Texture(Pack + "Buildings/Buildings/Tent/Tent_Big");
             var smallTent = Texture(Pack + "Buildings/Buildings/Tent/Tent_Small");
             var fire = Texture(Decor + "Outdoor_Decor_Animations/Other_Animations/Campfire_Anim");
-            var clouds = Texture(Pack + "Weather effects/Clouds");
             var well = Texture(Decor + "Well");
             var ores = Texture(Decor + "Ores");
-            if (bigTent == null || smallTent == null || fire == null || clouds == null || well == null || ores == null) return false;
+            if (bigTent == null || smallTent == null || fire == null || well == null || ores == null) return false;
             // The well stands 2 px above the bottom of its frame; the woodpile
             // is the stack at column 1, rows 12-13 of Outdoor_Decor, standing 5
             // px above its bottom; the stone pile is the grey heap second in
@@ -293,12 +291,6 @@ namespace KingdomWatch.Game
             BigTent = Cut(bigTent, 0, 0, bigTent.width, bigTent.height, new Vector2(0.5f, 15f / bigTent.height));
             SmallTent = Cut(smallTent, 0, 0, smallTent.width, smallTent.height, new Vector2(0.5f, 15f / smallTent.height));
             Campfire = Strip(fire, 16, 32, new Vector2(0.5f, 0f));
-            // Four translucent cloud shadows, one per 64 px quarter.
-            Clouds = new[]
-            {
-                Cut(clouds, 0, 0, 64, 64, new Vector2(0.5f, 0.5f)), Cut(clouds, 64, 0, 64, 64, new Vector2(0.5f, 0.5f)),
-                Cut(clouds, 0, 64, 64, 64, new Vector2(0.5f, 0.5f)), Cut(clouds, 64, 64, 64, 64, new Vector2(0.5f, 0.5f)),
-            };
             return true;
         }
 
@@ -464,6 +456,140 @@ namespace KingdomWatch.Game
             // Shoreline pieces by which corners of a tile are water (see
             // ShoreMask); null where nothing is drawn.
             public Tile[] Shore { get; } = new Tile[16];
+        }
+    }
+
+    // What each piece of art looks like from far away (#130): its average
+    // colour, and how much of a cell it covers. The zoomed-out map colours a
+    // cell by laying these over each other the way the art view lays the
+    // pieces - ground, then shoreline, then whatever stands on it - which is
+    // the art view's cell shrunk to one pixel without drawing anything.
+    //
+    // Measured once, when the art is loaded, rather than saved: it takes a few
+    // milliseconds, and a saved table would go stale the day a sprite changed.
+    public sealed class ArtColours
+    {
+        // Premultiplied colour and coverage, both as a share of one cell (or,
+        // for a shoreline quadrant, of the quarter cell it lies over), coverage
+        // at most one: a tree bigger than its cell covers its cell, no more.
+        private readonly Dictionary<Texture2D, Color32[]> read = new Dictionary<Texture2D, Color32[]>();
+
+        private ArtColours()
+        {
+        }
+
+        public Vector4[] Plain { get; } = new Vector4[4];
+        public Vector4[][] Tufts { get; } = new Vector4[4][];
+
+        // By season, then ShoreMask, then quadrant: 0 bottom-left, 1
+        // bottom-right, 2 top-left, 3 top-right, in texture space.
+        public Vector4[][][] Shore { get; } = new Vector4[4][][];
+        public Vector4 Water { get; private set; }
+        public Vector4[] Trees { get; private set; }
+        public Vector4[] Rocks { get; private set; }
+        public Vector4[] Bushes { get; private set; }
+        public Vector4[] FlatDecor { get; private set; }
+
+        public static ArtColours Measure(ArtSet art)
+        {
+            var colours = new ArtColours();
+            for (var season = 0; season < 4; season++)
+            {
+                var ground = art.Seasons[season];
+                colours.Plain[season] = colours.Of(ground.Plain.sprite);
+                colours.Tufts[season] = new Vector4[ground.Tufts.Length];
+                for (var i = 0; i < ground.Tufts.Length; i++) colours.Tufts[season][i] = colours.Of(ground.Tufts[i].sprite);
+                colours.Shore[season] = new Vector4[ground.Shore.Length][];
+                for (var mask = 0; mask < ground.Shore.Length; mask++)
+                {
+                    var quadrants = new Vector4[4];
+                    var piece = ground.Shore[mask];
+                    if (piece != null)
+                    {
+                        var half = ArtSet.PixelsPerCell / 2;
+                        for (var q = 0; q < 4; q++) quadrants[q] = colours.Of(piece.sprite, new RectInt(q % 2 * half, q / 2 * half, half, half));
+                    }
+                    colours.Shore[season][mask] = quadrants;
+                }
+            }
+            colours.Water = colours.Of(art.Water.sprite);
+            colours.Trees = colours.Each(art.Trees);
+            colours.Rocks = colours.Each(art.Rocks);
+            colours.Bushes = colours.Each(art.Bushes);
+            colours.FlatDecor = new Vector4[art.FlatDecor.Length];
+            for (var i = 0; i < art.FlatDecor.Length; i++) colours.FlatDecor[i] = colours.Of(art.FlatDecor[i][0]);
+            colours.read.Clear();
+            return colours;
+        }
+
+        // `layer` over `under`, both premultiplied, with the layer covering
+        // `share` of the cell.
+        public static Vector4 Over(Vector4 under, Vector4 layer, float share = 1f) =>
+            under * (1f - layer.w * share) + layer * share;
+
+        public static Color32 ToColour(Vector4 premultiplied)
+        {
+            var a = Mathf.Max(premultiplied.w, 1e-4f);
+            return new Color32(
+                (byte)Mathf.Clamp(premultiplied.x / a * 255f, 0f, 255f),
+                (byte)Mathf.Clamp(premultiplied.y / a * 255f, 0f, 255f),
+                (byte)Mathf.Clamp(premultiplied.z / a * 255f, 0f, 255f),
+                255);
+        }
+
+        private Vector4[] Each(Sprite[] sprites)
+        {
+            var result = new Vector4[sprites.Length];
+            for (var i = 0; i < sprites.Length; i++) result[i] = Of(sprites[i]);
+            return result;
+        }
+
+        private Vector4 Of(Sprite sprite)
+        {
+            var rect = sprite.textureRect;
+            return Of(sprite, new RectInt(0, 0, (int)rect.width, (int)rect.height), ArtSet.PixelsPerCell * ArtSet.PixelsPerCell);
+        }
+
+        private Vector4 Of(Sprite sprite, RectInt area) => Of(sprite, area, area.width * area.height);
+
+        // The premultiplied sum over `area` (in the sprite's own pixels,
+        // counted up from its bottom left) as a share of `cellPixels`.
+        private Vector4 Of(Sprite sprite, RectInt area, int cellPixels)
+        {
+            var texture = sprite.texture;
+            var pixels = Pixels(texture);
+            var rect = sprite.textureRect;
+            var sum = Vector4.zero;
+            for (var y = area.yMin; y < area.yMax; y++)
+            {
+                for (var x = area.xMin; x < area.xMax; x++)
+                {
+                    var c = pixels[((int)rect.y + y) * texture.width + (int)rect.x + x];
+                    var a = c.a / 255f;
+                    sum += new Vector4(c.r / 255f * a, c.g / 255f * a, c.b / 255f * a, a);
+                }
+            }
+            var share = sum / cellPixels;
+            return share.w > 1f ? share / share.w : share;
+        }
+
+        // The art is imported unreadable, which keeps it off the CPU for the
+        // game's lifetime; a copy through the GPU reads it once, here.
+        private Color32[] Pixels(Texture2D texture)
+        {
+            if (read.TryGetValue(texture, out var pixels)) return pixels;
+            var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(texture, target);
+            var previous = RenderTexture.active;
+            RenderTexture.active = target;
+            var copy = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
+            copy.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0, false);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            pixels = copy.GetPixels32();
+            Object.Destroy(copy);
+            read.Add(texture, pixels);
+            return pixels;
         }
     }
 }

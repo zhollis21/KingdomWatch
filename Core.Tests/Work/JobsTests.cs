@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Needs;
+using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 using NUnit.Framework;
@@ -427,7 +428,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(route[0], Is.EqualTo(newCamp), "the route starts where the worker does");
                 Assert.That(next.Destination, Is.EqualTo(WorkWorld.ForestCell));
                 Assert.That(route.Length, Is.EqualTo(2), "one step from the new camp to the forest");
-                Assert.That(next.TravelTicks, Is.EqualTo(200L));
+                Assert.That(next.TravelTicks, Is.EqualTo(200L * Jobs.TicksPerCostUnit));
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
             });
         }
@@ -612,8 +613,8 @@ namespace KingdomWatch.Core.Tests.Work
         public void A_trip_that_would_end_after_dusk_is_not_taken()
         {
             // Standing on hills, the nearest place to forage is a plains cell
-            // one step away: 100 ticks each way. Trips end at 10:03:20 and
-            // 14:06:40; the third would end at 18:10 and is not started.
+            // one step away: a cost of 100 out and 300 back. Trips end at
+            // 10:10 and 14:20; the third would end at 18:30 and is not started.
             var grid = WorkWorld.PlainsOnly();
             grid.Set(WorkWorld.Camp, TerrainKind.Hills);
             var w = new WorkWorld(1UL, grid);
@@ -622,8 +623,8 @@ namespace KingdomWatch.Core.Tests.Work
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
-            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(100L), "out onto plains");
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L), "back up the hill");
+            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(100L * Jobs.TicksPerCostUnit), "out onto plains");
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L * Jobs.TicksPerCostUnit), "back up the hill");
 
             w.AdvanceTo(w.Today(Jobs.Dusk));
 
@@ -637,6 +638,8 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void The_reconstruction_places_a_worker_along_the_route()
         {
+            // Out to the forest: three plains and the forest cell.
+            const long Walk = WorkWorld.TicksToForest;
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             var adult = w.Join(band, 30L);
@@ -650,19 +653,19 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(route.Length, Is.EqualTo(5), "camp, three plains, forest");
                 Assert.That(route[0], Is.EqualTo(WorkWorld.Camp));
                 Assert.That(route[4], Is.EqualTo(WorkWorld.ForestCell));
-                Assert.That(task.TravelTicks, Is.EqualTo(500L));
+                Assert.That(task.TravelTicks, Is.EqualTo(Walk));
 
-                var outbound = task.Start.Plus(250L);
+                var outbound = task.Start.Plus(Walk / 2L);
                 Assert.That(task.PhaseAt(outbound), Is.EqualTo(TaskPhase.Outbound));
                 Assert.That(w.Jobs.PositionAt(adult, outbound), Is.EqualTo(new WorldPosition(4, 2)), "halfway out");
                 Assert.That(w.Jobs.PositionAt(adult, task.Start), Is.EqualTo(WorkWorld.Camp), "setting out");
-                Assert.That(w.Jobs.PositionAt(adult, task.Start.Plus(499L)), Is.EqualTo(new WorldPosition(5, 2)), "the last cell before the forest");
+                Assert.That(w.Jobs.PositionAt(adult, task.Start.Plus(Walk - 1L)), Is.EqualTo(new WorldPosition(5, 2)), "the last cell before the forest");
 
-                var working = task.Start.Plus(500L + 100L);
+                var working = task.Start.Plus(Walk + 100L);
                 Assert.That(task.PhaseAt(working), Is.EqualTo(TaskPhase.Working));
                 Assert.That(w.Jobs.PositionAt(adult, working), Is.EqualTo(WorkWorld.ForestCell));
 
-                var returning = task.Start.Plus(500L + task.WorkTicks + 250L);
+                var returning = task.Start.Plus(Walk + task.WorkTicks + (Walk / 2L));
                 Assert.That(task.PhaseAt(returning), Is.EqualTo(TaskPhase.Returning));
                 Assert.That(w.Jobs.PositionAt(adult, returning), Is.EqualTo(new WorldPosition(4, 2)), "halfway home");
                 Assert.That(w.Jobs.PositionAt(adult, task.End), Is.EqualTo(WorkWorld.Camp), "home");
@@ -1424,54 +1427,35 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_settlements_map_keeps_growing_on_the_strength_of_its_work()
+        public void A_settlements_work_stays_inside_what_its_band_saw()
         {
-            // Section 12's constraint on this rule: whatever restricts a work
-            // site must not freeze a settled community's map, or the
-            // exploration motive stops existing the moment bands stop
-            // wandering. The settlement takes over what the band knew, and its
-            // own work trips are what widen it from there.
+            // Section 12 wants a settled community's map to keep growing, or
+            // the exploration motive stops the moment bands stop wandering.
+            // Work cannot do it: a band sees NomadicBands.RevealRadius around
+            // its camp, well past Jobs.MaxSiteRadius and the RevealRadius a
+            // trip adds, so every site a settlement can work, and every cell
+            // walking to it shows, is one it already knew at founding (#123).
+            // A deliberate Scouting purpose (#85) is what widens the map; expect
+            // this test to change when it lands.
             var w = new WorkWorld(1UL, FogMap());
             var band = w.NewWanderingBand(FogCamp, WorkWorld.PlentifulFood(4));
-            w.JoinAdults(band, 4);
-            w.KnownMaps.Reveal(band.Id, FogForest, 0);
+            var adults = w.JoinAdults(band, 4);
+            WorkWorld.FillWoodAndStone(band);
+            band.SharedSupplies.Consume(ResourceKind.Wood, band.SharedSupplies.Available(ResourceKind.Wood));
             var settlement = w.Founding.Found(band, new Reasons(ReasonCode.FoodShortage));
             var before = KnownCells(w, settlement.Id);
 
-            w.AdvanceToDawn();
-
-            Assert.That(KnownCells(w, settlement.Id), Is.GreaterThan(before), "the work widened the map");
-        }
-
-        [Test]
-        public void A_settlement_with_nothing_known_worth_walking_to_stops_growing()
-        {
-            // The limit of the rule above, recorded rather than left to be
-            // discovered: reveal rides on trips, so a community whose only
-            // work is underfoot makes no trips and learns nothing. Foraging on
-            // plains is worked where the band stands, so a settlement that
-            // knows no forest and no hills sees exactly what it saw on the day
-            // it was founded, for ever.
-            //
-            // Section 12 answers this with a deliberate Scouting purpose
-            // (#85), which is why that issue exists; founding softens it
-            // meanwhile, since a band only settles where it already knows both
-            // food and wood, so a real settlement starts with somewhere to
-            // walk to. Expect this test to change when #85 lands.
-            var w = new WorkWorld(1UL, FogMap());
-            var band = w.NewWanderingBand(FogCamp, WorkWorld.PlentifulFood(4));
-            w.JoinAdults(band, 4);
-            var settlement = w.Founding.Found(band, new Reasons(ReasonCode.FoodShortage));
-            var before = KnownCells(w, settlement.Id);
-
-            w.AdvanceToDawn();
             w.AdvanceToDawn();
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Jobs.HasSite(settlement, JobKind.Forager), Is.True, "the plains it stands on");
-                Assert.That(w.Jobs.HasSite(settlement, JobKind.Woodcutter), Is.False, "the only forest is unseen");
-                Assert.That(KnownCells(w, settlement.Id), Is.EqualTo(before), "so nothing new is ever seen");
+                Assert.That(
+                    NomadicBands.RevealRadius,
+                    Is.GreaterThanOrEqualTo(Jobs.MaxSiteRadius + Jobs.RevealRadius),
+                    "what a band sees covers every trip its work can take");
+                Assert.That(w.Jobs.SiteFor(settlement, JobKind.Woodcutter), Is.EqualTo(FogForest), "the forest at the edge of reach, seen from the camp");
+                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Woodcutter), "and walked to");
+                Assert.That(KnownCells(w, settlement.Id), Is.EqualTo(before), "yet the walk showed nothing new");
             });
         }
 

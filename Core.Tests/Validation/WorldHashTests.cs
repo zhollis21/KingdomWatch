@@ -435,6 +435,75 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_reused_hash_folds_unchanged_terrain_to_the_value_a_fresh_one_does()
+        {
+            // The terrain of a 1080-cell map is most of what a yearly hash
+            // costs, and it only changes when a cell is rewritten, so a reused
+            // hash keeps what folding it last time came to (#130). Whatever it
+            // keeps, the value must be the one a fresh hash computes.
+            var grid = WorkWorld.DefaultMap();
+            var reused = new WorldHash();
+            var first = reused.Reset().AddTerrain(grid).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(reused.Reset().AddTerrain(grid).Value, Is.EqualTo(first), "again");
+                Assert.That(first, Is.EqualTo(new WorldHash().AddTerrain(grid).Value), "as a fresh hash does");
+            });
+        }
+
+        [Test]
+        public void A_reused_hash_sees_a_rewritten_cell()
+        {
+            // A bridge (#35) rewrites one cell mid-run: what was kept from the
+            // last fold is stale the moment it does.
+            var grid = WorkWorld.DefaultMap();
+            var reused = new WorldHash();
+            var before = reused.Reset().AddTerrain(grid).Value;
+
+            grid.Set(new WorldPosition(WorkWorld.RiverColumn, 0), TerrainKind.Plains);
+            var bridged = reused.Reset().AddTerrain(grid).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bridged, Is.Not.EqualTo(before));
+                Assert.That(bridged, Is.EqualTo(new WorldHash().AddTerrain(grid).Value), "as a fresh hash does");
+            });
+        }
+
+        [Test]
+        public void A_reused_hash_folds_terrain_after_other_sections_correctly()
+        {
+            // Terrain comes first in World.Hash, but a caller may fold it
+            // after something else: what was kept only applies from the state
+            // it was kept from.
+            var grid = WorkWorld.DefaultMap();
+            var ids = new IdAllocator();
+            var reused = new WorldHash();
+            reused.Reset().AddTerrain(grid);
+
+            var after = reused.Reset().AddIds(ids).AddTerrain(grid).Value;
+
+            Assert.That(after, Is.EqualTo(new WorldHash().AddIds(ids).AddTerrain(grid).Value));
+        }
+
+        [Test]
+        public void A_reused_hash_does_not_mistake_another_grid_for_the_one_it_kept()
+        {
+            // Two grids, alike in size and in how often they were rewritten,
+            // with the hills on different cells.
+            var one = WorkWorld.DefaultMap();
+            var other = WorkWorld.DefaultMap();
+            one.Set(new WorldPosition(0, 0), TerrainKind.Hills);
+            other.Set(new WorldPosition(1, 0), TerrainKind.Hills);
+            Assert.That(other.Rewrites, Is.EqualTo(one.Rewrites));
+            var reused = new WorldHash();
+            reused.Reset().AddTerrain(one);
+
+            Assert.That(reused.Reset().AddTerrain(other).Value, Is.EqualTo(new WorldHash().AddTerrain(other).Value));
+        }
+
+        [Test]
         public void The_next_ids_to_be_handed_out_are_folded_in()
         {
             // The next person, household or event id depends on these, and

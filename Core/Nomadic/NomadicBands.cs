@@ -45,12 +45,19 @@ namespace KingdomWatch.Core.Nomadic
     /// sites the next dawn). A band under pressure at a camp that fails
     /// keeps moving, and moves toward land that passes.
     ///
-    /// **Where to go.** Every cell in a box <see cref="HopRadius"/> around
-    /// the camp is a candidate: on the map, standable, reachable by a route
-    /// that fits between dawn and dusk. Each is scored by how many of the
-    /// three jobs would find a site from it; the best score wins, and among
-    /// equals one keyed draw (<see cref="RandomDomain.Wandering"/>) decides,
-    /// so the band does not always walk the same way. Nothing reachable
+    /// **Where to go.** The candidates are a lattice of
+    /// <see cref="CandidatesPerSide"/> by <see cref="CandidatesPerSide"/>
+    /// cells spread evenly over the part of the box <see cref="HopRadius"/>
+    /// around the camp that lies on the map, each on the map, standable, and
+    /// reachable by a route that fits between dawn and dusk. A lattice rather
+    /// than every cell because every cell is too many: a hop of a quarter
+    /// day's walk is a box over 100 cells across, and each candidate costs a
+    /// site search per job (#123). A box no wider than the lattice is every
+    /// cell of it, as it always was. Each is scored by how many of the three
+    /// jobs would find a site from it; the best score wins, and among equals
+    /// keyed draws (<see cref="RandomDomain.Wandering"/>) decide, so the band
+    /// does not always walk the same way. Only candidates in the running are
+    /// routed, best first, until one is reachable in a day (#130). Nothing reachable
     /// means the band stays another day. This is the placeholder cause of
     /// movement: sites are infinite and identical until #26 makes foraging
     /// exhaust them, and a band today moves because nomads move
@@ -80,9 +87,9 @@ namespace KingdomWatch.Core.Nomadic
     /// knowledge the band does not have. The test that pins this invariant is
     /// what will say so.
     ///
-    /// <see cref="Jobs"/> still finds work sites by reading the grid: whether
-    /// section 12's rule reaches work sites at all is #84, and binding them
-    /// naively would stop a settled community's map ever growing.
+    /// <see cref="Jobs"/> works only sites the community has seen (#84), and
+    /// with <see cref="RevealRadius"/> past every work trip, a band's sight
+    /// is all the map a settlement it founds will have until #85 (#123).
     ///
     /// **Camps embody wood.** Making camp takes up to <see cref="CampWood"/>
     /// from the band's stock and embodies it - section 9's temporary camp,
@@ -114,8 +121,18 @@ namespace KingdomWatch.Core.Nomadic
         /// <summary>Days a band stays at one camp before it looks for the next.</summary>
         public const int CampDays = 20;
 
-        /// <summary>How far, in cells, a band looks for its next camp.</summary>
-        public const int HopRadius = 6;
+        /// <summary>
+        /// How far, in cells, a band looks for its next camp: about a quarter
+        /// of a day's walk at <see cref="Jobs.TicksPerCostUnit"/>, a straight
+        /// plains hop to the edge taking three hours (#123, #130).
+        /// </summary>
+        public const int HopRadius = 54;
+
+        /// <summary>
+        /// Candidates along each side of the hop box: twelve even gaps, so a
+        /// box of <see cref="HopRadius"/> 54 puts one every nine cells.
+        /// </summary>
+        public const int CandidatesPerSide = 13;
 
         /// <summary>
         /// How far, in cells, a band sees around wherever it stands or walks.
@@ -131,7 +148,7 @@ namespace KingdomWatch.Core.Nomadic
         /// ever settles at all. #85 - something that goes looking on purpose -
         /// is what would buy a tighter one.
         /// </remarks>
-        public const int RevealRadius = 6;
+        public const int RevealRadius = HopRadius;
 
         /// <summary>Wood a camp embodies, if the band has it.</summary>
         public const int CampWood = 5;
@@ -165,6 +182,13 @@ namespace KingdomWatch.Core.Nomadic
         // the map has cells, and a list that grew to fit a long route would
         // allocate inside the tick loop.
         private readonly List<WorldPosition> _scratchRoute;
+
+        // A council's candidate camps, their scores, and the keyed order they
+        // are tried in, sized for the whole lattice so choosing a camp never
+        // allocates.
+        private readonly List<WorldPosition> _candidates = new List<WorldPosition>(CandidatesPerSide * CandidatesPerSide);
+        private readonly int[] _candidateScores = new int[CandidatesPerSide * CandidatesPerSide];
+        private readonly List<int> _order = new List<int>(CandidatesPerSide * CandidatesPerSide);
 
         public NomadicBands(
             DomainEventBus bus,
@@ -553,16 +577,18 @@ namespace KingdomWatch.Core.Nomadic
             // LOD equivalence asks for.
             //
             // While RevealRadius equals HopRadius this only earns its keep on a
-            // DETOUR: a straight hop never leaves the square already revealed
-            // from the old camp, so the two Reveal calls either side would
-            // cover it. A band walking around a river does leave it, and those
-            // cells are known only because the route was read.
+            // DETOUR: what a straight hop sees along the way lies inside the
+            // squares revealed from the two camps, so the Reveal calls either
+            // side would cover it. A band walking around a river sees, from
+            // the far end of the detour, cells outside both, and those are
+            // known only because the route was read. The route stays inside
+            // the hop box, as the council's did, so this is that same route.
             // The council costed a route to this very cell when it booked the
             // arrival, so one exists unless the ground changed underneath it.
             // Nothing changes terrain mid-run today - bridges (#35) will be the
             // first - and a silent skip here would leave the band's map quietly
             // missing the walk instead of saying so.
-            if (!_pathfinder.TryFindRoute(band.Position, destination, Jobs.Mover, _scratchRoute, out _))
+            if (!_pathfinder.TryFindRoute(band.Position, destination, Jobs.Mover, HopRadius, _scratchRoute, out _))
             {
                 throw new InvalidOperationException(
                     band.Id + " has no route from " + band.Position + " to " + destination
@@ -606,8 +632,14 @@ namespace KingdomWatch.Core.Nomadic
             _bus.Publish(DomainEventKind.CampPitched, band.Id, EntityId.None);
         }
 
-        // The best-scoring reachable cell in the hop box, ties broken by one
-        // keyed draw. False when nothing but the camp itself is reachable.
+        // The best-scoring reachable cell in the hop box, equals taken in a
+        // keyed order. False when nothing but the camp itself is reachable.
+        //
+        // Candidates are tried in an order drawn from the key, so each
+        // reachable one is equally likely among those it ties with. Scoring is
+        // three short site searches and a route a search across the box, so a
+        // council scores until it meets a perfect, reachable candidate, and
+        // routes only candidates that could win (#130).
         private bool TryChooseCamp(Tracked tracked, out WorldPosition chosen, out long travelTicks)
         {
             var band = tracked.Band;
@@ -621,61 +653,115 @@ namespace KingdomWatch.Core.Nomadic
 
             chosen = from;
             travelTicks = 0L;
-            var bestScore = -1;
-            var ties = 0;
 
-            for (var dy = -HopRadius; dy <= HopRadius; dy++)
+            // The lattice spans the part of the box on the map, so a camp by
+            // the edge still spreads its candidates over the land it has.
+            var minX = Math.Max(0, from.X - HopRadius);
+            var maxX = Math.Min(_grid.Width - 1, from.X + HopRadius);
+            var minY = Math.Max(0, from.Y - HopRadius);
+            var maxY = Math.Min(_grid.Height - 1, from.Y + HopRadius);
+            var previousY = -1;
+            _candidates.Clear();
+
+            for (var row = 0; row < CandidatesPerSide; row++)
             {
-                for (var dx = -HopRadius; dx <= HopRadius; dx++)
+                var y = LatticeLine(minY, maxY, row);
+
+                // A span narrower than the lattice lands two lines on one
+                // cell; each cell is scored once, as when every cell was.
+                if (y == previousY)
                 {
-                    var candidate = new WorldPosition(from.X + dx, from.Y + dy);
+                    continue;
+                }
 
-                    if ((dx == 0 && dy == 0)
-                        || !_grid.Contains(candidate)
-                        || !_pathfinder.IsPassable(candidate, Jobs.Mover)
-                        || !_pathfinder.TryFindRoute(from, candidate, Jobs.Mover, _scratchRoute, out var cost))
+                previousY = y;
+                var previousX = -1;
+
+                for (var column = 0; column < CandidatesPerSide; column++)
+                {
+                    var x = LatticeLine(minX, maxX, column);
+
+                    if (x == previousX)
                     {
                         continue;
                     }
 
-                    var travel = cost * Jobs.TicksPerCostUnit;
+                    previousX = x;
+                    var candidate = new WorldPosition(x, y);
 
-                    if (travel > MaxTravelTicks)
+                    if (!candidate.Equals(from) && _pathfinder.IsPassable(candidate, Jobs.Mover))
                     {
-                        continue;
+                        _candidates.Add(candidate);
                     }
-
-                    var score = Score(known, candidate, out _);
-
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        ties = 1;
-                    }
-                    else if (score == bestScore)
-                    {
-                        // The k-th equal candidate replaces the pick with
-                        // chance 1/k, so every tie is equally likely and the
-                        // scan stays a single pass.
-                        ties++;
-
-                        if (!key.Mix(ties).Chance(1, ties))
-                        {
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        continue;
-                    }
-
-                    chosen = candidate;
-                    travelTicks = travel;
                 }
             }
 
-            return bestScore >= 0;
+            // One keyed order for the whole council: each candidate is
+            // equally likely to come first among any it ties with.
+            _order.Clear();
+            for (var i = 0; i < _candidates.Count; i++)
+            {
+                var swap = (int)key.Mix(i).Below((ulong)(i + 1));
+                _order.Add(i);
+                _order[i] = _order[swap];
+                _order[swap] = i;
+            }
+
+            // No score beats every job finding a site, so the first such
+            // candidate in the order that is reachable wins outright; most
+            // councils score a handful of candidates rather than all of them.
+            var perfect = Jobs.Priority.Count;
+            var bestScore = -1;
+            for (var n = 0; n < _order.Count; n++)
+            {
+                var i = _order[n];
+                _candidateScores[i] = Score(known, _candidates[i], out _);
+                bestScore = Math.Max(bestScore, _candidateScores[i]);
+                if (_candidateScores[i] == perfect && TryWalk(from, _candidates[i], out chosen, out travelTicks))
+                {
+                    return true;
+                }
+            }
+
+            // Nothing perfect was reachable: the best of the rest, score by
+            // score, in the same order.
+            for (var score = Math.Min(bestScore, perfect - 1); score >= 0; score--)
+            {
+                for (var n = 0; n < _order.Count; n++)
+                {
+                    var i = _order[n];
+                    if (_candidateScores[i] == score && TryWalk(from, _candidates[i], out chosen, out travelTicks))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            chosen = from;
+            travelTicks = 0L;
+            return false;
         }
+
+        // Whether a candidate is reachable inside the hop box between dawn
+        // and dusk, and how long the walk takes.
+        private bool TryWalk(WorldPosition from, WorldPosition candidate, out WorldPosition chosen, out long travelTicks)
+        {
+            chosen = candidate;
+            travelTicks = 0L;
+            if (!_pathfinder.TryFindRoute(from, candidate, Jobs.Mover, HopRadius, _scratchRoute, out var cost))
+            {
+                return false;
+            }
+
+            travelTicks = cost * Jobs.TicksPerCostUnit;
+            return travelTicks <= MaxTravelTicks;
+        }
+
+        // The index-th of CandidatesPerSide lines spread evenly from min to
+        // max, both ends included; rounded down, so lines only ever repeat,
+        // never go backwards.
+        private static int LatticeLine(int min, int max, int index) =>
+            min + (index * (max - min) / (CandidatesPerSide - 1));
 
         // How many jobs would find a site from here, and whether the two
         // that make a camp settle-able - food and wood - both would.

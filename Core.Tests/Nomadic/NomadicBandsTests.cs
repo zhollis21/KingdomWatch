@@ -400,10 +400,13 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [Test]
         public void Land_is_scored_by_the_jobs_that_would_find_a_site()
         {
-            var w = new WorkWorld();
+            // The river just past what the band sees from Camp, and the cell
+            // being scored two columns beyond it.
+            const int River = 2 + NomadicBands.RevealRadius + 1;
+            var w = new WorkWorld(1UL, WorkWorld.DefaultMap(River + 4, River));
             var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
-            var across = new WorldPosition(14, 0);
+            var across = new WorldPosition(River + 2, 0);
 
             Assert.Multiple(() =>
             {
@@ -535,26 +538,30 @@ namespace KingdomWatch.Core.Tests.Nomadic
             Assert.That(w.Jobs.TaskOf(adults[0]).Origin, Is.EqualTo(destination));
         }
 
+        // Wide enough for the far-forest fixtures below: a camp two columns
+        // in, a hop, a woodcutter's reach, and the forest cell itself.
+        private const int FarForestWidth = 2 + NomadicBands.HopRadius + Jobs.MaxSiteRadius + 1;
+
         [Test]
         [TestCase(1UL)]
         [TestCase(2UL)]
         [TestCase(3UL)]
         public void A_hop_prefers_land_that_scores_higher(ulong seed)
         {
-            // Plains, with one forest cell twenty columns east of the camp:
-            // out of a woodcutter's reach from the camp and from every
-            // candidate but the hop box's far column, which is exactly
-            // sixteen cells from it. Thirteen cells of 168 score two; the
-            // band goes to one of them, whatever the seed.
+            // Plains, with one forest cell a hop and a woodcutter's reach east
+            // of the camp: out of reach from the camp and from every candidate
+            // but the lattice's far column, which is exactly MaxSiteRadius
+            // from it. Only candidates in that column score two; the band
+            // goes to one of them, whatever the seed.
             //
-            // The forest is revealed to the band up front (#81): twenty cells
-            // is far outside RevealRadius, and a band cannot prefer land whose
-            // merit it has never seen - which is what the fixture below this
-            // one asserts. Scoring differences inside one hop box can only
-            // come from knowledge or from reachability now, never from
-            // distance, because MaxSiteRadius reaches well past anything a
-            // band has walked close enough to see.
-            var grid = new TerrainGrid(32, 32, TerrainKind.Plains);
+            // The forest is revealed to the band up front (#81): it lies
+            // outside RevealRadius, and a band cannot prefer land whose merit
+            // it has never seen - which is what the fixture below this one
+            // asserts. Scoring differences inside one hop box can only come
+            // from knowledge or from reachability now, never from distance,
+            // because MaxSiteRadius reaches well past anything a band has
+            // walked close enough to see.
+            var grid = new TerrainGrid(FarForestWidth, 32, TerrainKind.Plains);
             var camp = new WorldPosition(2, 8);
             var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
             grid.Set(forest, TerrainKind.Forest);
@@ -583,7 +590,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // candidate outscores another, and the hop is whichever cell the
             // keyed draw lands on rather than a beeline toward land the band
             // has no way to have heard of.
-            var grid = new TerrainGrid(32, 32, TerrainKind.Plains);
+            var grid = new TerrainGrid(FarForestWidth, 32, TerrainKind.Plains);
             var camp = new WorldPosition(2, 8);
             var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
             grid.Set(forest, TerrainKind.Forest);
@@ -602,6 +609,111 @@ namespace KingdomWatch.Core.Tests.Nomadic
                     Is.EqualTo(1),
                     "the hop gained it nothing, because it could not see what it was walking toward");
             });
+        }
+
+        [TestCase(1UL)]
+        [TestCase(2UL)]
+        [TestCase(3UL)]
+        public void A_hop_box_wider_than_the_lattice_is_scored_only_on_the_lattice(ulong seed)
+        {
+            // Plains exactly one hop box across, the camp in the middle: every
+            // cell scores the same, so the keyed draw picks among whatever was
+            // scored - and only lattice cells may have been (#123). Twelve gaps
+            // across a box 2 * HopRadius wide put them HopRadius / 6 apart.
+            const int Size = (2 * NomadicBands.HopRadius) + 1;
+            const int Gap = 2 * NomadicBands.HopRadius / (NomadicBands.CandidatesPerSide - 1);
+            var grid = new TerrainGrid(Size, Size, TerrainKind.Plains);
+            var camp = new WorldPosition(NomadicBands.HopRadius, NomadicBands.HopRadius);
+            var w = new WorkWorld(seed, grid);
+            var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, NomadicBands.CampDays);
+
+            Assert.That(band.Destination, Is.Not.Null);
+            var destination = band.Destination!.Value;
+            Assert.Multiple(() =>
+            {
+                Assert.That(Gap, Is.GreaterThan(1), "a box this wide is not every cell");
+                Assert.That((destination.X - camp.X) % Gap, Is.Zero, "a lattice column");
+                Assert.That((destination.Y - camp.Y) % Gap, Is.Zero, "a lattice row");
+            });
+        }
+
+        [Test]
+        public void A_camp_a_detour_puts_more_than_a_day_away_is_never_chosen()
+        {
+            // Deep water, which nobody walks, with one plains corridor through
+            // it: east from the camp to the box's edge, down, all the way
+            // west, then up. Every lattice cell on the corridor is in the hop
+            // box, but the last leg is past a day's walk along it (216 plains
+            // cells), so no seed may send the band there however the tie over
+            // equal land falls.
+            const int Size = (2 * NomadicBands.HopRadius) + 1;
+            const int Edge = Size - 1;
+            var camp = new WorldPosition(NomadicBands.HopRadius, NomadicBands.HopRadius);
+
+            for (var seed = 1UL; seed <= 20UL; seed++)
+            {
+                var grid = new TerrainGrid(Size, Size, TerrainKind.DeepWater);
+                for (var i = 0; i <= Edge; i++)
+                {
+                    if (i >= camp.X)
+                    {
+                        grid.Set(new WorldPosition(i, camp.Y), TerrainKind.Plains);
+                    }
+
+                    if (i >= camp.Y)
+                    {
+                        grid.Set(new WorldPosition(Edge, i), TerrainKind.Plains);
+                    }
+
+                    grid.Set(new WorldPosition(i, Edge), TerrainKind.Plains);
+                    grid.Set(new WorldPosition(0, i), TerrainKind.Plains);
+                }
+
+                var w = new WorkWorld(seed, grid);
+                var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
+                w.JoinAdults(band, 1);
+
+                AdvanceToCouncil(w, NomadicBands.CampDays);
+
+                Assert.That(band.Destination, Is.Not.Null, "seed " + seed + ": it moves");
+                var destination = band.Destination!.Value;
+                Assert.That(destination.X == 0 && destination.Y < Edge, Is.False, "seed " + seed + ": " + destination + " is past a day's walk");
+            }
+        }
+
+        [TestCase(3, 1)]
+        [TestCase(1, 3)]
+        public void A_box_narrower_than_the_lattice_offers_each_cell_once(int width, int height)
+        {
+            // A strip three cells long, across and then down: the lattice's
+            // thirteen columns - or rows - land on the same few cells again
+            // and again, and each must still be one candidate, or the tie
+            // draw favours whichever cell the lines repeat most. Two cells
+            // beside the camp, equal land: each should be picked about half
+            // the time across seeds - not the one in seven a cell repeated six
+            // times against one would win.
+            const int Seeds = 200;
+            var farEnd = new WorldPosition(width - 1, height - 1);
+            var far = 0;
+
+            for (var seed = 1UL; seed <= Seeds; seed++)
+            {
+                var w = new WorkWorld(seed, new TerrainGrid(width, height, TerrainKind.Plains));
+                var band = w.NewWanderingBand(new WorldPosition(0, 0), WorkWorld.PlentifulFood(1));
+                w.JoinAdults(band, 1);
+
+                AdvanceToCouncil(w, NomadicBands.CampDays);
+
+                if (band.Destination == farEnd)
+                {
+                    far++;
+                }
+            }
+
+            Assert.That(far, Is.InRange(Seeds * 35 / 100, Seeds * 65 / 100), "one candidate per cell, so an even draw");
         }
 
         [Test]
@@ -813,7 +925,9 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [Test]
         public void Tracking_reveals_the_ground_the_band_stands_on()
         {
-            var w = new WorkWorld();
+            // Wide enough that the cell just past the reveal is on the map.
+            var w = new WorkWorld(1UL, new TerrainGrid(
+                WorkWorld.Camp.X + NomadicBands.RevealRadius + 2, WorkWorld.Height, TerrainKind.Plains));
             var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
             var edge = new WorldPosition(WorkWorld.Camp.X + NomadicBands.RevealRadius, WorkWorld.Camp.Y);
@@ -835,17 +949,20 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // started - revealing "the path" adds nothing there, and a test on
             // open ground passes whether or not the path is read at all. It is
             // a detour that makes the difference: a band walking around a
-            // river passes cells far outside either camp's square.
+            // river sees, from its far end, cells outside either camp's square.
             //
-            // A wall down column five to within three rows of the south edge,
-            // with the only good land on the far side of it. The band can see
-            // that land - it is five cells east - but to reach it must walk
-            // south around the wall and back up.
-            const int Size = 32;
+            // A wall down column five to row WallEnd, with the only good land
+            // on the far side of it. The band can see that land - it is five
+            // cells east - but to reach it must walk south around the wall
+            // and back up. The walk cannot itself leave both camps' squares
+            // and still fit in a day, so the cell that proves it is one the
+            // detour's southern end sees: RevealRadius further south.
+            const int Width = 32;
             const int WallColumn = 5;
-            var grid = new TerrainGrid(Size, Size, TerrainKind.Plains);
+            const int WallEnd = 50;
+            var grid = new TerrainGrid(Width, WallEnd + 1 + NomadicBands.RevealRadius + 1, TerrainKind.Plains);
 
-            for (var y = 0; y <= 28; y++)
+            for (var y = 0; y <= WallEnd; y++)
             {
                 grid.Set(new WorldPosition(WallColumn, y), TerrainKind.SmallRiver);
             }
@@ -858,9 +975,9 @@ namespace KingdomWatch.Core.Tests.Nomadic
             var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
 
-            // Well south of the camp and of anywhere east of the wall: only
+            // Well south of the camp and of the land east of the wall: only
             // the walk itself can teach the band this cell.
-            var onTheDetour = new WorldPosition(2, 25);
+            var onTheDetour = new WorldPosition(2, WallEnd + 1 + NomadicBands.RevealRadius);
             Assert.That(w.KnownMaps.Knows(band.Id, onTheDetour), Is.False, "nothing has been near it yet");
 
             AdvanceToCouncil(w, NomadicBands.CampDays);
@@ -885,12 +1002,12 @@ namespace KingdomWatch.Core.Tests.Nomadic
         {
             // One map per holder, and only the mover writes to its own. Two
             // bands on the same world learn only their own journeys.
-            var w = new WorkWorld();
+            // Just far enough south that neither band's reveal square reaches
+            // the other's camp, on a map that ends there.
+            var far = new WorldPosition(WorkWorld.Camp.X, WorkWorld.Camp.Y + NomadicBands.RevealRadius + 1);
+            var w = new WorkWorld(1UL, new TerrainGrid(WorkWorld.Width, far.Y + 1, TerrainKind.Plains));
             var first = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(first, 1);
-            // Far enough south that neither band's reveal square reaches the
-            // other's camp, and still on a sixteen-cell map.
-            var far = new WorldPosition(WorkWorld.Camp.X, WorkWorld.Height - 1);
             var second = w.NewWanderingBand(far, WorkWorld.PlentifulFood(1));
             w.JoinAdults(second, 1);
 

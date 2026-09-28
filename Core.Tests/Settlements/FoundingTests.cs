@@ -3,7 +3,9 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Settlements;
+using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Work;
 using NUnit.Framework;
@@ -333,11 +335,13 @@ namespace KingdomWatch.Core.Tests.Settlements
             // same handover as members and stock. Exactly what the band knew,
             // no more - a settlement that gained cells nobody walked would be
             // omniscience arriving by the back door.
-            var w = new WorkWorld();
+            // The far corner just past what the band sees from Camp.
+            var unseen = new WorldPosition(
+                WorkWorld.Camp.X + NomadicBands.RevealRadius + 1, WorkWorld.Camp.Y + NomadicBands.RevealRadius + 1);
+            var w = new WorkWorld(1UL, new TerrainGrid(unseen.X + 1, unseen.Y + 1, TerrainKind.Plains));
             var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
             w.JoinAdults(band, 4);
             var seen = new WorldPosition(WorkWorld.Camp.X + 1, WorkWorld.Camp.Y + 1);
-            var unseen = new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1);
 
             Assert.That(w.KnownMaps.Knows(band.Id, seen), Is.True, "revealed when it was tracked");
             Assert.That(w.KnownMaps.Knows(band.Id, unseen), Is.False, "the far corner never was");

@@ -166,6 +166,67 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_bounded_route_stays_inside_its_box_around_the_origin()
+        {
+            // The river's end is two rows down: a box of two reaches it and
+            // walks round, a box of one does not and finds nothing - the way
+            // round leaves the box, and a route is never allowed out of it.
+            var grid = Map(
+                "..~..",
+                "..~..",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var to = new WorldPosition(4, 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.TryFindRoute(Origin, to, Transport.Foot, 4, route, out var wide), Is.True, "the box holds the way round");
+                Assert.That(wide, Is.EqualTo(680), "the same route the unbounded search finds");
+                Assert.That(finder.TryFindRoute(Origin, to, Transport.Foot, 1, route, out var narrow), Is.False, "the goal itself lies outside");
+                Assert.That(narrow, Is.Zero);
+                Assert.That(route, Is.Empty);
+                Assert.That(finder.TryFindRoute(Origin, Origin, Transport.Foot, 0, route, out var still), Is.True, "a box of none holds the origin");
+                Assert.That(still, Is.Zero);
+                Assert.That(route, Is.EqualTo(new[] { Origin }));
+            });
+        }
+
+        [Test]
+        public void A_bounded_route_that_must_leave_the_box_is_not_found()
+        {
+            // Goal two columns over, inside a box of two - but the only way
+            // round the river runs along row three, and that box stops at
+            // row two. A box of three takes the row in.
+            var grid = Map(
+                "..~..",
+                "..~..",
+                "..~..",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var from = new WorldPosition(1, 0);
+            var to = new WorldPosition(3, 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Find(grid, from, to).Found, Is.True, "unbounded, the way round exists");
+                Assert.That(finder.TryFindRoute(from, to, Transport.Foot, 2, route, out _), Is.False, "the goal is in the box; the way round is not");
+                Assert.That(finder.TryFindRoute(from, to, Transport.Foot, 3, route, out _), Is.True, "one row more and it is");
+            });
+        }
+
+        [Test]
+        public void A_bounded_route_refuses_a_negative_radius()
+        {
+            var finder = new Pathfinder(Map("..."), TerrainRules.Default);
+
+            Assert.That(
+                () => finder.TryFindRoute(Origin, new WorldPosition(2, 0), Transport.Foot, -1, new List<WorldPosition>(), out _),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
         public void An_unbroken_river_cannot_be_crossed_on_foot()
         {
             var grid = Map(
