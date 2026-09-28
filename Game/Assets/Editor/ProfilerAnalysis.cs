@@ -103,20 +103,24 @@ namespace KingdomWatch.Game.Editor
             frameTimes.Sort();
             if (frameTimes.Count > 0)
             {
+                var n = frameTimes.Count;
+                var median = n % 2 == 1 ? frameTimes[n / 2] : (frameTimes[(n / 2) - 1] + frameTimes[n / 2]) / 2f;
                 text.AppendLine(string.Format(CultureInfo.InvariantCulture,
                     "Frame ms: median {0:F2}, p95 {1:F2}, p99 {2:F2}, max {3:F2}, over 16.7: {4}, over 33.3: {5}",
-                    frameTimes[frameTimes.Count / 2], frameTimes[(int)(frameTimes.Count * 0.95f)], frameTimes[(int)(frameTimes.Count * 0.99f)],
-                    frameTimes[frameTimes.Count - 1], frameTimes.Count(t => t > BudgetMs), frameTimes.Count(t => t > 2f * BudgetMs)));
+                    median, frameTimes[(int)(n * 0.95f)], frameTimes[(int)(n * 0.99f)],
+                    frameTimes[n - 1], frameTimes.Count(t => t > BudgetMs), frameTimes.Count(t => t > 2f * BudgetMs)));
             }
-            text.AppendLine("Total is a marker's time including what it calls; a marker nested in itself counts once per level.");
+            text.AppendLine("p95 and p99 are nearest-rank. Total is a marker's time including what it calls, self its own;");
+            text.AppendLine("a marker nested in itself counts once per level. Worst is the most one frame spent in it.");
 
             var spikeFrames = frameTimes.Count(t => t > BudgetMs);
-            Section(text, "Kingdom Watch markers, all frames", Ours(all), frameTimes.Count, m => m.Total);
-            Section(text, "Kingdom Watch markers, frames over budget", Ours(spikes), spikeFrames, m => m.Total);
-            Section(text, "All frames, by total ms per frame", all, frameTimes.Count, m => m.Total);
-            Section(text, "All frames, by self ms per frame", all, frameTimes.Count, m => m.Self);
-            Section(text, "Frames over budget, by total ms per frame", spikes, spikeFrames, m => m.Total);
-            Section(text, "Frames over budget, by self ms per frame", spikes, spikeFrames, m => m.Self);
+            // Our own markers in full, whatever their rank; the rest, the top few.
+            Section(text, "Kingdom Watch markers, all frames, by total", Ours(all), frameTimes.Count, m => m.Total, int.MaxValue);
+            Section(text, "Kingdom Watch markers, frames over budget, by total", Ours(spikes), spikeFrames, m => m.Total, int.MaxValue);
+            Section(text, "All frames, by total", all, frameTimes.Count, m => m.Total, Top);
+            Section(text, "All frames, by self", all, frameTimes.Count, m => m.Self, Top);
+            Section(text, "Frames over budget, by total", spikes, spikeFrames, m => m.Total, Top);
+            Section(text, "Frames over budget, by self", spikes, spikeFrames, m => m.Self, Top);
             return text.ToString();
         }
 
@@ -147,28 +151,32 @@ namespace KingdomWatch.Game.Editor
             marker.Total += total;
             marker.Self += self;
             marker.Calls += calls;
-            marker.Max = Mathf.Max(marker.Max, total);
+            marker.WorstTotal = Mathf.Max(marker.WorstTotal, total);
+            marker.WorstSelf = Mathf.Max(marker.WorstSelf, self);
         }
 
-        // The top markers by `by`, as milliseconds and calls per frame over
-        // `frames`, and the most any one frame spent in each.
-        private static void Section(StringBuilder text, string title, Dictionary<string, Marker> markers, int frames, System.Func<Marker, double> by)
+        // Up to `top` markers ordered by `by`, each with its total and self
+        // milliseconds per frame over `frames`, the most one frame spent in
+        // it either way, and its calls per frame. Every table has the same
+        // columns, so none shows a figure for the other measure (#134 review).
+        private static void Section(StringBuilder text, string title, Dictionary<string, Marker> markers, int frames, System.Func<Marker, double> by, int top)
         {
             text.AppendLine();
             text.AppendLine("## " + title + " (" + frames + " frames)");
             if (frames == 0) return;
-            text.AppendLine("ms/frame  max ms  calls/frame  marker");
-            foreach (var entry in markers.OrderByDescending(e => by(e.Value)).Take(Top))
+            text.AppendLine("total/frame  self/frame  worst total  worst self  calls/frame  marker");
+            foreach (var entry in markers.OrderByDescending(e => by(e.Value)).Take(top))
             {
-                text.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,8:F3}  {1,6:F1}  {2,11:F1}  {3}",
-                    by(entry.Value) / frames, entry.Value.Max, entry.Value.Calls / frames, entry.Key));
+                var m = entry.Value;
+                text.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0,11:F3}  {1,10:F3}  {2,11:F1}  {3,10:F1}  {4,11:F1}  {5}",
+                    m.Total / frames, m.Self / frames, m.WorstTotal, m.WorstSelf, m.Calls / frames, entry.Key));
             }
         }
 
         private sealed class Marker
         {
             public double Total, Self, Calls;
-            public float Max;
+            public float WorstTotal, WorstSelf;
         }
     }
 }
