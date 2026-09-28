@@ -1,0 +1,3 @@
+[submodule "Game/Assets/Art"]
+	path = Game/Assets/Art
+	url = https://github.com/zhollis21/KingdomWatch-Art.git

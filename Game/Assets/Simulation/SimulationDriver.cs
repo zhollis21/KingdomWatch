@@ -93,8 +93,11 @@ namespace KingdomWatch.Game
             if (view == null || rig == null) return;
             var reserved = PanelScreenRect;
             input.Process(reserved, UiScale, Time.unscaledDeltaTime);
+            // Last frame's layer: snapping moves the zoom shown, never the zoom
+            // the layers switch on, so this cannot feed back into the layer.
+            rig.Snap = view.Band != ZoomBand.Far;
             rig.Apply(reserved);
-            view.Refresh(world, rig.PixelsPerCell, UiScale);
+            view.Refresh(world, rig.RequestedPixelsPerCell, UiScale, paused);
             DropVanishedSelection();
         }
 

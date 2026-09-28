@@ -1,0 +1,469 @@
+using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Data;
+using UnityEngine;
+using UnityEngine.Tilemaps;
+
+namespace KingdomWatch.Game
+{
+    // Kenmi's Cute Fantasy art (#121), read from the private art submodule at
+    // Assets/Art. The packs may not be redistributed and this repository is
+    // public, so a clone without the submodule has none of it: Load returns
+    // null and WorldView2D draws its plain markers instead.
+    public sealed class ArtSet
+    {
+        // Art pixels per map cell: one 16 px tile is one cell, about 1.5 m,
+        // and a villager is about one cell tall.
+        public const int PixelsPerCell = 16;
+
+        // A villager's drawn size in cells, for picking and the selection box.
+        public const float FigureWidth = 14f / PixelsPerCell;
+        public const float FigureHeight = 20f / PixelsPerCell;
+
+        // The paper doll, bottom to top. Each sheet shares one frame layout,
+        // so any shirt fits any body.
+        public const int Layers = 6;
+
+        public const int FramesPerPose = 6;
+
+        // Resources/<pack>/..., as Update-Resources.ps1 in the art repository
+        // lays them out.
+        private const string Pack = "Cute_Fantasy/";
+        private const string Player = Pack + "Player/";
+        private const string Decor = Pack + "Outdoor decoration/";
+
+        // Villager sheets are 64 px frames with the figure in the middle;
+        // only this 32 px square of each is ever drawn, and only the first
+        // six rows: idle then walk, each facing down, side and up.
+        private const int SheetFrame = 64;
+        private const int CropLeft = 16, CropTop = 12, Crop = 32;
+        // The feet sit 3 px above the crop's bottom edge.
+        private static readonly Vector2 FeetPivot = new Vector2(0.5f, 3f / Crop);
+        private const int Poses = 6;
+
+        private static readonly string[] HairColours = { "Black", "Blonde", "Brown", "Ginger" };
+        private static readonly string[] PantsColours = { "Brown", "Blue", "Green", "Black" };
+        private static readonly string[] ShoeColours = { "Brown", "Black" };
+
+        // The ground palette for each season, in Season order: spring's bright
+        // green, summer's deeper green, autumn's yellow-green, winter's snow.
+        // Each sheet has the same layout, so one set of coordinates serves all
+        // four. The grass sheets' plain tile is a file of its own; the snow
+        // sheet's is on the sheet.
+        private static readonly string[] GroundSheets =
+        {
+            Pack + "Tiles/Grass/Grass_Tiles_2",
+            Pack + "Tiles/Grass/Grass_Tiles_1",
+            Pack + "Tiles/Grass/Grass_Tiles_3",
+            "Cute_Fantasy_Christmas/Decorations/Christmass_Grass",
+        };
+
+        private static readonly string[] PlainTiles =
+        {
+            Pack + "Tiles/Grass/Grass_2_Middle",
+            Pack + "Tiles/Grass/Grass_1_Middle",
+            Pack + "Tiles/Grass/Grass_3_Middle",
+            null,
+        };
+
+        // Where each tree's trunk meets the ground: 16 px above the bottom of
+        // every frame, whatever its size.
+        private static readonly string[] TreeFiles =
+        {
+            "Small_Oak_Tree", "Medium_Oak_Tree", "Big_Oak_Tree",
+            "Small_Spruce_Tree", "Medium_Spruce_Tree", "Big_Spruce_tree",
+            "Small_Fruit_Tree", "Medium_Fruit_Tree", "Big_Fruit_Tree",
+        };
+
+        // The lowest opaque row of each rock, counted from the top of its 16 px frame.
+        private static readonly int[] RockBottoms = { 11, 11, 13, 11, 11, 11, 11, 10, 14, 13 };
+
+        private readonly List<Object> owned;
+        private readonly List<Sprite[]> sheets = new List<Sprite[]>();
+
+        // Sheets 0 and 1 are the body and the hands, which everyone shares.
+        private int[] shoes, pants, hair;
+        private int[] forager, woodcutter, stoneGatherer, unemployed;
+
+        private ArtSet(List<Object> owned) => this.owned = owned;
+
+        public Ground[] Seasons { get; } = new Ground[4];
+        public Tile Water { get; private set; }
+
+        // Water that moves, for a few cells among the plain ones: faint
+        // sparkles, a droplet's ring now and then, and a fish. Each comes in
+        // AccentPhases copies started at different frames, so neighbours do
+        // not move in step.
+        public const int AccentPhases = 4;
+        public LoopTile[] Sparkles { get; private set; }
+        public LoopTile[] Droplets { get; private set; }
+        public LoopTile[] Fish { get; private set; }
+        public Sprite[] Trees { get; private set; }
+        public Sprite[] Rocks { get; private set; }
+
+        // Flowers and sprouts lie flat on the ground and draw under everyone;
+        // bushes stand up and sort like trees. Each is one frame, or several
+        // for the grass that sways.
+        public Sprite[][] FlatDecor { get; private set; }
+        public Sprite[] Bushes { get; private set; }
+
+        public Sprite BigTent { get; private set; }
+        public Sprite SmallTent { get; private set; }
+        public Sprite[] Campfire { get; private set; }
+
+        // What only a settled camp has: a well, a woodpile and a stone pile.
+        public Sprite Well { get; private set; }
+        public Sprite Woodpile { get; private set; }
+        public Sprite StonePile { get; private set; }
+        public Sprite[] Clouds { get; private set; }
+
+        public static int ShoreMask(bool topLeft, bool topRight, bool bottomLeft, bool bottomRight) =>
+            (topLeft ? 1 : 0) | (topRight ? 2 : 0) | (bottomLeft ? 4 : 0) | (bottomRight ? 8 : 0);
+
+        // Null without the art submodule, which a public clone never has, and
+        // null with an error logged when the submodule is there but a file is
+        // missing or badly imported. Everything created is added to `owned`,
+        // for the caller to destroy.
+        public static ArtSet Load(List<Object> owned)
+        {
+            if (Resources.Load<Texture2D>(Player + "Player_Base/Player_Base_animations") == null) return null;
+            var art = new ArtSet(owned);
+            return art.LoadTerrain() && art.LoadScenery() && art.LoadVillagers() ? art : null;
+        }
+
+        public Ground GroundOf(Season season) => Seasons[(int)season];
+
+        // The sprite for one layer of one person's doll. `look` is from LookOf.
+        public Sprite Frame(Look look, int layer, bool walking, Facing facing, int frame)
+        {
+            var sheet = sheets[look.Sheets[layer]];
+            return sheet[((walking ? 3 : 0) + (int)facing) * FramesPerPose + frame];
+        }
+
+        // Which sheets dress someone: the shirt by job, the rest from `seed`,
+        // which the caller derives from the person's id so a person always
+        // looks the same. Grey hair is left for elders (#125). Allocates, so
+        // call it when someone's job changes rather than every frame.
+        public Look LookOf(JobKind job, uint seed)
+        {
+            var shirts = job == JobKind.Forager ? forager
+                : job == JobKind.Woodcutter ? woodcutter
+                : job == JobKind.StoneGatherer ? stoneGatherer
+                : unemployed;
+            return new Look(new[]
+            {
+                0,
+                shoes[(int)(seed % (uint)shoes.Length)],
+                pants[(int)(seed / 3u % (uint)pants.Length)],
+                shirts[(int)(seed / 17u % (uint)shirts.Length)],
+                1,
+                hair[(int)(seed / 101u % (uint)hair.Length)],
+            });
+        }
+
+        private bool LoadTerrain()
+        {
+            var water = Texture(Pack + "Tiles/Water/Water_Middle");
+            var sparkles = Texture(Pack + "Tiles/Water/Water_Middle_Anim_2");
+            var droplets = Texture(Pack + "Tiles/Water/Water_Middle_Anim_1");
+            var fish = Texture(Pack + "Tiles/Water/Fish_Animated_Tile");
+            if (water == null || sparkles == null || droplets == null || fish == null) return false;
+            var still = Cut(water, 0, 0, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f));
+            Water = NewTile(still);
+            Sparkles = Phased(Strip(sparkles, 16, 16, new Vector2(0.5f, 0.5f)));
+            // A droplet's ring spreads, then the water lies still for three
+            // times as long before the next one.
+            var ring = new List<Sprite>(Strip(droplets, 16, 16, new Vector2(0.5f, 0.5f)));
+            for (var i = ring.Count * 3; i > 0; i--) ring.Add(still);
+            Droplets = Phased(ring.ToArray());
+            Fish = Phased(Strip(fish, 16, 16, new Vector2(0.5f, 0.5f)));
+
+            for (var season = 0; season < GroundSheets.Length; season++)
+            {
+                var sheet = Texture(GroundSheets[season]);
+                var plain = PlainTiles[season] == null ? null : Texture(PlainTiles[season]);
+                if (sheet == null || (PlainTiles[season] != null && plain == null)) return false;
+                Seasons[season] = LoadGround(sheet, plain);
+            }
+            return true;
+        }
+
+        // One season's ground, from a sheet counted in 16 px tiles from the top
+        // left: a ring of ground around a hole (columns 3-5, rows 0-2) and an
+        // island of ground in water (columns 3-4, rows 3-4), each transparent
+        // where the water shows through from below, and three tufted variants
+        // of plain ground (columns 5-7, row 9). The snow sheet stops after row
+        // 4, so winter has no tufts, and its plain ground is at (5, 4).
+        private Ground LoadGround(Texture2D sheet, Texture2D plain)
+        {
+            Tile Piece(int column, int row) => NewTile(Cut(sheet, column * PixelsPerCell, row * PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
+            var ground = plain == null
+                ? new Ground(Piece(5, 4), new Tile[0])
+                : new Ground(NewTile(Cut(plain, 0, 0, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f))), new[] { Piece(5, 9), Piece(6, 9), Piece(7, 9) });
+            var shore = ground.Shore;
+            shore[ShoreMask(false, false, false, true)] = Piece(3, 0);
+            shore[ShoreMask(false, false, true, true)] = Piece(4, 0);
+            shore[ShoreMask(false, false, true, false)] = Piece(5, 0);
+            shore[ShoreMask(false, true, false, true)] = Piece(3, 1);
+            shore[ShoreMask(true, false, true, false)] = Piece(5, 1);
+            shore[ShoreMask(false, true, false, false)] = Piece(3, 2);
+            shore[ShoreMask(true, true, false, false)] = Piece(4, 2);
+            shore[ShoreMask(true, false, false, false)] = Piece(5, 2);
+            var landBottomRight = Piece(3, 3);
+            var landBottomLeft = Piece(4, 3);
+            var landTopRight = Piece(3, 4);
+            var landTopLeft = Piece(4, 4);
+            shore[ShoreMask(true, true, true, false)] = landBottomRight;
+            shore[ShoreMask(true, true, false, true)] = landBottomLeft;
+            shore[ShoreMask(true, false, true, true)] = landTopRight;
+            shore[ShoreMask(false, true, true, true)] = landTopLeft;
+            // Water on two opposite corners only has no piece: the caller
+            // draws a land cell there as water, so the two never meet.
+            return ground;
+        }
+
+        private bool LoadScenery()
+        {
+            var trees = new List<Sprite>();
+            foreach (var name in TreeFiles)
+            {
+                // Three frames side by side: a stump, the tree, and the tree
+                // without its shadow.
+                var texture = Texture(Pack + "Trees/" + name);
+                if (texture == null) return false;
+                var width = texture.width / 3;
+                trees.Add(Cut(texture, width, 0, width, texture.height, new Vector2(0.5f, 16f / texture.height)));
+            }
+            Trees = trees.ToArray();
+
+            var rocks = new Sprite[RockBottoms.Length];
+            for (var i = 0; i < rocks.Length; i++)
+            {
+                // The first frame of a rock's break animation is the unbroken rock.
+                var texture = Texture(Decor + "Outdoor_Decor_Animations/Rock_Animations/Rock_" + (i + 1) + "_Anim");
+                if (texture == null) return false;
+                rocks[i] = Cut(texture, 0, 0, 16, 16, new Vector2(0.5f, (15f - RockBottoms[i]) / 16f));
+            }
+            Rocks = rocks;
+
+            // Outdoor_Decor.png in 16 px tiles from the top left: flowers in
+            // rows 0-1 and the right half of row 2, sprouts in the left half,
+            // and round bushes at (5, 5) and along row 9.
+            var decor = Texture(Decor + "Outdoor_Decor");
+            if (decor == null) return false;
+            Sprite Item(int column, int row, float pivotY) => Cut(decor, column * 16, row * 16, 16, 16, new Vector2(0.5f, pivotY));
+            var flat = new List<Sprite[]>();
+            for (var column = 0; column < 6; column++)
+            {
+                flat.Add(new[] { Item(column, 0, 0.5f) });
+                flat.Add(new[] { Item(column, 1, 0.5f) });
+                flat.Add(new[] { Item(column, 2, 0.5f) });
+            }
+            for (var i = 1; i <= 3; i++)
+            {
+                var sway = Texture(Decor + "Outdoor_Decor_Animations/Grass_Animations/Grass_" + i + "_Anim");
+                if (sway == null) return false;
+                flat.Add(Strip(sway, 16, 16, new Vector2(0.5f, 0.5f)));
+            }
+            for (var i = 1; i <= 6; i++)
+            {
+                var sway = Texture(Decor + "Outdoor_Decor_Animations/Grass_Animations/Flower_Grass_" + i + "_Anim");
+                if (sway == null) return false;
+                flat.Add(Strip(sway, 16, 16, new Vector2(0.5f, 0.5f)));
+            }
+            FlatDecor = flat.ToArray();
+            Bushes = new[] { Item(5, 5, 2f / 16f), Item(5, 9, 2f / 16f), Item(6, 9, 2f / 16f), Item(7, 9, 2f / 16f) };
+
+            // Tents stand on the ground 15 px above the bottom of their frame;
+            // the campfire's logs sit on the bottom of each 16x32 frame.
+            var bigTent = Texture(Pack + "Buildings/Buildings/Tent/Tent_Big");
+            var smallTent = Texture(Pack + "Buildings/Buildings/Tent/Tent_Small");
+            var fire = Texture(Decor + "Outdoor_Decor_Animations/Other_Animations/Campfire_Anim");
+            var clouds = Texture(Pack + "Weather effects/Clouds");
+            var well = Texture(Decor + "Well");
+            var ores = Texture(Decor + "Ores");
+            if (bigTent == null || smallTent == null || fire == null || clouds == null || well == null || ores == null) return false;
+            // The well stands 2 px above the bottom of its frame; the woodpile
+            // is the stack at column 1, rows 12-13 of Outdoor_Decor, standing 5
+            // px above its bottom; the stone pile is the grey heap second in
+            // Ores.png's first row, 1 px above its bottom.
+            Well = Cut(well, 0, 0, well.width, well.height, new Vector2(0.5f, 2f / well.height));
+            Woodpile = Cut(decor, 16, 192, 16, 32, new Vector2(0.5f, 5f / 32f));
+            StonePile = Cut(ores, 16, 0, 16, 16, new Vector2(0.5f, 1f / 16f));
+            BigTent = Cut(bigTent, 0, 0, bigTent.width, bigTent.height, new Vector2(0.5f, 15f / bigTent.height));
+            SmallTent = Cut(smallTent, 0, 0, smallTent.width, smallTent.height, new Vector2(0.5f, 15f / smallTent.height));
+            Campfire = Strip(fire, 16, 32, new Vector2(0.5f, 0f));
+            // Four translucent cloud shadows, one per 64 px quarter.
+            Clouds = new[]
+            {
+                Cut(clouds, 0, 0, 64, 64, new Vector2(0.5f, 0.5f)), Cut(clouds, 64, 0, 64, 64, new Vector2(0.5f, 0.5f)),
+                Cut(clouds, 0, 64, 64, 64, new Vector2(0.5f, 0.5f)), Cut(clouds, 64, 64, 64, 64, new Vector2(0.5f, 0.5f)),
+            };
+            return true;
+        }
+
+        private bool LoadVillagers()
+        {
+            var paths = new List<string> { Player + "Player_Base/Player_Base_animations", Player + "Hands/Hands_1_Bare" };
+            int[] Add(IEnumerable<string> more)
+            {
+                var added = new List<int>();
+                foreach (var path in more)
+                {
+                    added.Add(paths.Count);
+                    paths.Add(path);
+                }
+                return added.ToArray();
+            }
+
+            shoes = Add(Each(ShoeColours, c => Player + "Feet/Shoes_1_" + c));
+            pants = Add(Each(PantsColours, c => Player + "Legs/OG_Pants/Pants_1_" + c));
+            forager = Add(Each(new[] { "Blue", "Green", "Orange", "White_and_Brown" }, c => Player + "Chest/Farmer_Shirt/Farmer_Shirt_1_" + c));
+            woodcutter = Add(Each(new[] { "Red", "Green", "Blue", "Brown" }, c => Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_" + c));
+            stoneGatherer = Add(Each(new[] { "Black", "Brown", "Purple", "Blue" }, c => Player + "Chest/OG_Shirt/Shirt_1_" + c));
+            unemployed = Add(Each(new[] { "Green", "Red", "Orange", "Pink" }, c => Player + "Chest/OG_Shirt/Shirt_1_" + c));
+            var hairs = new List<string>();
+            for (var style = 1; style <= 6; style++)
+                foreach (var colour in HairColours) hairs.Add(Player + "Head/Hair_" + style + "/Hair_" + style + "_" + colour);
+            hair = Add(hairs);
+
+            return BuildAtlas(paths);
+        }
+
+        // Every villager frame in one texture, so a crowd is one texture and
+        // not forty: the size #18's stress test has to match. Each sheet holds
+        // 64 px frames (the art repository keeps only the six poses drawn), so
+        // each frame's middle is copied into the atlas on the GPU and the
+        // sheet unloaded.
+        private bool BuildAtlas(List<string> paths)
+        {
+            const int block = Poses * Crop;
+            var across = Mathf.CeilToInt(Mathf.Sqrt(paths.Count));
+            var down = Mathf.CeilToInt(paths.Count / (float)across);
+            var atlas = Own(new Texture2D(across * block, down * block, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Villager atlas" });
+
+            for (var i = 0; i < paths.Count; i++)
+            {
+                var source = Texture(paths[i]);
+                if (source == null) return false;
+                if (source.format != TextureFormat.RGBA32)
+                {
+                    // PixelArtImport keeps these uncompressed RGBA32, which the
+                    // GPU copy below needs. Anything else is a stale import.
+                    Debug.LogError("ArtSet: " + paths[i] + " is " + source.format + ", not RGBA32; reimport Assets/Art.");
+                    return false;
+                }
+
+                var blockX = i % across * block;
+                var blockY = (down - 1 - i / across) * block;
+                var sprites = new Sprite[Poses * FramesPerPose];
+                for (var pose = 0; pose < Poses; pose++)
+                {
+                    for (var frame = 0; frame < FramesPerPose; frame++)
+                    {
+                        var from = FromTop(source, frame * SheetFrame + CropLeft, pose * SheetFrame + CropTop, Crop, Crop);
+                        var toX = blockX + frame * Crop;
+                        var toY = blockY + (Poses - 1 - pose) * Crop;
+                        Graphics.CopyTexture(source, 0, 0, (int)from.x, (int)from.y, Crop, Crop, atlas, 0, 0, toX, toY);
+                        sprites[pose * FramesPerPose + frame] = Own(Sprite.Create(atlas, new Rect(toX, toY, Crop, Crop), FeetPivot, PixelsPerCell, 0, SpriteMeshType.FullRect));
+                    }
+                }
+                sheets.Add(sprites);
+                Resources.UnloadAsset(source);
+            }
+            return true;
+        }
+
+        private static Texture2D Texture(string path)
+        {
+            var texture = Resources.Load<Texture2D>(path);
+            if (texture == null) Debug.LogError("ArtSet: Assets/Art/Resources/" + path + " is missing; the art submodule is incomplete.");
+            return texture;
+        }
+
+        // AccentPhases looping tiles of one animation, each starting a
+        // different part of the way through it.
+        private LoopTile[] Phased(Sprite[] frames)
+        {
+            var tiles = new LoopTile[AccentPhases];
+            for (var phase = 0; phase < tiles.Length; phase++)
+            {
+                var shift = phase * frames.Length / AccentPhases;
+                var shifted = new Sprite[frames.Length];
+                for (var i = 0; i < frames.Length; i++) shifted[i] = frames[(i + shift) % frames.Length];
+                tiles[phase] = Own(ScriptableObject.CreateInstance<LoopTile>());
+                tiles[phase].frames = shifted;
+            }
+            return tiles;
+        }
+
+        // An animation laid out as frames side by side along one row.
+        private Sprite[] Strip(Texture2D texture, int width, int height, Vector2 pivot)
+        {
+            var frames = new Sprite[texture.width / width];
+            for (var i = 0; i < frames.Length; i++) frames[i] = Cut(texture, i * width, 0, width, height, pivot);
+            return frames;
+        }
+
+        private Sprite Cut(Texture2D texture, int left, int top, int width, int height, Vector2 pivot) =>
+            Own(Sprite.Create(texture, FromTop(texture, left, top, width, height), pivot, PixelsPerCell, 0, SpriteMeshType.FullRect));
+
+        private Tile NewTile(Sprite sprite)
+        {
+            var tile = Own(ScriptableObject.CreateInstance<Tile>());
+            tile.sprite = sprite;
+            return tile;
+        }
+
+        // Art tools and the packs count from the top left; textures count up
+        // from the bottom.
+        private static Rect FromTop(Texture2D texture, int left, int top, int width, int height) =>
+            new Rect(left, texture.height - top - height, width, height);
+
+        private static IEnumerable<string> Each(string[] colours, System.Func<string, string> path)
+        {
+            foreach (var colour in colours) yield return path(colour);
+        }
+
+        private T Own<T>(T asset) where T : Object
+        {
+            owned.Add(asset);
+            return asset;
+        }
+
+        public enum Facing
+        {
+            Down,
+            // Faces right; flip the sprite to face left.
+            Side,
+            Up,
+        }
+
+        // One sheet index per layer.
+        public readonly struct Look
+        {
+            public Look(int[] sheets) => Sheets = sheets;
+
+            public int[] Sheets { get; }
+        }
+
+        // One season's land tiles.
+        public sealed class Ground
+        {
+            public Ground(Tile plain, Tile[] tufts)
+            {
+                Plain = plain;
+                Tufts = tufts;
+            }
+
+            public Tile Plain { get; }
+
+            // Plain ground with tufts of grass; none under snow.
+            public Tile[] Tufts { get; }
+
+            // Shoreline pieces by which corners of a tile are water (see
+            // ShoreMask); null where nothing is drawn.
+            public Tile[] Shore { get; } = new Tile[16];
+        }
+    }
+}

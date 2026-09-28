@@ -1491,13 +1491,15 @@ Perspective affects camera behavior, selection, building footprint, occlusion, w
 
 **Reversed at #72 (September 26, 2026): the game is ¾ oblique 2D.** The choice was made from a side-by-side mockup of one village drawn top-down, ¾ oblique, and 2D isometric.
 
-- **Core's grid carries straight over.** `TerrainGrid` is flat, one kind per cell, with no elevation, and bridges rewrite a cell. Oblique keeps square cells, drawn with rows squashed. Nothing in Core changes, and tap-to-cell stays one scale plus a height offset.
+- **Core's grid carries straight over.** `TerrainGrid` is flat, one kind per cell, with no elevation, and bridges rewrite a cell. Oblique keeps square cells; the art draws the tilt itself, so rows are not squashed (#121). Nothing in Core changes, and tap-to-cell stays one scale plus a height offset.
 - **Fronts show.** Building faces, doors, walls and bridges have visible height, so per-culture architecture (the deferred variants below) can be read on the map rather than only on tap. Top-down was cheaper, but it reduces every building to a roof.
 - **Costs accepted:** Y-sorting (whoever is further south draws in front), occlusion of whoever stands just north of something tall (selection must cycle, as M0 found anyway), and front-plus-roof art per building. There is no camera tilt or rotation, which 3D had for free. Isometric would have added a second wall face per building, four-direction villagers, and a diamond map on a rectangular screen.
 
 The M0 3D baseline (#3) measured a different renderer, so it does not carry over. The 2D one is measured ahead of the stress test (#20, M9).
 
 Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
+
+**The art, as of #121.** Kenmi's Cute Fantasy packs, which may be used and modified but not redistributed; they live in a private submodule (`docs/unity.md`). **A cell is one 16 px tile, about 1.5 m**, and a villager (about 13×18 px) is about one cell tall. Core's walking pace and map size predate that scale and are retuned by #123. Medium and Near zoom snap to whole multiples of 16 px per cell so the art stays crisp; Far is a one-colour-per-cell map. The ground already changes with Core's seasons (winter is snow), which is the terrain part of the four-seasons scope above. A villager is six paper-doll layers (body, shoes, trousers, shirt, hands, hair), plus a tool once work animations exist (#126), and all villager frames share one atlas.
 
 ### Unity version path
 
@@ -1573,7 +1575,7 @@ Then choose perspective.
 
 **M8 — naval.** Boats, cross-water trade and transport, island archetype. *Largest single feature; the §12 traversal abstraction must exist from M1.*
 
-**M9 — pre-release performance: the ugly stress test.** Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android (#18). No finished art, but placeholders that cost what the art will: 16–24px sprites layered 3–5 deep per agent, across as many atlases as the art scope implies, animated. Thresholds set *before* running (#20): choose the budget fraction, measure the 2D baseline, then split the budget into sim ms and render ms per frame.
+**M9 — pre-release performance: the ugly stress test.** Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android (#18). No finished art, but placeholders that cost what the art will: 16–24px sprites layered 6–7 deep per agent (§18, #121), across as many atlases as the art scope implies, animated. Thresholds set *before* running (#20): choose the budget fraction, measure the 2D baseline, then split the budget into sim ms and render ms per frame.
 
 ---
 

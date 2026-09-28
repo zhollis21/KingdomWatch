@@ -1,6 +1,18 @@
 # Running Core in Unity
 
-`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.M1`: a 48×48 placeholder map, bands of 60 and 45, defined once in Core for both) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). You can pan, zoom and select (#115). There is no art yet (#121).
+`Game/` runs the real simulation. The scene builds the same M1 world as the harness (`World.M1`: a 48×48 placeholder map, bands of 60 and 45, defined once in Core for both) and draws it in ¾ oblique 2D, the game's perspective (design plan §18). You can pan, zoom and select (#115). Terrain and villagers use Kenmi's Cute Fantasy pixel art when the private art submodule is present (#121).
+
+## The art submodule
+
+The art is licensed for use in the game but may not be redistributed, and this repository is public, so it lives in a private repository, [`KingdomWatch-Art`](https://github.com/zhollis21/KingdomWatch-Art), mounted at `Game/Assets/Art`. With access to it:
+
+```
+git submodule update --init
+```
+
+Some of the pack's paths are long; on Windows, if the checkout fails with "Filename too long", run `git config --global core.longpaths true` and try again.
+
+Without the submodule (a public clone, or no access) the game still runs: the view logs that the art is missing and draws coloured cells and plain markers instead. `Game/Assets/Editor/PixelArtImport.cs` sets the import settings for everything under `Assets/Art`: point filtering, no compression, no mipmaps. If the art looks blurry or villagers are missing, reimport `Assets/Art`.
 
 ## Getting Core into Unity
 
@@ -18,7 +30,7 @@ On Windows, if the build fails to overwrite the DLL while the Editor is open, cl
 
 Open `Game/` in Unity **6000.6.0f1**, open `Assets/Scenes/Oblique.unity`, and press Play. The panel shows the year, day and season, how many people are alive, how many settlements exist, and the world hash at the most recent whole year. Slower, Pause and Faster change the speed between 1 and 120 sim days per real second.
 
-Each coloured cell is one terrain cell: plains, forest, hills, small river, deep water. The rows are squashed to give the ¾ tilt. People stand on their cells as upright markers (children are shorter and paler). A person on a task is drawn part-way along their route (`Jobs.PositionAt`), so movement hops from cell to cell until stepped movement exists (#25).
+A cell is one 16 px tile of the art, about 1.5 m, and a villager is about one cell tall. The art draws the ¾ tilt itself, so rows are as tall as columns are wide. At Medium and Near zoom the ground follows the season: bright green in spring, deeper green in summer, yellow-green in autumn, and snow in winter, when the flowers go. A new season spreads cell by cell over its first eight days rather than arriving everywhere at once. Forests have a tree on every cell (oak, spruce or fruit, in three sizes), hills have one of ten rocks (#124), and about one plains cell in six has tufted grass, a flower, a sprout or a bush; some tufts sway. The variant in each cell comes from its position, so the map looks the same every run. Both kinds of water look alike, with banked shorelines (#127): still water, with a sparkle, a droplet's ring or a fish here and there. Where the river steps diagonally, one of the land cells beside the step is drawn as water so the river stays one channel; that is drawing only, and Core still has land there. Each band and settlement has a campfire and a tent for about every dozen people (settlements live in tents until Core has buildings, #23, but also have a well, a woodpile and a stone pile, which a band on the move does not), and cloud shadows drift over the map. Pause stops every animation along with the simulation. People are paper dolls: body, shoes, trousers, a shirt picked by job (foragers farmer shirts, woodcutters lumberjack shirts, everyone else a plain shirt), hands and hair. Their colours and hair are picked from their id, so a person always looks the same. Everyone is drawn as an adult for now (#125). A person walks while going to or coming back from work, facing where they are going, and otherwise stands facing you; there are no work animations yet (#126). A person on a task is drawn part-way along their route (`Jobs.PositionAt`), so movement hops from cell to cell until stepped movement exists (#25).
 
 ## Camera and selection
 
@@ -35,7 +47,7 @@ The game ships on phones and PCs, so both are controlled directly:
 
 A repeat tap or click near the last one, within 1.5 seconds, moves to the next candidate under it, which is how you pick one person out of a crowd.
 
-What is drawn depends on the zoom (design plan §16). The panel shows the current layer. **Far**, the whole-map zoom, shows one marker per settlement (pale) or band (red), labelled with its id and how many people it has (`Settlement 3 · 42`), and taps select those. Names replace the ids once Core names settlements (#109). **Near** and **Medium** show people, coloured by job: forager yellow-green, woodcutter brown, stone gatherer grey, none orange; children are pale. Medium will add buildings and roads once Core has them. The panel shows a selected person's age, health, job and community.
+What is drawn depends on the zoom (design plan §16). The panel shows the current layer. **Far**, the whole-map zoom, shows one marker per settlement (pale) or band (red), labelled with its id and how many people it has (`Settlement 3 · 42`), and taps select those. Names replace the ids once Core names settlements (#109). **Near** and **Medium** show people and the tiled terrain. Their zoom snaps to whole multiples of the art's 16 px per cell, and the camera to whole screen pixels, so pixel art stays crisp; pinching or scrolling therefore moves in steps there, while Far zooms smoothly and keeps the one-colour-per-cell map. Without the art, people are markers coloured by job: forager yellow-green, woodcutter brown, stone gatherer grey, none orange; children are pale. Medium will add buildings and roads once Core has them. The panel shows a selected person's age, health, job and community.
 
 The camera only reads. Panning, zooming and selecting never change the world, so the year hash is the same whatever you do with them.
 
