@@ -68,6 +68,7 @@ namespace KingdomWatch.Game.Editor
             var spikes = new Dictionary<string, Marker>();
             var frameTimes = new List<float>();
             var children = new List<int>();
+            var thisFrame = new Dictionary<string, Marker>();
             var cancelled = false;
 
             try
@@ -87,7 +88,10 @@ namespace KingdomWatch.Game.Editor
                         if (view == null || !view.valid) continue;
                         var frameMs = view.frameTimeMs;
                         frameTimes.Add(frameMs);
-                        Walk(view, view.GetRootItemID(), children, all, frameMs > BudgetMs ? spikes : null);
+                        thisFrame.Clear();
+                        Walk(view, view.GetRootItemID(), children, thisFrame);
+                        Fold(thisFrame, all);
+                        if (frameMs > BudgetMs) Fold(thisFrame, spikes);
                     }
                 }
             }
@@ -107,7 +111,7 @@ namespace KingdomWatch.Game.Editor
                 var median = n % 2 == 1 ? frameTimes[n / 2] : (frameTimes[(n / 2) - 1] + frameTimes[n / 2]) / 2f;
                 text.AppendLine(string.Format(CultureInfo.InvariantCulture,
                     "Frame ms: median {0:F2}, p95 {1:F2}, p99 {2:F2}, max {3:F2}, over 16.7: {4}, over 33.3: {5}",
-                    median, frameTimes[(int)(n * 0.95f)], frameTimes[(int)(n * 0.99f)],
+                    median, NearestRank(frameTimes, 0.95), NearestRank(frameTimes, 0.99),
                     frameTimes[n - 1], frameTimes.Count(t => t > BudgetMs), frameTimes.Count(t => t > 2f * BudgetMs)));
             }
             text.AppendLine("p95 and p99 are nearest-rank. Total is a marker's time including what it calls, self its own;");
@@ -124,36 +128,51 @@ namespace KingdomWatch.Game.Editor
             return text.ToString();
         }
 
-        // Adds every marker under `id` to `all`, and to `spikes` when the
-        // frame is over budget. `children` is scratch, refilled per level.
-        private static void Walk(HierarchyFrameDataView view, int id, List<int> children, Dictionary<string, Marker> all, Dictionary<string, Marker> spikes)
+        // Sums every marker under `id` into `frame`, by name. A marker can sit
+        // under several parents in one frame - the view merges samples only
+        // among siblings - so a frame's cost for it is the sum over all of
+        // them (#134 review). `children` is scratch, refilled per level.
+        private static void Walk(HierarchyFrameDataView view, int id, List<int> children, Dictionary<string, Marker> frame)
         {
             view.GetItemChildren(id, children);
             var ids = children.ToArray();
             foreach (var child in ids)
             {
                 var name = view.GetItemName(child);
-                var total = view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnTotalTime);
-                var self = view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnSelfTime);
-                var calls = view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnCalls);
-                Add(all, name, total, self, calls);
-                if (spikes != null) Add(spikes, name, total, self, calls);
-                Walk(view, child, children, all, spikes);
+                if (!frame.TryGetValue(name, out var marker)) frame[name] = marker = new Marker();
+                marker.Total += view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnTotalTime);
+                marker.Self += view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnSelfTime);
+                marker.Calls += view.GetItemColumnDataAsFloat(child, HierarchyFrameDataView.columnCalls);
+                Walk(view, child, children, frame);
             }
+        }
+
+        // Adds one frame's sums into a running total, and keeps the worst
+        // frame for each marker.
+        private static void Fold(Dictionary<string, Marker> frame, Dictionary<string, Marker> into)
+        {
+            foreach (var entry in frame)
+            {
+                if (!into.TryGetValue(entry.Key, out var marker)) into[entry.Key] = marker = new Marker();
+                marker.Total += entry.Value.Total;
+                marker.Self += entry.Value.Self;
+                marker.Calls += entry.Value.Calls;
+                marker.WorstTotal = System.Math.Max(marker.WorstTotal, entry.Value.Total);
+                marker.WorstSelf = System.Math.Max(marker.WorstSelf, entry.Value.Self);
+            }
+        }
+
+        // The nearest-rank percentile of a sorted list: the value at rank
+        // ceil(p * n), counting from one. The tolerance keeps float error
+        // from lifting a whole rank - 0.99 * 2000 is 1980.0000000000002.
+        private static float NearestRank(List<float> sorted, double p)
+        {
+            var rank = (int)System.Math.Ceiling((p * sorted.Count) - 1e-9);
+            return sorted[System.Math.Max(0, rank - 1)];
         }
 
         private static Dictionary<string, Marker> Ours(Dictionary<string, Marker> markers) =>
             markers.Where(e => e.Key.StartsWith(OurPrefix)).ToDictionary(e => e.Key, e => e.Value);
-
-        private static void Add(Dictionary<string, Marker> into, string name, float total, float self, float calls)
-        {
-            if (!into.TryGetValue(name, out var marker)) into[name] = marker = new Marker();
-            marker.Total += total;
-            marker.Self += self;
-            marker.Calls += calls;
-            marker.WorstTotal = Mathf.Max(marker.WorstTotal, total);
-            marker.WorstSelf = Mathf.Max(marker.WorstSelf, self);
-        }
 
         // Up to `top` markers ordered by `by`, each with its total and self
         // milliseconds per frame over `frames`, the most one frame spent in
@@ -175,8 +194,7 @@ namespace KingdomWatch.Game.Editor
 
         private sealed class Marker
         {
-            public double Total, Self, Calls;
-            public float WorstTotal, WorstSelf;
+            public double Total, Self, Calls, WorstTotal, WorstSelf;
         }
     }
 }
