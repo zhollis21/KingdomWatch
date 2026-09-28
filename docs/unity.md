@@ -67,6 +67,8 @@ Android Build Support, SDK/NDK, and OpenJDK are required in Unity Hub. Connect a
 
 The shared Android profile enables Development Build and Autoconnect Profiler. Deep Profiling is off. Keep the app running and select the Android player in the Profiler target dropdown. Raw captures belong in `Game/ProfilerCaptures/` (also ignored); keep written findings in `docs/`.
 
+**Kingdom Watch → Analyse newest profiler capture** reads the newest `.data` capture in that folder and writes `<capture>.markers.txt` beside it: frame-time stats (median, p95, p99, max, frames over 16.7 and 33.3 ms) and the main thread's top markers by total and self time, over every frame and over only the frames over budget, with our own `KW.*` markers listed first (#132). It loads the capture into the Profiler window, so it asks before replacing a recording there. A `.data` file can only be decoded inside Unity; this is what makes one readable without the Profiler window.
+
 ## History: the M0 3D prototype
 
 M0 compared a 2D scene with an orthographic 3D one (#1), picked 3D, and later reversed that at #72 (§18). The 3D prototype (`Orthographic3D.unity`, `TownPrototype.cs`) was removed then. It is in git history before #72.
