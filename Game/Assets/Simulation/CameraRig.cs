@@ -6,9 +6,14 @@ namespace KingdomWatch.Game
     // ViewInput turns touches, the mouse and the keyboard into these calls.
     // Zoom is kept as screen pixels per map cell, the unit the zoom layers
     // switch on, and the orthographic size is derived from it every frame.
+    //
+    // While the layer showing draws pixel art (#121), the zoom shown is the
+    // requested one rounded to a whole multiple of the art's 16 px, and the
+    // camera sits on whole screen pixels: every art pixel is then the same
+    // square of screen pixels, and nothing shimmers as the map pans.
     public sealed class CameraRig
     {
-        // Closest zoom: this many cells across the screen's shorter side.
+        // Closest zoom: about this many cells across the screen's shorter side.
         private const float NearestCellsAcross = 4f;
 
         // How many times the whole-map zoom panning is fully free: below it,
@@ -25,10 +30,19 @@ namespace KingdomWatch.Game
         {
             this.camera = camera;
             mapWidth = width;
-            mapHeight = height * WorldView2D.RowSquash;
+            mapHeight = height;
         }
 
-        public float PixelsPerCell => pixelsPerCell;
+        // Set by the driver from the layer showing: the Far layer draws no
+        // pixel art, so it zooms freely.
+        public bool Snap { get; set; }
+
+        // The zoom asked for, which the zoom layers switch on. Kept apart from
+        // the zoom shown so a pinch accumulates between snapped steps.
+        public float RequestedPixelsPerCell => pixelsPerCell;
+
+        // The zoom shown.
+        public float PixelsPerCell => Snap ? Snapped(pixelsPerCell) : pixelsPerCell;
 
         // Screen pixels per cell with the whole map in the area the panel leaves
         // free; the furthest the camera zooms out.
@@ -37,7 +51,8 @@ namespace KingdomWatch.Game
         // The farthest zoom at which panning, and so following, is unrestricted.
         public float FreePanPixelsPerCell => FarthestPixelsPerCell * FreePanZoom;
 
-        public float NearestPixelsPerCell => Mathf.Min(Screen.width, Screen.height) / NearestCellsAcross;
+        // A whole multiple of the art scale, so the closest zoom is crisp too.
+        public float NearestPixelsPerCell => Snapped(Mathf.Min(Screen.width, Screen.height) / NearestCellsAcross);
 
         // Clamps and applies. Called every frame, so a rotation or resize
         // re-clamps; the first call frames the whole map.
@@ -63,13 +78,15 @@ namespace KingdomWatch.Game
             focus.x = Mathf.Clamp(focus.x, Mathf.Lerp(home.x, 0f, t), Mathf.Lerp(home.x, mapWidth, t));
             focus.y = Mathf.Clamp(focus.y, Mathf.Lerp(home.y, 0f, t), Mathf.Lerp(home.y, mapHeight, t));
 
+            var shown = PixelsPerCell;
+            var at = Snap ? new Vector2(OnScreenPixel(focus.x, shown, Screen.width), OnScreenPixel(focus.y, shown, Screen.height)) : focus;
             camera.orthographic = true;
-            camera.orthographicSize = Screen.height / (2f * pixelsPerCell);
-            camera.transform.position = new Vector3(focus.x, focus.y, -10f);
+            camera.orthographicSize = Screen.height / (2f * shown);
+            camera.transform.position = new Vector3(at.x, at.y, -10f);
         }
 
         // Moves the map with a finger or cursor: `delta` is in screen pixels.
-        public void PanBy(Vector2 delta) => focus -= delta / pixelsPerCell;
+        public void PanBy(Vector2 delta) => focus -= delta / PixelsPerCell;
 
         // Zooms by `factor` about the middle of the screen.
         public void ZoomBy(float factor) =>
@@ -93,7 +110,19 @@ namespace KingdomWatch.Game
         public void WholeMap() => pixelsPerCell = FarthestPixelsPerCell;
 
         private Vector2 ScreenToWorld(Vector2 screenPoint) =>
-            focus + (screenPoint - new Vector2(Screen.width / 2f, Screen.height / 2f)) / pixelsPerCell;
+            focus + (screenPoint - new Vector2(Screen.width / 2f, Screen.height / 2f)) / PixelsPerCell;
+
+        private static float Snapped(float pixels) =>
+            Mathf.Max(ArtSet.PixelsPerCell, Mathf.Round(pixels / ArtSet.PixelsPerCell) * ArtSet.PixelsPerCell);
+
+        // The camera position nearest `world` that puts screen pixel edges on
+        // world positions the art is drawn at. The screen's middle is half a
+        // pixel off an edge when its size in pixels is odd.
+        private static float OnScreenPixel(float world, float pixelsPerCell, int screenPixels)
+        {
+            var half = screenPixels / 2f;
+            return (Mathf.Round(world * pixelsPerCell - half) + half) / pixelsPerCell;
+        }
 
         // The whole map, with a one-cell margin, fitted into whichever part of
         // the screen the panel leaves larger: beside it in landscape, below it
