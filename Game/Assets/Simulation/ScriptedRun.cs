@@ -108,6 +108,12 @@ namespace KingdomWatch.Game
             Next();
         }
 
+        // Whether the simulation clock stands still this frame: while a stop
+        // fills in, which takes a different number of frames in each build,
+        // so every stop is reached on the same sim day however long the ones
+        // before it took to fill (#135 review).
+        public bool HoldsClock => stage == Stage.Filling;
+
         // Called by the driver in place of input, before the rig is applied.
         public void Step(float deltaTime)
         {

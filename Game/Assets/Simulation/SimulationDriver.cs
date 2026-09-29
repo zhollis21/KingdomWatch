@@ -91,9 +91,10 @@ namespace KingdomWatch.Game
             // caught up, so one slow frame cannot become a burst of sim years.
             var seconds = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            // A scripted run counts frames, not seconds, so two runs reach
-            // the same day at the same frame however fast each draws.
-            if (scriptedRun != null) seconds = ScriptedRun.SecondsPerFrame;
+            // A scripted run counts frames, not seconds, and stops the clock
+            // while a stop fills in, so two runs reach each stop on the same
+            // day however fast each draws.
+            if (scriptedRun != null) seconds = scriptedRun.HoldsClock ? 0f : ScriptedRun.SecondsPerFrame;
 #endif
             pendingTicks += seconds * SpeedSteps[speedStep] * TicksPerSecondAtOneX;
 

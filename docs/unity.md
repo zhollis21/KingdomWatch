@@ -71,7 +71,7 @@ The shared Android profile enables Development Build and Autoconnect Profiler. D
 
 ### Scripted runs
 
-`pwsh tools/Profile.ps1` measures the view without anyone at the Editor (#132). It builds Core and a Windows development player (`DevBuild.cs`, into `Game/Builds/Windows/`), launches the player at 2400×1080 (a phone held sideways), and then analyses the capture. The player flies a fixed camera route (`ScriptedRun.cs`): the whole map; then quarter, half, full and double size, each held still and then panned south; then the whole map again. Each stop is counted in frames rather than seconds, so a faster build covers the same ground in the same frames. Everything lands in `Game/ProfilerCaptures/`:
+`pwsh tools/Profile.ps1` measures the view without anyone at the Editor (#132). It builds Core and a Windows development player (`DevBuild.cs`, into `Game/Builds/Windows/`), launches the player at 2400×1080 (a phone held sideways), and then analyses the capture. The player flies a fixed camera route (`ScriptedRun.cs`): the whole map; then quarter, half, full and double size, each held still and then panned south; then the whole map again. Each stop is counted in frames rather than seconds, so a faster build covers the same ground in the same frames. The simulation clock also stands still while a stop fills in, so every stop is reached on the same in-game day in every run. Everything lands in `Game/ProfilerCaptures/`:
 
 - `Run_<stamp>.log`: for each stop, how many frames and seconds the screen took to fill in, and its frame times while moving and while held still.
 - `Run_<stamp>_NN_<stop>.raw`: that stop's profiler capture. There is one per stop because the Profiler keeps only the last 2000 frames of a capture, and a whole route is longer than that.
