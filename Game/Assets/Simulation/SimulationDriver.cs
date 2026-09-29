@@ -34,6 +34,10 @@ namespace KingdomWatch.Game
         private World world;
         private CameraRig rig;
         private ViewInput input;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        // Flies the camera in place of input when launched with -scripted-run.
+        private ScriptedRun scriptedRun;
+#endif
         // 1000x, about two days a second: fast enough to see a year go by.
         private int speedStep = 4;
         private bool paused;
@@ -74,6 +78,9 @@ namespace KingdomWatch.Game
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).
             rig.Apply(PanelScreenRect);
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            scriptedRun = ScriptedRun.FromCommandLine(rig, view, world);
+#endif
         }
 
         private void Update()
@@ -83,6 +90,11 @@ namespace KingdomWatch.Game
             // A long frame (a hitch, a debugger pause) is capped rather than
             // caught up, so one slow frame cannot become a burst of sim years.
             var seconds = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // A scripted run counts frames, not seconds, so two runs reach
+            // the same day at the same frame however fast each draws.
+            if (scriptedRun != null) seconds = ScriptedRun.SecondsPerFrame;
+#endif
             pendingTicks += seconds * SpeedSteps[speedStep] * TicksPerSecondAtOneX;
 
             var ticks = (long)pendingTicks;
@@ -103,6 +115,10 @@ namespace KingdomWatch.Game
         {
             if (view == null || rig == null) return;
             var reserved = PanelScreenRect;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (scriptedRun != null) scriptedRun.Step(Time.unscaledDeltaTime);
+            else
+#endif
             using (InputMarker.Auto()) input.Process(reserved, UiScale, Time.unscaledDeltaTime);
             // Last frame's layer: snapping moves the zoom shown, never the zoom
             // the layers switch on, so this cannot feed back into the layer.

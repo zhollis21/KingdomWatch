@@ -95,6 +95,10 @@ namespace KingdomWatch.Game
         // AccentPhases copies started at different frames, so neighbours do
         // not move in step.
         public const int AccentPhases = 4;
+
+        // Swaying grass and flickering campfires, in frames per second.
+        public const float DecorFramesPerSecond = 6f;
+
         public LoopTile[] Sparkles { get; private set; }
         public LoopTile[] Droplets { get; private set; }
         public LoopTile[] Fish { get; private set; }
@@ -106,6 +110,15 @@ namespace KingdomWatch.Game
         // for the grass that sways.
         public Sprite[][] FlatDecor { get; private set; }
         public Sprite[] Bushes { get; private set; }
+
+        // The same scenery as tiles, for the quarter and half size art, where
+        // a tilemap stands it up rather than a renderer each (#131): one per
+        // tree, rock and bush, and AccentPhases per flower or sprout, each
+        // starting its sway a different part of the way through.
+        public Tile[] TreeTiles { get; private set; }
+        public Tile[] RockTiles { get; private set; }
+        public Tile[] BushTiles { get; private set; }
+        public TileBase[][] FlatDecorTiles { get; private set; }
 
         public Sprite BigTent { get; private set; }
         public Sprite SmallTent { get; private set; }
@@ -127,7 +140,7 @@ namespace KingdomWatch.Game
         {
             if (Resources.Load<Texture2D>(Player + "Player_Base/Player_Base_animations") == null) return null;
             var art = new ArtSet(owned);
-            return art.LoadTerrain() && art.LoadScenery() && art.LoadVillagers() ? art : null;
+            return art.LoadTerrain() && art.LoadScenery() && art.PackScenery() && art.LoadVillagers() ? art : null;
         }
 
         public Ground GroundOf(Season season) => Seasons[(int)season];
@@ -291,6 +304,97 @@ namespace KingdomWatch.Game
             BigTent = Cut(bigTent, 0, 0, bigTent.width, bigTent.height, new Vector2(0.5f, 15f / bigTent.height));
             SmallTent = Cut(smallTent, 0, 0, smallTent.width, smallTent.height, new Vector2(0.5f, 15f / smallTent.height));
             Campfire = Strip(fire, 16, 32, new Vector2(0.5f, 0f));
+            return true;
+        }
+
+        // Every tree, rock, bush, flower and sprout copied into one texture on
+        // the GPU, and the scenery re-cut from it (#131). A tilemap in chunk
+        // mode batches its tiles by texture, and keeps them in row order -
+        // a tree in front of the one north of it - only among tiles that
+        // share one. Each piece keeps a transparent border, so a zoomed-out
+        // edge never picks up its neighbour.
+        private bool PackScenery()
+        {
+            const int width = 512;
+            const int border = 1;
+            var pieces = new List<Sprite>();
+            pieces.AddRange(Trees);
+            pieces.AddRange(Rocks);
+            pieces.AddRange(Bushes);
+            foreach (var frames in FlatDecor) pieces.AddRange(frames);
+
+            // Shelves left to right, tallest first, so each shelf wastes little.
+            var order = new List<int>();
+            for (var i = 0; i < pieces.Count; i++) order.Add(i);
+            order.Sort((a, b) => pieces[b].textureRect.height.CompareTo(pieces[a].textureRect.height));
+            var at = new Vector2Int[pieces.Count];
+            int x = 0, y = 0, shelf = 0;
+            foreach (var i in order)
+            {
+                var rect = pieces[i].textureRect;
+                var w = (int)rect.width + 2 * border;
+                var h = (int)rect.height + 2 * border;
+                if (x + w > width)
+                {
+                    x = 0;
+                    y += shelf;
+                    shelf = 0;
+                }
+                at[i] = new Vector2Int(x + border, y + border);
+                x += w;
+                shelf = Mathf.Max(shelf, h);
+            }
+
+            var height = y + shelf;
+            var atlas = Own(new Texture2D(width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Scenery atlas" });
+            // Cleared, so the borders are transparent; then only on the GPU.
+            atlas.SetPixels32(new Color32[width * height]);
+            atlas.Apply(false, true);
+
+            var packed = new Sprite[pieces.Count];
+            for (var i = 0; i < pieces.Count; i++)
+            {
+                var piece = pieces[i];
+                if (piece.texture.format != TextureFormat.RGBA32)
+                {
+                    // As for the villagers: the GPU copy needs RGBA32.
+                    Debug.LogError("ArtSet: " + piece.texture.name + " is " + piece.texture.format + ", not RGBA32; reimport Assets/Art.");
+                    return false;
+                }
+                var rect = piece.textureRect;
+                Graphics.CopyTexture(piece.texture, 0, 0, (int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height, atlas, 0, 0, at[i].x, at[i].y);
+                var pivot = new Vector2(piece.pivot.x / rect.width, piece.pivot.y / rect.height);
+                packed[i] = Own(Sprite.Create(atlas, new Rect(at[i].x, at[i].y, rect.width, rect.height), pivot, PixelsPerCell, 0, SpriteMeshType.FullRect));
+            }
+
+            var next = 0;
+            Sprite[] Take(int count)
+            {
+                var taken = new Sprite[count];
+                System.Array.Copy(packed, next, taken, 0, count);
+                next += count;
+                return taken;
+            }
+            Trees = Take(Trees.Length);
+            Rocks = Take(Rocks.Length);
+            Bushes = Take(Bushes.Length);
+            for (var i = 0; i < FlatDecor.Length; i++) FlatDecor[i] = Take(FlatDecor[i].Length);
+
+            TreeTiles = System.Array.ConvertAll(Trees, NewTile);
+            RockTiles = System.Array.ConvertAll(Rocks, NewTile);
+            BushTiles = System.Array.ConvertAll(Bushes, NewTile);
+            FlatDecorTiles = new TileBase[FlatDecor.Length][];
+            for (var i = 0; i < FlatDecor.Length; i++)
+            {
+                if (FlatDecor[i].Length == 1)
+                {
+                    FlatDecorTiles[i] = new TileBase[] { NewTile(FlatDecor[i][0]) };
+                    continue;
+                }
+                var phased = Phased(FlatDecor[i]);
+                foreach (var tile in phased) tile.framesPerSecond = DecorFramesPerSecond;
+                FlatDecorTiles[i] = phased;
+            }
             return true;
         }
 

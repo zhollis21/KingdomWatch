@@ -135,6 +135,10 @@ namespace KingdomWatch.Game
         // Centres on a world point, used by following. Leaves zoom alone.
         public void CentreOn(Vector2 world) => focus = world;
 
+        // Zooms to `pixels` per cell, within the rig's limits: a scripted
+        // run's stops (#132).
+        public void ZoomTo(float pixels) => pixelsPerCell = pixels;
+
         // Zooms in to at least `pixels` per cell; closer zooms are left alone.
         public void ZoomToAtLeast(float pixels) => pixelsPerCell = Mathf.Max(pixelsPerCell, pixels);
 

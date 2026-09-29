@@ -55,6 +55,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   spriteShader: {fileID: 4800000, guid: 13c02b14c4d048fa9653293d54f6e0e1, type: 3}
+  spreadShader: {fileID: 4800000, guid: cb89b71f80ce280e245d2fc7d895d373, type: 3}
   sceneCamera: {fileID: 330585545}
 --- !u!1 &330585543
 GameObject:
