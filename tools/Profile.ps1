@@ -58,17 +58,29 @@ $version = (Select-String -Path (Join-Path $game 'ProjectSettings/ProjectVersion
 $unity = if ($env:UNITY_EDITOR) { $env:UNITY_EDITOR } else { "C:/Program Files/Unity/Hub/Editor/$version/Editor/Unity.exe" }
 if (-not (Test-Path $unity)) { throw "Unity $version not found at $unity; install it through Unity Hub or set UNITY_EDITOR." }
 
+# Runs a program and waits for it alone, returning its exit code. Each
+# argument goes through ProcessStartInfo.ArgumentList, which quotes it:
+# Start-Process -ArgumentList joins an array with bare spaces, so a checkout
+# under a folder with a space in its name split every path in two (#135
+# review). And it waits for the process alone: Start-Process -Wait also waits
+# for everything it started, and Unity's licensing client outlives it.
+function Invoke-Program([string]$Path, [string[]]$Arguments) {
+    $info = [System.Diagnostics.ProcessStartInfo]::new($Path)
+    $info.UseShellExecute = $false
+    foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
+    $process = [System.Diagnostics.Process]::Start($info)
+    $process.WaitForExit()
+    $process.ExitCode
+}
+
 # Runs Unity headless against the project and throws, pointing at its log,
 # if it fails.
 function Invoke-Unity([string]$Method, [string]$Log, [string[]]$Extra) {
     $arguments = @('-batchmode', '-nographics', '-projectPath', $game, '-logFile', $Log, '-executeMethod', $Method) + $Extra
-    # WaitForExit rather than -Wait: -Wait also waits for every process Unity
-    # started, and its licensing client outlives it.
-    $process = Start-Process -FilePath $unity -ArgumentList $arguments -PassThru -NoNewWindow
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
+    $exitCode = Invoke-Program $unity $arguments
+    if ($exitCode -ne 0) {
         $hint = if (Select-String -Path $Log -Pattern 'another Unity instance' -Quiet) { ' The project is open in the Editor; close it first.' } else { '' }
-        throw "Unity $Method failed (exit $($process.ExitCode)); see $Log.$hint"
+        throw "Unity $Method failed (exit $exitCode); see $Log.$hint"
     }
 }
 
@@ -87,7 +99,7 @@ if (-not (Test-Path $player)) { throw "No player at $player; run without -SkipBu
 Write-Host "Flying the route at ${Width}x${Height}..."
 $started = Get-Date
 $arguments = @('-scripted-run', $captures, '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-logFile', (Join-Path $captures 'player.log'))
-(Start-Process -FilePath $player -ArgumentList $arguments -PassThru).WaitForExit()
+Invoke-Program $player $arguments | Out-Null
 
 # The run's log names it; its captures, one per stop, share its stamp.
 $log = Get-ChildItem $captures -Filter 'Run_*.log' | Where-Object LastWriteTime -ge $started | Sort-Object LastWriteTime | Select-Object -Last 1
