@@ -49,8 +49,10 @@ namespace KingdomWatch.Game
         private readonly Vector2 middle;
         private readonly string folder, stamp;
         private readonly List<Stop> stops = new List<Stop>();
-        private readonly List<float> moveMs = new List<float>();
-        private readonly List<float> holdMs = new List<float>();
+        // Sized for the longest stop up front, so they never grow, and so
+        // never allocate, while a capture is recording.
+        private readonly List<float> moveMs = new List<float>(PanFrames + FillLimitFrames);
+        private readonly List<float> holdMs = new List<float>(HoldFrames);
         private readonly StringBuilder log = new StringBuilder();
         private RenderTexture shot;
         private int index = -1;
@@ -143,13 +145,21 @@ namespace KingdomWatch.Game
                     holdMs.Add(deltaTime * 1000f);
                     if (stageFrames >= HoldFrames)
                     {
-                        // Into a texture of our own: CaptureScreenshot reads
-                        // whatever target is active, which a profiler
-                        // capture sometimes leaves on its own thumbnail.
-                        if (shot == null) shot = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGB32);
-                        ScreenCapture.CaptureScreenshotIntoRenderTexture(shot);
-                        Enter(Stage.Saving);
+                        // The stop's capture ends with its hold. The screenshot
+                        // and the save after it are tooling, and recorded they
+                        // would be the capture's worst frames (#135 review).
+                        StopCapture();
+                        Enter(Stage.Capturing);
                     }
+                    break;
+                case Stage.Capturing:
+                    // A frame after the capture stopped, so none of this frame
+                    // lands in it. Into a texture of our own: CaptureScreenshot
+                    // reads whatever target is active, which a profiler capture
+                    // sometimes leaves on its own thumbnail.
+                    if (shot == null) shot = new RenderTexture(Screen.width, Screen.height, 0, RenderTextureFormat.ARGB32);
+                    ScreenCapture.CaptureScreenshotIntoRenderTexture(shot);
+                    Enter(Stage.Saving);
                     break;
                 case Stage.Saving:
                     // Untimed: the frame that saves the screenshot, then the
@@ -171,8 +181,7 @@ namespace KingdomWatch.Game
         {
             // Each stop to its own capture: the Profiler keeps only the last
             // 2000 frames of one, which a whole route outruns.
-            Profiler.enabled = false;
-            Profiler.enableBinaryLog = false;
+            StopCapture();
             index++;
             if (index >= stops.Count)
             {
@@ -194,6 +203,12 @@ namespace KingdomWatch.Game
             moveMs.Clear();
             holdMs.Clear();
             Enter(Stage.Moving);
+        }
+
+        private static void StopCapture()
+        {
+            Profiler.enabled = false;
+            Profiler.enableBinaryLog = false;
         }
 
         private void Enter(Stage next)
@@ -269,6 +284,7 @@ namespace KingdomWatch.Game
             Moving,
             Filling,
             Holding,
+            Capturing,
             Saving,
         }
 

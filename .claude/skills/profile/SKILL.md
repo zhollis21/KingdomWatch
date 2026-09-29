@@ -55,7 +55,8 @@ A scripted run gives three things. Read all three before saying anything:
   p95* are frame times while held still. `filled: no` means the stop
   never finished drawing within the limit, which is a finding in itself.
 - **`Run_<stamp>_NN_<stop>.markers.txt`:** one per stop, because the
-  Profiler keeps only the last 2000 frames of a capture. Each has the stop's
+  Profiler keeps only the last 2000 frames of a capture. A capture ends
+  with its stop's hold, so the screenshot and its save are never in it. Each has the stop's
   frame-time stats, then our own `KW.*` markers in full (`KW.View.BuildChunks`, `KW.View.LayLand`,
   `KW.View.Animate`, `KW.View.People`, `KW.Simulate`...), then the top Unity
   markers by total and self time, over all frames and over only the frames
