@@ -79,7 +79,11 @@ function Invoke-Unity([string]$Method, [string]$Log, [string[]]$Extra) {
     $arguments = @('-batchmode', '-nographics', '-projectPath', $game, '-logFile', $Log, '-executeMethod', $Method) + $Extra
     $exitCode = Invoke-Program $unity $arguments
     if ($exitCode -ne 0) {
-        $hint = if (Select-String -Path $Log -Pattern 'another Unity instance' -Quiet) { ' The project is open in the Editor; close it first.' } else { '' }
+        # Unity makes the log's folder itself, but one that dies before
+        # writing leaves none, and reading it then would hide the exit code
+        # (#135 review).
+        $open = (Test-Path $Log) -and (Select-String -Path $Log -Pattern 'another Unity instance' -Quiet)
+        $hint = if ($open) { ' The project is open in the Editor; close it first.' } else { '' }
         throw "Unity $Method failed (exit $exitCode); see $Log.$hint"
     }
 }
