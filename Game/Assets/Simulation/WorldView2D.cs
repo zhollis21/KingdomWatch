@@ -281,15 +281,19 @@ namespace KingdomWatch.Game
             var tiled = art != null && Band != ZoomBand.Far;
             if (tiledGround != null && tiledGround.activeSelf != tiled)
             {
+                // Hidden, not released: the chunks built stay, with their
+                // season kept current (LayLand), so leaving the art costs
+                // nothing and coming back to the same place builds nothing.
+                // Clearing them all at once hitched (#135 review). Coming back
+                // elsewhere, what is out of view is released under the build
+                // budget like any chunk a pan leaves behind.
                 tiledGround.SetActive(tiled);
-                // Nothing of the art is kept while the map is zoomed out, so
-                // coming back in builds only what is then in view.
-                if (!tiled) ReleaseAll();
+                sceneryRoot.gameObject.SetActive(tiled);
             }
             if (!tiled) ChunksWaiting = 0;
             // Every frame, zoomed in or out, so the season has got as far
             // wherever the view goes next.
-            if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now, tiled);
+            if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
             if (tiled)
             {
                 // The water's own tile animation, which the Tilemap runs.
@@ -993,25 +997,6 @@ namespace KingdomWatch.Game
             chunks[chunk.Row * chunksAcross + chunk.Column] = null;
         }
 
-        // Releases every built chunk at once, as the view leaves the art.
-        private void ReleaseAll()
-        {
-            landMap.ClearAllTiles();
-            shoreMap.ClearAllTiles();
-            flatMap.ClearAllTiles();
-            standingMap.ClearAllTiles();
-            foreach (var chunk in resident)
-            {
-                foreach (var renderer in chunk.Scenery)
-                {
-                    renderer.enabled = false;
-                    sceneryPool.Push(renderer);
-                }
-                chunks[chunk.Row * chunksAcross + chunk.Column] = null;
-            }
-            resident.Clear();
-        }
-
         // The tree, rock, bush or flower a land cell has, if any: into the
         // scenery blocks at `block` when the chunk's scenery is tiled, else
         // on a renderer.
@@ -1218,18 +1203,16 @@ namespace KingdomWatch.Game
         // from the south edge.
         private int CornerOwner(int i, int j) => Mathf.Clamp(height - j, 0, height - 1) * width + Mathf.Min(i, width - 1);
 
-        // Moves the season on (Spread) and, while the art is shown, writes
-        // what it turned to the tilemaps, each once a frame - a tile at a
-        // time, a fast season change cost a tenth of a second - and shows or
-        // hides the flowers it reached.
-        private void LayLand(SimulationTime now, bool tiled)
+        // Moves the season on (Spread) and writes what it turned in the built
+        // chunks to the tilemaps, each once a frame - a tile at a time, a fast
+        // season change cost a tenth of a second - and shows or hides the
+        // flowers it reached. Zoomed out too, while the art is hidden: the
+        // chunks are kept for coming back in, so they must not fall behind.
+        private void LayLand(SimulationTime now)
         {
             Spread(now);
-            if (tiled)
-            {
-                WriteChanged(landMap, changedCells, changedTiles);
-                WriteChanged(shoreMap, changedCorners, changedCornerTiles);
-            }
+            WriteChanged(landMap, changedCells, changedTiles);
+            WriteChanged(shoreMap, changedCorners, changedCornerTiles);
             changedCells.Clear();
             changedTiles.Clear();
             changedCorners.Clear();

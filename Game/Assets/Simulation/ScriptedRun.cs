@@ -79,6 +79,15 @@ namespace KingdomWatch.Game
                 stops.Add(Stop.At(name + "-pan", pixels, true));
             }
             stops.Add(Stop.Whole("whole-map-again"));
+
+            // Last, so the stops before keep their numbers: straight out to
+            // the whole map from a screen of quarter-size art, the most
+            // chunks there are to keep, then back in to the same place,
+            // where the kept chunks are shown again rather than rebuilt
+            // (#135 review).
+            stops.Add(Stop.At("quarter-again", 4f, false));
+            stops.Add(Stop.Whole("whole-from-quarter"));
+            stops.Add(Stop.At("quarter-back", 4f, false));
         }
 
         // A run when the player was launched with `-scripted-run <folder>`,
