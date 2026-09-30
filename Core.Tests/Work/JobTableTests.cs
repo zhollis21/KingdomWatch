@@ -62,7 +62,7 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(() => JobTable.WorksOn(JobKind.Forager, TerrainKind.None), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => JobTable.WorksOn(JobKind.Forager, (TerrainKind)255), Throws.TypeOf<System.ArgumentOutOfRangeException>());
-                Assert.That(() => JobTable.WorksOn(JobKind.StoneGatherer, (TerrainKind)6), Throws.TypeOf<System.ArgumentOutOfRangeException>(), "one past the last");
+                Assert.That(() => JobTable.WorksOn(JobKind.StoneGatherer, (TerrainKind)7), Throws.TypeOf<System.ArgumentOutOfRangeException>(), "one past the last");
             });
         }
 
@@ -72,10 +72,10 @@ namespace KingdomWatch.Core.Tests.Work
             foreach (var job in new[] { JobKind.Forager, JobKind.Woodcutter, JobKind.StoneGatherer })
             {
                 var mask = JobTable.Terrain(job);
-                Assert.That(mask.Length, Is.EqualTo((int)TerrainKind.DeepWater + 1), job.ToString());
+                Assert.That(mask.Length, Is.EqualTo((int)TerrainKind.Scrub + 1), job.ToString());
                 Assert.That(mask[(int)TerrainKind.None], Is.False, job + " on None");
 
-                for (var kind = TerrainKind.Plains; kind <= TerrainKind.DeepWater; kind++)
+                for (var kind = TerrainKind.Plains; kind <= TerrainKind.Scrub; kind++)
                 {
                     Assert.That(mask[(int)kind], Is.EqualTo(JobTable.WorksOn(job, kind)), job + " on " + kind);
                 }
@@ -88,13 +88,16 @@ namespace KingdomWatch.Core.Tests.Work
             });
         }
 
-        [TestCase(JobKind.Forager, TerrainKind.Plains, true)]
+        [TestCase(JobKind.Forager, TerrainKind.Scrub, true)]
         [TestCase(JobKind.Forager, TerrainKind.Forest, true)]
-        [TestCase(JobKind.Forager, TerrainKind.Hills, false)]
+        [TestCase(JobKind.Forager, TerrainKind.Plains, false)]
+        [TestCase(JobKind.Woodcutter, TerrainKind.Scrub, false)]
+        [TestCase(JobKind.StoneGatherer, TerrainKind.Scrub, false)]
+        [TestCase(JobKind.Forager, TerrainKind.Rocks, false)]
         [TestCase(JobKind.Forager, TerrainKind.SmallRiver, false)]
         [TestCase(JobKind.Woodcutter, TerrainKind.Forest, true)]
         [TestCase(JobKind.Woodcutter, TerrainKind.Plains, false)]
-        [TestCase(JobKind.StoneGatherer, TerrainKind.Hills, true)]
+        [TestCase(JobKind.StoneGatherer, TerrainKind.Rocks, true)]
         [TestCase(JobKind.StoneGatherer, TerrainKind.Forest, false)]
         [TestCase(JobKind.StoneGatherer, TerrainKind.DeepWater, false)]
         public void Each_job_works_on_the_terrain_that_has_the_thing(JobKind job, TerrainKind terrain, bool works) =>

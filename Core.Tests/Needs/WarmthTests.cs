@@ -365,12 +365,12 @@ namespace KingdomWatch.Core.Tests.Needs
         [Test]
         public void A_winter_with_no_wood_anywhere_kills_and_the_death_reads_froze()
         {
-            // The whole chain in a world that works: plains only, so nobody
+            // The whole chain in a world that works: scrub only, so nobody
             // can cut wood, and food enough that hunger is not the cause.
             // Two nights of grace, then each cold night takes ten and each
             // day's meal gives five back: ninety to lose at five a day from
             // the third night, so the twenty-first winter night is the last.
-            var w = new WorkWorld(1UL, WorkWorld.PlainsOnly());
+            var w = new WorkWorld(1UL, WorkWorld.ScrubOnly());
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1) * 2);
             var person = w.Join(band, 30L);
             var id = w.People.GetId(person);

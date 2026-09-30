@@ -53,15 +53,17 @@ namespace KingdomWatch.Core.Nomadic
     /// than every cell because every cell is too many: a hop of a quarter
     /// day's walk is a box over 100 cells across, and each candidate costs a
     /// site search per job (#123). A box no wider than the lattice is every
-    /// cell of it, as it always was. Each is scored by how many of the three
-    /// jobs would find a site from it; the best score wins, and among equals
-    /// keyed draws (<see cref="RandomDomain.Wandering"/>) decide, so the band
-    /// does not always walk the same way. Only candidates in the running are
-    /// routed, best first, until one is reachable in a day (#130). Nothing reachable
-    /// means the band stays another day. This is the placeholder cause of
-    /// movement: sites are infinite and identical until #26 makes foraging
-    /// exhaust them, and a band today moves because nomads move
-    /// (<see cref="CampDays"/>), not because it must. The machinery - a
+    /// cell of it, as it always was. Each is ranked by the walk from it to
+    /// food, then by how many of the three jobs would find a site from it,
+    /// then by the walks to work altogether (#137): on a map of patches the
+    /// walk is what a forager's day is spent on. Among equals keyed draws
+    /// (<see cref="RandomDomain.Wandering"/>) decide, so the band does not
+    /// always walk the same way. Only candidates in the running are routed,
+    /// best first, until one is reachable in a day (#130). Nothing reachable
+    /// means the band stays another day. A band moves after
+    /// <see cref="CampDays"/>, or at the next council if its camp has no
+    /// food in reach; sites are infinite until #26 makes foraging exhaust
+    /// them. The machinery - a
     /// route costed into a travel time, one arrival event - is what #35's
     /// founding parties and M4's armies reuse.
     ///
@@ -188,7 +190,10 @@ namespace KingdomWatch.Core.Nomadic
         // allocates.
         private readonly List<WorldPosition> _candidates = new List<WorldPosition>(CandidatesPerSide * CandidatesPerSide);
         private readonly int[] _candidateScores = new int[CandidatesPerSide * CandidatesPerSide];
+        private readonly long[] _candidateFoodCosts = new long[CandidatesPerSide * CandidatesPerSide];
+        private readonly long[] _candidateCosts = new long[CandidatesPerSide * CandidatesPerSide];
         private readonly List<int> _order = new List<int>(CandidatesPerSide * CandidatesPerSide);
+        private readonly List<int> _ranked = new List<int>(CandidatesPerSide * CandidatesPerSide);
 
         public NomadicBands(
             DomainEventBus bus,
@@ -521,14 +526,18 @@ namespace KingdomWatch.Core.Nomadic
             // arrival it would have booked is one the clock could not hold.
             var hasDusk = Jobs.Dusk - FirstLight <= long.MaxValue - now.Ticks;
 
-            if (tracked.DaysSinceLook < CampDays || !hasDusk)
+            // A camp with no food in reach is left at the next council rather
+            // than after CampDays (#137): on a map of patches a band can pitch
+            // where nothing grows, and waiting there eats its stores.
+            if (!hasDusk || (tracked.DaysSinceLook < CampDays && HasFoodInReach(band)))
             {
                 return;
             }
 
             // The look is the expensive part of a council - a route and
             // three site searches per candidate - so a camp that has nowhere
-            // to go looks again in another CampDays, not tomorrow.
+            // to go looks again in another CampDays, not tomorrow, unless it
+            // has no food.
             tracked.DaysSinceLook = 0;
 
             if (TryChooseCamp(tracked, out var next, out var travel))
@@ -707,33 +716,32 @@ namespace KingdomWatch.Core.Nomadic
                 _order[swap] = i;
             }
 
-            // No score beats every job finding a site, so the first such
-            // candidate in the order that is reachable wins outright; most
-            // councils score a handful of candidates rather than all of them.
-            var perfect = Jobs.Priority.Count;
-            var bestScore = -1;
+            // Every candidate is scored, then ranked (RanksBefore): the
+            // shortest walk to food first, then more jobs with a site, then
+            // the shortest walks to work (#137), so a band camps beside its
+            // berries rather than merely within reach of them. Equals keep the
+            // keyed order. Only the ranking is routed, best first, until one
+            // is reachable.
+            _ranked.Clear();
             for (var n = 0; n < _order.Count; n++)
             {
                 var i = _order[n];
-                _candidateScores[i] = Score(known, _candidates[i], out _);
-                bestScore = Math.Max(bestScore, _candidateScores[i]);
-                if (_candidateScores[i] == perfect && TryWalk(from, _candidates[i], out chosen, out travelTicks))
+                _candidateScores[i] = Score(known, _candidates[i], out _, out _candidateFoodCosts[i], out _candidateCosts[i]);
+
+                var at = _ranked.Count;
+                while (at > 0 && RanksBefore(i, _ranked[at - 1]))
                 {
-                    return true;
+                    at--;
                 }
+
+                _ranked.Insert(at, i);
             }
 
-            // Nothing perfect was reachable: the best of the rest, score by
-            // score, in the same order.
-            for (var score = Math.Min(bestScore, perfect - 1); score >= 0; score--)
+            for (var n = 0; n < _ranked.Count; n++)
             {
-                for (var n = 0; n < _order.Count; n++)
+                if (TryWalk(from, _candidates[_ranked[n]], out chosen, out travelTicks))
                 {
-                    var i = _order[n];
-                    if (_candidateScores[i] == score && TryWalk(from, _candidates[i], out chosen, out travelTicks))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
 
@@ -763,24 +771,55 @@ namespace KingdomWatch.Core.Nomadic
         private static int LatticeLine(int min, int max, int index) =>
             min + (index * (max - min) / (CandidatesPerSide - 1));
 
-        // How many jobs would find a site from here, and whether the two
-        // that make a camp settle-able - food and wood - both would.
-        private int Score(ReadOnlySpan<bool> known, WorldPosition at, out bool viable)
+        // Strictly better: a shorter walk to food, which is what a band
+        // starves without; then a higher score; then shorter walks to work
+        // altogether.
+        private bool RanksBefore(int candidate, int other)
+        {
+            if (_candidateFoodCosts[candidate] != _candidateFoodCosts[other])
+            {
+                return _candidateFoodCosts[candidate] < _candidateFoodCosts[other];
+            }
+
+            if (_candidateScores[candidate] != _candidateScores[other])
+            {
+                return _candidateScores[candidate] > _candidateScores[other];
+            }
+
+            return _candidateCosts[candidate] < _candidateCosts[other];
+        }
+
+        private int Score(ReadOnlySpan<bool> known, WorldPosition at, out bool viable) =>
+            Score(known, at, out viable, out _, out _);
+
+        private bool HasFoodInReach(MobileGroup band) =>
+            _pathfinder.TryFindNearest(
+                band.Position, Jobs.Mover, JobTable.Terrain(JobKind.Forager), _knownMaps.For(band.Id), Jobs.MaxSiteRadius, _scratchRoute, out _);
+
+        // How many jobs would find a site from here; the path cost out to the
+        // food site (long.MaxValue with none) and summed over every site
+        // found; and whether the two that make a camp settle-able - food and
+        // wood - both would.
+        private int Score(ReadOnlySpan<bool> known, WorldPosition at, out bool viable, out long foodCost, out long siteCost)
         {
             var score = 0;
             var food = false;
             var wood = false;
+            foodCost = long.MaxValue;
+            siteCost = 0L;
 
             for (var i = 0; i < Jobs.Priority.Count; i++)
             {
                 var job = Jobs.Priority[i];
 
-                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, Jobs.MaxSiteRadius, _scratchRoute, out _))
+                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, Jobs.MaxSiteRadius, _scratchRoute, out var cost))
                 {
                     continue;
                 }
 
                 score++;
+                siteCost += cost;
+                foodCost = job == JobKind.Forager ? cost : foodCost;
                 food |= job == JobKind.Forager;
                 wood |= job == JobKind.Woodcutter;
             }

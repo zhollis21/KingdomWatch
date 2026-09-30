@@ -54,7 +54,10 @@ namespace KingdomWatch.Core.Rng
         /// <summary>Whether two eligible people marry this year (#54's placeholder for #38).</summary>
         MarriageRoll = 5,
 
-        /// <summary>A cell's terrain in the placeholder map (#16).</summary>
+        /// <summary>
+        /// A cell's terrain in the placeholder map (#16). No longer drawn:
+        /// the map lays patches from its per-kind sites since #137.
+        /// </summary>
         Terrain = 6,
 
         /// <summary>How far the placeholder river wanders at each row (#16).</summary>
@@ -76,5 +79,14 @@ namespace KingdomWatch.Core.Rng
         /// that make it need a site to name.
         /// </summary>
         BattleOutcome = 11,
+
+        /// <summary>The forest patches in the placeholder map's noise (#137).</summary>
+        ForestPatches = 12,
+
+        /// <summary>The rock outcrops in the placeholder map's noise (#137).</summary>
+        RockPatches = 13,
+
+        /// <summary>The berry scrub in the placeholder map's noise (#137).</summary>
+        ScrubPatches = 14,
     }
 }

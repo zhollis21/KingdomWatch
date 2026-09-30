@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Work;
 using KingdomWatch.Core.WorldGen;
 using NUnit.Framework;
 
@@ -14,6 +15,7 @@ namespace KingdomWatch.Core.Tests.Traversal
         private const int Width = 48;
         private const int Height = 32;
         private const ulong Seed = 0x5EEDUL;
+        private const int LargeSide = 256;
 
         private static TerrainGrid Generate(ulong seed = Seed) =>
             PlaceholderMap.Generate(Width, Height, new DeterministicRng(seed));
@@ -52,7 +54,7 @@ namespace KingdomWatch.Core.Tests.Traversal
         [Test]
         public void Every_cell_is_a_defined_kind_and_the_mix_is_roughly_as_advertised()
         {
-            var grid = Generate();
+            var grid = GenerateLarge();
             var counts = new Dictionary<TerrainKind, int>();
 
             for (var index = 0; index < grid.CellCount; index++)
@@ -63,16 +65,73 @@ namespace KingdomWatch.Core.Tests.Traversal
             }
 
             // Loose bounds: this checks the generator reads its own
-            // proportions, not that the RNG is uniform.
+            // proportions, not that the RNG is uniform. Patches are big, so
+            // the map has to be too for its mix to settle.
             var cells = grid.CellCount;
             Assert.Multiple(() =>
             {
                 Assert.That(counts[TerrainKind.Plains], Is.GreaterThan(cells / 2));
-                Assert.That(counts[TerrainKind.Forest], Is.InRange(cells / 10, cells * 3 / 10));
-                Assert.That(counts[TerrainKind.Hills], Is.InRange(1, cells / 10));
-                Assert.That(counts[TerrainKind.SmallRiver], Is.EqualTo(Height));
+                Assert.That(counts[TerrainKind.Forest], Is.InRange(cells / 20, cells * 3 / 10));
+                Assert.That(counts[TerrainKind.Rocks], Is.InRange(cells / 100, cells * 3 / 20));
+                Assert.That(counts[TerrainKind.Scrub], Is.InRange(cells / 100, cells * 3 / 20));
+                Assert.That(counts[TerrainKind.SmallRiver], Is.EqualTo(grid.Height));
                 Assert.That(counts.ContainsKey(TerrainKind.DeepWater), Is.False);
             });
+        }
+
+        [TestCase(TerrainKind.Forest)]
+        [TestCase(TerrainKind.Rocks)]
+        [TestCase(TerrainKind.Scrub)]
+        public void Each_resource_comes_in_patches_rather_than_scattered_cells(TerrainKind kind)
+        {
+            // #137: cells rolled one by one put a tree beside every camp. In a
+            // patch most of a cell's neighbours are the same kind; scattered
+            // at these proportions, few would be.
+            var grid = GenerateLarge();
+            var of = 0;
+            var alike = 0;
+
+            for (var y = 0; y < grid.Height - 1; y++)
+            {
+                for (var x = 0; x < grid.Width - 1; x++)
+                {
+                    if (grid[new WorldPosition(x, y)] != kind)
+                    {
+                        continue;
+                    }
+
+                    of += 2;
+                    alike += grid[new WorldPosition(x + 1, y)] == kind ? 1 : 0;
+                    alike += grid[new WorldPosition(x, y + 1)] == kind ? 1 : 0;
+                }
+            }
+
+            Assert.That(alike, Is.GreaterThan(of * 6 / 10), kind + ": " + alike + " of " + of + " neighbours alike");
+        }
+
+        [TestCase(TerrainKind.Forest)]
+        [TestCase(TerrainKind.Rocks)]
+        [TestCase(TerrainKind.Scrub)]
+        public void Somewhere_on_land_a_resource_is_out_of_a_workers_reach(TerrainKind kind)
+        {
+            // #137: a camp is a choice only if some camps lack something. Out
+            // of reach here is Jobs.MaxSiteRadius in every direction, the box
+            // a work-site search looks within.
+            var grid = GenerateLarge();
+            var lacking = 0;
+
+            for (var y = 0; y < grid.Height; y += 4)
+            {
+                for (var x = 0; x < grid.Width; x += 4)
+                {
+                    if (grid[new WorldPosition(x, y)] != TerrainKind.SmallRiver && !WithinReach(grid, x, y, kind))
+                    {
+                        lacking++;
+                    }
+                }
+            }
+
+            Assert.That(lacking, Is.GreaterThan(0), kind.ToString());
         }
 
         [Test]
@@ -184,6 +243,29 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(() => PlaceholderMap.Generate(3, 0, rng), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => PlaceholderMap.Generate(4, 4, null!), Throws.ArgumentNullException);
             });
+        }
+
+        // Several patches across, so a test sees patches and the gaps between
+        // them rather than the inside of one.
+        private static TerrainGrid GenerateLarge() =>
+            PlaceholderMap.Generate(LargeSide, LargeSide, new DeterministicRng(Seed));
+
+        private static bool WithinReach(TerrainGrid grid, int x, int y, TerrainKind kind)
+        {
+            var reach = Jobs.MaxSiteRadius;
+
+            for (var cy = Math.Max(0, y - reach); cy <= Math.Min(grid.Height - 1, y + reach); cy++)
+            {
+                for (var cx = Math.Max(0, x - reach); cx <= Math.Min(grid.Width - 1, x + reach); cx++)
+                {
+                    if (grid[new WorldPosition(cx, cy)] == kind)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static WorldPosition FindRiver(TerrainGrid grid, int y)

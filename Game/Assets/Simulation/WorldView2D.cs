@@ -754,12 +754,11 @@ namespace KingdomWatch.Game
             {
                 var kind = grid[new WorldPosition(x, y)];
                 if (kind == TerrainKind.Forest) colour = ArtColours.Over(colour, artColours.Trees[TreeOf(hash)]);
-                else if (kind == TerrainKind.Hills) colour = ArtColours.Over(colour, artColours.Rocks[hash % (uint)artColours.Rocks.Length]);
-                else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash))
+                else if (kind == TerrainKind.Rocks) colour = ArtColours.Over(colour, artColours.Rocks[hash % (uint)artColours.Rocks.Length]);
+                else if (kind == TerrainKind.Scrub) colour = ArtColours.Over(colour, artColours.Bushes[hash % (uint)artColours.Bushes.Length]);
+                else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && season != (int)Season.Winter)
                 {
-                    var pick = hash >> 12;
-                    if (pick % 8 == 0) colour = ArtColours.Over(colour, artColours.Bushes[pick / 8 % (uint)artColours.Bushes.Length]);
-                    else if (season != (int)Season.Winter) colour = ArtColours.Over(colour, artColours.FlatDecor[pick / 8 % (uint)artColours.FlatDecor.Length]);
+                    colour = ArtColours.Over(colour, artColours.FlatDecor[(hash >> 12) / 8 % (uint)artColours.FlatDecor.Length]);
                 }
             }
             return ArtColours.ToColour(colour);
@@ -771,17 +770,18 @@ namespace KingdomWatch.Game
             {
                 case TerrainKind.Plains: return new Color32((byte)(127 - shade), (byte)(168 - shade), (byte)(90 - shade), 255);
                 case TerrainKind.Forest: return new Color32((byte)(70 - shade), (byte)(112 - shade), (byte)(58 - shade), 255);
-                case TerrainKind.Hills: return new Color32((byte)(154 - shade), (byte)(150 - shade), (byte)(98 - shade), 255);
+                case TerrainKind.Rocks: return new Color32((byte)(154 - shade), (byte)(150 - shade), (byte)(98 - shade), 255);
                 case TerrainKind.SmallRiver: return new Color32((byte)(79 - shade), (byte)(143 - shade), (byte)(192 - shade), 255);
                 case TerrainKind.DeepWater: return new Color32((byte)(44 - shade), (byte)(86 - shade), (byte)(140 - shade), 255);
+                case TerrainKind.Scrub: return new Color32((byte)(104 - shade), (byte)(140 - shade), (byte)(72 - shade), 255);
                 default: return new Color32(255, 0, 255, 255);
             }
         }
 
         // The Medium and Near ground: rippling water and the season's land per
         // cell, shoreline pieces over the joins, a tree on every forest cell,
-        // a rock on every hills cell (#124 settles what hills are), and a
-        // light scatter of tufts, flowers and bushes on the plains. Which
+        // a rock on every rocks cell, a berry bush on every scrub cell, and a
+        // light scatter of tufts and flowers on the plains. Which
         // variant goes where is drawn from the cell's position, so the map
         // looks the same every time. Both kinds of water draw alike until
         // worldgen places deep water (#127).
@@ -1043,7 +1043,7 @@ namespace KingdomWatch.Game
             }
         }
 
-        // The tree, rock, bush or flower a land cell has, if any: into the
+        // The tree, rock, berry bush or flower a land cell has, if any: into the
         // scenery blocks at `block` when the chunk's scenery is tiled, else
         // on a renderer.
         private void StandScenery(Chunk chunk, int x, int y, int block, uint hash, Season season)
@@ -1054,21 +1054,22 @@ namespace KingdomWatch.Game
                 var tree = TreeOf(hash);
                 Stand(chunk, art.Trees[tree], art.TreeTiles[tree], x, y, block, 0.3f);
             }
-            else if (kind == TerrainKind.Hills)
+            else if (kind == TerrainKind.Rocks)
             {
                 var rock = hash % (uint)art.Rocks.Length;
                 Stand(chunk, art.Rocks[rock], art.RockTiles[rock], x, y, block, 0.3f);
             }
+            else if (kind == TerrainKind.Scrub)
+            {
+                // A berry bush on every scrub cell: what looks like food is
+                // food (#137).
+                var bush = hash % (uint)art.Bushes.Length;
+                Stand(chunk, art.Bushes[bush], art.BushTiles[bush], x, y, block, 0.3f);
+            }
             else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash))
             {
-                // Mostly flowers and sprouts, now and then a bush.
+                // Flowers and sprouts; bushes grow only on scrub.
                 var pick = hash >> 12;
-                if (pick % 8 == 0)
-                {
-                    var bush = pick / 8 % (uint)art.Bushes.Length;
-                    Stand(chunk, art.Bushes[bush], art.BushTiles[bush], x, y, block, 0.5f);
-                    return;
-                }
                 // A pixel or two at quarter size: not worth drawing there.
                 if (!chunk.WithDecor) return;
                 var decor = pick / 8 % (uint)art.FlatDecor.Length;

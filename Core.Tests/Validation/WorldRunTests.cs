@@ -148,7 +148,7 @@ namespace KingdomWatch.Core.Tests.Validation
             var run = new WorldRun(1UL);
             var before = run.Hash();
 
-            run.World.Grid.Set(new WorldPosition(0, 0), TerrainKind.Hills);
+            run.World.Grid.Set(new WorldPosition(0, 0), TerrainKind.Rocks);
             var afterTerrain = run.Hash();
             run.World.Ids.Next(EntityKind.Animal);
 

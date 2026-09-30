@@ -300,7 +300,7 @@ namespace KingdomWatch.Core.Tests.Validation
             changes.Add(("position", Hash()));
             band.Position = WorkWorld.Camp;
 
-            band.Destination = WorkWorld.HillsCell;
+            band.Destination = WorkWorld.RocksCell;
             changes.Add(("destination", Hash()));
 
             // The origin cell is what an unset destination would fold in as,
@@ -378,7 +378,7 @@ namespace KingdomWatch.Core.Tests.Validation
         {
             var w = new WorkWorld();
             var first = w.NewBand(WorkWorld.Camp, 0);
-            var second = w.NewBand(WorkWorld.HillsCell, 0);
+            var second = w.NewBand(WorkWorld.RocksCell, 0);
 
             Assert.That(
                 new WorldHash().AddBands(new List<MobileGroup> { second, first }, w.People).Value,
@@ -405,7 +405,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 }
 
                 maps.Reveal(west, WorkWorld.Camp, 2);
-                maps.Reveal(east, WorkWorld.HillsCell, 2);
+                maps.Reveal(east, WorkWorld.RocksCell, 2);
                 return maps;
             }
 
@@ -429,7 +429,7 @@ namespace KingdomWatch.Core.Tests.Validation
             var grid = WorkWorld.DefaultMap();
             var before = new WorldHash().AddTerrain(grid).Value;
 
-            grid.Set(new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1), TerrainKind.Hills);
+            grid.Set(new WorldPosition(WorkWorld.Width - 1, WorkWorld.Height - 1), TerrainKind.Rocks);
 
             Assert.That(new WorldHash().AddTerrain(grid).Value, Is.Not.EqualTo(before));
         }
@@ -491,11 +491,11 @@ namespace KingdomWatch.Core.Tests.Validation
         public void A_reused_hash_does_not_mistake_another_grid_for_the_one_it_kept()
         {
             // Two grids, alike in size and in how often they were rewritten,
-            // with the hills on different cells.
+            // with the rocks on different cells.
             var one = WorkWorld.DefaultMap();
             var other = WorkWorld.DefaultMap();
-            one.Set(new WorldPosition(0, 0), TerrainKind.Hills);
-            other.Set(new WorldPosition(1, 0), TerrainKind.Hills);
+            one.Set(new WorldPosition(0, 0), TerrainKind.Rocks);
+            other.Set(new WorldPosition(1, 0), TerrainKind.Rocks);
             Assert.That(other.Rewrites, Is.EqualTo(one.Rewrites));
             var reused = new WorldHash();
             reused.Reset().AddTerrain(one);
@@ -688,7 +688,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 var w = new WorkWorld();
                 var ids = w.Demographics.Base.Ids;
                 var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.RocksCell);
 
                 foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
                 {
@@ -744,7 +744,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 var w = new WorkWorld();
                 var ids = w.Demographics.Base.Ids;
                 var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.RocksCell);
 
                 foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
                 {
@@ -786,7 +786,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 var w = new WorkWorld();
                 var ids = w.Demographics.Base.Ids;
                 var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.RocksCell);
                 w.Join(west, 30L);
                 w.Join(west, 31L);
                 w.Join(east, 30L);
@@ -812,7 +812,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // sets it.
             var w = new WorkWorld();
             var hungry = w.NewBand(WorkWorld.Camp, 0);
-            var fed = w.NewBand(WorkWorld.HillsCell, WorkWorld.PlentifulFood(1));
+            var fed = w.NewBand(WorkWorld.RocksCell, WorkWorld.PlentifulFood(1));
             w.Join(hungry, 8L);
             w.JoinAdults(fed, 1);
 
@@ -840,7 +840,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // the hash, whichever it is.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, 0);
-            w.NewBand(WorkWorld.HillsCell, 0);
+            w.NewBand(WorkWorld.RocksCell, 0);
 
             ulong Hash() => new WorldHash()
                 .AddTracking(w.Deaths, w.Demographics.Fertility, w.Warmth, w.Demographics.Matchmaking)
@@ -873,7 +873,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 var w = new WorkWorld();
                 var ids = w.Demographics.Base.Ids;
                 var west = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
-                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.HillsCell);
+                var east = new MobileGroup(ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.RocksCell);
 
                 foreach (var band in westFirst ? new[] { west, east } : new[] { east, west })
                 {

@@ -106,8 +106,8 @@ namespace KingdomWatch.Game
         public Sprite[] Rocks { get; private set; }
 
         // Flowers and sprouts lie flat on the ground and draw under everyone;
-        // bushes stand up and sort like trees. Each is one frame, or several
-        // for the grass that sways.
+        // berry bushes, on scrub, stand up and sort like trees. Each is one
+        // frame, or several for the grass that sways.
         public Sprite[][] FlatDecor { get; private set; }
         public Sprite[] Bushes { get; private set; }
 
@@ -259,8 +259,7 @@ namespace KingdomWatch.Game
             Rocks = rocks;
 
             // Outdoor_Decor.png in 16 px tiles from the top left: flowers in
-            // rows 0-1 and the right half of row 2, sprouts in the left half,
-            // and round bushes at (5, 5) and along row 9.
+            // rows 0-1 and the right half of row 2, sprouts in the left half.
             var decor = Texture(Decor + "Outdoor_Decor");
             if (decor == null) return false;
             Sprite Item(int column, int row, float pivotY) => Cut(decor, column * 16, row * 16, 16, 16, new Vector2(0.5f, pivotY));
@@ -284,7 +283,18 @@ namespace KingdomWatch.Game
                 flat.Add(Strip(sway, 16, 16, new Vector2(0.5f, 0.5f)));
             }
             FlatDecor = flat.ToArray();
-            Bushes = new[] { Item(5, 5, 2f / 16f), Item(5, 9, 2f / 16f), Item(6, 9, 2f / 16f), Item(7, 9, 2f / 16f) };
+
+            // Berry bushes for scrub (#137): Berries.png in 16 px tiles, red
+            // berries down column 0 and purple down column 2, four sizes each.
+            var berries = Texture(Pack + "Crops/Berries");
+            if (berries == null) return false;
+            var bushes = new List<Sprite>();
+            for (var row = 0; row < 4; row++)
+            {
+                bushes.Add(Cut(berries, 0, row * 16, 16, 16, new Vector2(0.5f, 2f / 16f)));
+                bushes.Add(Cut(berries, 32, row * 16, 16, 16, new Vector2(0.5f, 2f / 16f)));
+            }
+            Bushes = bushes.ToArray();
 
             // Tents stand on the ground 15 px above the bottom of their frame;
             // the campfire's logs sit on the bottom of each 16x32 frame.

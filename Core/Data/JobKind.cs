@@ -29,7 +29,7 @@ namespace KingdomWatch.Core.Data
         /// <summary>Runs <see cref="PrimitiveTier.GatherWood"/>: wood from forest.</summary>
         Woodcutter = 2,
 
-        /// <summary>Runs <see cref="PrimitiveTier.GatherStone"/>: stone from hills.</summary>
+        /// <summary>Runs <see cref="PrimitiveTier.GatherStone"/>: stone from rocks.</summary>
         StoneGatherer = 3,
     }
 }

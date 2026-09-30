@@ -94,7 +94,7 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(() => new TerrainGrid(2, 2, TerrainKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => new TerrainGrid(2, 2, (TerrainKind)255), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => grid.Set(default, TerrainKind.None), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => grid.Set(default, (TerrainKind)6), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => grid.Set(default, (TerrainKind)7), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 
