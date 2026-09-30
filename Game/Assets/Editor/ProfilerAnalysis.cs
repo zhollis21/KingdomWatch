@@ -10,7 +10,8 @@ using UnityEngine;
 
 namespace KingdomWatch.Game.Editor
 {
-    // Reads the newest capture in Game/ProfilerCaptures and writes what the
+    // Reads a capture in Game/ProfilerCaptures - the newest, from the menu
+    // item, or a named one headless (Batch) - and writes what the
     // main thread spent its time on beside it, as <capture>.markers.txt:
     // frame times, and the top markers by total and self time over every
     // frame and over only the frames over budget (#132). A capture's .data
@@ -28,15 +29,8 @@ namespace KingdomWatch.Game.Editor
         [MenuItem("Kingdom Watch/Analyse newest profiler capture")]
         public static void AnalyseNewest()
         {
-            var folder = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "ProfilerCaptures");
-            var capture = Directory.Exists(folder)
-                ? new DirectoryInfo(folder).GetFiles("*.data").OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault()
-                : null;
-            if (capture == null)
-            {
-                Debug.LogError("ProfilerAnalysis: no .data capture in " + folder + " (save one from the Profiler window there).");
-                return;
-            }
+            var capture = Newest();
+            if (capture == null) return;
 
             // Loading replaces whatever the Profiler window holds, and a
             // recording nobody saved would go without a word.
@@ -48,19 +42,68 @@ namespace KingdomWatch.Game.Editor
                 return;
             }
 
+            Write(capture, true);
+        }
+
+        // The same without the Editor open, for tools/Profile.ps1 and the
+        // /profile skill: Unity -batchmode -projectPath Game -executeMethod
+        // KingdomWatch.Game.Editor.ProfilerAnalysis.Batch [-capture <path>]...
+        // Each -capture is analysed in turn, in one Unity session, as a
+        // scripted run's captures are, one per stop; without any it reads
+        // the newest. Exits 0 once every report is written, 1 otherwise; the
+        // Editor must be closed, as Unity locks an open project.
+        public static void Batch()
+        {
+            var args = System.Environment.GetCommandLineArgs();
+            var captures = new List<FileInfo>();
+            for (var i = 0; i < args.Length - 1; i++) if (args[i] == "-capture") captures.Add(new FileInfo(args[i + 1]));
+            if (captures.Count == 0) captures.Add(Newest());
+
+            var written = true;
+            foreach (var capture in captures)
+            {
+                if (capture == null) written = false;
+                else if (!capture.Exists)
+                {
+                    Debug.LogError("ProfilerAnalysis: " + capture.FullName + " does not exist.");
+                    written = false;
+                }
+                else written &= Write(capture, false);
+            }
+            EditorApplication.Exit(written ? 0 : 1);
+        }
+
+        // The newest capture in Game/ProfilerCaptures: a .data file saved
+        // from the Profiler window, or a .raw one a scripted run recorded.
+        private static FileInfo Newest()
+        {
+            var folder = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "ProfilerCaptures");
+            var capture = Directory.Exists(folder)
+                ? new DirectoryInfo(folder).GetFiles().Where(f => f.Extension == ".data" || f.Extension == ".raw")
+                    .OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault()
+                : null;
+            if (capture == null) Debug.LogError("ProfilerAnalysis: no .data or .raw capture in " + folder + " (save one from the Profiler window there, or make one with tools/Profile.ps1).");
+            return capture;
+        }
+
+        // Loads `capture` and writes <capture>.markers.txt beside it.
+        private static bool Write(FileInfo capture, bool interactive)
+        {
             if (!ProfilerDriver.LoadProfile(capture.FullName, false))
             {
                 Debug.LogError("ProfilerAnalysis: could not load " + capture.FullName);
-                return;
+                return false;
             }
 
             var output = Path.ChangeExtension(capture.FullName, ".markers.txt");
-            File.WriteAllText(output, Analyse(capture.Name));
+            File.WriteAllText(output, Analyse(capture.Name, interactive));
             Debug.Log("ProfilerAnalysis: wrote " + output);
+            return true;
         }
 
-        // Walks every frame of the capture now loaded.
-        private static string Analyse(string name)
+        // Walks every frame of the capture now loaded, with a cancellable
+        // progress bar when someone is at the Editor to cancel it.
+        private static string Analyse(string name, bool interactive)
         {
             var first = ProfilerDriver.firstFrameIndex;
             var last = ProfilerDriver.lastFrameIndex;
@@ -75,7 +118,7 @@ namespace KingdomWatch.Game.Editor
             {
                 for (var frame = first; frame <= last; frame++)
                 {
-                    if ((frame - first) % 50 == 0
+                    if (interactive && (frame - first) % 50 == 0
                         && EditorUtility.DisplayCancelableProgressBar("Profiler analysis", "Frame " + frame, (frame - first) / (float)(last - first + 1)))
                     {
                         cancelled = true;

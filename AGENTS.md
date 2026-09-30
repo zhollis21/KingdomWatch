@@ -135,6 +135,10 @@ pwsh tools/Get-OpenPrComments.ps1
 
 # Regenerate the roadmap into docs/roadmap/ (git-ignored; read-only against GitHub — the workflow adds -SyncLabels)
 pwsh tools/Build-Roadmap.ps1
+
+# Build a Windows development player, fly its scripted camera route and analyse
+# the captures (Unity Editor closed; see docs/unity.md, "Scripted runs", and /profile)
+pwsh tools/Profile.ps1
 ```
 
 ```powershell

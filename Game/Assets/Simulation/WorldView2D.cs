@@ -60,17 +60,31 @@ namespace KingdomWatch.Game
         // Milliseconds of chunk building a frame may spend, at least one chunk
         // whatever it costs, so a zoom or a fast pan fills in over a few
         // frames rather than hitching on one. The colour map lies under the
-        // art, so a chunk not built yet still shows.
-        private const double BuildBudgetMs = 4.0;
+        // art, so a chunk not built yet still shows. At quarter size the frame
+        // mostly waits on the GPU, so building hides in that wait: on desktop
+        // 6 ms filled quarter size in 0.51 s against 4 ms's 0.62 s, with
+        // frames still under 16.7 ms; 8 ms saved 0.05 s more but not the
+        // frames (#132).
+        private const double BuildBudgetMs = 6.0;
 
         // Screen pixels per cell from which flowers and sprouts are stood up:
         // half size and bigger. At quarter size they are a pixel or two, and
         // a screen of quarter-size art is some 170 chunks (#130).
         private const float DecorFrom = 6f;
 
+        // Screen pixels per cell from which each tree, rock, bush and flower
+        // is its own renderer: full size and bigger, where people walk behind
+        // trees. Below it, at half and quarter size, a chunk's scenery is
+        // tiles in two tilemaps, laid in one call and drawn in a few batches
+        // (#131): a screen of quarter-size art was some 50,000 renderers and
+        // filled in over many frames. The tilemaps draw under everyone, so
+        // there people are always in front. Halfway between half and full
+        // size, the edge CameraRig snaps on.
+        private const float LiveSceneryFrom = ArtSet.PixelsPerCell * 0.75f;
+
         // Scenery renderers made up front, when the world is shown, so the
-        // first zoom into the art does not stop to make them: about what the
-        // art view shows at its smallest on a phone.
+        // first zoom to full size does not stop to make them: about what the
+        // art view shows at full size on a phone.
         private const int SceneryMadeUpFront = 8000;
 
         // Named in a capture, so a slow frame says which part was slow (#132).
@@ -79,6 +93,15 @@ namespace KingdomWatch.Game
         private static readonly ProfilerMarker AnimateMarker = new ProfilerMarker("KW.View.Animate");
         private static readonly ProfilerMarker PeopleMarker = new ProfilerMarker("KW.View.People");
         private static readonly ProfilerMarker CommunitiesMarker = new ProfilerMarker("KW.View.Communities");
+        // Inside BuildChunks: one chunk built, its parts, and one released.
+        // Tilemap writes have no markers of their own, so without these they
+        // all read as BuildChunks' self time.
+        private static readonly ProfilerMarker ChunkMarker = new ProfilerMarker("KW.View.Build.Chunk");
+        private static readonly ProfilerMarker CellsMarker = new ProfilerMarker("KW.View.Build.Cells");
+        private static readonly ProfilerMarker SetLandMarker = new ProfilerMarker("KW.View.Build.SetLand");
+        private static readonly ProfilerMarker SetSceneryMarker = new ProfilerMarker("KW.View.Build.SetScenery");
+        private static readonly ProfilerMarker ShoreMarker = new ProfilerMarker("KW.View.Build.Shore");
+        private static readonly ProfilerMarker ReleaseMarker = new ProfilerMarker("KW.View.Build.Release");
 
         // A community marker's side in UI-scaled pixels, whatever the zoom.
         private const float CommunityMarkerSize = 14f;
@@ -86,12 +109,20 @@ namespace KingdomWatch.Game
         // Doll frames per second.
         private const float FramesPerSecond = 8f;
 
-        // Swaying grass and campfires, in frames per second.
-        private const float DecorFramesPerSecond = 6f;
+        // A new season spreads out from SpreadSeeds places, picked at random
+        // each season, a step at a time: SpreadStepsPerDay steps a sim day,
+        // each passing it from a cell at its edge to each neighbour with
+        // SpreadChance, so it grows in ragged blobs rather than diamonds (see
+        // Spread). At these values it covers the map in about ten days of a
+        // thirty-day season, half of it in about three.
+        private const int SpreadSeeds = 12;
+        private const float SpreadStepsPerDay = 70f;
+        private const double SpreadChance = 0.5;
+        private const long TicksPerSeason = SimulationTime.DaysPerSeason * SimulationTime.TicksPerDay;
 
-        // Days into a new season before every cell has turned (see LayLand);
-        // a season is 30 days.
-        private const float SeasonSpreadDays = 8f;
+        // The zoomed-out map is sent which cells have turned at most once in
+        // this many frames: nobody sees the difference at a pixel a cell.
+        private const int TurnedSendFrames = 4;
 
         // Tents per camp: one per this many people, up to MaxTents.
         private const int PeoplePerTent = 12;
@@ -112,6 +143,9 @@ namespace KingdomWatch.Game
         };
 
         public Shader spriteShader;
+        // Draws the zoomed-out map as a season spreads (SeasonSpread.shader).
+        // Without it, the map changes season everywhere at once.
+        public Shader spreadShader;
         public Camera sceneCamera;
 
         private readonly List<Figure> people = new List<Figure>();
@@ -129,14 +163,33 @@ namespace KingdomWatch.Game
         private GameObject tiledGround;
         private TerrainGrid grid;
         private Tilemap landMap, shoreMap;
+        // The scenery below LiveSceneryFrom: flowers and sprouts flat on the
+        // ground, and trees, rocks and bushes standing up.
+        private Tilemap flatMap, standingMap;
+        private TileChangeData[] flatBlock, standingBlock;
         private Transform sceneryRoot;
         // Which shoreline piece each corner takes, by ShoreMask; row-major,
         // (width + 1) by (height + 1).
         private byte[] shoreMasks;
         private bool[] drawnWater;
-        // Each cell's and corner's own season as last laid, while its chunk
-        // is built.
-        private byte[] landSeasons, cornerSeasons;
+        // The season every cell of the map shows, built or not: the spread
+        // writes it, and Build lays from it. A corner's shoreline piece
+        // shows its owner cell's season (see CornerOwner).
+        private byte[] landSeasons;
+        // The spread under way (see Spread): the season it lays, which
+        // season of the clock it began in, the cells at its edge, the steps
+        // it has taken, and its draws.
+        private Season spreadTo;
+        private long spreadSeason;
+        private List<int> spreadEdge = new List<int>(), nextEdge = new List<int>();
+        private int spreadSteps;
+        private System.Random spreadRandom;
+        // Which cells show spreadTo, a byte a cell in texture rows for the
+        // zoomed-out map's shader, and when it was last sent.
+        private byte[] turned;
+        private Texture2D turnedTexture;
+        private bool turnedChanged;
+        private int turnedSentFrame = -TurnedSendFrames;
         private float animationTime;
         // Every chunk by (row * chunksAcross + column), null while not built;
         // and the built ones, in the order they were built.
@@ -149,11 +202,19 @@ namespace KingdomWatch.Game
         private readonly System.Diagnostics.Stopwatch buildClock = new System.Diagnostics.Stopwatch();
         private readonly List<Vector3Int> changedCells = new List<Vector3Int>();
         private readonly List<TileBase> changedTiles = new List<TileBase>();
+        private readonly List<Vector3Int> changedCorners = new List<Vector3Int>();
+        private readonly List<TileBase> changedCornerTiles = new List<TileBase>();
+        private readonly List<TileChangeData> changedFlowers = new List<TileChangeData>();
         // The zoomed-out map in the art's colours (#130), one per season,
         // made when the world is shown; and the season on show.
         private ArtColours artColours;
         private Sprite[] seasonMaps;
         private int shownSeason = -1;
+        // The zoomed-out map's material while a season spreads over it, and
+        // the texture it reads when each cell turns; null without the shader.
+        private Material spreadMaterial;
+        private static readonly int PreviousId = Shader.PropertyToID("_Previous");
+        private static readonly int TurnedId = Shader.PropertyToID("_Turned");
         private readonly List<Camp> camps = new List<Camp>();
         private Transform peopleRoot;
         private Transform communityRoot;
@@ -164,6 +225,10 @@ namespace KingdomWatch.Game
         private GUIStyle labelStyle;
 
         public ZoomBand Band { get; private set; } = ZoomBand.Far;
+
+        // Chunks in view still waiting to be built after this frame: while it
+        // is above zero the screen is still filling in (#131, #132).
+        public int ChunksWaiting { get; private set; }
 
         // Presentation state only: set by ViewInput, read by the panel.
         public EntityId Selected { get; set; }
@@ -208,6 +273,8 @@ namespace KingdomWatch.Game
                 TileTerrain();
                 artColours = ArtColours.Measure(art);
                 BuildSeasonMaps();
+                StartSpread(world.Now);
+                ShowSpread();
             }
             else
             {
@@ -227,23 +294,39 @@ namespace KingdomWatch.Game
             var tiled = art != null && Band != ZoomBand.Far;
             if (tiledGround != null && tiledGround.activeSelf != tiled)
             {
+                // Hidden, not released: the chunks built stay, with their
+                // season kept current (LayLand), so leaving the art costs
+                // nothing and coming back to the same place builds nothing.
+                // Clearing them all at once hitched (#135 review). Coming back
+                // elsewhere, what is out of view is released under the build
+                // budget like any chunk a pan leaves behind.
                 tiledGround.SetActive(tiled);
-                // Nothing of the art is kept while the map is zoomed out, so
-                // coming back in builds only what is then in view.
-                if (!tiled) ReleaseAll();
+                sceneryRoot.gameObject.SetActive(tiled);
             }
+            if (!tiled) ChunksWaiting = 0;
+            // Every frame, zoomed in or out, so the season has got as far
+            // wherever the view goes next.
+            if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
             if (tiled)
             {
                 // The water's own tile animation, which the Tilemap runs.
                 landMap.animationFrameRate = paused ? 0f : 1f;
-                using (BuildMarker.Auto()) BuildWhatShows(world.Now, pixelsPerCell >= DecorFrom);
-                using (LayLandMarker.Auto()) LayLand(world.Now);
+                flatMap.animationFrameRate = landMap.animationFrameRate;
+                using (BuildMarker.Auto()) BuildWhatShows(pixelsPerCell >= DecorFrom, pixelsPerCell < LiveSceneryFrom);
                 using (AnimateMarker.Auto()) Animate();
             }
             if (seasonMaps != null && shownSeason != (int)world.Now.Season)
             {
                 shownSeason = (int)world.Now.Season;
                 colourGround.sprite = seasonMaps[shownSeason];
+                if (spreadMaterial != null) spreadMaterial.SetTexture(PreviousId, seasonMaps[(shownSeason + 3) % 4].texture);
+            }
+            if (spreadMaterial != null && Band == ZoomBand.Far && turnedChanged && Time.frameCount - turnedSentFrame >= TurnedSendFrames)
+            {
+                turnedTexture.SetPixelData(turned, 0);
+                turnedTexture.Apply(false);
+                turnedChanged = false;
+                turnedSentFrame = Time.frameCount;
             }
             using (PeopleMarker.Auto()) DrawPeople(world);
             using (CommunitiesMarker.Auto()) DrawCommunities(world, pixelsPerCell, tiled);
@@ -396,7 +479,7 @@ namespace KingdomWatch.Game
             camp.Fire.enabled = true;
             camp.Fire.transform.localPosition = new Vector3(OnArtPixel(centre.x), OnArtPixel(centre.y), 0f);
             camp.Fire.sortingOrder = OrderAt(cellY);
-            camp.Fire.sprite = art.Campfire[(int)(animationTime * DecorFramesPerSecond + index) % art.Campfire.Length];
+            camp.Fire.sprite = art.Campfire[(int)(animationTime * ArtSet.DecorFramesPerSecond + index) % art.Campfire.Length];
 
             var tents = Mathf.Clamp(Mathf.CeilToInt(communitySizes[index] / (float)PeoplePerTent), 1, MaxTents);
             for (var i = 0; i < camp.Tents.Length; i++) Place(camp.Tents[i], i < tents, centre, TentOffsets[i]);
@@ -603,7 +686,8 @@ namespace KingdomWatch.Game
         // the world is shown. Refresh swaps between them as the seasons turn,
         // which costs nothing; recolouring the map as a season spread across
         // it cost a frame's budget at 10,000x, where a season is over in
-        // about a second (#130). The spread still shows in the art itself.
+        // about a second (#130). The spread shows by choosing between two of
+        // them on the GPU instead (ShowSpread).
         private void BuildSeasonMaps()
         {
             seasonMaps = new Sprite[4];
@@ -621,6 +705,27 @@ namespace KingdomWatch.Game
                 texture.Apply(false, true);
                 seasonMaps[season] = season == 0 ? colourGround.sprite : Own(Sprite.Create(texture, new Rect(0, 0, width, height), Vector2.zero, 1f));
             }
+        }
+
+        // Lets the zoomed-out map show a season spreading, cell for cell as
+        // the art view does (#131): SeasonSpread.shader draws each cell from
+        // this season's map once it has turned and from last season's until
+        // then, reading which have turned from a byte a cell. Refresh sends
+        // that byte map again while the season is spreading and the map is
+        // zoomed out, at most every TurnedSendFrames frames.
+        private void ShowSpread()
+        {
+            if (spreadShader == null)
+            {
+                Debug.LogWarning("WorldView2D: no spreadShader set; the zoomed-out map changes season everywhere at once.");
+                return;
+            }
+            turnedTexture = Own(new Texture2D(width, height, TextureFormat.R8, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Season spread" });
+            turnedTexture.SetPixelData(turned, 0);
+            turnedTexture.Apply(false);
+            spreadMaterial = Own(new Material(spreadShader));
+            spreadMaterial.SetTexture(TurnedId, turnedTexture);
+            colourGround.sharedMaterial = spreadMaterial;
         }
 
         // One cell as the art view draws it, reduced to a colour: its ground,
@@ -695,6 +800,12 @@ namespace KingdomWatch.Game
             // map's edge they would hang half a cell outside it, so they are
             // clipped to the map.
             shoreMap = NewTilemap("Shore", new Vector3(-0.5f, -0.5f, 0f), -3, true);
+            // Over the ground and under everyone else. The standing scenery
+            // draws its northern rows first, so a tree hides the foot of the
+            // one behind it, as the renderers do by row.
+            flatMap = NewTilemap("Flat scenery", Vector3.zero, -2, false);
+            standingMap = NewTilemap("Standing scenery", Vector3.zero, -1, false);
+            standingMap.GetComponent<TilemapRenderer>().sortOrder = TilemapRenderer.SortOrder.TopLeft;
             var mask = new GameObject("Map clip").AddComponent<SpriteMask>();
             mask.transform.SetParent(tiledGround.transform, false);
             mask.sprite = unitSprite;
@@ -712,7 +823,7 @@ namespace KingdomWatch.Game
             chunksDown = (height + ChunkSize - 1) / ChunkSize;
             chunks = new Chunk[chunksAcross * chunksDown];
             landSeasons = new byte[width * height];
-            cornerSeasons = new byte[(width + 1) * (height + 1)];
+            turned = new byte[width * height];
 
             DrawnWater();
             // Corner (i, j) in world units, where y counts up from the south
@@ -734,10 +845,12 @@ namespace KingdomWatch.Game
         }
 
         // Builds the chunks the camera can see that are not built yet, a few
-        // per frame, and releases those well out of sight. A chunk one past
+        // per frame, and then releases those well out of sight. A chunk one past
         // the edge of the view is kept, so a pan back and forth does not
-        // rebuild it every time.
-        private void BuildWhatShows(SimulationTime now, bool withDecor)
+        // rebuild it every time. Keeping more out-of-sight chunks was tried,
+        // and cost more than releasing them: the season still spreads across
+        // every chunk kept, a steady cost every frame (#132).
+        private void BuildWhatShows(bool withDecor, bool sceneryTiled)
         {
             var halfHeight = sceneCamera.orthographicSize;
             var halfWidth = halfHeight * sceneCamera.aspect;
@@ -748,17 +861,9 @@ namespace KingdomWatch.Game
             var minRow = Mathf.FloorToInt((height - (centre.y + halfHeight)) / ChunkSize);
             var maxRow = Mathf.FloorToInt((height - (centre.y - halfHeight)) / ChunkSize);
 
-            for (var i = resident.Count - 1; i >= 0; i--)
-            {
-                var chunk = resident[i];
-                if (chunk.Column >= minColumn - 1 && chunk.Column <= maxColumn + 1 && chunk.Row >= minRow - 1 && chunk.Row <= maxRow + 1) continue;
-                Release(chunk);
-                resident.RemoveAt(i);
-            }
-
             // What needs building: a chunk not built, or built for the other
-            // side of DecorFrom. Nearest the middle of the screen first, so
-            // what is still filling in is at the edges.
+            // side of DecorFrom or LiveSceneryFrom. Nearest the middle of the
+            // screen first, so what is still filling in is at the edges.
             var centreColumn = Mathf.FloorToInt(centre.x / ChunkSize);
             var centreRow = Mathf.FloorToInt((height - centre.y) / ChunkSize);
             toBuild.Clear();
@@ -767,7 +872,7 @@ namespace KingdomWatch.Game
                 for (var column = Mathf.Max(0, minColumn); column <= Mathf.Min(chunksAcross - 1, maxColumn); column++)
                 {
                     var chunk = chunks[row * chunksAcross + column];
-                    if (chunk != null && chunk.WithDecor == withDecor) continue;
+                    if (chunk != null && chunk.WithDecor == withDecor && chunk.SceneryTiled == sceneryTiled) continue;
                     var dx = column - centreColumn;
                     var dy = row - centreRow;
                     toBuild.Add((column, row, dx * dx + dy * dy));
@@ -777,17 +882,29 @@ namespace KingdomWatch.Game
 
             // As many as fit the frame's budget, and always at least one.
             buildClock.Restart();
+            ChunksWaiting = toBuild.Count;
             foreach (var (column, row, _) in toBuild)
             {
+                ChunksWaiting--;
                 var old = chunks[row * chunksAcross + column];
-                if (old != null)
-                {
-                    Release(old);
-                    resident.Remove(old);
-                }
-                var chunk = Build(column, row, now, withDecor);
+                if (old != null) resident.Remove(old);
+                var chunk = Build(column, row, withDecor, sceneryTiled, old);
                 chunks[row * chunksAcross + column] = chunk;
                 resident.Add(chunk);
+                if (buildClock.Elapsed.TotalMilliseconds >= BuildBudgetMs) break;
+            }
+
+            // Then what is out of sight, in what the budget has left and at
+            // least one a frame: a step out from quarter size leaves over a
+            // hundred chunks behind, and releasing them all at once took an
+            // eighth of a second (#131). Out of sight, one kept a few frames
+            // longer shows nothing.
+            for (var i = resident.Count - 1; i >= 0; i--)
+            {
+                var chunk = resident[i];
+                if (chunk.Column >= minColumn - 1 && chunk.Column <= maxColumn + 1 && chunk.Row >= minRow - 1 && chunk.Row <= maxRow + 1) continue;
+                Release(chunk);
+                resident.RemoveAt(i);
                 if (buildClock.Elapsed.TotalMilliseconds >= BuildBudgetMs) break;
             }
         }
@@ -796,15 +913,27 @@ namespace KingdomWatch.Game
             (a, b) => a.Distance != b.Distance ? a.Distance.CompareTo(b.Distance)
                 : a.Row != b.Row ? a.Row.CompareTo(b.Row) : a.Column.CompareTo(b.Column);
 
-        // Lays one chunk's ground and shoreline in two block writes, and
-        // stands its scenery up from the pool.
-        private Chunk Build(int column, int row, SimulationTime now, bool withDecor)
+        // Lays one chunk's ground and shoreline in two block writes, and its
+        // scenery either in one or two more or on renderers from the pool.
+        // Over `old`, the chunk built there before, if any: the block writes
+        // cover its tiles, so only what they leave is cleared (#132).
+        private Chunk Build(int column, int row, bool withDecor, bool sceneryTiled, Chunk old)
         {
-            var chunk = new Chunk(column, row, width, height) { WithDecor = withDecor };
-            var season = SeasonAt(now, SeasonSpreadDays) == now.Season ? now.Season : (Season?)null;
-
+            using var chunkScope = ChunkMarker.Auto();
+            if (old != null)
+            {
+                ReturnScenery(old);
+                ClearScenery(old, !sceneryTiled, !HasFlatTiles(sceneryTiled, withDecor));
+            }
+            var chunk = new Chunk(column, row, width, height) { WithDecor = withDecor, SceneryTiled = sceneryTiled };
             var land = chunk.Land;
             if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
+            if (sceneryTiled)
+            {
+                SizeSceneryBlock(ref flatBlock, land);
+                SizeSceneryBlock(ref standingBlock, land);
+            }
+            CellsMarker.Begin();
             for (var t = 0; t < land.size.y; t++)
             {
                 var y = height - 1 - (land.yMin + t);
@@ -813,19 +942,38 @@ namespace KingdomWatch.Game
                     var x = land.xMin + s;
                     var index = y * width + x;
                     var hash = CellHash(x, y);
+                    var block = t * land.size.x + s;
+                    if (sceneryTiled)
+                    {
+                        // Empty unless StandScenery puts something there.
+                        var empty = new TileChangeData(new Vector3Int(x, land.yMin + t, 0), null, Color.white, Matrix4x4.identity);
+                        flatBlock[block] = empty;
+                        standingBlock[block] = empty;
+                    }
                     if (drawnWater[index])
                     {
-                        landBlock[t * land.size.x + s] = WaterTile(hash);
+                        landBlock[block] = WaterTile(hash);
                         continue;
                     }
-                    var cellSeason = SeasonAt(now, Lag(x, y));
-                    landSeasons[index] = (byte)cellSeason;
-                    landBlock[t * land.size.x + s] = GroundTile(cellSeason, hash);
-                    StandScenery(chunk, x, y, hash, cellSeason);
+                    var cellSeason = (Season)landSeasons[index];
+                    landBlock[block] = GroundTile(cellSeason, hash);
+                    StandScenery(chunk, x, y, block, hash, cellSeason);
                 }
             }
-            landMap.SetTilesBlock(land, landBlock);
+            CellsMarker.End();
+            using (SetLandMarker.Auto()) landMap.SetTilesBlock(land, landBlock);
+            if (sceneryTiled)
+            {
+                using (SetSceneryMarker.Auto())
+                {
+                    // Each tile carries its own nudge, which lock flags would
+                    // drop. Without decor the flat block is all empty.
+                    if (withDecor) flatMap.SetTiles(flatBlock, true);
+                    standingMap.SetTiles(standingBlock, true);
+                }
+            }
 
+            using var shoreScope = ShoreMarker.Auto();
             var shore = chunk.Shore;
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
             for (var j = 0; j < shore.size.y; j++)
@@ -833,78 +981,121 @@ namespace KingdomWatch.Game
                 for (var i = 0; i < shore.size.x; i++)
                 {
                     var index = (shore.yMin + j) * (width + 1) + shore.xMin + i;
-                    var cornerSeason = SeasonAt(now, Lag(shore.xMin + i, shore.yMin + j + height + 1));
-                    cornerSeasons[index] = (byte)cornerSeason;
+                    var cornerSeason = (Season)landSeasons[CornerOwner(shore.xMin + i, shore.yMin + j)];
                     shoreBlock[j * shore.size.x + i] = art.GroundOf(cornerSeason).Shore[shoreMasks[index]];
                 }
             }
             shoreMap.SetTilesBlock(shore, shoreBlock);
-
-            chunk.LaidSeason = season;
             return chunk;
+        }
+
+        // One scenery tile write per cell of `land`, reused from chunk to
+        // chunk; a chunk on the map's edge is smaller.
+        private static void SizeSceneryBlock(ref TileChangeData[] block, BoundsInt land)
+        {
+            if (block == null || block.Length != land.size.x * land.size.y) block = new TileChangeData[land.size.x * land.size.y];
         }
 
         // Clears one chunk's tiles and hands its scenery back to the pool.
         private void Release(Chunk chunk)
         {
+            using var releaseScope = ReleaseMarker.Auto();
             var land = chunk.Land;
             if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
             System.Array.Clear(landBlock, 0, landBlock.Length);
             landMap.SetTilesBlock(land, landBlock);
+            ClearScenery(chunk, true, true);
 
             var shore = chunk.Shore;
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
             System.Array.Clear(shoreBlock, 0, shoreBlock.Length);
             shoreMap.SetTilesBlock(shore, shoreBlock);
 
+            ReturnScenery(chunk);
+            chunks[chunk.Row * chunksAcross + chunk.Column] = null;
+        }
+
+        // Whether a chunk built so has flowers and sprouts in the flat
+        // scenery tilemap; below DecorFrom it writes nothing there.
+        private static bool HasFlatTiles(bool sceneryTiled, bool withDecor) => sceneryTiled && withDecor;
+
+        // Clears whichever of `chunk`'s scenery tilemaps it wrote to, of
+        // those asked for.
+        private void ClearScenery(Chunk chunk, bool standing, bool flat)
+        {
+            standing &= chunk.SceneryTiled;
+            flat &= HasFlatTiles(chunk.SceneryTiled, chunk.WithDecor);
+            if (!standing && !flat) return;
+            var land = chunk.Land;
+            if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
+            System.Array.Clear(landBlock, 0, landBlock.Length);
+            if (standing) standingMap.SetTilesBlock(land, landBlock);
+            if (flat) flatMap.SetTilesBlock(land, landBlock);
+        }
+
+        // Hands `chunk`'s scenery renderers back to the pool.
+        private void ReturnScenery(Chunk chunk)
+        {
             foreach (var renderer in chunk.Scenery)
             {
                 renderer.enabled = false;
                 sceneryPool.Push(renderer);
             }
-            chunks[chunk.Row * chunksAcross + chunk.Column] = null;
         }
 
-        // Releases every built chunk at once, as the view leaves the art.
-        private void ReleaseAll()
-        {
-            landMap.ClearAllTiles();
-            shoreMap.ClearAllTiles();
-            foreach (var chunk in resident)
-            {
-                foreach (var renderer in chunk.Scenery)
-                {
-                    renderer.enabled = false;
-                    sceneryPool.Push(renderer);
-                }
-                chunks[chunk.Row * chunksAcross + chunk.Column] = null;
-            }
-            resident.Clear();
-        }
-
-        // The tree, rock, bush or flower a land cell has, if any.
-        private void StandScenery(Chunk chunk, int x, int y, uint hash, Season season)
+        // The tree, rock, bush or flower a land cell has, if any: into the
+        // scenery blocks at `block` when the chunk's scenery is tiled, else
+        // on a renderer.
+        private void StandScenery(Chunk chunk, int x, int y, int block, uint hash, Season season)
         {
             var kind = grid[new WorldPosition(x, y)];
-            if (kind == TerrainKind.Forest) Stand(chunk, art.Trees[TreeOf(hash)], null, x, y, 0.3f, true);
-            else if (kind == TerrainKind.Hills) Stand(chunk, art.Rocks[hash % (uint)art.Rocks.Length], null, x, y, 0.3f, true);
+            if (kind == TerrainKind.Forest)
+            {
+                var tree = TreeOf(hash);
+                Stand(chunk, art.Trees[tree], art.TreeTiles[tree], x, y, block, 0.3f);
+            }
+            else if (kind == TerrainKind.Hills)
+            {
+                var rock = hash % (uint)art.Rocks.Length;
+                Stand(chunk, art.Rocks[rock], art.RockTiles[rock], x, y, block, 0.3f);
+            }
             else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash))
             {
                 // Mostly flowers and sprouts, now and then a bush.
                 var pick = hash >> 12;
                 if (pick % 8 == 0)
                 {
-                    Stand(chunk, art.Bushes[pick / 8 % (uint)art.Bushes.Length], null, x, y, 0.5f, true);
+                    var bush = pick / 8 % (uint)art.Bushes.Length;
+                    Stand(chunk, art.Bushes[bush], art.BushTiles[bush], x, y, block, 0.5f);
                     return;
                 }
-                // A pixel or two at quarter size: not worth a renderer there.
+                // A pixel or two at quarter size: not worth drawing there.
                 if (!chunk.WithDecor) return;
-                var frames = art.FlatDecor[pick / 8 % (uint)art.FlatDecor.Length];
-                var flower = Stand(chunk, frames[0], frames, x, y, 0.5f, false);
+                var decor = pick / 8 % (uint)art.FlatDecor.Length;
+                if (chunk.SceneryTiled)
+                {
+                    var tiles = art.FlatDecorTiles[decor];
+                    var tile = new TileChangeData(flatBlock[block].position, tiles[hash % (uint)tiles.Length], Color.white, Nudged(x, y, 0.5f));
+                    chunk.FlowerTiles.Add((tile, y * width + x));
+                    // Nothing flowers under snow.
+                    if (season != Season.Winter) flatBlock[block] = tile;
+                    return;
+                }
+                var frames = art.FlatDecor[decor];
+                var flower = Lay(chunk, frames[0], frames, x, y, 0.5f, false);
                 // Nothing flowers under snow.
                 flower.enabled = season != Season.Winter;
                 chunk.Flowers.Add((flower, y * width + x));
             }
+        }
+
+        // Something standing in a cell: a tile in the standing scenery when
+        // the chunk's scenery is tiled, else a renderer that sorts like
+        // people, so people walk behind it.
+        private void Stand(Chunk chunk, Sprite sprite, Tile tile, int x, int y, int block, float nudge)
+        {
+            if (chunk.SceneryTiled) standingBlock[block] = new TileChangeData(standingBlock[block].position, tile, Color.white, Nudged(x, y, nudge));
+            else Lay(chunk, sprite, null, x, y, nudge, true);
         }
 
         private TileBase GroundTile(Season season, uint hash)
@@ -926,92 +1117,182 @@ namespace KingdomWatch.Game
             return art.Water;
         }
 
-        // Lays each land cell and shoreline piece in its season. A new season
-        // does not arrive everywhere at once: each cell and corner lags it by
-        // up to SeasonSpreadDays, by its position, so snow creeps across the
-        // map over the first days of winter and melts the same way in spring.
-        // Sim time, so it pauses and speeds up with the simulation. Only the
-        // chunks that are built, only what changed in them, nothing at all in
-        // a chunk that has caught up, and each tilemap written once a frame:
-        // a tile at a time, a fast season change cost a tenth of a second.
+        // Every cell as the season at `now`, with nothing spreading: when the
+        // world is shown.
+        private void StartSpread(SimulationTime now)
+        {
+            spreadTo = now.Season;
+            spreadSeason = now.Ticks / TicksPerSeason;
+            for (var i = 0; i < landSeasons.Length; i++) landSeasons[i] = (byte)spreadTo;
+            for (var i = 0; i < turned.Length; i++) turned[i] = 255;
+        }
+
+        // Carries the season across the map (#131). When a new one begins it
+        // starts at SpreadSeeds random cells; then, SpreadStepsPerDay times a
+        // sim day, each cell at its edge passes it to each neighbour with
+        // SpreadChance, and stays at the edge while any neighbour has not
+        // turned. So snow creeps across the land in ragged fronts and melts
+        // back the same way. Sim time, so it pauses and speeds up with the
+        // simulation. Each step touches only the edge, so the work goes with
+        // what turns, not with the size of the map. The draws are seeded by
+        // the season's number, so a world spreads the same way every run, and
+        // differently every season. Presentation only: nothing here feeds the
+        // simulation. A cell that turns in a built chunk queues its tiles for
+        // LayLand.
+        private void Spread(SimulationTime now)
+        {
+            var season = now.Ticks / TicksPerSeason;
+            if (season != spreadSeason) BeginSpread(now, season);
+            var due = (long)(now.Ticks % TicksPerSeason / (float)SimulationTime.TicksPerDay * SpreadStepsPerDay);
+            while (spreadSteps < due && spreadEdge.Count > 0)
+            {
+                nextEdge.Clear();
+                foreach (var cell in spreadEdge)
+                {
+                    int x = cell % width, y = cell / width;
+                    var open = false;
+                    if (x > 0) open |= Reach(cell - 1);
+                    if (x < width - 1) open |= Reach(cell + 1);
+                    if (y > 0) open |= Reach(cell - width);
+                    if (y < height - 1) open |= Reach(cell + width);
+                    if (open) nextEdge.Add(cell);
+                }
+                (spreadEdge, nextEdge) = (nextEdge, spreadEdge);
+                spreadSteps++;
+            }
+        }
+
+        // Whether `cell` is still to turn after this step's draw for it.
+        private bool Reach(int cell)
+        {
+            if (landSeasons[cell] == (byte)spreadTo) return false;
+            if (spreadRandom.NextDouble() >= SpreadChance) return true;
+            Turn(cell);
+            nextEdge.Add(cell);
+            return false;
+        }
+
+        // A new season's spread from fresh places. A spread still under way
+        // finishes at once first, so no cell is ever more than one season
+        // behind; at SpreadStepsPerDay one finishes in about a third of a
+        // season, so that is for a clock that jumps.
+        private void BeginSpread(SimulationTime now, long season)
+        {
+            if (spreadEdge.Count > 0)
+                for (var i = 0; i < landSeasons.Length; i++)
+                    if (landSeasons[i] != (byte)spreadTo) Turn(i);
+
+            spreadTo = now.Season;
+            spreadSeason = season;
+            spreadSteps = 0;
+            spreadRandom = new System.Random(unchecked((int)season * 7919 + width * 31 + height));
+            System.Array.Clear(turned, 0, turned.Length);
+            turnedChanged = true;
+            // The zoomed-out map shows the fresh start at once, not a few
+            // frames of the new season everywhere.
+            turnedSentFrame = Time.frameCount - TurnedSendFrames;
+            spreadEdge.Clear();
+            for (var i = 0; i < SpreadSeeds; i++)
+            {
+                var cell = spreadRandom.Next(landSeasons.Length);
+                if (landSeasons[cell] == (byte)spreadTo) continue;
+                Turn(cell);
+                spreadEdge.Add(cell);
+            }
+        }
+
+        // One cell to spreadTo: its season, the zoomed-out map's byte, and,
+        // where its chunk is built, its ground tile, the shoreline pieces it
+        // owns and its flowers.
+        private void Turn(int cell)
+        {
+            landSeasons[cell] = (byte)spreadTo;
+            int x = cell % width, y = cell / width;
+            turned[(height - 1 - y) * width + x] = 255;
+            turnedChanged = true;
+
+            var chunk = ChunkAt(x, y);
+            if (chunk != null && !drawnWater[cell])
+            {
+                changedCells.Add(new Vector3Int(x, height - 1 - y, 0));
+                changedTiles.Add(GroundTile(spreadTo, CellHash(x, y)));
+                chunk.FlowersStale = true;
+            }
+
+            // The corners this cell owns (see CornerOwner): the one at its
+            // north-west in world units, and along the map's east and north
+            // edges the ones past it.
+            TurnCorner(x, height - y);
+            if (x == width - 1) TurnCorner(width, height - y);
+            if (y == height - 1)
+            {
+                TurnCorner(x, 0);
+                if (x == width - 1) TurnCorner(width, 0);
+            }
+        }
+
+        private void TurnCorner(int i, int j)
+        {
+            // A corner is laid by the chunk whose cell lies north-east of it
+            // (see Chunk), not by its owner's.
+            if (ChunkAt(Mathf.Min(i, width - 1), Mathf.Clamp(height - 1 - j, 0, height - 1)) == null) return;
+            changedCorners.Add(new Vector3Int(i, j, 0));
+            changedCornerTiles.Add(art.GroundOf(spreadTo).Shore[shoreMasks[j * (width + 1) + i]]);
+        }
+
+        // The built chunk holding a cell, or null.
+        private Chunk ChunkAt(int x, int y) => chunks[y / ChunkSize * chunksAcross + x / ChunkSize];
+
+        // The cell whose season a corner's shoreline piece shows: the one
+        // south-east of it, clamped to the map, so the piece turns with the
+        // ground it lies on. Corner (i, j) is in world units, y counting up
+        // from the south edge.
+        private int CornerOwner(int i, int j) => Mathf.Clamp(height - j, 0, height - 1) * width + Mathf.Min(i, width - 1);
+
+        // Moves the season on (Spread) and writes what it turned in the built
+        // chunks to the tilemaps, each once a frame - a tile at a time, a fast
+        // season change cost a tenth of a second - and shows or hides the
+        // flowers it reached. Zoomed out too, while the art is hidden: the
+        // chunks are kept for coming back in, so they must not fall behind.
         private void LayLand(SimulationTime now)
         {
-            var settled = SeasonAt(now, SeasonSpreadDays) == now.Season;
+            Spread(now);
+            WriteChanged(landMap, changedCells, changedTiles);
+            WriteChanged(shoreMap, changedCorners, changedCornerTiles);
             changedCells.Clear();
             changedTiles.Clear();
-            foreach (var chunk in resident)
-            {
-                if (settled && chunk.LaidSeason == now.Season) continue;
-
-                var land = chunk.Land;
-                for (var t = land.yMin; t < land.yMax; t++)
-                {
-                    var y = height - 1 - t;
-                    for (var x = land.xMin; x < land.xMax; x++)
-                    {
-                        var index = y * width + x;
-                        if (drawnWater[index]) continue;
-                        var season = SeasonAt(now, Lag(x, y));
-                        if (landSeasons[index] == (byte)season) continue;
-                        landSeasons[index] = (byte)season;
-                        changedCells.Add(new Vector3Int(x, t, 0));
-                        changedTiles.Add(GroundTile(season, CellHash(x, y)));
-                    }
-                }
-            }
-            WriteChanged(landMap);
+            changedCorners.Clear();
+            changedCornerTiles.Clear();
 
             foreach (var chunk in resident)
             {
-                if (settled && chunk.LaidSeason == now.Season) continue;
+                if (!chunk.FlowersStale) continue;
+                chunk.FlowersStale = false;
 
-                var shore = chunk.Shore;
-                for (var j = shore.yMin; j < shore.yMax; j++)
-                {
-                    for (var i = shore.xMin; i < shore.xMax; i++)
-                    {
-                        var index = j * (width + 1) + i;
-                        var season = SeasonAt(now, Lag(i, j + height + 1));
-                        if (cornerSeasons[index] == (byte)season) continue;
-                        cornerSeasons[index] = (byte)season;
-                        changedCells.Add(new Vector3Int(i, j, 0));
-                        changedTiles.Add(art.GroundOf(season).Shore[shoreMasks[index]]);
-                    }
-                }
-            }
-            WriteChanged(shoreMap);
-
-            foreach (var chunk in resident)
-            {
-                if (settled && chunk.LaidSeason == now.Season) continue;
-
-                // Nothing flowers under snow.
+                // Nothing flowers under snow; a tiled flower is written only
+                // when it comes or goes.
                 foreach (var (renderer, cell) in chunk.Flowers) renderer.enabled = landSeasons[cell] != (byte)Season.Winter;
-                chunk.LaidSeason = settled ? now.Season : (Season?)null;
+                foreach (var (tile, cell) in chunk.FlowerTiles)
+                {
+                    var blooming = landSeasons[cell] != (byte)Season.Winter;
+                    if (flatMap.HasTile(tile.position) == blooming) continue;
+                    var change = tile;
+                    if (!blooming) change.tile = null;
+                    changedFlowers.Add(change);
+                }
             }
+            // As in Build, each flower keeps its nudge. Allocates, and only on
+            // a frame where a flower came or went.
+            if (changedFlowers.Count > 0) flatMap.SetTiles(changedFlowers.ToArray(), true);
+            changedFlowers.Clear();
         }
 
-        // Writes what LayLand collected to one tilemap in one call, and empties
-        // the lists for the next. Allocates the call's arrays, and only on a
-        // frame where a season is still spreading.
-        private void WriteChanged(Tilemap map)
+        // Writes what the spread turned to one tilemap in one call. Allocates
+        // the call's arrays, and only on a frame where something turned.
+        private static void WriteChanged(Tilemap map, List<Vector3Int> cells, List<TileBase> tiles)
         {
-            if (changedCells.Count > 0) map.SetTiles(changedCells.ToArray(), changedTiles.ToArray());
-            changedCells.Clear();
-            changedTiles.Clear();
+            if (cells.Count > 0) map.SetTiles(cells.ToArray(), tiles.ToArray());
         }
-
-        // The season `lagDays` before `now`; the first season before the clock
-        // has run that long.
-        private static Season SeasonAt(SimulationTime now, float lagDays)
-        {
-            var ticks = now.Ticks - (long)(lagDays * SimulationTime.TicksPerDay);
-            return new SimulationTime(ticks > 0 ? ticks : 0).Season;
-        }
-
-        // How many days behind the season a cell or corner is: its own hash,
-        // not CellHash, so the spread does not follow where the flowers are.
-        private static float Lag(int x, int y) => CellHash(x + 7919, y - 7919) % 1024u / 1024f * SeasonSpreadDays;
 
         // Swaying grass and flickering campfires, on a clock that stops while
         // the simulation is paused. Presentation only.
@@ -1020,7 +1301,7 @@ namespace KingdomWatch.Game
             var time = animationTime;
             foreach (var chunk in resident)
                 foreach (var (renderer, frames, phase) in chunk.Animated)
-                    renderer.sprite = frames[(int)(time * DecorFramesPerSecond + phase) % frames.Length];
+                    renderer.sprite = frames[(int)(time * ArtSet.DecorFramesPerSecond + phase) % frames.Length];
         }
 
         // A pooled scenery renderer, hidden until a chunk stands it up.
@@ -1046,24 +1327,39 @@ namespace KingdomWatch.Game
             return map;
         }
 
-        // Something standing in a cell, nudged within it by up to `nudge` of a
-        // cell so a forest is not a grid, on a renderer from the pool. Upright
-        // things sort like people, so people walk behind them; flat ones lie
-        // under everyone. `frames`, when it has more than one, loops.
-        private SpriteRenderer Stand(Chunk chunk, Sprite sprite, Sprite[] frames, int x, int y, float nudge, bool upright)
+        // Something in a cell, nudged within it (see Jitter), on a renderer
+        // from the pool. Upright things sort like people, so people walk
+        // behind them; flat ones lie under everyone. `frames`, when it has
+        // more than one, loops.
+        private SpriteRenderer Lay(Chunk chunk, Sprite sprite, Sprite[] frames, int x, int y, float nudge, bool upright)
         {
             var hash = CellHash(x, y);
-            var jitterX = ((hash & 0xff) / 255f - 0.5f) * nudge;
-            var jitterY = (((hash >> 8) & 0xff) / 255f - 0.5f) * nudge;
-            var cellY = y + 0.5f + jitterY;
+            var jitter = Jitter(hash, nudge);
+            var cellY = y + 0.5f + jitter.y;
             var renderer = sceneryPool.Count > 0 ? sceneryPool.Pop() : NewScenery();
             renderer.enabled = true;
-            renderer.transform.localPosition = new Vector3(OnArtPixel(x + 0.5f + jitterX), OnArtPixel(height - cellY), 0f);
+            renderer.transform.localPosition = new Vector3(OnArtPixel(x + 0.5f + jitter.x), OnArtPixel(height - cellY), 0f);
             renderer.sprite = sprite;
             renderer.sortingOrder = upright ? OrderAt(cellY) : -2;
             chunk.Scenery.Add(renderer);
             if (frames != null && frames.Length > 1) chunk.Animated.Add((renderer, frames, hash % (uint)frames.Length));
             return renderer;
+        }
+
+        // How far something stands from the middle of its cell, by up to
+        // `nudge` of a cell each way, so a forest is not a grid; in cells,
+        // with y counting south as Core's rows do.
+        private static Vector2 Jitter(uint hash, float nudge) =>
+            new Vector2(((hash & 0xff) / 255f - 0.5f) * nudge, (((hash >> 8) & 0xff) / 255f - 0.5f) * nudge);
+
+        // The same nudge as Lay gives a renderer, as a tile's transform: from
+        // the middle of the tile's cell to where the renderer would stand.
+        private Matrix4x4 Nudged(int x, int y, float nudge)
+        {
+            var jitter = Jitter(CellHash(x, y), nudge);
+            var middleY = height - y - 0.5f;
+            var offset = new Vector3(OnArtPixel(x + 0.5f + jitter.x) - (x + 0.5f), OnArtPixel(middleY - jitter.y) - middleY, 0f);
+            return Matrix4x4.Translate(offset);
         }
 
         // Oak, spruce or fruit tree, medium half the time and small or big
@@ -1194,8 +1490,8 @@ namespace KingdomWatch.Game
         }
 
         // One square of the art view's map while it is built: where its tiles
-        // are, the scenery standing on it, and the season it has caught up to
-        // (null while one is spreading).
+        // are, the scenery standing on it, and how far a spreading season has
+        // reached across it.
         private sealed class Chunk
         {
             public Chunk(int column, int row, int mapWidth, int mapHeight)
@@ -1222,12 +1518,23 @@ namespace KingdomWatch.Game
             public int Row { get; }
             public BoundsInt Land { get; }
             public BoundsInt Shore { get; }
-            public Season? LaidSeason;
+
+            // Whether a land cell turned this frame, so its flowers may have
+            // come or gone.
+            public bool FlowersStale;
 
             // Whether its flowers and sprouts were stood up (see DecorFrom).
             public bool WithDecor;
+
+            // Whether its scenery is tiles rather than renderers (see
+            // LiveSceneryFrom): FlowerTiles when it is, Scenery, Flowers and
+            // Animated when it is not.
+            public bool SceneryTiled;
             public readonly List<SpriteRenderer> Scenery = new List<SpriteRenderer>();
             public readonly List<(SpriteRenderer Renderer, int Cell)> Flowers = new List<(SpriteRenderer, int)>();
+
+            // Each flower's tile as it is when blooming, and its cell.
+            public readonly List<(TileChangeData Tile, int Cell)> FlowerTiles = new List<(TileChangeData, int)>();
             public readonly List<(SpriteRenderer Renderer, Sprite[] Frames, uint Phase)> Animated = new List<(SpriteRenderer, Sprite[], uint)>();
         }
 
