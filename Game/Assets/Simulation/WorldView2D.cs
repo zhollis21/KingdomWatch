@@ -60,8 +60,12 @@ namespace KingdomWatch.Game
         // Milliseconds of chunk building a frame may spend, at least one chunk
         // whatever it costs, so a zoom or a fast pan fills in over a few
         // frames rather than hitching on one. The colour map lies under the
-        // art, so a chunk not built yet still shows.
-        private const double BuildBudgetMs = 4.0;
+        // art, so a chunk not built yet still shows. At quarter size the frame
+        // mostly waits on the GPU, so building hides in that wait: on desktop
+        // 6 ms filled quarter size in 0.51 s against 4 ms's 0.62 s, with
+        // frames still under 16.7 ms; 8 ms saved 0.05 s more but not the
+        // frames (#132).
+        private const double BuildBudgetMs = 6.0;
 
         // Screen pixels per cell from which flowers and sprouts are stood up:
         // half size and bigger. At quarter size they are a pixel or two, and
@@ -843,7 +847,9 @@ namespace KingdomWatch.Game
         // Builds the chunks the camera can see that are not built yet, a few
         // per frame, and then releases those well out of sight. A chunk one past
         // the edge of the view is kept, so a pan back and forth does not
-        // rebuild it every time.
+        // rebuild it every time. Keeping more out-of-sight chunks was tried,
+        // and cost more than releasing them: the season still spreads across
+        // every chunk kept, a steady cost every frame (#132).
         private void BuildWhatShows(bool withDecor, bool sceneryTiled)
         {
             var halfHeight = sceneCamera.orthographicSize;
@@ -881,12 +887,8 @@ namespace KingdomWatch.Game
             {
                 ChunksWaiting--;
                 var old = chunks[row * chunksAcross + column];
-                if (old != null)
-                {
-                    Release(old);
-                    resident.Remove(old);
-                }
-                var chunk = Build(column, row, withDecor, sceneryTiled);
+                if (old != null) resident.Remove(old);
+                var chunk = Build(column, row, withDecor, sceneryTiled, old);
                 chunks[row * chunksAcross + column] = chunk;
                 resident.Add(chunk);
                 if (buildClock.Elapsed.TotalMilliseconds >= BuildBudgetMs) break;
@@ -912,9 +914,17 @@ namespace KingdomWatch.Game
                 : a.Row != b.Row ? a.Row.CompareTo(b.Row) : a.Column.CompareTo(b.Column);
 
         // Lays one chunk's ground and shoreline in two block writes, and its
-        // scenery either in two more or on renderers from the pool.
-        private Chunk Build(int column, int row, bool withDecor, bool sceneryTiled)
+        // scenery either in one or two more or on renderers from the pool.
+        // Over `old`, the chunk built there before, if any: the block writes
+        // cover its tiles, so only what they leave is cleared (#132).
+        private Chunk Build(int column, int row, bool withDecor, bool sceneryTiled, Chunk old)
         {
+            using var chunkScope = ChunkMarker.Auto();
+            if (old != null)
+            {
+                ReturnScenery(old);
+                ClearScenery(old, !sceneryTiled, !HasFlatTiles(sceneryTiled, withDecor));
+            }
             var chunk = new Chunk(column, row, width, height) { WithDecor = withDecor, SceneryTiled = sceneryTiled };
             var land = chunk.Land;
             if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
@@ -923,7 +933,6 @@ namespace KingdomWatch.Game
                 SizeSceneryBlock(ref flatBlock, land);
                 SizeSceneryBlock(ref standingBlock, land);
             }
-            using var chunkScope = ChunkMarker.Auto();
             CellsMarker.Begin();
             for (var t = 0; t < land.size.y; t++)
             {
@@ -957,8 +966,9 @@ namespace KingdomWatch.Game
             {
                 using (SetSceneryMarker.Auto())
                 {
-                    // Each tile carries its own nudge, which lock flags would drop.
-                    flatMap.SetTiles(flatBlock, true);
+                    // Each tile carries its own nudge, which lock flags would
+                    // drop. Without decor the flat block is all empty.
+                    if (withDecor) flatMap.SetTiles(flatBlock, true);
                     standingMap.SetTiles(standingBlock, true);
                 }
             }
@@ -994,23 +1004,43 @@ namespace KingdomWatch.Game
             if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
             System.Array.Clear(landBlock, 0, landBlock.Length);
             landMap.SetTilesBlock(land, landBlock);
-            if (chunk.SceneryTiled)
-            {
-                flatMap.SetTilesBlock(land, landBlock);
-                standingMap.SetTilesBlock(land, landBlock);
-            }
+            ClearScenery(chunk, true, true);
 
             var shore = chunk.Shore;
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
             System.Array.Clear(shoreBlock, 0, shoreBlock.Length);
             shoreMap.SetTilesBlock(shore, shoreBlock);
 
+            ReturnScenery(chunk);
+            chunks[chunk.Row * chunksAcross + chunk.Column] = null;
+        }
+
+        // Whether a chunk built so has flowers and sprouts in the flat
+        // scenery tilemap; below DecorFrom it writes nothing there.
+        private static bool HasFlatTiles(bool sceneryTiled, bool withDecor) => sceneryTiled && withDecor;
+
+        // Clears whichever of `chunk`'s scenery tilemaps it wrote to, of
+        // those asked for.
+        private void ClearScenery(Chunk chunk, bool standing, bool flat)
+        {
+            standing &= chunk.SceneryTiled;
+            flat &= HasFlatTiles(chunk.SceneryTiled, chunk.WithDecor);
+            if (!standing && !flat) return;
+            var land = chunk.Land;
+            if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
+            System.Array.Clear(landBlock, 0, landBlock.Length);
+            if (standing) standingMap.SetTilesBlock(land, landBlock);
+            if (flat) flatMap.SetTilesBlock(land, landBlock);
+        }
+
+        // Hands `chunk`'s scenery renderers back to the pool.
+        private void ReturnScenery(Chunk chunk)
+        {
             foreach (var renderer in chunk.Scenery)
             {
                 renderer.enabled = false;
                 sceneryPool.Push(renderer);
             }
-            chunks[chunk.Row * chunksAcross + chunk.Column] = null;
         }
 
         // The tree, rock, bush or flower a land cell has, if any: into the
