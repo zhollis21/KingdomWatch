@@ -89,6 +89,15 @@ namespace KingdomWatch.Game
         private static readonly ProfilerMarker AnimateMarker = new ProfilerMarker("KW.View.Animate");
         private static readonly ProfilerMarker PeopleMarker = new ProfilerMarker("KW.View.People");
         private static readonly ProfilerMarker CommunitiesMarker = new ProfilerMarker("KW.View.Communities");
+        // Inside BuildChunks: one chunk built, its parts, and one released.
+        // Tilemap writes have no markers of their own, so without these they
+        // all read as BuildChunks' self time.
+        private static readonly ProfilerMarker ChunkMarker = new ProfilerMarker("KW.View.Build.Chunk");
+        private static readonly ProfilerMarker CellsMarker = new ProfilerMarker("KW.View.Build.Cells");
+        private static readonly ProfilerMarker SetLandMarker = new ProfilerMarker("KW.View.Build.SetLand");
+        private static readonly ProfilerMarker SetSceneryMarker = new ProfilerMarker("KW.View.Build.SetScenery");
+        private static readonly ProfilerMarker ShoreMarker = new ProfilerMarker("KW.View.Build.Shore");
+        private static readonly ProfilerMarker ReleaseMarker = new ProfilerMarker("KW.View.Build.Release");
 
         // A community marker's side in UI-scaled pixels, whatever the zoom.
         private const float CommunityMarkerSize = 14f;
@@ -914,6 +923,8 @@ namespace KingdomWatch.Game
                 SizeSceneryBlock(ref flatBlock, land);
                 SizeSceneryBlock(ref standingBlock, land);
             }
+            using var chunkScope = ChunkMarker.Auto();
+            CellsMarker.Begin();
             for (var t = 0; t < land.size.y; t++)
             {
                 var y = height - 1 - (land.yMin + t);
@@ -940,15 +951,19 @@ namespace KingdomWatch.Game
                     StandScenery(chunk, x, y, block, hash, cellSeason);
                 }
             }
-            landMap.SetTilesBlock(land, landBlock);
+            CellsMarker.End();
+            using (SetLandMarker.Auto()) landMap.SetTilesBlock(land, landBlock);
             if (sceneryTiled)
             {
-                // Each tile carries its own nudge, which lock flags would drop.
-                flatMap.SetTiles(flatBlock, true);
-                standingMap.SetTiles(standingBlock, true);
+                using (SetSceneryMarker.Auto())
+                {
+                    // Each tile carries its own nudge, which lock flags would drop.
+                    flatMap.SetTiles(flatBlock, true);
+                    standingMap.SetTiles(standingBlock, true);
+                }
             }
 
-
+            using var shoreScope = ShoreMarker.Auto();
             var shore = chunk.Shore;
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
             for (var j = 0; j < shore.size.y; j++)
@@ -974,6 +989,7 @@ namespace KingdomWatch.Game
         // Clears one chunk's tiles and hands its scenery back to the pool.
         private void Release(Chunk chunk)
         {
+            using var releaseScope = ReleaseMarker.Auto();
             var land = chunk.Land;
             if (landBlock == null || landBlock.Length != land.size.x * land.size.y) landBlock = new TileBase[land.size.x * land.size.y];
             System.Array.Clear(landBlock, 0, landBlock.Length);

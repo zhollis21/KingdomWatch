@@ -58,7 +58,9 @@ A scripted run gives three things. Read all three before saying anything:
   Profiler keeps only the last 2000 frames of a capture. A capture ends
   with its stop's hold, so the screenshot and its save are never in it. Each has the stop's
   frame-time stats, then our own `KW.*` markers in full (`KW.View.BuildChunks`, `KW.View.LayLand`,
-  `KW.View.Animate`, `KW.View.People`, `KW.Simulate`...), then the top Unity
+  `KW.View.Animate`, `KW.View.People`, `KW.Simulate`...; `KW.View.Build.*`
+  split `BuildChunks` into one chunk's parts and one release, and
+  `KW.View.Build.Chunk`'s calls are the chunks built), then the top Unity
   markers by total and self time, over all frames and over only the frames
   over the 16.7 ms budget. Self time says where time is actually spent; total
   says under which call.
