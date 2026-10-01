@@ -57,10 +57,11 @@ namespace KingdomWatch.Game
 
         // Clamps and applies. Called every frame, so a rotation or resize
         // re-clamps; the first call frames the whole map.
-        // `reserved` is the panel's footprint in GUI coordinates (origin top-left, y down).
-        public void Apply(Rect reserved)
+        // `reserved` is the panel's footprint in GUI coordinates (origin top-left, y down),
+        // and `topInset` the height of the bar across the whole top of the screen.
+        public void Apply(Rect reserved, float topInset)
         {
-            var home = HomeFraming(reserved, out var homeScale);
+            var home = HomeFraming(reserved, topInset, out var homeScale);
             FarthestPixelsPerCell = homeScale;
             if (!framed)
             {
@@ -84,6 +85,18 @@ namespace KingdomWatch.Game
             camera.orthographic = true;
             camera.orthographicSize = Screen.height / (2f * shown);
             camera.transform.position = new Vector3(at.x, at.y, -10f);
+        }
+
+        // What the camera shows, in world units, as of the last Apply: the
+        // panel's minimap draws it.
+        public Rect VisibleRect
+        {
+            get
+            {
+                var half = camera.orthographicSize;
+                var at = camera.transform.position;
+                return new Rect(at.x - half * camera.aspect, at.y - half, 2f * half * camera.aspect, 2f * half);
+            }
         }
 
         // Moves the map with a finger or cursor: `delta` is in screen pixels.
@@ -171,13 +184,13 @@ namespace KingdomWatch.Game
         // The whole map, with a one-cell margin, fitted into whichever part of
         // the screen the panel leaves larger: beside it in landscape, below it
         // in portrait. Returns the camera centre that puts the map there.
-        private Vector2 HomeFraming(Rect reserved, out float scale)
+        private Vector2 HomeFraming(Rect reserved, float topInset, out float scale)
         {
             float screenWidth = Screen.width, screenHeight = Screen.height;
             var fitWidth = mapWidth + 2f;
             var fitHeight = mapHeight + 2f;
 
-            var beside = Rect.MinMaxRect(reserved.xMax, 0f, screenWidth, screenHeight);
+            var beside = Rect.MinMaxRect(reserved.xMax, topInset, screenWidth, screenHeight);
             var below = Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight);
             var besideScale = Fit(beside, fitWidth, fitHeight);
             var belowScale = Fit(below, fitWidth, fitHeight);

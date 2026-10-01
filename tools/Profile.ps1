@@ -28,6 +28,11 @@
 .PARAMETER Height
     Window height in pixels.
 
+.PARAMETER HudDemo
+    Launches the player with -hud-demo: someone is selected and the debug
+    card is open, so the screenshots show those parts of the panel. Leave it
+    off when comparing frame times with an earlier run.
+
 .PARAMETER SkipBuild
     Runs the player already in Game/Builds/Windows instead of building it.
 
@@ -45,7 +50,8 @@
 param(
     [int]$Width = 2400,
     [int]$Height = 1080,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$HudDemo
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,6 +109,7 @@ if (-not (Test-Path $player)) { throw "No player at $player; run without -SkipBu
 Write-Host "Flying the route at ${Width}x${Height}..."
 $started = Get-Date
 $arguments = @('-scripted-run', $captures, '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-logFile', (Join-Path $captures 'player.log'))
+if ($HudDemo) { $arguments += '-hud-demo' }
 Invoke-Program $player $arguments | Out-Null
 
 # The run's log names it; its captures, one per stop, share its stamp.

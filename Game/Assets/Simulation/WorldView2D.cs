@@ -584,6 +584,24 @@ namespace KingdomWatch.Game
             return marker != null;
         }
 
+        // The map's colours in spring, sampled down to `size` pixels square,
+        // for the panel's minimap (#128). Row 0 is the south edge, as world y
+        // runs up, so the picture reads the same way up as the map.
+        public Texture2D MakeMinimap(int size)
+        {
+            // Copied on the GPU: the map was dropped from main memory once uploaded.
+            var target = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.ARGB32);
+            var previous = RenderTexture.active;
+            Graphics.Blit(terrainTexture, target);
+            RenderTexture.active = target;
+            var minimap = Own(new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp });
+            minimap.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+            minimap.Apply(false);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            return minimap;
+        }
+
         // Everything drawn within `radius` screen pixels of `screenPoint` in the
         // current layer, nearest first; ties go to the lower id so repeated
         // taps cycle in a fixed order.

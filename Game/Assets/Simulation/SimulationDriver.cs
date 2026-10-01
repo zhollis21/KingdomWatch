@@ -4,16 +4,18 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.EnhancedTouch;
 using EntityId = KingdomWatch.Core.Data.EntityId;
+using Object = UnityEngine.Object;
 
 namespace KingdomWatch.Game
 {
     // Runs Core's M1 world inside the player (#72): World.M1, the same world
     // the harness builds (Harness/WorldRun.cs), so a year's hash here
     // can be compared with `dotnet run --project Harness -- --seed N --years Y`.
-    // Only the clock is driven from here; the camera, the layers and the
-    // selection read, and nothing they show feeds back into the simulation
+    // Only the clock is driven from here; the camera, the layers, the panel and
+    // the selection read, and nothing they show feeds back into the simulation
     // (section 4).
     public sealed class SimulationDriver : MonoBehaviour
     {
@@ -27,6 +29,7 @@ namespace KingdomWatch.Game
         private static readonly ProfilerMarker SimulateMarker = new ProfilerMarker("KW.Simulate");
         private static readonly ProfilerMarker YearHashMarker = new ProfilerMarker("KW.YearHash");
         private static readonly ProfilerMarker InputMarker = new ProfilerMarker("KW.Input");
+        private static readonly ProfilerMarker HudMarker = new ProfilerMarker("KW.Hud");
 
         public int seed = 1;
         public WorldView2D view;
@@ -34,9 +37,15 @@ namespace KingdomWatch.Game
         private World world;
         private CameraRig rig;
         private ViewInput input;
+        private Hud hud;
+        private readonly HudState hudState = new HudState();
+        private readonly List<Object> hudOwned = new List<Object>();
+        private readonly List<Vector2> settlementPositions = new List<Vector2>();
+        private readonly List<Vector2> bandPositions = new List<Vector2>();
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
         // Flies the camera in place of input when launched with -scripted-run.
         private ScriptedRun scriptedRun;
+        private bool demoSelect;
 #endif
         // 1000x, about two days a second: fast enough to see a year go by.
         private int speedStep = 4;
@@ -47,19 +56,19 @@ namespace KingdomWatch.Game
         private long hashedYear = -1;
         private ulong yearHash;
 
-        private const float PanelWidth = 360f;
-        private const float PanelHeight = 360f;
-        private const float PanelMargin = 12f;
-
-        // Scaled by the shorter side, so the panel fits a phone held either way.
+        // Scaled by the shorter side, so a tap's reach feels the same on a
+        // phone held either way. The panel's own scale is the Hud's.
         private float UiScale => Mathf.Max(1, Mathf.Min(Screen.width, Screen.height) / 720f);
-
-        // The panel's footprint in screen pixels (GUI coordinates), margin included.
-        private Rect PanelScreenRect => new Rect(0f, 0f, (PanelWidth + 2f * PanelMargin) * UiScale, (PanelHeight + 2f * PanelMargin) * UiScale);
 
         private void OnEnable() => EnhancedTouchSupport.Enable();
 
         private void OnDisable() => EnhancedTouchSupport.Disable();
+
+        private void OnDestroy()
+        {
+            if (hud != null) hud.Dispose();
+            foreach (var item in hudOwned) if (item != null) Destroy(item);
+        }
 
         private void Start()
         {
@@ -75,13 +84,32 @@ namespace KingdomWatch.Game
             view.Show(world);
             rig = new CameraRig(view.sceneCamera, world.Grid.Width, world.Grid.Height);
             input = new ViewInput(rig, view);
+            hud = new Hud(HudArt.Load(hudOwned) ?? HudArt.Flat(hudOwned), Commands(), view, new Vector2(world.Grid.Width, world.Grid.Height));
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).
-            rig.Apply(PanelScreenRect);
+            rig.Apply(hud.Reserved, hud.TopInset);
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             scriptedRun = ScriptedRun.FromCommandLine(rig, view, world);
+            // -hud-demo selects someone and opens the debug card, so a run's
+            // screenshots show those parts of the panel too.
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-hud-demo") >= 0)
+            {
+                hud.ToggleDebug();
+                demoSelect = true;
+            }
 #endif
         }
+
+        private HudCommands Commands() => new HudCommands
+        {
+            Slower = () => { if (speedStep > 0) speedStep--; },
+            Faster = () => { if (speedStep < SpeedSteps.Length - 1) speedStep++; },
+            TogglePause = () => paused = !paused,
+            WholeMap = () => input.WholeMap(),
+            ToggleFollow = () => input.ToggleFollow(UiScale),
+            Deselect = () => input.Deselect(),
+            MoveTo = point => input.MoveTo(point),
+        };
 
         private void Update()
         {
@@ -115,18 +143,42 @@ namespace KingdomWatch.Game
         private void LateUpdate()
         {
             if (view == null || rig == null) return;
-            var reserved = PanelScreenRect;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (scriptedRun != null) scriptedRun.Step(Time.unscaledDeltaTime);
             else
 #endif
-            using (InputMarker.Auto()) input.Process(reserved, UiScale, Time.unscaledDeltaTime);
+            using (InputMarker.Auto())
+            {
+                ReadShortcuts();
+                input.Process(hud, UiScale, Time.unscaledDeltaTime);
+            }
             // Last frame's layer: snapping moves the zoom shown, never the zoom
             // the layers switch on, so this cannot feed back into the layer.
             rig.Snap = view.Band != ZoomBand.Far;
-            rig.Apply(reserved);
+            rig.Apply(hud.Reserved, hud.TopInset);
             view.Refresh(world, rig.RequestedPixelsPerCell, UiScale, paused);
             DropVanishedSelection();
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            if (demoSelect && Time.frameCount > 5)
+            {
+                demoSelect = false;
+                world.Nomads.CopyTrackedTo(bands);
+                if (bands.Count > 0 && bands[0].Members.Count > 0) view.Selected = world.People.GetId(bands[0].Members[0]);
+            }
+#endif
+            using (HudMarker.Auto()) RefreshHud();
+        }
+
+        // The keys the panel's buttons name in their tooltips. Camera keys
+        // are ViewInput's.
+        private void ReadShortcuts()
+        {
+            var keys = Keyboard.current;
+            if (keys == null) return;
+            if (keys.spaceKey.wasPressedThisFrame) paused = !paused;
+            if (keys.commaKey.wasPressedThisFrame && speedStep > 0) speedStep--;
+            if (keys.periodKey.wasPressedThisFrame && speedStep < SpeedSteps.Length - 1) speedStep++;
+            if (keys.f3Key.wasPressedThisFrame) hud.ToggleDebug();
         }
 
         // Someone who died, or a band that settled, is no longer there to select.
@@ -148,73 +200,93 @@ namespace KingdomWatch.Game
             using (YearHashMarker.Auto()) yearHash = world.Hash();
         }
 
-        private void OnGUI()
+        private void RefreshHud()
         {
-            if (world == null) return;
-            GUI.matrix = Matrix4x4.Scale(Vector3.one * UiScale);
-            GUILayout.BeginArea(new Rect(PanelMargin, PanelMargin, PanelWidth, PanelHeight), GUI.skin.box);
-            GUILayout.Label("KINGDOM WATCH / CORE ON DEVICE");
-            GUILayout.Label("Seed " + seed + " / " + World.M1Width + "x" + World.M1Height + " / year " + world.Now.YearNumber
-                + ", day " + (world.Now.DayOfYear + 1) + " (" + world.Now.Season + ")");
-            GUILayout.Label("People " + world.People.Count + " / settlements " + world.Founding.All.Count);
-            GUILayout.Label("Hash at year " + hashedYear + ": " + yearHash.ToString("x16"));
-            GUILayout.Label("Speed: " + SpeedSteps[speedStep] + "x" + (paused ? " (paused)" : ""));
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Slower") && speedStep > 0) speedStep--;
-            if (GUILayout.Button(paused ? "Run" : "Pause")) paused = !paused;
-            if (GUILayout.Button("Faster") && speedStep < SpeedSteps.Length - 1) speedStep++;
-            GUILayout.EndHorizontal();
-
-            if (view != null && input != null) ViewPanel();
-            GUILayout.EndArea();
-        }
-
-        private void ViewPanel()
-        {
-            GUILayout.Label("Zoom: " + view.Band + (input.Following ? " (following)" : ""));
-            if (GUILayout.Button("Whole map")) input.WholeMap();
+            var s = hudState;
+            var now = world.Now;
+            s.Year = now.YearNumber;
+            s.Season = now.Season;
+            s.DayOfSeason = (int)now.DayOfSeason;
+            s.Speed = SpeedSteps[speedStep];
+            s.Paused = paused;
+            s.Following = input.Following;
+            s.Seed = seed;
+            s.MapWidth = world.Grid.Width;
+            s.MapHeight = world.Grid.Height;
+            s.People = world.People.Count;
+            s.Settlements = world.Founding.All.Count;
+            s.HashYear = hashedYear;
+            s.Hash = yearHash;
 
             var selected = view.Selected;
-            if (selected.IsNone)
-            {
-                GUILayout.Label("Tap a person, or a settlement when zoomed out.");
-                return;
-            }
-
-            GUILayout.Label("Selected: " + Describe(selected));
+            s.SelectedKind = selected.Kind;
+            s.SelectedId = selected.Value;
+            s.SelectedPeople = 0;
+            s.HasCommunity = false;
+            ICommunity community = null;
             if (selected.Kind == EntityKind.Person && world.People.TryGetHandle(selected, out var person))
             {
                 var people = world.People;
-                var job = people.GetJob(person);
-                GUILayout.Label(people.GetAgeStage(person) + ", " + people.GetAgeYears(person, world.Now) + " years / health " + people.GetHealth(person));
-                GUILayout.Label((job == JobKind.None ? "No job" : job.ToString()) + (world.Jobs.HasTask(person) ? ", working" : ", idle")
-                    + " / " + CommunityOf(person));
+                s.Stage = people.GetAgeStage(person);
+                s.Years = (int)people.GetAgeYears(person, now);
+                s.Health = people.GetHealth(person);
+                s.Job = people.GetJob(person);
+                s.Working = world.Jobs.HasTask(person);
+                community = CommunityOf(person);
             }
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button(input.Following ? "Stop following" : "Follow")) input.ToggleFollow(UiScale);
-            if (GUILayout.Button("Clear")) input.Deselect();
-            GUILayout.EndHorizontal();
+            else if (selected.Kind == EntityKind.Settlement || selected.Kind == EntityKind.MobileGroup)
+            {
+                s.SelectedPeople = Mathf.Max(0, view.SizeOf(selected));
+                community = FindCommunity(selected);
+            }
+
+            if (community != null)
+            {
+                var supplies = community.SharedSupplies;
+                s.HasCommunity = true;
+                s.CommunityKind = community.Id.Kind;
+                s.CommunityId = community.Id.Value;
+                s.Food = supplies.Available(ResourceKind.Food);
+                s.Wood = supplies.Available(ResourceKind.Wood);
+                s.Stone = supplies.Available(ResourceKind.Stone);
+                s.DaysOfFood = world.Hunger.DaysOfFood(community);
+            }
+
+            MarkPositions();
+            hud.Refresh(s, rig.VisibleRect, settlementPositions, bandPositions, world.Grid.Width, world.Grid.Height);
         }
 
-        private string Describe(EntityId id)
+        // Where each community is drawn, for the minimap's dots.
+        private void MarkPositions()
         {
-            switch (id.Kind)
-            {
-                case EntityKind.Settlement: return "settlement " + id.Value + ", " + view.SizeOf(id) + " people";
-                case EntityKind.MobileGroup: return "band " + id.Value + ", " + view.SizeOf(id) + " people";
-                default: return id.ToString();
-            }
+            settlementPositions.Clear();
+            bandPositions.Clear();
+            var settlements = world.Founding.All;
+            for (var i = 0; i < settlements.Count; i++)
+                if (view.TryGetDrawnPosition(settlements[i].Id, out var at)) settlementPositions.Add(at);
+            world.Nomads.CopyTrackedTo(bands);
+            for (var i = 0; i < bands.Count; i++)
+                if (view.TryGetDrawnPosition(bands[i].Id, out var at)) bandPositions.Add(at);
+        }
+
+        private ICommunity FindCommunity(EntityId id)
+        {
+            var settlements = world.Founding.All;
+            for (var i = 0; i < settlements.Count; i++) if (settlements[i].Id == id) return settlements[i];
+            world.Nomads.CopyTrackedTo(bands);
+            for (var i = 0; i < bands.Count; i++) if (bands[i].Id == id) return bands[i];
+            return null;
         }
 
         // Nothing in Core maps a person to their community, and there are only
         // a few communities, so look through each one's members.
-        private string CommunityOf(PersonHandle person)
+        private ICommunity CommunityOf(PersonHandle person)
         {
             var settlements = world.Founding.All;
-            for (var i = 0; i < settlements.Count; i++) if (Contains(settlements[i], person)) return "settlement " + settlements[i].Id.Value;
+            for (var i = 0; i < settlements.Count; i++) if (Contains(settlements[i], person)) return settlements[i];
             world.Nomads.CopyTrackedTo(bands);
-            for (var i = 0; i < bands.Count; i++) if (Contains(bands[i], person)) return "band " + bands[i].Id.Value;
-            return "no community";
+            for (var i = 0; i < bands.Count; i++) if (Contains(bands[i], person)) return bands[i];
+            return null;
         }
 
         private static bool Contains(ICommunity community, PersonHandle person)
