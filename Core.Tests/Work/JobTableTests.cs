@@ -89,7 +89,7 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [TestCase(JobKind.Forager, TerrainKind.Scrub, true)]
-        [TestCase(JobKind.Forager, TerrainKind.Forest, true)]
+        [TestCase(JobKind.Forager, TerrainKind.Forest, false)]
         [TestCase(JobKind.Forager, TerrainKind.Plains, false)]
         [TestCase(JobKind.Woodcutter, TerrainKind.Scrub, false)]
         [TestCase(JobKind.StoneGatherer, TerrainKind.Scrub, false)]

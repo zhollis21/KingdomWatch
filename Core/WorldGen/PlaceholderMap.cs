@@ -20,7 +20,9 @@ namespace KingdomWatch.Core.WorldGen
     /// depends on the order the others were filled in. Patches keep to it:
     /// each is value noise, keyed draws on a coarse lattice blended across
     /// the cells between them, so a cell reads only the lattice points
-    /// around it, and all of it is integer arithmetic.
+    /// around it, and all of it is integer arithmetic. Inside a rock or
+    /// scrub patch, whether a cell is the kind is one more keyed draw on
+    /// that cell.
     ///
     /// The river is the one deliberate feature. Section 12 makes small rivers
     /// absolute walls before bridges exist, and section 15 wants the races'
@@ -39,10 +41,15 @@ namespace KingdomWatch.Core.WorldGen
         // live and settle (WorldRunTests).
         private const int ForestSpacing = 40;
         private const int ForestThreshold = 670;
-        private const int RockSpacing = 32;
-        private const int RockThreshold = 780;
-        private const int ScrubSpacing = 24;
+        private const int RockSpacing = 24;
+        private const int RockThreshold = 800;
+        private const int ScrubSpacing = 14;
         private const int ScrubThreshold = 740;
+
+        // Forest is solid; an outcrop or a berry thicket is open ground with
+        // one cell in this many a rock or a bush (#137 review).
+        private const int RockFill = 4;
+        private const int ScrubFill = 3;
 
         // Noise values run 0 to NoiseMax; smoothing weights run 0 to OneWeight.
         private const int NoiseMax = 1023;
@@ -74,9 +81,9 @@ namespace KingdomWatch.Core.WorldGen
 
             // One site per kind of patch and one for the river, so no two
             // layers, and no layer and the river, can ever share a roll (#57).
-            var forest = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.ForestPatches), width, height, ForestSpacing);
-            var rocks = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.RockPatches), width, height, RockSpacing);
-            var scrub = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.ScrubPatches), width, height, ScrubSpacing);
+            var forest = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.ForestPatches), width, height, ForestSpacing, ForestThreshold, 1);
+            var rocks = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.RockPatches), width, height, RockSpacing, RockThreshold, RockFill);
+            var scrub = new Patches(rng.Key(RandomDomain.WorldGen, RandomSite.ScrubPatches), width, height, ScrubSpacing, ScrubThreshold, ScrubFill);
             var river = rng.Key(RandomDomain.WorldGen, RandomSite.RiverDrift);
 
             for (var y = 0; y < height; y++)
@@ -84,16 +91,16 @@ namespace KingdomWatch.Core.WorldGen
                 for (var x = 0; x < width; x++)
                 {
                     // Where patches overlap, forest wins over rocks and rocks
-                    // over scrub; everything outside every patch is plains.
-                    if (forest.At(x, y) >= ForestThreshold)
+                    // over scrub; everything else is plains.
+                    if (forest.Covers(x, y))
                     {
                         grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
                     }
-                    else if (rocks.At(x, y) >= RockThreshold)
+                    else if (rocks.Covers(x, y))
                     {
                         grid.Set(new WorldPosition(x, y), TerrainKind.Rocks);
                     }
-                    else if (scrub.At(x, y) >= ScrubThreshold)
+                    else if (scrub.Covers(x, y))
                     {
                         grid.Set(new WorldPosition(x, y), TerrainKind.Scrub);
                     }
@@ -117,19 +124,30 @@ namespace KingdomWatch.Core.WorldGen
         }
 
         // One kind of patch: a coarse lattice for the patches and a fine one
-        // for their edges, the two blended by FineShare.
+        // for their edges, the two blended by FineShare. Inside a patch, one
+        // cell in `fill` is the kind, by a keyed draw per cell; a fill of one
+        // is solid and draws nothing.
         private sealed class Patches
         {
             private readonly Lattice _coarse;
             private readonly Lattice _fine;
+            private readonly RandomKey _fill;
+            private readonly int _threshold;
+            private readonly int _oneIn;
 
-            public Patches(RandomKey key, int width, int height, int spacing)
+            public Patches(RandomKey key, int width, int height, int spacing, int threshold, int oneIn)
             {
                 _coarse = new Lattice(key.Mix(0), width, height, spacing);
                 _fine = new Lattice(key.Mix(1), width, height, Math.Max(1, spacing / FineDivisor));
+                _fill = key.Mix(2);
+                _threshold = threshold;
+                _oneIn = oneIn;
             }
 
-            public int At(int x, int y) =>
+            public bool Covers(int x, int y) =>
+                At(x, y) >= _threshold && _fill.Mix(x).Mix(y).Chance(1, _oneIn);
+
+            private int At(int x, int y) =>
                 (int)(((long)_coarse.At(x, y) * (FineShare - 1) + _fine.At(x, y)) / FineShare);
         }
 

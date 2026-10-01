@@ -15,8 +15,8 @@ namespace KingdomWatch.Core.Work
     /// <remarks>
     /// Every M1 job is a gathering recipe from <see cref="PrimitiveTier"/>,
     /// worked at the nearest cell of a terrain that has the thing. Foraging
-    /// takes berry scrub or forest, wood needs forest and stone needs rocks;
-    /// open plains have none of them (#137), so a band that can reach none
+    /// takes berry scrub, wood needs forest and stone needs rocks; open
+    /// plains have none of them (#137), so a band that can reach none
     /// of a kind simply does not gather it. The mapping is placeholder
     /// in the <see cref="PrimitiveTier"/> sense: a table for a later resource
     /// model (#26) to make finite and per-cell.
@@ -85,7 +85,7 @@ namespace KingdomWatch.Core.Work
             switch (job)
             {
                 case JobKind.Forager:
-                    return terrain == TerrainKind.Scrub || terrain == TerrainKind.Forest;
+                    return terrain == TerrainKind.Scrub;
                 case JobKind.Woodcutter:
                     return terrain == TerrainKind.Forest;
                 case JobKind.StoneGatherer:

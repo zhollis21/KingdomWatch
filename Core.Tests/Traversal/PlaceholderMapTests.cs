@@ -72,8 +72,8 @@ namespace KingdomWatch.Core.Tests.Traversal
             {
                 Assert.That(counts[TerrainKind.Plains], Is.GreaterThan(cells / 2));
                 Assert.That(counts[TerrainKind.Forest], Is.InRange(cells / 20, cells * 3 / 10));
-                Assert.That(counts[TerrainKind.Rocks], Is.InRange(cells / 100, cells * 3 / 20));
-                Assert.That(counts[TerrainKind.Scrub], Is.InRange(cells / 100, cells * 3 / 20));
+                Assert.That(counts[TerrainKind.Rocks], Is.InRange(cells / 200, cells * 3 / 20));
+                Assert.That(counts[TerrainKind.Scrub], Is.InRange(cells / 200, cells * 3 / 20));
                 Assert.That(counts[TerrainKind.SmallRiver], Is.EqualTo(grid.Height));
                 Assert.That(counts.ContainsKey(TerrainKind.DeepWater), Is.False);
             });
@@ -84,29 +84,73 @@ namespace KingdomWatch.Core.Tests.Traversal
         [TestCase(TerrainKind.Scrub)]
         public void Each_resource_comes_in_patches_rather_than_scattered_cells(TerrainKind kind)
         {
-            // #137: cells rolled one by one put a tree beside every camp. In a
-            // patch most of a cell's neighbours are the same kind; scattered
-            // at these proportions, few would be.
+            // #137: cells rolled one by one put a tree beside every camp. Around
+            // a cell in a patch, the same kind is far denser than it is over
+            // the map; scattered, it would be about as dense as anywhere.
             var grid = GenerateLarge();
-            var of = 0;
-            var alike = 0;
+            var (kinds, alikeNearby, around) = Nearby(grid, kind);
+            var overall = (double)kinds / grid.CellCount;
+            var local = (double)alikeNearby / around;
 
-            for (var y = 0; y < grid.Height - 1; y++)
+            Assert.That(local, Is.GreaterThan(overall * 4), kind + ": " + local + " near against " + overall + " overall");
+        }
+
+        [TestCase(TerrainKind.Rocks)]
+        [TestCase(TerrainKind.Scrub)]
+        public void Rocks_and_scrub_are_scattered_through_their_patches_not_solid(TerrainKind kind)
+        {
+            // #137 review: a carpet of rocks or bushes reads as unbelievable.
+            // Inside an outcrop or a thicket most cells are open ground.
+            var grid = GenerateLarge();
+            var (_, alikeNearby, around) = Nearby(grid, kind);
+
+            Assert.That((double)alikeNearby / around, Is.LessThan(0.5), kind.ToString());
+        }
+
+        [Test]
+        public void Forest_is_solid()
+        {
+            var grid = GenerateLarge();
+            var (_, alikeNearby, around) = Nearby(grid, TerrainKind.Forest);
+
+            Assert.That((double)alikeNearby / around, Is.GreaterThan(0.7));
+        }
+
+        // Cells of a kind, and over the eight around each of them, how many
+        // are the same kind and how many were looked at.
+        private static (int Kinds, int AlikeNearby, int Around) Nearby(TerrainGrid grid, TerrainKind kind)
+        {
+            var kinds = 0;
+            var alike = 0;
+            var around = 0;
+
+            for (var y = 1; y < grid.Height - 1; y++)
             {
-                for (var x = 0; x < grid.Width - 1; x++)
+                for (var x = 1; x < grid.Width - 1; x++)
                 {
                     if (grid[new WorldPosition(x, y)] != kind)
                     {
                         continue;
                     }
 
-                    of += 2;
-                    alike += grid[new WorldPosition(x + 1, y)] == kind ? 1 : 0;
-                    alike += grid[new WorldPosition(x, y + 1)] == kind ? 1 : 0;
+                    kinds++;
+                    for (var dy = -1; dy <= 1; dy++)
+                    {
+                        for (var dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dy == 0)
+                            {
+                                continue;
+                            }
+
+                            around++;
+                            alike += grid[new WorldPosition(x + dx, y + dy)] == kind ? 1 : 0;
+                        }
+                    }
                 }
             }
 
-            Assert.That(alike, Is.GreaterThan(of * 6 / 10), kind + ": " + alike + " of " + of + " neighbours alike");
+            return (kinds, alike, around);
         }
 
         [TestCase(TerrainKind.Forest)]

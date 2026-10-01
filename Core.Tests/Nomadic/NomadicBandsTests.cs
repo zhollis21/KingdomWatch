@@ -322,7 +322,8 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [Test]
         public void A_camp_too_far_to_reach_by_dusk_is_not_a_candidate()
         {
-            // Forest everywhere, a river wall across the map with one gap at
+            // Forest everywhere, a row of berry scrub either side of a river
+            // wall across the map with one gap at
             // the far end, rocks just south of the wall. The rocks side
             // scores higher, and is four cells away as the crow flies - but
             // the route round the wall is over 250 forest cells, more than
@@ -339,6 +340,8 @@ namespace KingdomWatch.Core.Tests.Nomadic
             for (var x = 0; x < Width; x++)
             {
                 grid.Set(new WorldPosition(x, WallRow + 3), TerrainKind.Rocks);
+                grid.Set(new WorldPosition(x, WallRow - 2), TerrainKind.Scrub);
+                grid.Set(new WorldPosition(x, WallRow + 2), TerrainKind.Scrub);
             }
 
             var w = new WorkWorld(1UL, grid);
@@ -347,7 +350,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             var band = w.NewWanderingBand(start, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
             Assert.That(w.Nomads.LandScore(band, south), Is.EqualTo(3), "rocks in reach south of the wall");
-            Assert.That(w.Nomads.LandScore(band, start), Is.EqualTo(2), "forest only north of it");
+            Assert.That(w.Nomads.LandScore(band, start), Is.EqualTo(2), "scrub and forest only north of it");
 
             AdvanceToCouncil(w, NomadicBands.CampDays);
 
@@ -671,14 +674,15 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [TestCase(3UL)]
         public void A_hop_goes_to_food_before_it_goes_to_more_work(ulong seed)
         {
-            // Scrub at (28, 15), a lattice cell; forest and rocks at column
-            // 47, out of a worker's reach from it. From (37, 15) and (42, 15)
-            // all three jobs find a site, so they outscore the scrub cell -
-            // but the scrub cell is the shorter walk to food, and food is
-            // what a band starves without.
+            // Scrub at (28, 15), a lattice cell, with forest two cells south;
+            // rocks at column 47, out of a worker's reach from it, with more
+            // forest. From (37, 15) and (42, 15) all three jobs find a site,
+            // so they outscore the scrub cell - but the scrub cell is the
+            // shorter walk to food, and food is what a band starves without.
             var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
             var berries = new WorldPosition(28, 15);
             grid.Set(berries, TerrainKind.Scrub);
+            grid.Set(new WorldPosition(28, 17), TerrainKind.Forest);
             grid.Set(new WorldPosition(47, 15), TerrainKind.Forest);
             grid.Set(new WorldPosition(47, 16), TerrainKind.Rocks);
             var w = new WorkWorld(seed, grid);
@@ -686,7 +690,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             w.JoinAdults(band, 1);
             Assert.Multiple(() =>
             {
-                Assert.That(w.Nomads.LandScore(band, berries), Is.EqualTo(1));
+                Assert.That(w.Nomads.LandScore(band, berries), Is.EqualTo(2));
                 Assert.That(w.Nomads.LandScore(band, new WorldPosition(42, 15)), Is.EqualTo(3));
             });
 
@@ -698,17 +702,43 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [TestCase(1UL)]
         [TestCase(2UL)]
         [TestCase(3UL)]
+        public void A_hop_goes_where_there_is_firewood_before_it_goes_nearer_food(ulong seed)
+        {
+            // Scrub alone at (28, 15), a lattice cell with no forest in reach;
+            // scrub and forest together off the lattice at (48, 15) and
+            // (49, 15). The lone berries are the shorter walk to food, but a
+            // band with no wood freezes in its first winter, so it goes where
+            // it could cut some (#137 review).
+            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
+            var loneBerries = new WorldPosition(28, 15);
+            grid.Set(loneBerries, TerrainKind.Scrub);
+            grid.Set(new WorldPosition(48, 15), TerrainKind.Scrub);
+            grid.Set(new WorldPosition(49, 15), TerrainKind.Forest);
+            var w = new WorkWorld(seed, grid);
+            var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+            Assert.That(w.Nomads.CanSettleAt(band, loneBerries), Is.False, "no wood from the lone berries");
+
+            AdvanceToCouncil(w, 1);
+
+            Assert.That(band.Destination, Is.Not.Null);
+            Assert.That(w.Nomads.CanSettleAt(band, band.Destination ?? default), Is.True, "food and wood in reach");
+        }
+
+        [TestCase(1UL)]
+        [TestCase(2UL)]
+        [TestCase(3UL)]
         public void Among_equal_land_a_hop_goes_nearest_the_work(ulong seed)
         {
             // Scrub everywhere, so food is underfoot at every candidate, and a
-            // column of forest down lattice column 51. Every candidate from
-            // column 37 east scores two; the ones standing on the forest walk
-            // nowhere to work, so the band goes to that column whatever the
+            // column of forest just east of lattice column 51. Every candidate from
+            // column 37 east scores two; the ones in column 51 walk one cell
+            // to work, so the band goes to that column whatever the
             // seed.
             var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Scrub);
             for (var y = 0; y < RankingHeight; y++)
             {
-                grid.Set(new WorldPosition(51, y), TerrainKind.Forest);
+                grid.Set(new WorldPosition(52, y), TerrainKind.Forest);
             }
 
             var w = new WorkWorld(seed, grid);

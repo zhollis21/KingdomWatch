@@ -388,7 +388,7 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.Multiple(() =>
             {
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
-                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.ForestCell), "forest forages too");
+                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "the berries back at camp");
                 Assert.That(() => w.Jobs.RefreshSites(new MobileGroup(
                     w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp)),
                     Throws.InvalidOperationException, "untracked");
@@ -947,10 +947,13 @@ namespace KingdomWatch.Core.Tests.Work
             w.AdvanceToDawn();
             Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "sites are found regardless");
 
-            // The next pass proves itself by finding sites from the new spot.
+            // The next pass proves itself by finding sites from the new spot:
+            // from the forest, the berries beside it are nearer than camp's.
+            var besideForest = new WorldPosition(WorkWorld.ForestCell.X, WorkWorld.ForestCell.Y + 1);
+            w.Grid.Set(besideForest, TerrainKind.Scrub);
             band.Position = WorkWorld.ForestCell;
             w.Advance(SimulationTime.TicksPerDay);
-            Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.ForestCell));
+            Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(besideForest));
         }
 
         [Test]

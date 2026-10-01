@@ -190,6 +190,7 @@ namespace KingdomWatch.Core.Nomadic
         // allocates.
         private readonly List<WorldPosition> _candidates = new List<WorldPosition>(CandidatesPerSide * CandidatesPerSide);
         private readonly int[] _candidateScores = new int[CandidatesPerSide * CandidatesPerSide];
+        private readonly bool[] _candidateViable = new bool[CandidatesPerSide * CandidatesPerSide];
         private readonly long[] _candidateFoodCosts = new long[CandidatesPerSide * CandidatesPerSide];
         private readonly long[] _candidateCosts = new long[CandidatesPerSide * CandidatesPerSide];
         private readonly List<int> _order = new List<int>(CandidatesPerSide * CandidatesPerSide);
@@ -716,17 +717,18 @@ namespace KingdomWatch.Core.Nomadic
                 _order[swap] = i;
             }
 
-            // Every candidate is scored, then ranked (RanksBefore): the
-            // shortest walk to food first, then more jobs with a site, then
-            // the shortest walks to work (#137), so a band camps beside its
-            // berries rather than merely within reach of them. Equals keep the
+            // Every candidate is scored, then ranked (RanksBefore): food and
+            // wood both in reach first, then the shortest walk to food, then
+            // more jobs with a site, then the shortest walks to work (#137),
+            // so a band camps beside its berries, in reach of firewood, rather
+            // than merely within reach of them. Equals keep the
             // keyed order. Only the ranking is routed, best first, until one
             // is reachable.
             _ranked.Clear();
             for (var n = 0; n < _order.Count; n++)
             {
                 var i = _order[n];
-                _candidateScores[i] = Score(known, _candidates[i], out _, out _candidateFoodCosts[i], out _candidateCosts[i]);
+                _candidateScores[i] = Score(known, _candidates[i], out _candidateViable[i], out _candidateFoodCosts[i], out _candidateCosts[i]);
 
                 var at = _ranked.Count;
                 while (at > 0 && RanksBefore(i, _ranked[at - 1]))
@@ -771,11 +773,16 @@ namespace KingdomWatch.Core.Nomadic
         private static int LatticeLine(int min, int max, int index) =>
             min + (index * (max - min) / (CandidatesPerSide - 1));
 
-        // Strictly better: a shorter walk to food, which is what a band
-        // starves without; then a higher score; then shorter walks to work
-        // altogether.
+        // Strictly better: food and wood both in reach, the two a band dies
+        // without (starving, freezing); then a shorter walk to food; then a
+        // higher score; then shorter walks to work altogether.
         private bool RanksBefore(int candidate, int other)
         {
+            if (_candidateViable[candidate] != _candidateViable[other])
+            {
+                return _candidateViable[candidate];
+            }
+
             if (_candidateFoodCosts[candidate] != _candidateFoodCosts[other])
             {
                 return _candidateFoodCosts[candidate] < _candidateFoodCosts[other];
