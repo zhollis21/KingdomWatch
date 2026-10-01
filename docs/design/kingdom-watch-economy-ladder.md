@@ -235,8 +235,8 @@ fixed numbers, so they are described rather than tabulated.
 | House | Novice construction | Wood | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
 | Farm plot | Novice farming | Wood | cleared land, a house | Grain, at rate |
 | Lumber camp | Apprentice woodcraft | Wood | forest in reach | Wood at rate |
-| Quarry | Apprentice masonry | Wood | hills in reach | Stone at rate |
-| Mine | Journeyman masonry | Wood | hills in reach, a quarry | Ore |
+| Quarry | Apprentice masonry | Wood | rocks in reach | Stone at rate |
+| Mine | Journeyman masonry | Wood | rocks in reach, a quarry | Ore |
 | Smeltery | Journeyman metalworking | Stone | a house | Metal, at rate |
 | Smithy | Journeyman metalworking | Stone | a house | Tools, Weapons, Armor, forged from Metal |
 | Hall | Expert masonry | Stone | a quarry | Where festivals and funerals happen (the plan's §12 outdoor social life); the first dressed-stone building |
