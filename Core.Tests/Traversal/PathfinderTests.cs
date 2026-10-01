@@ -13,7 +13,7 @@ namespace KingdomWatch.Core.Tests.Traversal
 
         /// <summary>
         /// Builds a grid from rows of characters, top row first: '.' plains,
-        /// 'f' forest, 'h' hills, '~' small river, 'W' deep water.
+        /// 'f' forest, 'h' rocks, '~' small river, 'W' deep water.
         /// </summary>
         private static TerrainGrid Map(params string[] rows)
         {
@@ -27,7 +27,7 @@ namespace KingdomWatch.Core.Tests.Traversal
                     {
                         '.' => TerrainKind.Plains,
                         'f' => TerrainKind.Forest,
-                        'h' => TerrainKind.Hills,
+                        'h' => TerrainKind.Rocks,
                         '~' => TerrainKind.SmallRiver,
                         'W' => TerrainKind.DeepWater,
                         _ => throw new ArgumentException("Unknown cell " + rows[y][x], nameof(rows)),
@@ -406,9 +406,10 @@ namespace KingdomWatch.Core.Tests.Traversal
             var rules = new TerrainRules(
                 (TerrainKind.Plains, new TerrainRule(TerrainRule.MaxCost, Transport.Foot)),
                 (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-                (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+                (TerrainKind.Rocks, new TerrainRule(30, Transport.Foot)),
                 (TerrainKind.SmallRiver, TerrainRule.Impassable),
-                (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat)));
+                (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat)),
+                (TerrainKind.Scrub, new TerrainRule(15, Transport.Foot)));
             var grid = new TerrainGrid(length, 1, TerrainKind.Plains);
             var route = new List<WorldPosition>();
 
@@ -496,7 +497,7 @@ namespace KingdomWatch.Core.Tests.Traversal
         // A mask over TerrainKind: which cells count as "found".
         private static bool[] Wanting(params TerrainKind[] kinds)
         {
-            var mask = new bool[(int)TerrainKind.DeepWater + 1];
+            var mask = new bool[(int)TerrainKind.Scrub + 1];
 
             foreach (var kind in kinds)
             {
@@ -517,7 +518,7 @@ namespace KingdomWatch.Core.Tests.Traversal
         [Test]
         public void The_nearest_site_is_the_cheapest_to_reach_not_the_fewest_cells_away()
         {
-            // With hills at the maximum cost, the forest two cells away sits
+            // With rocks at the maximum cost, the forest two cells away sits
             // behind a wall of them and costs 760 by the way round; the
             // forest three cells away costs 540 over plains. Rings would
             // pick the first; the search picks the second.
@@ -528,9 +529,10 @@ namespace KingdomWatch.Core.Tests.Traversal
             var rules = new TerrainRules(
                 (TerrainKind.Plains, new TerrainRule(10, Transport.Foot)),
                 (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-                (TerrainKind.Hills, new TerrainRule(TerrainRule.MaxCost, Transport.Foot)),
+                (TerrainKind.Rocks, new TerrainRule(TerrainRule.MaxCost, Transport.Foot)),
                 (TerrainKind.SmallRiver, TerrainRule.Impassable),
-                (TerrainKind.DeepWater, TerrainRule.Impassable));
+                (TerrainKind.DeepWater, TerrainRule.Impassable),
+                (TerrainKind.Scrub, new TerrainRule(15, Transport.Foot)));
             var finder = new Pathfinder(grid, rules);
 
             var (found, cost, route) = Nearest(finder, Origin, Wanting(TerrainKind.Forest));
@@ -605,7 +607,7 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(cost, Is.Zero);
                 Assert.That(route, Is.Empty);
                 Assert.That(Nearest(finder, new WorldPosition(2, 0), Wanting(TerrainKind.Plains)).Found, Is.False, "standing in the river");
-                Assert.That(Nearest(finder, Origin, Wanting(TerrainKind.Hills)).Found, Is.False, "nothing of the kind");
+                Assert.That(Nearest(finder, Origin, Wanting(TerrainKind.Rocks)).Found, Is.False, "nothing of the kind");
             });
         }
 

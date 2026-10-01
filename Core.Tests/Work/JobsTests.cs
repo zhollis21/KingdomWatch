@@ -142,7 +142,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.People.GetJob(adolescent), Is.EqualTo(JobKind.None), "work assistance is #22's");
                 Assert.That(w.Jobs.HasTask(adolescent), Is.False);
 
-                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "plains underfoot");
+                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "scrub underfoot");
                 var task = w.Jobs.TaskOf(adults[0]);
                 Assert.That(task.Job, Is.EqualTo(JobKind.Forager));
                 Assert.That(task.Holder, Is.EqualTo(band.Id));
@@ -168,13 +168,13 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Woodcutter), "food covered, wood short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToForest));
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack), "the way home enters plains only");
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack), "the way home enters plains and the scrub camp");
 
             band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodCap);
             w.Advance(SimulationTime.TicksPerDay);
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.StoneGatherer), "wood capped, stone short");
-            Assert.That(w.Jobs.SiteFor(band, JobKind.StoneGatherer), Is.EqualTo(WorkWorld.HillsCell));
-            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToHills));
+            Assert.That(w.Jobs.SiteFor(band, JobKind.StoneGatherer), Is.EqualTo(WorkWorld.RocksCell));
+            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToRocks));
             Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack));
 
             band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
@@ -332,7 +332,7 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void With_nowhere_to_work_a_job_is_skipped_for_the_day()
         {
-            var w = new WorkWorld(1UL, WorkWorld.PlainsOnly());
+            var w = new WorkWorld(1UL, WorkWorld.ScrubOnly());
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             var adult = w.Join(band, 30L);
 
@@ -352,7 +352,7 @@ namespace KingdomWatch.Core.Tests.Work
         {
             // The only forest is on the far bank. Foraging still works
             // underfoot, so the band eats; it just never cuts wood.
-            var grid = WorkWorld.PlainsOnly();
+            var grid = WorkWorld.ScrubOnly();
             grid.Set(new WorldPosition(WorkWorld.RiverColumn + 2, 2), TerrainKind.Forest);
 
             for (var y = 0; y < WorkWorld.Height; y++)
@@ -388,7 +388,7 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.Multiple(() =>
             {
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
-                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.ForestCell), "forest forages too");
+                Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "the berries back at camp");
                 Assert.That(() => w.Jobs.RefreshSites(new MobileGroup(
                     w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp)),
                     Throws.InvalidOperationException, "untracked");
@@ -612,19 +612,20 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void A_trip_that_would_end_after_dusk_is_not_taken()
         {
-            // Standing on hills, the nearest place to forage is a plains cell
-            // one step away: a cost of 100 out and 300 back. Trips end at
-            // 10:10 and 14:20; the third would end at 18:30 and is not started.
-            var grid = WorkWorld.PlainsOnly();
-            grid.Set(WorkWorld.Camp, TerrainKind.Hills);
+            // Standing on rocks, the nearest place to forage is a scrub cell
+            // one step away: a cost of 150 out and 300 back. Trips end at
+            // 10:11:40 and 14:23:20; the third would end at 18:35 and is not
+            // started.
+            var grid = WorkWorld.ScrubOnly();
+            grid.Set(WorkWorld.Camp, TerrainKind.Rocks);
             var w = new WorkWorld(1UL, grid);
             var band = w.NewBand(WorkWorld.Camp, 0);
             WorkWorld.FillWoodAndStone(band);
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
-            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(100L * Jobs.TicksPerCostUnit), "out onto plains");
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L * Jobs.TicksPerCostUnit), "back up the hill");
+            Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(150L * Jobs.TicksPerCostUnit), "out onto scrub");
+            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L * Jobs.TicksPerCostUnit), "back onto the rocks");
 
             w.AdvanceTo(w.Today(Jobs.Dusk));
 
@@ -946,10 +947,13 @@ namespace KingdomWatch.Core.Tests.Work
             w.AdvanceToDawn();
             Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "sites are found regardless");
 
-            // The next pass proves itself by finding sites from the new spot.
+            // The next pass proves itself by finding sites from the new spot:
+            // from the forest, the berries beside it are nearer than camp's.
+            var besideForest = new WorldPosition(WorkWorld.ForestCell.X, WorkWorld.ForestCell.Y + 1);
+            w.Grid.Set(besideForest, TerrainKind.Scrub);
             band.Position = WorkWorld.ForestCell;
             w.Advance(SimulationTime.TicksPerDay);
-            Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.ForestCell));
+            Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(besideForest));
         }
 
         [Test]
@@ -1026,7 +1030,7 @@ namespace KingdomWatch.Core.Tests.Work
             var atTheEdge = new WorldPosition(20 + Jobs.MaxSiteRadius, 20);
             var pastIt = new WorldPosition(20 - Jobs.MaxSiteRadius - 1, 20);
             grid.Set(atTheEdge, TerrainKind.Forest);
-            grid.Set(pastIt, TerrainKind.Hills);
+            grid.Set(pastIt, TerrainKind.Rocks);
             var w = new WorkWorld(1UL, grid);
             var band = w.NewBand(camp, WorkWorld.PlentifulFood(1));
             w.Join(band, 30L);
@@ -1202,7 +1206,7 @@ namespace KingdomWatch.Core.Tests.Work
             // store with nothing on its way is the same expectation as 196
             // with his trip out, and still under the cap, so he cuts again.
             // A task counted both in the store and on the road would read 200
-            // and send him to the hills.
+            // and send him to the rocks.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             band.SharedSupplies.Gather(ResourceKind.Wood, 196);
@@ -1226,7 +1230,7 @@ namespace KingdomWatch.Core.Tests.Work
         {
             // 198 wood and 99 stone, each a hundredth short: the tie goes to
             // wood, the cutter's two fill it, so the gatherer goes to the
-            // hills for the last stone. The cutter then dies on the road and
+            // rocks for the last stone. The cutter then dies on the road and
             // his two never arrive, so by the time the gatherer is home with
             // stone full, wood is wanted again. A dead worker still counted
             // as on his way would keep the store looking full all day.
@@ -1318,7 +1322,7 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(w.KnownMaps.Knows(band.Id, FogForest), Is.False, "sixteen cells out, and it sees six");
                 Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False);
-                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.True, "plains underfoot are always known");
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.True, "scrub underfoot is always known");
             });
 
             w.KnownMaps.Reveal(band.Id, FogForest, 0);
@@ -1485,6 +1489,7 @@ namespace KingdomWatch.Core.Tests.Work
         private static TerrainGrid FogMap()
         {
             var grid = new TerrainGrid(40, 40, TerrainKind.Plains);
+            grid.Set(FogCamp, TerrainKind.Scrub);
             grid.Set(FogForest, TerrainKind.Forest);
             return grid;
         }

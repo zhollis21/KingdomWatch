@@ -264,12 +264,13 @@ namespace KingdomWatch.Core.Tests.Rng
         public void A_real_run_draws_no_two_values_from_different_sites()
         {
             // The backstop actually running against real systems rather than
-            // a contrived key: worldgen takes two sites over thousands of
+            // a contrived key: worldgen takes four sites over thousands of
             // draws, which is where a collision would show if one were
-            // reachable.
+            // reachable. Patches draw per lattice point rather than per cell
+            // (#137), so the map is large enough to take thousands.
             var detector = new DrawCollisionDetector();
 
-            PlaceholderMap.Generate(60, 40, new DeterministicRng(WorldSeed, detector));
+            PlaceholderMap.Generate(400, 300, new DeterministicRng(WorldSeed, detector));
 
             Assert.Multiple(() =>
             {
@@ -353,11 +354,14 @@ namespace KingdomWatch.Core.Tests.Rng
             // RandomDomain.Combat is. Nothing in Core keys a draw on it yet,
             // so there is no run that could reach it - remove it from here the
             // moment combat exists.
-            var notYetDrawnInProduction = new[] { RandomSite.BattleOutcome };
+            // Terrain is the other way round: the placeholder map drew it
+            // per cell until #137 replaced that with patches, and a site's
+            // value is never reused, so nothing will draw it again.
+            var notDrawnInProduction = new[] { RandomSite.BattleOutcome, RandomSite.Terrain };
 
             var uncovered = Enum.GetValues(typeof(RandomSite))
                 .Cast<RandomSite>()
-                .Where(site => !seen.Seen.Contains(site) && !notYetDrawnInProduction.Contains(site))
+                .Where(site => !seen.Seen.Contains(site) && !notDrawnInProduction.Contains(site))
                 .ToArray();
 
             Assert.That(

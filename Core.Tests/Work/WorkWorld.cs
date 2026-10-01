@@ -19,23 +19,24 @@ namespace KingdomWatch.Core.Tests.Work
     // fixtures that put people to work.
     internal sealed class WorkWorld
     {
-        // Sixteen by sixteen plains, with a forest cell and a hills cell a
-        // known walk from Camp, and a river down column 12 cutting the far
-        // strip off. Cheap to reason about: from Camp, the forest is four
-        // straight steps east (three plains entered at a cost of 100, one
-        // forest at 200) and the hills four straight steps south. Costs, times
-        // the walking pace, are ticks.
+        // Sixteen by sixteen plains, with Camp itself on berry scrub (food
+        // underfoot, #137), a forest cell and a rocks cell a known walk from
+        // it, and a river down column 12 cutting off a far strip of scrub. Cheap to
+        // reason about: from Camp, the forest is four straight steps east
+        // (three plains entered at a cost of 100, one forest at 200) and the
+        // rocks four straight steps south. Costs, times the walking pace, are
+        // ticks.
         internal const int Width = 16;
         internal const int Height = 16;
         internal static readonly WorldPosition Camp = new WorldPosition(2, 2);
         internal static readonly WorldPosition ForestCell = new WorldPosition(6, 2);
-        internal static readonly WorldPosition HillsCell = new WorldPosition(2, 6);
+        internal static readonly WorldPosition RocksCell = new WorldPosition(2, 6);
         internal const int RiverColumn = 12;
         internal const long TicksToForest = ((3L * 100L) + 200L) * Jobs.TicksPerCostUnit;
-        internal const long TicksToHills = ((3L * 100L) + 300L) * Jobs.TicksPerCostUnit;
+        internal const long TicksToRocks = ((3L * 100L) + 300L) * Jobs.TicksPerCostUnit;
 
-        // Home enters three plains and the plains camp cell, whichever the site.
-        internal const long TicksBack = 4L * 100L * Jobs.TicksPerCostUnit;
+        // Home enters three plains and the scrub camp cell, whichever the site.
+        internal const long TicksBack = ((3L * 100L) + 150L) * Jobs.TicksPerCostUnit;
 
         internal WorkWorld()
             : this(1UL, DefaultMap())
@@ -73,20 +74,28 @@ namespace KingdomWatch.Core.Tests.Work
         internal static TerrainGrid DefaultMap(int width, int riverColumn)
         {
             var grid = new TerrainGrid(width, Height, TerrainKind.Plains);
+            grid.Set(Camp, TerrainKind.Scrub);
             grid.Set(ForestCell, TerrainKind.Forest);
-            grid.Set(HillsCell, TerrainKind.Hills);
+            grid.Set(RocksCell, TerrainKind.Rocks);
 
             for (var y = 0; y < Height; y++)
             {
                 grid.Set(new WorldPosition(riverColumn, y), TerrainKind.SmallRiver);
+
+                // The far strip is scrub: food across the river, and nothing
+                // else.
+                for (var x = riverColumn + 1; x < width; x++)
+                {
+                    grid.Set(new WorldPosition(x, y), TerrainKind.Scrub);
+                }
             }
 
             return grid;
         }
 
-        // Plains only, as far as the eye can see: foraging works underfoot
-        // and nothing else works anywhere.
-        internal static TerrainGrid PlainsOnly() => new TerrainGrid(Width, Height, TerrainKind.Plains);
+        // Berry scrub only, as far as the eye can see: foraging works
+        // underfoot and nothing else works anywhere.
+        internal static TerrainGrid ScrubOnly() => new TerrainGrid(Width, Height, TerrainKind.Scrub);
 
         internal DemographicWorld Demographics { get; }
 

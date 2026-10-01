@@ -23,13 +23,13 @@ namespace KingdomWatch.Core.Data
         /// <summary>No job. The default, and what the dead and the idle hold.</summary>
         None = 0,
 
-        /// <summary>Runs <see cref="PrimitiveTier.Forage"/>: food from plains or forest.</summary>
+        /// <summary>Runs <see cref="PrimitiveTier.Forage"/>: food from berry scrub.</summary>
         Forager = 1,
 
         /// <summary>Runs <see cref="PrimitiveTier.GatherWood"/>: wood from forest.</summary>
         Woodcutter = 2,
 
-        /// <summary>Runs <see cref="PrimitiveTier.GatherStone"/>: stone from hills.</summary>
+        /// <summary>Runs <see cref="PrimitiveTier.GatherStone"/>: stone from rocks.</summary>
         StoneGatherer = 3,
     }
 }

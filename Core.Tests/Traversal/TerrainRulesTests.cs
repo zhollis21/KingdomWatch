@@ -11,9 +11,10 @@ namespace KingdomWatch.Core.Tests.Traversal
         {
             TerrainKind.Plains,
             TerrainKind.Forest,
-            TerrainKind.Hills,
+            TerrainKind.Rocks,
             TerrainKind.SmallRiver,
             TerrainKind.DeepWater,
+            TerrainKind.Scrub,
         };
 
         [Test]
@@ -65,9 +66,10 @@ namespace KingdomWatch.Core.Tests.Traversal
             var rules = new TerrainRules(
                 (TerrainKind.Plains, new TerrainRule(7, Transport.Foot)),
                 (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-                (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+                (TerrainKind.Rocks, new TerrainRule(30, Transport.Foot)),
                 (TerrainKind.SmallRiver, TerrainRule.Impassable),
-                (TerrainKind.DeepWater, new TerrainRule(3, Transport.Boat)));
+                (TerrainKind.DeepWater, new TerrainRule(3, Transport.Boat)),
+                (TerrainKind.Scrub, new TerrainRule(15, Transport.Foot)));
 
             // Across all transports, not just Foot: the heuristic must stay
             // admissible for a boat too.
@@ -81,7 +83,7 @@ namespace KingdomWatch.Core.Tests.Traversal
             {
                 Assert.That(() => TerrainRules.Default[TerrainKind.None], Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => TerrainRules.Default[(TerrainKind)255], Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => TerrainRules.Default[(TerrainKind)6], Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => TerrainRules.Default[(TerrainKind)7], Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => TerrainRules.Default.IsPassable(TerrainKind.None, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => TerrainRules.Default.IsPassable((TerrainKind)255, Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
@@ -94,7 +96,7 @@ namespace KingdomWatch.Core.Tests.Traversal
                 () => new TerrainRules(
                     (TerrainKind.Plains, new TerrainRule(10, Transport.Foot)),
                     (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-                    (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+                    (TerrainKind.Rocks, new TerrainRule(30, Transport.Foot)),
                     (TerrainKind.SmallRiver, TerrainRule.Impassable)),
                 Throws.ArgumentException.With.Message.Contains("DeepWater"));
         }
@@ -107,7 +109,7 @@ namespace KingdomWatch.Core.Tests.Traversal
                     (TerrainKind.Plains, new TerrainRule(10, Transport.Foot)),
                     (TerrainKind.Plains, new TerrainRule(11, Transport.Foot)),
                     (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-                    (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+                    (TerrainKind.Rocks, new TerrainRule(30, Transport.Foot)),
                     (TerrainKind.SmallRiver, TerrainRule.Impassable),
                     (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat))),
                 Throws.ArgumentException.With.Message.Contains("two rules"));

@@ -27,12 +27,24 @@ namespace KingdomWatch.Core.Traversal
 
         Plains = 1,
         Forest = 2,
-        Hills = 3,
+        /// <summary>
+        /// Rocky outcrops: slow ground and the source of stone. Was Hills
+        /// until #137; the value is unchanged.
+        /// </summary>
+        Rocks = 3,
 
         /// <summary>Impassable to everyone until bridged (section 12).</summary>
         SmallRiver = 4,
 
         /// <summary>Large rivers and open water. Boats only (section 12).</summary>
         DeepWater = 5,
+
+        /// <summary>
+        /// Berry scrub: low, tangled ground slower than plains, and where
+        /// foragers find food (#137). A kind rather than yield data beside
+        /// the grid because it is its own ground to cross, and because the
+        /// nearest-site search takes a mask of kinds.
+        /// </summary>
+        Scrub = 6,
     }
 }

@@ -25,16 +25,18 @@ namespace KingdomWatch.Core.Traversal
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(TerrainKind));
 
         /// <summary>
-        /// Placeholder costs: plains are the baseline, forest doubles it, hills
-        /// triple it; deep water is as easy as plains for anything that floats;
-        /// a small river admits nobody until bridged.
+        /// Placeholder costs: plains are the baseline, scrub is half as slow
+        /// again, forest doubles it, rocks triple it; deep water is as easy as
+        /// plains for anything that floats; a small river admits nobody until
+        /// bridged.
         /// </summary>
         public static readonly TerrainRules Default = new TerrainRules(
             (TerrainKind.Plains, new TerrainRule(10, Transport.Foot)),
             (TerrainKind.Forest, new TerrainRule(20, Transport.Foot)),
-            (TerrainKind.Hills, new TerrainRule(30, Transport.Foot)),
+            (TerrainKind.Rocks, new TerrainRule(30, Transport.Foot)),
             (TerrainKind.SmallRiver, TerrainRule.Impassable),
-            (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat)));
+            (TerrainKind.DeepWater, new TerrainRule(10, Transport.Boat)),
+            (TerrainKind.Scrub, new TerrainRule(15, Transport.Foot)));
 
         private readonly TerrainRule[] _rules;
 
