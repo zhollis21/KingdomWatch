@@ -77,6 +77,10 @@ namespace KingdomWatch.Game
         private const float BarEase = 8f;
         private const float MinimapCardHeight = 124f;
 
+        // Where the bar's stock starts, and the width of each of its three.
+        private const float StockLeft = 118f;
+        private const float StockStride = 40f;
+
         private static readonly Color Ink = new Color(0.13f, 0.1f, 0.16f);
         private static readonly Color Faint = new Color(0.4f, 0.34f, 0.3f);
 
@@ -102,15 +106,20 @@ namespace KingdomWatch.Game
         private readonly Image[] cameraEdges = new Image[4];
         private readonly List<Image> dots = new List<Image>();
 
-        // Resource card.
-        private readonly RectTransform stockCard;
-        private readonly Label stockTitle, foodNumber, woodNumber, stoneNumber, foodDays;
+        // The selected community's stock, in the bar.
+        private readonly RectTransform stockGroup;
+        private readonly Label foodNumber, woodNumber, stoneNumber;
         private readonly Tip foodTip, woodTip, stoneTip;
-        private long stockTitleKey = -1, stockKey = -1;
+        private long stockKey = -1;
+
+        // Names over the communities at Far zoom.
+        private readonly WorldView2D view;
+        private readonly RectTransform mapLabels;
+        private readonly List<Label> communityLabels = new List<Label>();
 
         // Selection card.
         private readonly RectTransform selectionCard;
-        private readonly Label selectionTitle, selectionLine, hint1, hint2;
+        private readonly Label selectionTitle, selectionLine, selectionCommunity, hint1, hint2;
         private readonly RectTransform healthBar;
         private readonly Image healthFill;
         private readonly Tip healthTip;
@@ -137,6 +146,7 @@ namespace KingdomWatch.Game
         {
             this.art = art;
             this.commands = commands;
+            this.view = view;
             flat = art.FontTexture == null;
 
             EnsureEventSystem();
@@ -149,6 +159,10 @@ namespace KingdomWatch.Game
             scaler.referencePixelsPerUnit = 1f;
             canvasRect = (RectTransform)root.transform;
 
+            // Behind everything else, so a card or the bar covers a label.
+            mapLabels = Child(canvasRect, "MapLabels", 0f, 0f, 0f, 0f);
+            Stretch(mapLabels);
+
             // The top bar.
             bar = Frame(root.transform, "Bar", art.Panel, 0f, 0f, 0f, BarHeight, Tint(false));
             bar.anchorMin = new Vector2(0f, 1f);
@@ -158,6 +172,10 @@ namespace KingdomWatch.Game
             date = new Label(bar, art, TextAlign.Left, Ink);
             date.Place(Pad, 9f, 130f);
             speed = AddBarControls();
+            stockGroup = Child(bar, "Stock", StockLeft, 0f, 3f * StockStride, BarHeight);
+            foodNumber = BuildStock(0f, art.Berries, out foodTip);
+            woodNumber = BuildStock(StockStride, art.Wood, out woodTip);
+            stoneNumber = BuildStock(2f * StockStride, art.Stone, out stoneTip);
 
             // The column.
             minimapCard = Card("Minimap", 0f, MinimapCardHeight);
@@ -165,22 +183,15 @@ namespace KingdomWatch.Game
             BuildMinimap(view, mapSize);
             MakeButton(minimapCard, Pad, Pad + MinimapSize + 1f, MinimapSize, ButtonSize, null, "Whole map", "Show the whole map (Home)", commands.WholeMap, out _);
 
-            stockCard = Card("Stock", 0f, 62f);
-            stockTitle = Text(stockCard, Pad, 7f, InnerWidth, Ink);
-            var cell = InnerWidth / 3f;
-            foodNumber = BuildStock(stockCard, 0f * cell, cell, art.Berries, "F", out foodTip);
-            woodNumber = BuildStock(stockCard, 1f * cell, cell, art.Wood, "W", out woodTip);
-            stoneNumber = BuildStock(stockCard, 2f * cell, cell, art.Stone, "S", out stoneTip);
-            foodDays = Text(stockCard, Pad, 7f + 9f + 2f + 16f + 2f + 9f + 1f, InnerWidth, Faint);
-
             selectionCard = Card("Selection", 0f, 70f);
             selectionTitle = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionLine = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
+            selectionCommunity = Text(selectionCard, Pad, 7f + 20f, InnerWidth, Ink);
             hint1 = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             hint2 = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
             hint1.Value = "Tap a person, or";
             hint2.Value = "a settlement.";
-            healthBar = Child(selectionCard, "Health", Pad, 7f + 22f, InnerWidth, 5f);
+            healthBar = Child(selectionCard, "Health", Pad, 7f + 31f, InnerWidth, 5f);
             Fill(healthBar, "Back", Faint, art.White);
             healthFill = Fill(healthBar, "Fill", new Color(0.85f, 0.25f, 0.25f), art.White);
             healthTip = healthBar.gameObject.AddComponent<Tip>();
@@ -192,12 +203,12 @@ namespace KingdomWatch.Game
             row.anchoredPosition = Vector2.zero;
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
             var half = (InnerWidth - 2f) / 2f;
-            followButton = MakeButton(row, Pad, 7f + 32f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
-            clearButton = MakeButton(row, Pad + half + 2f, 7f + 32f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
+            followButton = MakeButton(row, Pad, 7f + 41f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
+            clearButton = MakeButton(row, Pad + half + 2f, 7f + 41f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
             for (var i = 0; i < debugLines.Length; i++) debugLines[i] = Text(debugCard, Pad, 7f + i * 9f, InnerWidth, Ink);
-            cards = new[] { minimapCard, stockCard, selectionCard, debugCard };
+            cards = new[] { minimapCard, selectionCard, debugCard };
 
             // The tooltip floats above everything, and takes no clicks.
             tooltip = Frame(root.transform, "Tooltip", art.Panel, 0f, 0f, 60f, 22f, Tint(false));
@@ -239,6 +250,7 @@ namespace KingdomWatch.Game
             RefreshBar(state);
             RefreshMinimap(visible, settlements, bands, mapWidth, mapHeight);
             RefreshStock(state);
+            RefreshMapLabels();
             RefreshSelection(state);
             RefreshDebug(state);
             LayOutColumn();
@@ -348,35 +360,58 @@ namespace KingdomWatch.Game
 
         // ---- Stock ----
 
-        private Label BuildStock(RectTransform card, float x, float width, Sprite icon, string letter, out Tip tip)
+        // An icon and its count, side by side, `x` along the group.
+        private Label BuildStock(float x, Sprite icon, out Tip tip)
         {
-            var at = Pad + x;
-            var iconRect = Child(card, "Icon", at + (width - 16f) / 2f, 7f + 9f + 2f, 16f, 16f);
+            var iconRect = Child(stockGroup, "Icon", x, (BarHeight - 16f) / 2f - 1f, 16f, 16f);
             var image = iconRect.gameObject.AddComponent<Image>();
             image.sprite = icon;
-            image.raycastTarget = true;
             if (icon == null) image.color = Faint;
             tip = iconRect.gameObject.AddComponent<Tip>();
             tip.Hud = this;
-            var number = Text(card, at, 7f + 9f + 2f + 16f + 2f, width, Ink, TextAlign.Centre);
+            var number = new Label(stockGroup, art, TextAlign.Left, Ink);
+            number.Place(x + 18f, 9f, StockStride - 18f);
             return number;
         }
 
+        // Whose stock it is shows in the selection card beneath, so the bar
+        // keeps to the numbers.
         private void RefreshStock(HudState s)
         {
-            stockCard.gameObject.SetActive(s.HasCommunity);
+            stockGroup.gameObject.SetActive(s.HasCommunity);
             if (!s.HasCommunity) return;
-            var title = (s.CommunityKind == EntityKind.Settlement ? 1000000L : 2000000L) + (long)s.CommunityId;
-            if (Changed(ref stockTitleKey, title)) stockTitle.Value = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
             var key = ((s.Food * 31L + s.Wood) * 31L + s.Stone) * 31L + s.DaysOfFood;
             if (!Changed(ref stockKey, key)) return;
             foodNumber.Value = s.Food.ToString();
             woodNumber.Value = s.Wood.ToString();
             stoneNumber.Value = s.Stone.ToString();
-            foodTip.Text = "Food: " + s.Food;
+            foodTip.Text = s.DaysOfFood == int.MaxValue ? "Food: " + s.Food : "Food: " + s.Food + ", enough for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days");
             woodTip.Text = "Wood: " + s.Wood;
             stoneTip.Text = "Stone: " + s.Stone;
-            foodDays.Value = s.DaysOfFood == int.MaxValue ? "" : "Food for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days");
+        }
+
+        // ---- Names over the map ----
+
+        // One label over each community while the whole map shows, in place of
+        // the view's own IMGUI labels, so they draw in the same font.
+        private void RefreshMapLabels()
+        {
+            var count = view.LabelCount;
+            var scale = Pixel;
+            for (var i = 0; i < count; i++)
+            {
+                if (i == communityLabels.Count)
+                {
+                    var made = new Label(mapLabels, art, TextAlign.Centre, new Color(1f, 0.97f, 0.88f));
+                    made.AddShadow();
+                    communityLabels.Add(made);
+                }
+                var label = communityLabels[i];
+                label.Object.SetActive(true);
+                label.Value = view.LabelAt(i, out var screen);
+                label.Place(Mathf.Round(screen.x / scale - 60f), Mathf.Round((Screen.height - screen.y) / scale - HudArt.LineHeight - 1f), 120f);
+            }
+            for (var i = count; i < communityLabels.Count; i++) communityLabels[i].Object.SetActive(false);
         }
 
         // ---- Selection ----
@@ -388,24 +423,26 @@ namespace KingdomWatch.Game
             hint2.Object.SetActive(none);
             selectionTitle.Object.SetActive(!none);
             selectionLine.Object.SetActive(!none);
+            selectionCommunity.Object.SetActive(s.SelectedKind == EntityKind.Person && s.HasCommunity);
             healthBar.gameObject.SetActive(s.SelectedKind == EntityKind.Person);
             buttonRow.SetActive(!none);
-            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 64f : 54f);
+            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 72f : 54f);
             if (none) return;
 
-            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 32f : 7f + 22f;
+            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 41f : 7f + 22f;
             followButton.anchoredPosition = new Vector2(followButton.anchoredPosition.x, -buttonY);
             clearButton.anchoredPosition = new Vector2(clearButton.anchoredPosition.x, -buttonY);
             followLabel.Value = s.Following ? "Stop" : "Follow";
 
             var person = s.SelectedKind == EntityKind.Person;
-            var key = (((long)s.SelectedId * 7L + (int)s.SelectedKind) * 1009L + s.Years) * 13L + (int)s.Stage + ((int)s.Job << 8) + (s.Working ? 1L << 20 : 0L) + s.SelectedPeople * 3571L;
+            var key = (((long)s.SelectedId * 7L + (int)s.SelectedKind) * 1009L + s.Years) * 13L + (int)s.Stage + ((int)s.Job << 8) + (s.Working ? 1L << 20 : 0L) + s.SelectedPeople * 3571L + (long)s.CommunityId * 104729L + (int)s.CommunityKind;
             if (Changed(ref selectionKey, key))
             {
                 if (person)
                 {
                     selectionTitle.Value = s.Stage + ", " + s.Years + " yrs";
                     selectionLine.Value = (s.Job == JobKind.None ? "No job" : s.Job.ToString()) + (s.Working ? ", working" : ", idle");
+                    selectionCommunity.Value = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
                 }
                 else
                 {

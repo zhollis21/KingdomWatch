@@ -113,6 +113,14 @@ namespace KingdomWatch.Game
             }
         }
 
+        // A pixel of dark behind each glyph, for text drawn over the map.
+        public void AddShadow()
+        {
+            var shadow = Rect.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0.1f, 0.08f, 0.12f, 1f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+        }
+
         public RectTransform Rect { get; }
 
         public GameObject Object => Rect.gameObject;

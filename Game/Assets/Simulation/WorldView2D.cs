@@ -222,7 +222,6 @@ namespace KingdomWatch.Game
         private int width, height;
         private int usedPeople, usedCommunities;
         private float uiScale = 1f;
-        private GUIStyle labelStyle;
 
         public ZoomBand Band { get; private set; } = ZoomBand.Far;
 
@@ -1480,21 +1479,18 @@ namespace KingdomWatch.Game
         // "Settlement 3 · 42": which community and how many live in it. Core
         // names nothing yet, so the id stands in until #109 gives settlements names.
         private static string LabelOf(EntityId id, int size) =>
-            (id.Kind == EntityKind.Settlement ? "Settlement " : "Band ") + id.Value + " · " + size;
+            (id.Kind == EntityKind.Settlement ? "Settlement " : "Band ") + id.Value + ": " + size;
 
-        // A label over each community at Far zoom.
-        private void OnGUI()
+        // The panel's labels over the communities (#128): while the whole map
+        // shows, one a community, with where its top is on the screen.
+        public int LabelCount => Band == ZoomBand.Far && sceneCamera != null ? usedCommunities : 0;
+
+        public string LabelAt(int index, out Vector2 screen)
         {
-            if (Band != ZoomBand.Far || sceneCamera == null) return;
-            if (labelStyle == null) labelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.LowerCenter };
-            GUI.matrix = Matrix4x4.Scale(Vector3.one * uiScale);
-            for (var i = 0; i < usedCommunities; i++)
-            {
-                var marker = communityMarkers[i];
-                var top = marker.transform.position + new Vector3(0f, marker.transform.lossyScale.y, 0f);
-                var screen = sceneCamera.WorldToScreenPoint(top);
-                GUI.Label(new Rect(screen.x / uiScale - 80f, (Screen.height - screen.y) / uiScale - 24f, 160f, 22f), LabelOf(communityIds[i], communitySizes[i]), labelStyle);
-            }
+            var marker = communityMarkers[index];
+            var top = marker.transform.position + new Vector3(0f, marker.transform.lossyScale.y, 0f);
+            screen = sceneCamera.WorldToScreenPoint(top);
+            return LabelOf(communityIds[index], communitySizes[index]);
         }
 
         private T Own<T>(T asset) where T : Object
