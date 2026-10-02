@@ -37,6 +37,11 @@ namespace KingdomWatch.Game
         public Sprite Stone { get; private set; }
         public Sprite Berries { get; private set; }
 
+        // A villager's head, in two layers: the skin, then the hair over it.
+        // Null when the villager sheets are missing.
+        public Sprite HeadSkin { get; private set; }
+        public Sprite HeadHair { get; private set; }
+
         // One opaque pixel: bars, dots and the minimap's outline.
         public Sprite White { get; private set; }
 
@@ -109,6 +114,14 @@ namespace KingdomWatch.Game
             art.Stone = Cell(resources, 0, 80, owned);
             // The cherries stand in for berries.
             art.Berries = Cell(food, 96, 96, owned);
+            var skin = Resources.Load<Texture2D>("Cute_Fantasy/Player/Player_Base/Player_Base_animations");
+            var hair = Resources.Load<Texture2D>("Cute_Fantasy/Player/Head/Hair_1/Hair_1_Brown");
+            if (skin != null && hair != null)
+            {
+                // The first frame of each sheet (64 px, facing down): the head sits near its middle.
+                art.HeadSkin = Head(skin, owned);
+                art.HeadHair = Head(hair, owned);
+            }
             art.CutFont(font);
             return art;
         }
@@ -130,6 +143,13 @@ namespace KingdomWatch.Game
             var rect = new Rect(10f, sheet.height - top - FrameHeight, FrameWidth, FrameHeight);
             var sprite = Sprite.Create(sheet, rect, new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect,
                 new Vector4(FrameBorder, FrameBorder, FrameBorder, FrameBorder));
+            owned.Add(sprite);
+            return sprite;
+        }
+
+        private static Sprite Head(Texture2D sheet, List<Object> owned)
+        {
+            var sprite = Sprite.Create(sheet, new Rect(24f, sheet.height - 18 - 16, 16f, 16f), new Vector2(0.5f, 0.5f), 1f);
             owned.Add(sprite);
             return sprite;
         }

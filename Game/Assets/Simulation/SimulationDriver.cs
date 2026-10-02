@@ -250,6 +250,7 @@ namespace KingdomWatch.Game
                 s.Wood = supplies.Available(ResourceKind.Wood);
                 s.Stone = supplies.Available(ResourceKind.Stone);
                 s.DaysOfFood = world.Hunger.DaysOfFood(community);
+                s.CommunityPeople = community.Members.Count;
             }
 
             MarkPositions();

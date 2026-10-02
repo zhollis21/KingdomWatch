@@ -34,7 +34,7 @@ A cell is one 16 px tile of the art, about 1.5 m, and a villager is about one ce
 
 ## The panel
 
-The panel is uGUI, built in code by `Hud.cs` (#128) and drawn in the pack's UI art at a whole number of screen pixels per art pixel (`Hud.Pixel`, about 360 of them across the shorter side), so it stays crisp on a phone and a monitor. A bar across the top shows the date, the **stock** of the selected community (food, wood, stone; hover the food for how many days it lasts) and the speed controls. A selected person shows their own community's stock, a selected settlement or band its own. It is hidden when nothing is selected, because no one owns the world's stock; polities will give "whose stock" a meaning at M7. Down the left are:
+The panel is uGUI, built in code by `Hud.cs` (#128) and drawn in the pack's UI art at a whole number of screen pixels per art pixel (`Hud.Pixel`, about 360 of them across the shorter side), so it stays crisp on a phone and a monitor. A bar across the top shows the date, the world's population (a villager's head), the selected community's name and population, the **stock** of that community (food, wood, stone; hover the food for how many days it lasts) and the speed controls. A selected person shows their own community's stock, a selected settlement or band its own. It is hidden when nothing is selected, because no one owns the world's stock; polities will give "whose stock" a meaning at M7. Down the left are:
 
 - a **minimap** of the map's spring colours, with the camera's view outlined and a dot for each settlement (pale) and band (red); clicking or dragging it moves the camera;
 - the **selection card**: a person's age, job, community and an eased health bar, or a community's size, with Follow and Clear;

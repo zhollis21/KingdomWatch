@@ -36,6 +36,7 @@ namespace KingdomWatch.Game
         public EntityKind CommunityKind;
         public ulong CommunityId;
         public int Food, Wood, Stone, DaysOfFood;
+        public int CommunityPeople;
 
         public long Seed;
         public int MapWidth, MapHeight;
@@ -76,10 +77,13 @@ namespace KingdomWatch.Game
         private const float ButtonSize = 16f;
         private const float BarEase = 8f;
         private const float MinimapCardHeight = 124f;
+        private const float PlateHeight = 19f;
 
-        // Where the bar's stock starts, and the width of each of its three.
-        private const float StockLeft = 118f;
+        // The width of each of the stock's three entries, the room the speed
+        // controls take on the bar's right, and the gap between its groups.
         private const float StockStride = 40f;
+        private const float RightControls = 124f;
+        private const float BarGap = 12f;
 
         private static readonly Color Ink = new Color(0.13f, 0.1f, 0.16f);
         private static readonly Color Faint = new Color(0.4f, 0.34f, 0.3f);
@@ -112,9 +116,16 @@ namespace KingdomWatch.Game
         private readonly Tip foodTip, woodTip, stoneTip;
         private long stockKey = -1;
 
+        // People: the whole world's, and the selected community's with its name.
+        private readonly RectTransform worldGroup, communityGroup, communityIcon;
+        private readonly Label worldCount, communityName, communityCount;
+        private readonly Tip communityTip;
+        private long worldKey = -1, communityKey = -1;
+
         // Names over the communities at Far zoom.
         private readonly WorldView2D view;
         private readonly RectTransform mapLabels;
+        private readonly List<RectTransform> communityPlates = new List<RectTransform>();
         private readonly List<Label> communityLabels = new List<Label>();
 
         // Selection card.
@@ -172,7 +183,15 @@ namespace KingdomWatch.Game
             date = new Label(bar, art, TextAlign.Left, Ink);
             date.Place(Pad, 9f, 130f);
             speed = AddBarControls();
-            stockGroup = Child(bar, "Stock", StockLeft, 0f, 3f * StockStride, BarHeight);
+            worldGroup = Child(bar, "World", 0f, 0f, 60f, BarHeight);
+            PeopleIcon(worldGroup, out var worldTip);
+            worldTip.Text = "People in the world";
+            worldCount = BarText(worldGroup, 18f);
+            communityGroup = Child(bar, "Community", 0f, 0f, 200f, BarHeight);
+            communityName = BarText(communityGroup, 0f);
+            communityIcon = PeopleIcon(communityGroup, out communityTip);
+            communityCount = BarText(communityGroup, 0f);
+            stockGroup = Child(bar, "Stock", 0f, 0f, 3f * StockStride, BarHeight);
             foodNumber = BuildStock(0f, art.Berries, out foodTip);
             woodNumber = BuildStock(StockStride, art.Wood, out woodTip);
             stoneNumber = BuildStock(2f * StockStride, art.Stone, out stoneTip);
@@ -250,6 +269,8 @@ namespace KingdomWatch.Game
             RefreshBar(state);
             RefreshMinimap(visible, settlements, bands, mapWidth, mapHeight);
             RefreshStock(state);
+            RefreshPeople(state);
+            LayOutBar(state);
             RefreshMapLabels();
             RefreshSelection(state);
             RefreshDebug(state);
@@ -390,28 +411,103 @@ namespace KingdomWatch.Game
             stoneTip.Text = "Stone: " + s.Stone;
         }
 
+        // ---- People ----
+
+        private Label BarText(RectTransform parent, float x)
+        {
+            var label = new Label(parent, art, TextAlign.Left, Ink);
+            label.Place(x, 9f, 100f);
+            return label;
+        }
+
+        // A villager's head: skin and hair, two layers of the one sheet.
+        private RectTransform PeopleIcon(RectTransform parent, out Tip tip)
+        {
+            var rect = Child(parent, "People", 0f, (BarHeight - 16f) / 2f - 1f, 16f, 16f);
+            var skin = rect.gameObject.AddComponent<Image>();
+            skin.sprite = art.HeadSkin;
+            if (art.HeadSkin == null) skin.color = Faint;
+            else
+            {
+                var hair = Child(rect, "Hair", 0f, 0f, 16f, 16f).gameObject.AddComponent<Image>();
+                hair.sprite = art.HeadHair;
+                hair.raycastTarget = false;
+            }
+            tip = rect.gameObject.AddComponent<Tip>();
+            tip.Hud = this;
+            return rect;
+        }
+
+        private void RefreshPeople(HudState s)
+        {
+            if (Changed(ref worldKey, s.People)) worldCount.Value = s.People.ToString();
+            communityGroup.gameObject.SetActive(s.HasCommunity);
+            if (!s.HasCommunity) return;
+            var key = ((long)s.CommunityId * 2L + (s.CommunityKind == EntityKind.Settlement ? 1L : 0L)) * 100003L + s.CommunityPeople;
+            if (!Changed(ref communityKey, key)) return;
+            var name = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
+            communityName.Value = name;
+            communityCount.Value = s.CommunityPeople.ToString();
+            communityTip.Text = "People in " + name;
+        }
+
+        // The bar's groups, left to right after the date: the world's people,
+        // the community with its people, then its stock. The world's go first
+        // when a narrow screen runs out of room.
+        private void LayOutBar(HudState s)
+        {
+            var limit = canvasRect.rect.width - RightControls;
+            var x = Pad + art.WidthOf(date.Value) + BarGap;
+            var community = s.HasCommunity;
+            var nameWidth = community ? art.WidthOf(communityName.Value) : 0f;
+            var communityWidth = community ? nameWidth + 6f + 18f + art.WidthOf(communityCount.Value) : 0f;
+            var worldWidth = 18f + art.WidthOf(worldCount.Value);
+            var rest = community ? communityWidth + BarGap + 3f * StockStride : 0f;
+            var showWorld = x + worldWidth + BarGap + rest <= limit;
+            worldGroup.gameObject.SetActive(showWorld);
+            if (showWorld)
+            {
+                worldGroup.anchoredPosition = new Vector2(x, 0f);
+                x += worldWidth + BarGap;
+            }
+            if (!community) return;
+            communityGroup.anchoredPosition = new Vector2(x, 0f);
+            communityIcon.anchoredPosition = new Vector2(nameWidth + 6f, communityIcon.anchoredPosition.y);
+            communityCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, communityCount.Rect.anchoredPosition.y);
+            stockGroup.anchoredPosition = new Vector2(x + communityWidth + BarGap, 0f);
+        }
+
         // ---- Names over the map ----
 
-        // One label over each community while the whole map shows, in place of
-        // the view's own IMGUI labels, so they draw in the same font.
+        // One name plate over each community while the whole map shows, in the
+        // panel's frame and font so it belongs to the same interface.
         private void RefreshMapLabels()
         {
             var count = view.LabelCount;
             var scale = Pixel;
             for (var i = 0; i < count; i++)
             {
-                if (i == communityLabels.Count)
+                if (i == communityPlates.Count)
                 {
-                    var made = new Label(mapLabels, art, TextAlign.Centre, new Color(1f, 0.97f, 0.88f));
-                    made.AddShadow();
+                    var plate = Frame(mapLabels, "Plate", art.Panel, 0f, 0f, 0f, PlateHeight, Tint(false));
+                    plate.GetComponent<Image>().raycastTarget = false;
+                    var made = new Label(plate, art, TextAlign.Left, Ink);
+                    made.Place(Pad, 7f, 200f);
+                    communityPlates.Add(plate);
                     communityLabels.Add(made);
                 }
+                var text = view.LabelAt(i, out var screen);
                 var label = communityLabels[i];
-                label.Object.SetActive(true);
-                label.Value = view.LabelAt(i, out var screen);
-                label.Place(Mathf.Round(screen.x / scale - 60f), Mathf.Round((Screen.height - screen.y) / scale - HudArt.LineHeight - 1f), 120f);
+                var plateRect = communityPlates[i];
+                plateRect.gameObject.SetActive(true);
+                if (label.Value != text)
+                {
+                    label.Value = text;
+                    plateRect.sizeDelta = new Vector2(art.WidthOf(text) + 2f * Pad, PlateHeight);
+                }
+                plateRect.anchoredPosition = new Vector2(Mathf.Round(screen.x / scale - plateRect.sizeDelta.x / 2f), -Mathf.Round((Screen.height - screen.y) / scale - PlateHeight - 2f));
             }
-            for (var i = count; i < communityLabels.Count; i++) communityLabels[i].Object.SetActive(false);
+            for (var i = count; i < communityPlates.Count; i++) communityPlates[i].gameObject.SetActive(false);
         }
 
         // ---- Selection ----
