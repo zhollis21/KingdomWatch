@@ -76,7 +76,7 @@ namespace KingdomWatch.Game
         // take at the right of the first.
         private const float TwoRowHeight = 44f;
         private const float SecondRow = 18f;
-        private const float RightControls = 124f;
+        private const float RightControls = 140f;
         private const float Gap = 3f;
         private const float ColumnWidth = 104f;
         private const float Pad = 8f;
@@ -246,10 +246,10 @@ namespace KingdomWatch.Game
             row.anchorMin = row.anchorMax = row.pivot = new Vector2(0f, 1f);
             row.anchoredPosition = Vector2.zero;
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
-            var half = (InnerWidth - 2f) / 2f;
+            var half = (InnerWidth - 4f) / 2f;
             followButton = MakeButton(row, Pad, 7f + 61f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
             followTip = followButton.GetComponent<Tip>();
-            clearButton = MakeButton(row, Pad + half + 2f, 7f + 61f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
+            clearButton = MakeButton(row, Pad + half + 4f, 7f + 61f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
             for (var i = 0; i < debugLines.Length; i++) debugLines[i] = Text(debugCard, Pad, 7f + i * 9f, InnerWidth, Ink);
@@ -324,6 +324,9 @@ namespace KingdomWatch.Game
         // Called every frame, after the camera has settled.
         public void Refresh(HudState state, Rect visible, IReadOnlyList<Vector2> settlements, IReadOnlyList<Vector2> bands, float mapWidth, float mapHeight)
         {
+            // A minimised window can report no size at all, and the anchors below
+            // divide by it.
+            if (Screen.width <= 0 || Screen.height <= 0) return;
             scaler.scaleFactor = Pixel;
             var safe = SafeArea;
             safeRoot.anchorMin = new Vector2(safe.xMin / Screen.width, safe.yMin / Screen.height);
@@ -350,14 +353,14 @@ namespace KingdomWatch.Game
             // Built right to left from the edge of the bar.
             var debugButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "i", "Debug information (F3)", ToggleDebug, out _);
             AnchorRight(debugButton, right);
-            right += ButtonSize + 2f;
+            right += ButtonSize + 4f;
             var faster = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, ">>", "Faster (.)", commands.Faster, out _);
             AnchorRight(faster, right);
-            right += ButtonSize + 2f;
+            right += ButtonSize + 4f;
             var pauseButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, art.Pause, art.Pause == null ? "II" : null, "Pause (Space)", commands.TogglePause, out pauseLabel, out pauseIcon);
             pauseTip = pauseButton.GetComponent<Tip>();
             AnchorRight(pauseButton, right);
-            right += ButtonSize + 2f;
+            right += ButtonSize + 4f;
             var slower = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "<<", "Slower (,)", commands.Slower, out _);
             AnchorRight(slower, right);
             right += ButtonSize + 4f;
@@ -734,6 +737,9 @@ namespace KingdomWatch.Game
 
         // ---- Tooltips ----
 
+        // True while the tooltip on show is `tip`'s.
+        public bool IsShowing(Tip tip) => hovered == tip && tooltip.gameObject.activeSelf;
+
         public void Hover(Tip tip, bool on, bool touch)
         {
             if (on)
@@ -776,8 +782,9 @@ namespace KingdomWatch.Game
             return true;
         }
 
+        // Flat frames are as light as the art's, so the dark text reads on them.
         private Color Tint(bool button) =>
-            flat ? (button ? new Color(0.55f, 0.55f, 0.6f, 0.95f) : new Color(0.2f, 0.18f, 0.25f, 0.9f)) : Color.white;
+            flat ? (button ? new Color(0.72f, 0.76f, 0.88f) : new Color(0.89f, 0.65f, 0.45f)) : Color.white;
 
         private RectTransform Card(string name, float x, float height)
         {
@@ -847,6 +854,9 @@ namespace KingdomWatch.Game
         {
             var rect = Frame(parent, text ?? "Button", art.Button, x, y, w, h, Tint(true));
             var image = rect.GetComponent<Image>();
+            // A finger is wider than the art: the hit area reaches past the frame,
+            // a little sideways (the gaps between buttons are 4 px) and more up and down.
+            image.raycastPadding = new Vector4(-2f, -4f, -2f, -4f);
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
             button.navigation = new Navigation { mode = Navigation.Mode.None };

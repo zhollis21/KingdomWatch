@@ -89,8 +89,14 @@ namespace KingdomWatch.Game
             // would, to look at the layout on a screen that has neither.
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-hud-notch") >= 0)
                 Hud.SafeAreaOverride = new Rect(Screen.width * 0.04f, Screen.height * 0.03f, Screen.width * 0.93f, Screen.height * 0.91f);
+            // -hud-flat draws the panel as a build without the art submodule would.
+            var flatPanel = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-hud-flat") >= 0;
+#else
+            const bool flatPanel = false;
 #endif
-            hud = new Hud(HudArt.Load(hudOwned) ?? HudArt.Flat(hudOwned), Commands(), view, new Vector2(world.Grid.Width, world.Grid.Height));
+            // A panel that fails to build throws here once, and is not refreshed
+            // after; refreshing a null one would bury that error in a new one a frame.
+            hud = new Hud((flatPanel ? null : HudArt.Load(hudOwned)) ?? HudArt.Flat(hudOwned), Commands(), view, new Vector2(world.Grid.Width, world.Grid.Height));
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).
             rig.Apply(hud.Reserved, hud.TopInset);
@@ -148,7 +154,7 @@ namespace KingdomWatch.Game
         // so a pan, a zoom across a layer edge or a rotation shows at once.
         private void LateUpdate()
         {
-            if (view == null || rig == null) return;
+            if (view == null || rig == null || hud == null) return;
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             if (scriptedRun != null) scriptedRun.Step(Time.unscaledDeltaTime);
             else

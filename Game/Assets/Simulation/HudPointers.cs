@@ -28,7 +28,11 @@ namespace KingdomWatch.Game
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            if (IsTouch(eventData)) Hud.Hover(this, false, true);
+            if (!IsTouch(eventData)) return;
+            // A press held long enough to show the tooltip was asking what the
+            // control is, not pressing it: lifting the finger must not click it.
+            if (Hud.IsShowing(this)) eventData.eligibleForClick = false;
+            Hud.Hover(this, false, true);
         }
 
         private void OnDisable()
