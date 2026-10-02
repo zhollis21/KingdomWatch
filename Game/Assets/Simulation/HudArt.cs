@@ -37,6 +37,10 @@ namespace KingdomWatch.Game
         public Sprite Stone { get; private set; }
         public Sprite Berries { get; private set; }
 
+        // The point under a name plate: a pixel triangle in the plate's colours.
+        public Sprite Tail { get; private set; }
+        public const int TailWidth = 9, TailHeight = 5;
+
         // A villager's head, in two layers: the skin, then the hair over it.
         // Null when the villager sheets are missing.
         public Sprite HeadSkin { get; private set; }
@@ -106,6 +110,7 @@ namespace KingdomWatch.Game
             var art = new HudArt { FontTexture = font };
             art.White = White1(owned);
             art.Panel = Framed(frames, 0, owned);
+            art.Tail = MakeTail(owned);
             art.Button = Framed(frames, 1, owned);
             // Row 3 of the button icons is the dark slate set, which shows on the grey buttons.
             art.Pause = Cell(buttonIcons, 0, 48, owned);
@@ -132,6 +137,28 @@ namespace KingdomWatch.Game
             texture.SetPixel(0, 0, Color.white);
             texture.Apply(false);
             var sprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+            owned.Add(texture);
+            owned.Add(sprite);
+            return sprite;
+        }
+
+        private static Sprite MakeTail(List<Object> owned)
+        {
+            var ink = new Color32(34, 26, 41, 255);
+            var tan = new Color32(226, 165, 114, 255);
+            var texture = new Texture2D(TailWidth, TailHeight, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            for (var row = 0; row < TailHeight; row++)
+            {
+                var edge = TailWidth / 2 - row;
+                for (var x = 0; x < TailWidth; x++)
+                {
+                    var across = Mathf.Abs(x - TailWidth / 2);
+                    // Texture rows count up from the bottom; the point is down.
+                    texture.SetPixel(x, TailHeight - 1 - row, across == edge ? ink : across < edge ? tan : new Color32(0, 0, 0, 0));
+                }
+            }
+            texture.Apply(false);
+            var sprite = Sprite.Create(texture, new Rect(0f, 0f, TailWidth, TailHeight), new Vector2(0.5f, 0.5f), 1f);
             owned.Add(texture);
             owned.Add(sprite);
             return sprite;

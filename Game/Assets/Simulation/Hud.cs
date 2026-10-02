@@ -78,11 +78,12 @@ namespace KingdomWatch.Game
         private const float BarEase = 8f;
         private const float MinimapCardHeight = 124f;
         private const float PlateHeight = 19f;
+        // From a plate's foot to the top of its marker: the tail hangs 3 of it.
+        private const float PlateGap = 5f;
 
-        // The width of each of the stock's three entries, the room the speed
-        // controls take on the bar's right, and the gap between its groups.
+        // The width of each of the stock's three entries, and the gap
+        // between the bar's groups.
         private const float StockStride = 40f;
-        private const float RightControls = 124f;
         private const float BarGap = 12f;
 
         private static readonly Color Ink = new Color(0.13f, 0.1f, 0.16f);
@@ -116,11 +117,11 @@ namespace KingdomWatch.Game
         private readonly Tip foodTip, woodTip, stoneTip;
         private long stockKey = -1;
 
-        // People: the whole world's, and the selected community's with its name.
-        private readonly RectTransform worldGroup, communityGroup, communityIcon;
-        private readonly Label worldCount, communityName, communityCount;
-        private readonly Tip communityTip;
-        private long worldKey = -1, communityKey = -1;
+        // People: the selected community's with its name, or the world's.
+        private readonly RectTransform peopleGroup, peopleIcon;
+        private readonly Label peopleName, peopleCount;
+        private readonly Tip peopleTip;
+        private long peopleKey = long.MinValue;
 
         // Names over the communities at Far zoom.
         private readonly WorldView2D view;
@@ -183,14 +184,10 @@ namespace KingdomWatch.Game
             date = new Label(bar, art, TextAlign.Left, Ink);
             date.Place(Pad, 9f, 130f);
             speed = AddBarControls();
-            worldGroup = Child(bar, "World", 0f, 0f, 60f, BarHeight);
-            PeopleIcon(worldGroup, out var worldTip);
-            worldTip.Text = "People in the world";
-            worldCount = BarText(worldGroup, 18f);
-            communityGroup = Child(bar, "Community", 0f, 0f, 200f, BarHeight);
-            communityName = BarText(communityGroup, 0f);
-            communityIcon = PeopleIcon(communityGroup, out communityTip);
-            communityCount = BarText(communityGroup, 0f);
+            peopleGroup = Child(bar, "People", 0f, 0f, 200f, BarHeight);
+            peopleName = BarText(peopleGroup, 0f);
+            peopleIcon = PeopleIcon(peopleGroup, out peopleTip);
+            peopleCount = BarText(peopleGroup, 0f);
             stockGroup = Child(bar, "Stock", 0f, 0f, 3f * StockStride, BarHeight);
             foodNumber = BuildStock(0f, art.Berries, out foodTip);
             woodNumber = BuildStock(StockStride, art.Wood, out woodTip);
@@ -438,43 +435,30 @@ namespace KingdomWatch.Game
             return rect;
         }
 
+        // The selected community's people, named, or the world's when nothing
+        // is selected.
         private void RefreshPeople(HudState s)
         {
-            if (Changed(ref worldKey, s.People)) worldCount.Value = s.People.ToString();
-            communityGroup.gameObject.SetActive(s.HasCommunity);
-            if (!s.HasCommunity) return;
-            var key = ((long)s.CommunityId * 2L + (s.CommunityKind == EntityKind.Settlement ? 1L : 0L)) * 100003L + s.CommunityPeople;
-            if (!Changed(ref communityKey, key)) return;
-            var name = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
-            communityName.Value = name;
-            communityCount.Value = s.CommunityPeople.ToString();
-            communityTip.Text = "People in " + name;
+            var key = s.HasCommunity
+                ? ((long)s.CommunityId * 2L + (s.CommunityKind == EntityKind.Settlement ? 1L : 0L)) * 100003L + s.CommunityPeople
+                : -1L - s.People;
+            if (!Changed(ref peopleKey, key)) return;
+            var name = s.HasCommunity ? (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId : "World";
+            peopleName.Value = name;
+            peopleCount.Value = (s.HasCommunity ? s.CommunityPeople : s.People).ToString();
+            peopleTip.Text = "People in " + (s.HasCommunity ? name : "the world");
         }
 
-        // The bar's groups, left to right after the date: the world's people,
-        // the community with its people, then its stock. The world's go first
-        // when a narrow screen runs out of room.
+        // The bar's groups, left to right after the date: the people, then the
+        // selected community's stock.
         private void LayOutBar(HudState s)
         {
-            var limit = canvasRect.rect.width - RightControls;
             var x = Pad + art.WidthOf(date.Value) + BarGap;
-            var community = s.HasCommunity;
-            var nameWidth = community ? art.WidthOf(communityName.Value) : 0f;
-            var communityWidth = community ? nameWidth + 6f + 18f + art.WidthOf(communityCount.Value) : 0f;
-            var worldWidth = 18f + art.WidthOf(worldCount.Value);
-            var rest = community ? communityWidth + BarGap + 3f * StockStride : 0f;
-            var showWorld = x + worldWidth + BarGap + rest <= limit;
-            worldGroup.gameObject.SetActive(showWorld);
-            if (showWorld)
-            {
-                worldGroup.anchoredPosition = new Vector2(x, 0f);
-                x += worldWidth + BarGap;
-            }
-            if (!community) return;
-            communityGroup.anchoredPosition = new Vector2(x, 0f);
-            communityIcon.anchoredPosition = new Vector2(nameWidth + 6f, communityIcon.anchoredPosition.y);
-            communityCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, communityCount.Rect.anchoredPosition.y);
-            stockGroup.anchoredPosition = new Vector2(x + communityWidth + BarGap, 0f);
+            var nameWidth = art.WidthOf(peopleName.Value);
+            peopleGroup.anchoredPosition = new Vector2(x, 0f);
+            peopleIcon.anchoredPosition = new Vector2(nameWidth + 6f, peopleIcon.anchoredPosition.y);
+            peopleCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, peopleCount.Rect.anchoredPosition.y);
+            stockGroup.anchoredPosition = new Vector2(x + nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value) + BarGap, 0f);
         }
 
         // ---- Names over the map ----
@@ -493,6 +477,13 @@ namespace KingdomWatch.Game
                     plate.GetComponent<Image>().raycastTarget = false;
                     var made = new Label(plate, art, TextAlign.Left, Ink);
                     made.Place(Pad, 7f, 200f);
+                    if (art.Tail != null)
+                    {
+                        var tail = Child(plate, "Tail", 0f, PlateHeight - 2f, HudArt.TailWidth, HudArt.TailHeight);
+                        var tailImage = tail.gameObject.AddComponent<Image>();
+                        tailImage.sprite = art.Tail;
+                        tailImage.raycastTarget = false;
+                    }
                     communityPlates.Add(plate);
                     communityLabels.Add(made);
                 }
@@ -503,9 +494,11 @@ namespace KingdomWatch.Game
                 if (label.Value != text)
                 {
                     label.Value = text;
-                    plateRect.sizeDelta = new Vector2(art.WidthOf(text) + 2f * Pad, PlateHeight);
+                    var width = art.WidthOf(text) + 2f * Pad;
+                    plateRect.sizeDelta = new Vector2(width, PlateHeight);
+                    if (art.Tail != null) ((RectTransform)plateRect.Find("Tail")).anchoredPosition = new Vector2(Mathf.Round((width - HudArt.TailWidth) / 2f), -(PlateHeight - 2f));
                 }
-                plateRect.anchoredPosition = new Vector2(Mathf.Round(screen.x / scale - plateRect.sizeDelta.x / 2f), -Mathf.Round((Screen.height - screen.y) / scale - PlateHeight - 2f));
+                plateRect.anchoredPosition = new Vector2(Mathf.Round(screen.x / scale - plateRect.sizeDelta.x / 2f), -Mathf.Round((Screen.height - screen.y) / scale - PlateHeight - PlateGap));
             }
             for (var i = count; i < communityPlates.Count; i++) communityPlates[i].gameObject.SetActive(false);
         }

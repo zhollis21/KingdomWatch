@@ -106,6 +106,11 @@ namespace KingdomWatch.Game
         // A community marker's side in UI-scaled pixels, whatever the zoom.
         private const float CommunityMarkerSize = 14f;
 
+        // Sorting orders are 16-bit: a larger one wraps round to behind the
+        // terrain, which is where these markers sat unseen until #128. Above
+        // anything the figures and scenery use, which stops near 17,300.
+        private const int CommunityMarkerOrder = 30000;
+
         // Doll frames per second.
         private const float FramesPerSecond = 8f;
 
@@ -519,7 +524,14 @@ namespace KingdomWatch.Game
         {
             while (communityMarkers.Count <= index)
             {
-                communityMarkers.Add(NewMarker("Community", communityRoot));
+                var made = NewMarker("Community", communityRoot);
+                communityMarkers.Add(made);
+                // A sprite is a scale from its centre of one unit: 1.4 times the
+                // marker, dropped by 0.2 as the pivot is at the feet, leaves an even rim.
+                var rim = NewMarker("Edge", made.transform);
+                rim.transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+                rim.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+                rim.color = new Color(0.13f, 0.1f, 0.16f);
                 communityIds.Add(EntityId.None);
                 communitySizes.Add(0);
             }
@@ -533,8 +545,12 @@ namespace KingdomWatch.Game
             marker.transform.localPosition = new Vector3(at.X + 0.5f, height - cellY - size / 2f, 0f);
             marker.transform.localScale = new Vector3(size, size, 1f);
             marker.color = settled ? new Color(0.93f, 0.9f, 0.82f) : new Color(0.85f, 0.35f, 0.3f);
-            marker.sortingOrder = 100000 + index;
+            marker.sortingOrder = CommunityMarkerOrder + index;
             marker.enabled = visible;
+            // A dark edge, so the marker shows on snow as well as on grass.
+            var edge = marker.transform.GetChild(0).GetComponent<SpriteRenderer>();
+            edge.sortingOrder = marker.sortingOrder - 1;
+            edge.enabled = visible;
         }
 
         private void DrawHighlight()
