@@ -35,7 +35,8 @@ namespace KingdomWatch.Game
         public bool HasCommunity;
         public EntityKind CommunityKind;
         public ulong CommunityId;
-        public int Food, Wood, Stone, DaysOfFood;
+        // What the community owns, and how much of each is free to use.
+        public int Food, Wood, Stone, FoodFree, WoodFree, StoneFree, DaysOfFood;
         public int CommunityPeople;
 
         public long Seed;
@@ -69,6 +70,13 @@ namespace KingdomWatch.Game
     public sealed class Hud : IPointerBlocker
     {
         public const float BarHeight = 26f;
+
+        // A narrow screen puts the people and the stock on a second row: its
+        // height, how far down that row starts, and the room the speed controls
+        // take at the right of the first.
+        private const float TwoRowHeight = 44f;
+        private const float SecondRow = 18f;
+        private const float RightControls = 124f;
         private const float Gap = 3f;
         private const float ColumnWidth = 104f;
         private const float Pad = 8f;
@@ -99,6 +107,7 @@ namespace KingdomWatch.Game
 
         // Top bar.
         private readonly RectTransform bar;
+        private float barHeight = BarHeight;
         private readonly Label date, speed;
         private Image pauseIcon;
         private Label pauseLabel;
@@ -208,7 +217,8 @@ namespace KingdomWatch.Game
             hint1.Value = "Tap a person, or";
             hint2.Value = "a settlement.";
             healthBar = Child(selectionCard, "Health", Pad, 7f + 31f, InnerWidth, 5f);
-            Fill(healthBar, "Back", Faint, art.White);
+            // The back takes pointer events, so the bar's tooltip can be reached.
+            Fill(healthBar, "Back", Faint, art.White).raycastTarget = true;
             healthFill = Fill(healthBar, "Fill", new Color(0.85f, 0.25f, 0.25f), art.White);
             healthTip = healthBar.gameObject.AddComponent<Tip>();
             healthTip.Hud = this;
@@ -245,9 +255,9 @@ namespace KingdomWatch.Game
 
         // The footprint of what the camera must keep the map clear of, in GUI
         // coordinates (origin top-left, y down), and the bar across the top.
-        public Rect Reserved => new Rect(0f, 0f, (ColumnWidth + 2f * Gap) * Pixel, (BarHeight + Gap + MinimapCardHeight + Gap) * Pixel);
+        public Rect Reserved => new Rect(0f, 0f, (ColumnWidth + 2f * Gap) * Pixel, (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
 
-        public float TopInset => BarHeight * Pixel;
+        public float TopInset => barHeight * Pixel;
 
         public void ToggleDebug() => debug = !debug;
 
@@ -398,15 +408,21 @@ namespace KingdomWatch.Game
         {
             stockGroup.gameObject.SetActive(s.HasCommunity);
             if (!s.HasCommunity) return;
-            var key = ((s.Food * 31L + s.Wood) * 31L + s.Stone) * 31L + s.DaysOfFood;
+            var key = ((((((s.Food * 31L + s.Wood) * 31L + s.Stone) * 31L + s.FoodFree) * 31L + s.WoodFree) * 31L + s.StoneFree) * 31L) + s.DaysOfFood;
             if (!Changed(ref stockKey, key)) return;
             foodNumber.Value = s.Food.ToString();
             woodNumber.Value = s.Wood.ToString();
             stoneNumber.Value = s.Stone.ToString();
-            foodTip.Text = s.DaysOfFood == int.MaxValue ? "Food: " + s.Food : "Food: " + s.Food + ", enough for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days");
-            woodTip.Text = "Wood: " + s.Wood;
-            stoneTip.Text = "Stone: " + s.Stone;
+            var days = s.DaysOfFood == int.MaxValue ? "" : ", enough for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days");
+            foodTip.Text = StockTip("Food", s.Food, s.FoodFree) + days;
+            woodTip.Text = StockTip("Wood", s.Wood, s.WoodFree);
+            stoneTip.Text = StockTip("Stone", s.Stone, s.StoneFree);
         }
+
+        // The total the community owns; when some is reserved, carried or in
+        // use, how much of it is free.
+        private static string StockTip(string name, int total, int free) =>
+            free == total ? name + ": " + total : name + ": " + total + " (" + free + " free)";
 
         // ---- People ----
 
@@ -453,12 +469,22 @@ namespace KingdomWatch.Game
         // selected community's stock.
         private void LayOutBar(HudState s)
         {
-            var x = Pad + art.WidthOf(date.Value) + BarGap;
             var nameWidth = art.WidthOf(peopleName.Value);
-            peopleGroup.anchoredPosition = new Vector2(x, 0f);
+            var peopleWidth = nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value);
+            var stockWidth = s.HasCommunity ? BarGap + 3f * StockStride : 0f;
+            var firstRow = Pad + art.WidthOf(date.Value) + BarGap;
+
+            // One row when the people and stock fit left of the speed controls.
+            var oneRow = firstRow + peopleWidth + stockWidth <= canvasRect.rect.width - RightControls;
+            barHeight = oneRow ? BarHeight : TwoRowHeight;
+            bar.sizeDelta = new Vector2(0f, barHeight);
+            var x = oneRow ? firstRow : Pad;
+            var y = oneRow ? 0f : -SecondRow;
+
+            peopleGroup.anchoredPosition = new Vector2(x, y);
             peopleIcon.anchoredPosition = new Vector2(nameWidth + 6f, peopleIcon.anchoredPosition.y);
             peopleCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, peopleCount.Rect.anchoredPosition.y);
-            stockGroup.anchoredPosition = new Vector2(x + nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value) + BarGap, 0f);
+            stockGroup.anchoredPosition = new Vector2(x + peopleWidth + BarGap, y);
         }
 
         // ---- Names over the map ----
@@ -494,11 +520,21 @@ namespace KingdomWatch.Game
                 if (label.Value != text)
                 {
                     label.Value = text;
-                    var width = art.WidthOf(text) + 2f * Pad;
-                    plateRect.sizeDelta = new Vector2(width, PlateHeight);
-                    if (art.Tail != null) ((RectTransform)plateRect.Find("Tail")).anchoredPosition = new Vector2(Mathf.Round((width - HudArt.TailWidth) / 2f), -(PlateHeight - 2f));
+                    plateRect.sizeDelta = new Vector2(art.WidthOf(text) + 2f * Pad, PlateHeight);
                 }
-                plateRect.anchoredPosition = new Vector2(Mathf.Round(screen.x / scale - plateRect.sizeDelta.x / 2f), -Mathf.Round((Screen.height - screen.y) / scale - PlateHeight - PlateGap));
+
+                // Centred over the marker, but kept on the screen: near an edge the
+                // plate slides in and its tail keeps pointing at the marker.
+                var plateWidth = plateRect.sizeDelta.x;
+                var markerX = screen.x / scale;
+                var left = Mathf.Clamp(markerX - plateWidth / 2f, 2f, Mathf.Max(2f, canvasRect.rect.width - plateWidth - 2f));
+                var top = Mathf.Max(2f, (Screen.height - screen.y) / scale - PlateHeight - PlateGap);
+                plateRect.anchoredPosition = new Vector2(Mathf.Round(left), -Mathf.Round(top));
+                if (art.Tail != null)
+                {
+                    var tailLeft = Mathf.Clamp(markerX - left - HudArt.TailWidth / 2f, 4f, Mathf.Max(4f, plateWidth - HudArt.TailWidth - 4f));
+                    ((RectTransform)plateRect.Find("Tail")).anchoredPosition = new Vector2(Mathf.Round(tailLeft), -(PlateHeight - 2f));
+                }
             }
             for (var i = count; i < communityPlates.Count; i++) communityPlates[i].gameObject.SetActive(false);
         }
@@ -571,7 +607,7 @@ namespace KingdomWatch.Game
 
         private void LayOutColumn()
         {
-            var y = BarHeight + Gap;
+            var y = barHeight + Gap;
             blocking.Clear();
             blocking.Add(bar);
             foreach (var card in cards)
