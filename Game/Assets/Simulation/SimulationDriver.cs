@@ -84,6 +84,12 @@ namespace KingdomWatch.Game
             view.Show(world);
             rig = new CameraRig(view.sceneCamera, world.Grid.Width, world.Grid.Height);
             input = new ViewInput(rig, view);
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+            // -hud-notch insets the panel as a phone's cutout and rounded corners
+            // would, to look at the layout on a screen that has neither.
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-hud-notch") >= 0)
+                Hud.SafeAreaOverride = new Rect(Screen.width * 0.04f, Screen.height * 0.03f, Screen.width * 0.93f, Screen.height * 0.91f);
+#endif
             hud = new Hud(HudArt.Load(hudOwned) ?? HudArt.Flat(hudOwned), Commands(), view, new Vector2(world.Grid.Width, world.Grid.Height));
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).

@@ -105,6 +105,14 @@ namespace KingdomWatch.Game
         private readonly CanvasScaler scaler;
         private readonly RectTransform canvasRect;
 
+        // Everything but the map's own labels lives under this, inset to the
+        // screen's safe area so a camera cutout or rounded corner cannot cover it.
+        private readonly RectTransform safeRoot;
+
+        // Set from the command line in a development build, to look at the
+        // panel with a notch's worth of inset on a screen that has none.
+        public static Rect? SafeAreaOverride;
+
         // Top bar.
         private readonly RectTransform bar;
         private float barHeight = BarHeight;
@@ -186,9 +194,12 @@ namespace KingdomWatch.Game
             // Behind everything else, so a card or the bar covers a label.
             mapLabels = Child(canvasRect, "MapLabels", 0f, 0f, 0f, 0f);
             Stretch(mapLabels);
+            safeRoot = new GameObject("Safe area", typeof(RectTransform)).GetComponent<RectTransform>();
+            safeRoot.SetParent(canvasRect, false);
+            safeRoot.offsetMin = safeRoot.offsetMax = Vector2.zero;
 
             // The top bar.
-            bar = Frame(root.transform, "Bar", art.Panel, 0f, 0f, 0f, BarHeight, Tint(false));
+            bar = Frame(safeRoot, "Bar", art.Panel, 0f, 0f, 0f, BarHeight, Tint(false));
             bar.anchorMin = new Vector2(0f, 1f);
             bar.anchorMax = new Vector2(1f, 1f);
             bar.sizeDelta = new Vector2(0f, BarHeight);
@@ -242,7 +253,7 @@ namespace KingdomWatch.Game
             cards = new[] { minimapCard, selectionCard, debugCard };
 
             // The tooltip floats above everything, and takes no clicks.
-            tooltip = Frame(root.transform, "Tooltip", art.Panel, 0f, 0f, 60f, 22f, Tint(false));
+            tooltip = Frame(safeRoot, "Tooltip", art.Panel, 0f, 0f, 60f, 22f, Tint(false));
             tooltip.GetComponent<Image>().raycastTarget = false;
             tooltipText = new Label(tooltip, art, TextAlign.Left, Ink);
             tooltipText.Place(Pad, 7f, 200f);
@@ -261,9 +272,15 @@ namespace KingdomWatch.Game
         // The footprint of what the camera must keep the map clear of, in GUI
         // coordinates (origin top-left, y down): the column, or the strip of
         // cards across an upright screen, under the bar across the top.
-        public Rect Reserved => new Rect(0f, 0f, Upright ? Screen.width : (ColumnWidth + 2f * Gap) * Pixel, (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
+        public Rect Reserved => new Rect(0f, 0f, Upright ? Screen.width : SafeArea.xMin + (ColumnWidth + 2f * Gap) * Pixel, TopInsetOfSafeArea + (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
 
-        public float TopInset => barHeight * Pixel;
+        public float TopInset => TopInsetOfSafeArea + barHeight * Pixel;
+
+        // The part of the screen the panel may use, in screen pixels (y up).
+        private static Rect SafeArea => SafeAreaOverride ?? Screen.safeArea;
+
+        // How far down from the top of the screen the safe area starts, in pixels.
+        private static float TopInsetOfSafeArea => Screen.height - SafeArea.yMax;
 
         public void ToggleDebug() => debug = !debug;
 
@@ -278,6 +295,9 @@ namespace KingdomWatch.Game
         public void Refresh(HudState state, Rect visible, IReadOnlyList<Vector2> settlements, IReadOnlyList<Vector2> bands, float mapWidth, float mapHeight)
         {
             scaler.scaleFactor = Pixel;
+            var safe = SafeArea;
+            safeRoot.anchorMin = new Vector2(safe.xMin / Screen.width, safe.yMin / Screen.height);
+            safeRoot.anchorMax = new Vector2(safe.xMax / Screen.width, safe.yMax / Screen.height);
 
             RefreshBar(state);
             RefreshMinimap(visible, settlements, bands, mapWidth, mapHeight);
@@ -480,7 +500,7 @@ namespace KingdomWatch.Game
             var firstRow = Pad + art.WidthOf(date.Value) + BarGap;
 
             // One row when the people and stock fit left of the speed controls.
-            var oneRow = firstRow + peopleWidth + stockWidth <= canvasRect.rect.width - RightControls;
+            var oneRow = firstRow + peopleWidth + stockWidth <= safeRoot.rect.width - RightControls;
             barHeight = oneRow ? BarHeight : TwoRowHeight;
             bar.sizeDelta = new Vector2(0f, barHeight);
             var x = oneRow ? firstRow : Pad;
@@ -684,10 +704,11 @@ namespace KingdomWatch.Game
             tooltip.gameObject.SetActive(true);
             // Beside the thing it names, kept on the screen.
             var anchor = RectTransformUtility.WorldToScreenPoint(null, hovered.transform.position);
-            var canvasSize = canvasRect.rect.size;
-            var at = new Vector2(anchor.x, anchor.y) / Pixel;
-            var x = Mathf.Clamp(at.x - width / 2f, 2f, Mathf.Max(2f, canvasSize.x - width - 2f));
-            var yTop = Mathf.Clamp(canvasSize.y - at.y + 12f, 2f, canvasSize.y - 24f);
+            var safe = SafeArea;
+            var safeSize = safeRoot.rect.size;
+            var at = (new Vector2(anchor.x, anchor.y) - new Vector2(safe.xMin, safe.yMin)) / Pixel;
+            var x = Mathf.Clamp(at.x - width / 2f, 2f, Mathf.Max(2f, safeSize.x - width - 2f));
+            var yTop = Mathf.Clamp(safeSize.y - at.y + 12f, 2f, safeSize.y - 24f);
             tooltip.anchoredPosition = new Vector2(x, -yTop);
         }
 
@@ -705,7 +726,7 @@ namespace KingdomWatch.Game
 
         private RectTransform Card(string name, float x, float height)
         {
-            var card = Frame(root.transform, name, art.Panel, x, 0f, ColumnWidth, height, Tint(false));
+            var card = Frame(safeRoot, name, art.Panel, x, 0f, ColumnWidth, height, Tint(false));
             return card;
         }
 
