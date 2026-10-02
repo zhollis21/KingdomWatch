@@ -1502,17 +1502,18 @@ namespace KingdomWatch.Game
         }
 
         // The panel's labels over the communities (#128): while the whole map
-        // shows, one a community, with where its top is on the screen.
+        // shows, one for each community, with where its top is on the screen.
         public int LabelCount => Band == ZoomBand.Far && sceneCamera != null ? usedCommunities : 0;
 
         // Which community the index is, how many live in it, and where its top
-        // is on the screen. The panel words the label, naming the community by
-        // its id until #109 gives settlements names.
-        public void LabelAt(int index, out EntityId id, out int size, out Vector2 screen)
+        // and its foot are on the screen. The panel words the label, naming the
+        // community by its id until #109 gives settlements names.
+        public void LabelAt(int index, out EntityId id, out int size, out Vector2 screen, out Vector2 bottom)
         {
             var marker = communityMarkers[index];
-            var top = marker.transform.position + new Vector3(0f, marker.transform.lossyScale.y, 0f);
-            screen = sceneCamera.WorldToScreenPoint(top);
+            var feet = marker.transform.position;
+            screen = sceneCamera.WorldToScreenPoint(feet + new Vector3(0f, marker.transform.lossyScale.y, 0f));
+            bottom = sceneCamera.WorldToScreenPoint(feet);
             id = communityIds[index];
             size = communitySizes[index];
         }

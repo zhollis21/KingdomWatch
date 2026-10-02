@@ -583,7 +583,7 @@ namespace KingdomWatch.Game
                     communityLabels.Add(made);
                     plateSeen.Add((ulong.MaxValue, EntityKind.None, -1));
                 }
-                view.LabelAt(i, out var id, out var size, out var screen);
+                view.LabelAt(i, out var id, out var size, out var screen, out var foot);
                 var label = communityLabels[i];
                 var plateRect = communityPlates[i];
 
@@ -609,12 +609,19 @@ namespace KingdomWatch.Game
                 // plate slides in and its tail keeps pointing at the marker.
                 var plateWidth = plateRect.sizeDelta.x;
                 var left = Mathf.Clamp(markerX - plateWidth / 2f, 2f, Mathf.Max(2f, canvasRect.rect.width - plateWidth - 2f));
-                var top = Mathf.Max(2f, markerY - PlateHeight - PlateGap);
+                // With no room above a marker near the top of the screen, the plate
+                // goes below it and its tail points up.
+                var above = markerY - PlateHeight - PlateGap;
+                var below = above < 2f;
+                var top = below ? (Screen.height - foot.y) / scale + PlateGap : above;
                 plateRect.anchoredPosition = new Vector2(Mathf.Round(left), -Mathf.Round(top));
                 if (art.Tail != null)
                 {
+                    var tail = (RectTransform)plateRect.Find("Tail");
                     var tailLeft = Mathf.Clamp(markerX - left - HudArt.TailWidth / 2f, 4f, Mathf.Max(4f, plateWidth - HudArt.TailWidth - 4f));
-                    ((RectTransform)plateRect.Find("Tail")).anchoredPosition = new Vector2(Mathf.Round(tailLeft), -(PlateHeight - 2f));
+                    // Flipped, the tail grows upward from its top edge.
+                    tail.localScale = new Vector3(1f, below ? -1f : 1f, 1f);
+                    tail.anchoredPosition = new Vector2(Mathf.Round(tailLeft), below ? -2f : -(PlateHeight - 2f));
                 }
             }
             for (var i = count; i < communityPlates.Count; i++) communityPlates[i].gameObject.SetActive(false);
