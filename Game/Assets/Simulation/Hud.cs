@@ -91,7 +91,7 @@ namespace KingdomWatch.Game
 
         // The width of each of the stock's three entries, and the gap
         // between the bar's groups.
-        private const float StockStride = 40f;
+        private const float StockGap = 8f;
         private const float BarGap = 12f;
 
         private static readonly Color Ink = new Color(0.13f, 0.1f, 0.16f);
@@ -132,6 +132,8 @@ namespace KingdomWatch.Game
         // The selected community's stock, in the bar.
         private readonly RectTransform stockGroup;
         private readonly Label foodNumber, woodNumber, stoneNumber;
+        private readonly RectTransform[] stockIcons = new RectTransform[3];
+        private readonly Label[] stockNumbers = new Label[3];
         private readonly Tip foodTip, woodTip, stoneTip;
         private (int, int, int, int, int, int, int) stockSeen = (int.MinValue, 0, 0, 0, 0, 0, 0);
 
@@ -150,7 +152,7 @@ namespace KingdomWatch.Game
 
         // Selection card.
         private readonly RectTransform selectionCard;
-        private readonly Label selectionName, selectionTitle, selectionLine, selectionCommunity, hint1, hint2;
+        private readonly Label selectionName, selectionTitle, selectionLine, selectionStatus, selectionCommunity, hint1, hint2;
         private readonly RectTransform healthBar;
         private readonly Image healthFill;
         private readonly Tip healthTip;
@@ -164,7 +166,7 @@ namespace KingdomWatch.Game
 
         // Debug card, shown from the bar's toggle or F3.
         private readonly RectTransform debugCard;
-        private readonly Label[] debugLines = new Label[5];
+        private readonly Label[] debugLines = new Label[6];
         private (long, int, int, long, ulong) debugSeen = (long.MinValue, 0, 0, 0, 0);
         private bool debug;
 
@@ -211,10 +213,10 @@ namespace KingdomWatch.Game
             peopleName = BarText(peopleGroup, 0f);
             peopleIcon = PeopleIcon(peopleGroup, out peopleTip);
             peopleCount = BarText(peopleGroup, 0f);
-            stockGroup = Child(bar, "Stock", 0f, 0f, 3f * StockStride, BarHeight);
-            foodNumber = BuildStock(0f, art.Berries, out foodTip);
-            woodNumber = BuildStock(StockStride, art.Wood, out woodTip);
-            stoneNumber = BuildStock(2f * StockStride, art.Stone, out stoneTip);
+            stockGroup = Child(bar, "Stock", 0f, 0f, 300f, BarHeight);
+            foodNumber = BuildStock(0, art.Berries, out foodTip);
+            woodNumber = BuildStock(1, art.Wood, out woodTip);
+            stoneNumber = BuildStock(2, art.Stone, out stoneTip);
 
             // The column.
             minimapCard = Card("Minimap", 0f, MinimapCardHeight);
@@ -226,12 +228,13 @@ namespace KingdomWatch.Game
             selectionName = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionTitle = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionLine = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
+            selectionStatus = Text(selectionCard, Pad, 7f + 20f, InnerWidth, Ink);
             selectionCommunity = Text(selectionCard, Pad, 7f + 20f, InnerWidth, Ink);
             hint1 = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             hint2 = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
             hint1.Value = "Tap a person, or";
             hint2.Value = "a settlement.";
-            healthBar = Child(selectionCard, "Health", Pad, 7f + 41f, InnerWidth, 5f);
+            healthBar = Child(selectionCard, "Health", Pad, 7f + 51f, InnerWidth, 5f);
             // The back takes pointer events, so the bar's tooltip can be reached.
             Fill(healthBar, "Back", Faint, art.White).raycastTarget = true;
             healthFill = Fill(healthBar, "Fill", new Color(0.85f, 0.25f, 0.25f), art.White);
@@ -244,9 +247,9 @@ namespace KingdomWatch.Game
             row.anchoredPosition = Vector2.zero;
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
             var half = (InnerWidth - 2f) / 2f;
-            followButton = MakeButton(row, Pad, 7f + 51f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
+            followButton = MakeButton(row, Pad, 7f + 61f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
             followTip = followButton.GetComponent<Tip>();
-            clearButton = MakeButton(row, Pad + half + 2f, 7f + 51f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
+            clearButton = MakeButton(row, Pad + half + 2f, 7f + 61f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
             for (var i = 0; i < debugLines.Length; i++) debugLines[i] = Text(debugCard, Pad, 7f + i * 9f, InnerWidth, Ink);
@@ -267,7 +270,34 @@ namespace KingdomWatch.Game
 
         // Screen pixels to an art pixel: the shorter side holds about 360 of
         // them, rounded to whole pixels so every art pixel is one flat square.
-        public float Pixel => Mathf.Max(1, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
+        // A smaller scale is used when the cards on show would not fit the
+        // screen at that one, so every card stays reachable.
+        public float Pixel
+        {
+            get
+            {
+                var preferred = Mathf.Max(1, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
+                if (cards == null) return preferred;
+
+                // What the cards need across an upright screen, or down a wide one
+                // (counting the bar at its tallest, so the scale does not depend on
+                // which row layout the bar has picked).
+                var safe = SafeArea;
+                var need = Gap;
+                var room = safe.width;
+                if (!Upright)
+                {
+                    need = TwoRowHeight + Gap;
+                    room = safe.height;
+                }
+                foreach (var card in cards)
+                {
+                    if (!card.gameObject.activeSelf) continue;
+                    need += (Upright ? ColumnWidth : card.sizeDelta.y) + Gap;
+                }
+                return Mathf.Clamp(Mathf.Floor(room / need), 1, preferred);
+            }
+        }
 
         // The footprint of what the camera must keep the map clear of, in GUI
         // coordinates (origin top-left, y down): the column, or the strip of
@@ -416,17 +446,20 @@ namespace KingdomWatch.Game
 
         // ---- Stock ----
 
-        // An icon and its count, side by side, `x` along the group.
-        private Label BuildStock(float x, Sprite icon, out Tip tip)
+        // An icon and its count, side by side. LayOutBar spaces the three along
+        // the group by how wide each count is.
+        private Label BuildStock(int index, Sprite icon, out Tip tip)
         {
-            var iconRect = Child(stockGroup, "Icon", x, (BarHeight - 16f) / 2f - 1f, 16f, 16f);
+            var iconRect = Child(stockGroup, "Icon", 0f, (BarHeight - 16f) / 2f - 1f, 16f, 16f);
+            stockIcons[index] = iconRect;
             var image = iconRect.gameObject.AddComponent<Image>();
             image.sprite = icon;
             if (icon == null) image.color = Faint;
             tip = iconRect.gameObject.AddComponent<Tip>();
             tip.Hud = this;
             var number = new Label(stockGroup, art, TextAlign.Left, Ink);
-            number.Place(x + 18f, 9f, StockStride - 18f);
+            number.Place(0f, 9f, 80f);
+            stockNumbers[index] = number;
             return number;
         }
 
@@ -496,7 +529,18 @@ namespace KingdomWatch.Game
         {
             var nameWidth = art.WidthOf(peopleName.Value);
             var peopleWidth = nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value);
-            var stockWidth = s.HasCommunity ? BarGap + 3f * StockStride : 0f;
+            var stockWidth = 0f;
+            if (s.HasCommunity)
+            {
+                var at = 0f;
+                for (var i = 0; i < stockIcons.Length; i++)
+                {
+                    stockIcons[i].anchoredPosition = new Vector2(at, stockIcons[i].anchoredPosition.y);
+                    stockNumbers[i].Rect.anchoredPosition = new Vector2(at + 18f, stockNumbers[i].Rect.anchoredPosition.y);
+                    at += 18f + art.WidthOf(stockNumbers[i].Value) + StockGap;
+                }
+                stockWidth = BarGap + at - StockGap;
+            }
             var firstRow = Pad + art.WidthOf(date.Value) + BarGap;
 
             // One row when the people and stock fit left of the speed controls.
@@ -586,13 +630,14 @@ namespace KingdomWatch.Game
             selectionName.Object.SetActive(s.SelectedKind == EntityKind.Person);
             selectionTitle.Object.SetActive(!none);
             selectionLine.Object.SetActive(!none);
+            selectionStatus.Object.SetActive(s.SelectedKind == EntityKind.Person);
             selectionCommunity.Object.SetActive(s.SelectedKind == EntityKind.Person && s.HasCommunity);
             healthBar.gameObject.SetActive(s.SelectedKind == EntityKind.Person);
             buttonRow.SetActive(!none);
-            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 82f : 54f);
+            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 92f : 54f);
             if (none) return;
 
-            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 51f : 7f + 22f;
+            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 61f : 7f + 22f;
             followButton.anchoredPosition = new Vector2(followButton.anchoredPosition.x, -buttonY);
             clearButton.anchoredPosition = new Vector2(clearButton.anchoredPosition.x, -buttonY);
             followLabel.Value = s.Following ? "Stop" : "Follow";
@@ -604,14 +649,16 @@ namespace KingdomWatch.Game
             var line = person ? 17f : 7f;
             selectionTitle.Place(Pad, line, InnerWidth);
             selectionLine.Place(Pad, line + 10f, InnerWidth);
-            selectionCommunity.Place(Pad, line + 20f, InnerWidth);
+            selectionStatus.Place(Pad, line + 20f, InnerWidth);
+            selectionCommunity.Place(Pad, line + 30f, InnerWidth);
             if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
             {
                 if (person)
                 {
                     selectionName.Value = "Person " + s.SelectedId;
                     selectionTitle.Value = s.Stage + ", " + s.Years + " yrs";
-                    selectionLine.Value = (s.Job == JobKind.None ? "No job" : s.Job.ToString()) + (s.Working ? ", working" : ", idle");
+                    selectionLine.Value = s.Job == JobKind.None ? "No job" : s.Job.ToString();
+                    selectionStatus.Value = s.Working ? "Working" : "Idle";
                     selectionCommunity.Value = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
                 }
                 else
@@ -644,11 +691,12 @@ namespace KingdomWatch.Game
             debugCard.gameObject.SetActive(debug);
             if (!debug) return;
             if (!Changed(ref debugSeen, (s.Seed, s.People, s.Settlements, s.HashYear, s.Hash))) return;
-            debugLines[0].Value = "Seed " + s.Seed + " / " + s.MapWidth + "x" + s.MapHeight;
-            debugLines[1].Value = "People " + s.People;
-            debugLines[2].Value = "Settlements " + s.Settlements;
-            debugLines[3].Value = "Hash at year " + s.HashYear;
-            debugLines[4].Value = s.Hash.ToString("x16");
+            debugLines[0].Value = "Seed " + s.Seed;
+            debugLines[1].Value = "Map " + s.MapWidth + "x" + s.MapHeight;
+            debugLines[2].Value = "People " + s.People;
+            debugLines[3].Value = "Settlements " + s.Settlements;
+            debugLines[4].Value = "Hash at year " + s.HashYear;
+            debugLines[5].Value = s.Hash.ToString("x16");
         }
 
         // ---- Cards ----
