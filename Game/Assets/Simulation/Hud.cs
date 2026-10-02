@@ -111,6 +111,7 @@ namespace KingdomWatch.Game
         private readonly Label date, speed;
         private Image pauseIcon;
         private Label pauseLabel;
+        private Tip pauseTip, followTip;
         private long dateKey = -1, speedKey = -1;
         private bool shownPaused = true;
 
@@ -137,6 +138,7 @@ namespace KingdomWatch.Game
         private readonly RectTransform mapLabels;
         private readonly List<RectTransform> communityPlates = new List<RectTransform>();
         private readonly List<Label> communityLabels = new List<Label>();
+        private readonly List<(ulong, EntityKind, int)> plateSeen = new List<(ulong, EntityKind, int)>();
 
         // Selection card.
         private readonly RectTransform selectionCard;
@@ -150,6 +152,7 @@ namespace KingdomWatch.Game
         private readonly RectTransform[] cards;
         private (ulong, EntityKind, int, AgeStage, JobKind, bool, int, ulong, EntityKind) selectionSeen = (ulong.MaxValue, EntityKind.None, int.MinValue, AgeStage.None, JobKind.None, false, 0, 0, EntityKind.None);
         private float shownHealth;
+        private int shownHealthTip = -1;
 
         // Debug card, shown from the bar's toggle or F3.
         private readonly RectTransform debugCard;
@@ -231,6 +234,7 @@ namespace KingdomWatch.Game
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
             var half = (InnerWidth - 2f) / 2f;
             followButton = MakeButton(row, Pad, 7f + 51f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
+            followTip = followButton.GetComponent<Tip>();
             clearButton = MakeButton(row, Pad + half + 2f, 7f + 51f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
@@ -301,6 +305,7 @@ namespace KingdomWatch.Game
             AnchorRight(faster, right);
             right += ButtonSize + 2f;
             var pauseButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, art.Pause, art.Pause == null ? "II" : null, "Pause (Space)", commands.TogglePause, out pauseLabel, out pauseIcon);
+            pauseTip = pauseButton.GetComponent<Tip>();
             AnchorRight(pauseButton, right);
             right += ButtonSize + 2f;
             var slower = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "<<", "Slower (,)", commands.Slower, out _);
@@ -331,6 +336,7 @@ namespace KingdomWatch.Game
                 shownPaused = s.Paused;
                 if (pauseIcon != null) pauseIcon.sprite = s.Paused ? art.Play : art.Pause;
                 if (pauseLabel != null) pauseLabel.Value = s.Paused ? ">" : "II";
+                pauseTip.Text = s.Paused ? "Resume (Space)" : "Pause (Space)";
             }
         }
 
@@ -511,13 +517,26 @@ namespace KingdomWatch.Game
                     }
                     communityPlates.Add(plate);
                     communityLabels.Add(made);
+                    plateSeen.Add((ulong.MaxValue, EntityKind.None, -1));
                 }
-                var text = view.LabelAt(i, out var screen);
+                view.LabelAt(i, out var id, out var size, out var screen);
                 var label = communityLabels[i];
                 var plateRect = communityPlates[i];
-                plateRect.gameObject.SetActive(true);
-                if (label.Value != text)
+
+                // A marker off the screen has no plate: pinning it to an edge
+                // would point at somewhere else.
+                var markerX = screen.x / scale;
+                var markerY = (Screen.height - screen.y) / scale;
+                var onScreen = markerX >= 0f && markerX <= canvasRect.rect.width && markerY >= 0f && markerY <= canvasRect.rect.height;
+                plateRect.gameObject.SetActive(onScreen);
+                if (!onScreen) continue;
+
+                var seen = plateSeen[i];
+                var now = (id.Value, id.Kind, size);
+                if (!seen.Equals(now))
                 {
+                    plateSeen[i] = now;
+                    var text = (id.Kind == EntityKind.Settlement ? "Settlement " : "Band ") + id.Value + ": " + size;
                     label.Value = text;
                     plateRect.sizeDelta = new Vector2(art.WidthOf(text) + 2f * Pad, PlateHeight);
                 }
@@ -525,9 +544,8 @@ namespace KingdomWatch.Game
                 // Centred over the marker, but kept on the screen: near an edge the
                 // plate slides in and its tail keeps pointing at the marker.
                 var plateWidth = plateRect.sizeDelta.x;
-                var markerX = screen.x / scale;
                 var left = Mathf.Clamp(markerX - plateWidth / 2f, 2f, Mathf.Max(2f, canvasRect.rect.width - plateWidth - 2f));
-                var top = Mathf.Max(2f, (Screen.height - screen.y) / scale - PlateHeight - PlateGap);
+                var top = Mathf.Max(2f, markerY - PlateHeight - PlateGap);
                 plateRect.anchoredPosition = new Vector2(Mathf.Round(left), -Mathf.Round(top));
                 if (art.Tail != null)
                 {
@@ -558,6 +576,7 @@ namespace KingdomWatch.Game
             followButton.anchoredPosition = new Vector2(followButton.anchoredPosition.x, -buttonY);
             clearButton.anchoredPosition = new Vector2(clearButton.anchoredPosition.x, -buttonY);
             followLabel.Value = s.Following ? "Stop" : "Follow";
+            followTip.Text = s.Following ? "Stop following (F)" : "Follow the selection (F)";
 
             var person = s.SelectedKind == EntityKind.Person;
             // A person has a name line above the rest; Core gives no names yet, so
@@ -590,7 +609,11 @@ namespace KingdomWatch.Game
                 var fill = healthFill.rectTransform;
                 fill.sizeDelta = new Vector2(Mathf.Round(InnerWidth * shownHealth), 5f);
                 healthFill.color = Color.Lerp(new Color(0.85f, 0.2f, 0.2f), new Color(0.35f, 0.75f, 0.3f), shownHealth);
-                healthTip.Text = "Health " + s.Health + " of 100";
+                if (s.Health != shownHealthTip)
+                {
+                    shownHealthTip = s.Health;
+                    healthTip.Text = "Health " + s.Health + " of 100";
+                }
             }
         }
 

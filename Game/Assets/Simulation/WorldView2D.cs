@@ -111,6 +111,11 @@ namespace KingdomWatch.Game
         // anything the figures and scenery use, which stops near 17,300.
         private const int CommunityMarkerOrder = 30000;
 
+        // Each community takes three orders: its marker, the selection
+        // highlight just under it, and the rim under that. Room for about 900
+        // communities below the 16-bit limit.
+        private const int CommunityOrderSlots = 3;
+
         // Doll frames per second.
         private const float FramesPerSecond = 8f;
 
@@ -549,11 +554,11 @@ namespace KingdomWatch.Game
             marker.transform.localPosition = new Vector3(at.X + 0.5f, height - cellY - size / 2f, 0f);
             marker.transform.localScale = new Vector3(size, size, 1f);
             marker.color = settled ? new Color(0.93f, 0.9f, 0.82f) : new Color(0.85f, 0.35f, 0.3f);
-            marker.sortingOrder = CommunityMarkerOrder + index;
+            marker.sortingOrder = CommunityMarkerOrder + index * CommunityOrderSlots;
             marker.enabled = visible;
             // A dark edge, so the marker shows on snow as well as on grass.
             var edge = marker.transform.GetChild(0).GetComponent<SpriteRenderer>();
-            edge.sortingOrder = marker.sortingOrder - 1;
+            edge.sortingOrder = marker.sortingOrder - 2;
             edge.enabled = visible;
         }
 
@@ -1496,21 +1501,20 @@ namespace KingdomWatch.Game
             return marker;
         }
 
-        // "Settlement 3 · 42": which community and how many live in it. Core
-        // names nothing yet, so the id stands in until #109 gives settlements names.
-        private static string LabelOf(EntityId id, int size) =>
-            (id.Kind == EntityKind.Settlement ? "Settlement " : "Band ") + id.Value + ": " + size;
-
         // The panel's labels over the communities (#128): while the whole map
         // shows, one a community, with where its top is on the screen.
         public int LabelCount => Band == ZoomBand.Far && sceneCamera != null ? usedCommunities : 0;
 
-        public string LabelAt(int index, out Vector2 screen)
+        // Which community the index is, how many live in it, and where its top
+        // is on the screen. The panel words the label, naming the community by
+        // its id until #109 gives settlements names.
+        public void LabelAt(int index, out EntityId id, out int size, out Vector2 screen)
         {
             var marker = communityMarkers[index];
             var top = marker.transform.position + new Vector3(0f, marker.transform.lossyScale.y, 0f);
             screen = sceneCamera.WorldToScreenPoint(top);
-            return LabelOf(communityIds[index], communitySizes[index]);
+            id = communityIds[index];
+            size = communitySizes[index];
         }
 
         private T Own<T>(T asset) where T : Object
