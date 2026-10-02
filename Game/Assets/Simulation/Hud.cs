@@ -140,7 +140,7 @@ namespace KingdomWatch.Game
 
         // Selection card.
         private readonly RectTransform selectionCard;
-        private readonly Label selectionTitle, selectionLine, selectionCommunity, hint1, hint2;
+        private readonly Label selectionName, selectionTitle, selectionLine, selectionCommunity, hint1, hint2;
         private readonly RectTransform healthBar;
         private readonly Image healthFill;
         private readonly Tip healthTip;
@@ -209,6 +209,7 @@ namespace KingdomWatch.Game
             MakeButton(minimapCard, Pad, Pad + MinimapSize + 1f, MinimapSize, ButtonSize, null, "Whole map", "Show the whole map (Home)", commands.WholeMap, out _);
 
             selectionCard = Card("Selection", 0f, 70f);
+            selectionName = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionTitle = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionLine = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
             selectionCommunity = Text(selectionCard, Pad, 7f + 20f, InnerWidth, Ink);
@@ -216,7 +217,7 @@ namespace KingdomWatch.Game
             hint2 = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
             hint1.Value = "Tap a person, or";
             hint2.Value = "a settlement.";
-            healthBar = Child(selectionCard, "Health", Pad, 7f + 31f, InnerWidth, 5f);
+            healthBar = Child(selectionCard, "Health", Pad, 7f + 41f, InnerWidth, 5f);
             // The back takes pointer events, so the bar's tooltip can be reached.
             Fill(healthBar, "Back", Faint, art.White).raycastTarget = true;
             healthFill = Fill(healthBar, "Fill", new Color(0.85f, 0.25f, 0.25f), art.White);
@@ -229,8 +230,8 @@ namespace KingdomWatch.Game
             row.anchoredPosition = Vector2.zero;
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
             var half = (InnerWidth - 2f) / 2f;
-            followButton = MakeButton(row, Pad, 7f + 41f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
-            clearButton = MakeButton(row, Pad + half + 2f, 7f + 41f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
+            followButton = MakeButton(row, Pad, 7f + 51f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
+            clearButton = MakeButton(row, Pad + half + 2f, 7f + 51f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
             for (var i = 0; i < debugLines.Length; i++) debugLines[i] = Text(debugCard, Pad, 7f + i * 9f, InnerWidth, Ink);
@@ -544,24 +545,32 @@ namespace KingdomWatch.Game
             var none = s.SelectedKind == EntityKind.None;
             hint1.Object.SetActive(none);
             hint2.Object.SetActive(none);
+            selectionName.Object.SetActive(s.SelectedKind == EntityKind.Person);
             selectionTitle.Object.SetActive(!none);
             selectionLine.Object.SetActive(!none);
             selectionCommunity.Object.SetActive(s.SelectedKind == EntityKind.Person && s.HasCommunity);
             healthBar.gameObject.SetActive(s.SelectedKind == EntityKind.Person);
             buttonRow.SetActive(!none);
-            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 72f : 54f);
+            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 82f : 54f);
             if (none) return;
 
-            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 41f : 7f + 22f;
+            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 51f : 7f + 22f;
             followButton.anchoredPosition = new Vector2(followButton.anchoredPosition.x, -buttonY);
             clearButton.anchoredPosition = new Vector2(clearButton.anchoredPosition.x, -buttonY);
             followLabel.Value = s.Following ? "Stop" : "Follow";
 
             var person = s.SelectedKind == EntityKind.Person;
+            // A person has a name line above the rest; Core gives no names yet, so
+            // it is their id, as a band or a settlement is named by its own.
+            var line = person ? 17f : 7f;
+            selectionTitle.Place(Pad, line, InnerWidth);
+            selectionLine.Place(Pad, line + 10f, InnerWidth);
+            selectionCommunity.Place(Pad, line + 20f, InnerWidth);
             if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
             {
                 if (person)
                 {
+                    selectionName.Value = "Person " + s.SelectedId;
                     selectionTitle.Value = s.Stage + ", " + s.Years + " yrs";
                     selectionLine.Value = (s.Job == JobKind.None ? "No job" : s.Job.ToString()) + (s.Working ? ", working" : ", idle");
                     selectionCommunity.Value = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
