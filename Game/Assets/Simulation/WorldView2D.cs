@@ -106,6 +106,16 @@ namespace KingdomWatch.Game
         // A community marker's side in UI-scaled pixels, whatever the zoom.
         private const float CommunityMarkerSize = 14f;
 
+        // Sorting orders are 16-bit: a larger one wraps round to behind the
+        // terrain, which is where these markers sat unseen until #128. Above
+        // anything the figures and scenery use, which stops near 17,300.
+        private const int CommunityMarkerOrder = 30000;
+
+        // Each community takes three orders: its marker, the selection
+        // highlight just under it, and the rim under that. Room for about 900
+        // communities below the 16-bit limit.
+        private const int CommunityOrderSlots = 3;
+
         // Doll frames per second.
         private const float FramesPerSecond = 8f;
 
@@ -222,7 +232,6 @@ namespace KingdomWatch.Game
         private int width, height;
         private int usedPeople, usedCommunities;
         private float uiScale = 1f;
-        private GUIStyle labelStyle;
 
         public ZoomBand Band { get; private set; } = ZoomBand.Far;
 
@@ -453,7 +462,11 @@ namespace KingdomWatch.Game
             for (var i = 0; i < settlements.Count; i++) DrawCommunity(settlements[i], true, size, visible, used++);
             world.Nomads.CopyTrackedTo(bands);
             for (var i = 0; i < bands.Count; i++) DrawCommunity(bands[i], false, size, visible, used++);
-            for (var i = used; i < communityMarkers.Count; i++) communityMarkers[i].enabled = false;
+            for (var i = used; i < communityMarkers.Count; i++)
+            {
+                communityMarkers[i].enabled = false;
+                communityMarkers[i].transform.GetChild(0).GetComponent<SpriteRenderer>().enabled = false;
+            }
             usedCommunities = used;
 
             if (art == null) return;
@@ -520,7 +533,14 @@ namespace KingdomWatch.Game
         {
             while (communityMarkers.Count <= index)
             {
-                communityMarkers.Add(NewMarker("Community", communityRoot));
+                var made = NewMarker("Community", communityRoot);
+                communityMarkers.Add(made);
+                // A sprite is a scale from its centre of one unit: 1.4 times the
+                // marker, dropped by 0.2 as the pivot is at the feet, leaves an even rim.
+                var rim = NewMarker("Edge", made.transform);
+                rim.transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+                rim.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+                rim.color = new Color(0.13f, 0.1f, 0.16f);
                 communityIds.Add(EntityId.None);
                 communitySizes.Add(0);
             }
@@ -534,8 +554,12 @@ namespace KingdomWatch.Game
             marker.transform.localPosition = new Vector3(at.X + 0.5f, height - cellY - size / 2f, 0f);
             marker.transform.localScale = new Vector3(size, size, 1f);
             marker.color = settled ? new Color(0.93f, 0.9f, 0.82f) : new Color(0.85f, 0.35f, 0.3f);
-            marker.sortingOrder = 100000 + index;
+            marker.sortingOrder = CommunityMarkerOrder + index * CommunityOrderSlots;
             marker.enabled = visible;
+            // A dark edge, so the marker shows on snow as well as on grass.
+            var edge = marker.transform.GetChild(0).GetComponent<SpriteRenderer>();
+            edge.sortingOrder = marker.sortingOrder - 2;
+            edge.enabled = visible;
         }
 
         private void DrawHighlight()
@@ -582,6 +606,24 @@ namespace KingdomWatch.Game
             var marker = CommunityMarkerOf(id);
             position = marker != null ? Centre(marker) : default;
             return marker != null;
+        }
+
+        // The map's colours in spring, sampled down to `size` pixels square,
+        // for the panel's minimap (#128). Row 0 is the south edge, as world y
+        // runs up, so the picture reads the same way up as the map.
+        public Texture2D MakeMinimap(int size)
+        {
+            // Copied on the GPU: the map was dropped from main memory once uploaded.
+            var target = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.ARGB32);
+            var previous = RenderTexture.active;
+            Graphics.Blit(terrainTexture, target);
+            RenderTexture.active = target;
+            var minimap = Own(new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp });
+            minimap.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+            minimap.Apply(false);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            return minimap;
         }
 
         // Everything drawn within `radius` screen pixels of `screenPoint` in the
@@ -1459,24 +1501,21 @@ namespace KingdomWatch.Game
             return marker;
         }
 
-        // "Settlement 3 · 42": which community and how many live in it. Core
-        // names nothing yet, so the id stands in until #109 gives settlements names.
-        private static string LabelOf(EntityId id, int size) =>
-            (id.Kind == EntityKind.Settlement ? "Settlement " : "Band ") + id.Value + " · " + size;
+        // The panel's labels over the communities (#128): while the whole map
+        // shows, one for each community, with where its top is on the screen.
+        public int LabelCount => Band == ZoomBand.Far && sceneCamera != null ? usedCommunities : 0;
 
-        // A label over each community at Far zoom.
-        private void OnGUI()
+        // Which community the index is, how many live in it, and where its top
+        // and its foot are on the screen. The panel words the label, naming the
+        // community by its id until #109 gives settlements names.
+        public void LabelAt(int index, out EntityId id, out int size, out Vector2 screen, out Vector2 bottom)
         {
-            if (Band != ZoomBand.Far || sceneCamera == null) return;
-            if (labelStyle == null) labelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.LowerCenter };
-            GUI.matrix = Matrix4x4.Scale(Vector3.one * uiScale);
-            for (var i = 0; i < usedCommunities; i++)
-            {
-                var marker = communityMarkers[i];
-                var top = marker.transform.position + new Vector3(0f, marker.transform.lossyScale.y, 0f);
-                var screen = sceneCamera.WorldToScreenPoint(top);
-                GUI.Label(new Rect(screen.x / uiScale - 80f, (Screen.height - screen.y) / uiScale - 24f, 160f, 22f), LabelOf(communityIds[i], communitySizes[i]), labelStyle);
-            }
+            var marker = communityMarkers[index];
+            var feet = marker.transform.position;
+            screen = sceneCamera.WorldToScreenPoint(feet + new Vector3(0f, marker.transform.lossyScale.y, 0f));
+            bottom = sceneCamera.WorldToScreenPoint(feet);
+            id = communityIds[index];
+            size = communitySizes[index];
         }
 
         private T Own<T>(T asset) where T : Object

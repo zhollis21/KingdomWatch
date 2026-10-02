@@ -54,11 +54,11 @@ namespace KingdomWatch.Game
 
         public bool Following { get; private set; }
 
-        // `reserved` is the panel's footprint in GUI coordinates: pointers that
-        // start there belong to the panel's buttons, not the map.
-        public void Process(Rect reserved, float uiScale, float deltaTime)
+        // `panel` says where the panel is: pointers that start there belong to
+        // its buttons, not the map.
+        public void Process(IPointerBlocker panel, float uiScale, float deltaTime)
         {
-            ReadPointer(reserved, uiScale);
+            ReadPointer(panel, uiScale);
             ReadKeyboard(uiScale, deltaTime);
 
             if (!Following) return;
@@ -85,13 +85,20 @@ namespace KingdomWatch.Game
             Following = false;
         }
 
+        // Centres the camera on a point, as the minimap does.
+        public void MoveTo(Vector2 world)
+        {
+            Following = false;
+            rig.CentreOn(world);
+        }
+
         public void WholeMap()
         {
             Following = false;
             rig.WholeMap();
         }
 
-        private void ReadPointer(Rect reserved, float uiScale)
+        private void ReadPointer(IPointerBlocker panel, float uiScale)
         {
             var touches = Touch.activeTouches;
             if (touches.Count >= 2)
@@ -102,7 +109,7 @@ namespace KingdomWatch.Game
                 var middle = (a + b) / 2f;
                 // A finger that went down on the panel belongs to it, as a
                 // single touch does, so a pinch with one there moves nothing.
-                var onPanel = InPanel(reserved, touches[0].startScreenPosition) || InPanel(reserved, touches[1].startScreenPosition);
+                var onPanel = panel.Blocks(touches[0].startScreenPosition) || panel.Blocks(touches[1].startScreenPosition);
                 if (!onPanel && pinchDistance > 0f && distance > 0f)
                 {
                     rig.ZoomAt(middle, distance / pinchDistance);
@@ -138,7 +145,7 @@ namespace KingdomWatch.Game
                 down = mouse.leftButton.isPressed || mouse.rightButton.isPressed || mouse.middleButton.isPressed;
                 primary = mouse.leftButton.isPressed;
                 var scroll = mouse.scroll.ReadValue().y;
-                if (scroll != 0f && !InPanel(reserved, p)) rig.ZoomBy(Mathf.Exp(scroll * WheelZoomPerNotch));
+                if (scroll != 0f && !panel.Blocks(p)) rig.ZoomBy(Mathf.Exp(scroll * WheelZoomPerNotch));
             }
             else
             {
@@ -155,7 +162,7 @@ namespace KingdomWatch.Game
 
             if (down && !dragging)
             {
-                if (InPanel(reserved, p))
+                if (panel.Blocks(p))
                 {
                     blocked = true;
                     return;
@@ -230,8 +237,5 @@ namespace KingdomWatch.Game
             lastTap = p;
             lastTapTime = Time.unscaledTime;
         }
-
-        // Screen coordinates (y up) against the panel's GUI rect (y down).
-        private static bool InPanel(Rect reserved, Vector2 p) => reserved.Contains(new Vector2(p.x, Screen.height - p.y));
     }
 }

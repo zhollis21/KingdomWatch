@@ -28,6 +28,20 @@
 .PARAMETER Height
     Window height in pixels.
 
+.PARAMETER HudDemo
+    Launches the player with -hud-demo: someone is selected and the debug
+    card is open, so the screenshots show those parts of the panel. Leave it
+    off when comparing frame times with an earlier run.
+
+.PARAMETER Notch
+    Launches the player with -hud-notch: the panel is inset as a phone's camera
+    cutout and rounded corners would inset it, to look at the layout on a
+    screen that has neither.
+
+.PARAMETER Flat
+    Launches the player with -hud-flat: the panel is drawn as a build without
+    the art submodule would draw it, flat frames in Unity's own font.
+
 .PARAMETER SkipBuild
     Runs the player already in Game/Builds/Windows instead of building it.
 
@@ -45,7 +59,10 @@
 param(
     [int]$Width = 2400,
     [int]$Height = 1080,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$HudDemo,
+    [switch]$Notch,
+    [switch]$Flat
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,6 +120,9 @@ if (-not (Test-Path $player)) { throw "No player at $player; run without -SkipBu
 Write-Host "Flying the route at ${Width}x${Height}..."
 $started = Get-Date
 $arguments = @('-scripted-run', $captures, '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-logFile', (Join-Path $captures 'player.log'))
+if ($HudDemo) { $arguments += '-hud-demo' }
+if ($Notch) { $arguments += '-hud-notch' }
+if ($Flat) { $arguments += '-hud-flat' }
 Invoke-Program $player $arguments | Out-Null
 
 # The run's log names it; its captures, one per stop, share its stamp.
