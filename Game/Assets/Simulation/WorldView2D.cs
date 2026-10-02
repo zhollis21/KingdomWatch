@@ -457,7 +457,11 @@ namespace KingdomWatch.Game
             for (var i = 0; i < settlements.Count; i++) DrawCommunity(settlements[i], true, size, visible, used++);
             world.Nomads.CopyTrackedTo(bands);
             for (var i = 0; i < bands.Count; i++) DrawCommunity(bands[i], false, size, visible, used++);
-            for (var i = used; i < communityMarkers.Count; i++) communityMarkers[i].enabled = false;
+            for (var i = used; i < communityMarkers.Count; i++)
+            {
+                communityMarkers[i].enabled = false;
+                communityMarkers[i].transform.GetChild(0).GetComponent<SpriteRenderer>().enabled = false;
+            }
             usedCommunities = used;
 
             if (art == null) return;

@@ -124,13 +124,13 @@ namespace KingdomWatch.Game
         private readonly RectTransform stockGroup;
         private readonly Label foodNumber, woodNumber, stoneNumber;
         private readonly Tip foodTip, woodTip, stoneTip;
-        private long stockKey = -1;
+        private (int, int, int, int, int, int, int) stockSeen = (int.MinValue, 0, 0, 0, 0, 0, 0);
 
         // People: the selected community's with its name, or the world's.
         private readonly RectTransform peopleGroup, peopleIcon;
         private readonly Label peopleName, peopleCount;
         private readonly Tip peopleTip;
-        private long peopleKey = long.MinValue;
+        private (bool, EntityKind, ulong, int) peopleSeen = (false, EntityKind.None, ulong.MaxValue, -1);
 
         // Names over the communities at Far zoom.
         private readonly WorldView2D view;
@@ -148,13 +148,13 @@ namespace KingdomWatch.Game
         private readonly RectTransform followButton, clearButton;
         private readonly Label followLabel;
         private readonly RectTransform[] cards;
-        private long selectionKey = -1;
+        private (ulong, EntityKind, int, AgeStage, JobKind, bool, int, ulong, EntityKind) selectionSeen = (ulong.MaxValue, EntityKind.None, int.MinValue, AgeStage.None, JobKind.None, false, 0, 0, EntityKind.None);
         private float shownHealth;
 
         // Debug card, shown from the bar's toggle or F3.
         private readonly RectTransform debugCard;
         private readonly Label[] debugLines = new Label[5];
-        private long debugKey = -1;
+        private (long, int, int, long, ulong) debugSeen = (long.MinValue, 0, 0, 0, 0);
         private bool debug;
 
         // Tooltip.
@@ -254,8 +254,9 @@ namespace KingdomWatch.Game
         public float Pixel => Mathf.Max(1, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
 
         // The footprint of what the camera must keep the map clear of, in GUI
-        // coordinates (origin top-left, y down), and the bar across the top.
-        public Rect Reserved => new Rect(0f, 0f, (ColumnWidth + 2f * Gap) * Pixel, (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
+        // coordinates (origin top-left, y down): the column, or the strip of
+        // cards across an upright screen, under the bar across the top.
+        public Rect Reserved => new Rect(0f, 0f, Upright ? Screen.width : (ColumnWidth + 2f * Gap) * Pixel, (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
 
         public float TopInset => barHeight * Pixel;
 
@@ -281,7 +282,7 @@ namespace KingdomWatch.Game
             RefreshMapLabels();
             RefreshSelection(state);
             RefreshDebug(state);
-            LayOutColumn();
+            LayOutCards();
             RefreshTooltip();
         }
 
@@ -408,8 +409,7 @@ namespace KingdomWatch.Game
         {
             stockGroup.gameObject.SetActive(s.HasCommunity);
             if (!s.HasCommunity) return;
-            var key = ((((((s.Food * 31L + s.Wood) * 31L + s.Stone) * 31L + s.FoodFree) * 31L + s.WoodFree) * 31L + s.StoneFree) * 31L) + s.DaysOfFood;
-            if (!Changed(ref stockKey, key)) return;
+            if (!Changed(ref stockSeen, (s.Food, s.Wood, s.Stone, s.FoodFree, s.WoodFree, s.StoneFree, s.DaysOfFood))) return;
             foodNumber.Value = s.Food.ToString();
             woodNumber.Value = s.Wood.ToString();
             stoneNumber.Value = s.Stone.ToString();
@@ -455,10 +455,8 @@ namespace KingdomWatch.Game
         // is selected.
         private void RefreshPeople(HudState s)
         {
-            var key = s.HasCommunity
-                ? ((long)s.CommunityId * 2L + (s.CommunityKind == EntityKind.Settlement ? 1L : 0L)) * 100003L + s.CommunityPeople
-                : -1L - s.People;
-            if (!Changed(ref peopleKey, key)) return;
+            var count = s.HasCommunity ? s.CommunityPeople : s.People;
+            if (!Changed(ref peopleSeen, (s.HasCommunity, s.CommunityKind, s.CommunityId, count))) return;
             var name = s.HasCommunity ? (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId : "World";
             peopleName.Value = name;
             peopleCount.Value = (s.HasCommunity ? s.CommunityPeople : s.People).ToString();
@@ -560,8 +558,7 @@ namespace KingdomWatch.Game
             followLabel.Value = s.Following ? "Stop" : "Follow";
 
             var person = s.SelectedKind == EntityKind.Person;
-            var key = (((long)s.SelectedId * 7L + (int)s.SelectedKind) * 1009L + s.Years) * 13L + (int)s.Stage + ((int)s.Job << 8) + (s.Working ? 1L << 20 : 0L) + s.SelectedPeople * 3571L + (long)s.CommunityId * 104729L + (int)s.CommunityKind;
-            if (Changed(ref selectionKey, key))
+            if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
             {
                 if (person)
                 {
@@ -594,8 +591,7 @@ namespace KingdomWatch.Game
         {
             debugCard.gameObject.SetActive(debug);
             if (!debug) return;
-            var key = s.Seed * 1000003L + s.People * 31L + s.Settlements + s.HashYear * 7919L + (long)(s.Hash & 0xFFFFFFFF);
-            if (!Changed(ref debugKey, key)) return;
+            if (!Changed(ref debugSeen, (s.Seed, s.People, s.Settlements, s.HashYear, s.Hash))) return;
             debugLines[0].Value = "Seed " + s.Seed + " / " + s.MapWidth + "x" + s.MapHeight;
             debugLines[1].Value = "People " + s.People;
             debugLines[2].Value = "Settlements " + s.Settlements;
@@ -603,18 +599,28 @@ namespace KingdomWatch.Game
             debugLines[4].Value = s.Hash.ToString("x16");
         }
 
-        // ---- Column layout ----
+        // ---- Cards ----
 
-        private void LayOutColumn()
+        // A screen taller than it is wide has no room beside the map, so the
+        // cards sit side by side in a strip under the bar instead.
+        private static bool Upright => Screen.height > Screen.width;
+
+        // The cards, stacked down the left, or in a strip under the bar when
+        // the screen is upright. The strip is as tall as its tallest card, the
+        // minimap, whichever cards show, so the camera's reserved space never
+        // changes with the selection.
+        private void LayOutCards()
         {
+            var x = Gap;
             var y = barHeight + Gap;
             blocking.Clear();
             blocking.Add(bar);
             foreach (var card in cards)
             {
                 if (!card.gameObject.activeSelf) continue;
-                card.anchoredPosition = new Vector2(Gap, -y);
-                y += card.sizeDelta.y + Gap;
+                card.anchoredPosition = new Vector2(x, -y);
+                if (Upright) x += ColumnWidth + Gap;
+                else y += card.sizeDelta.y + Gap;
                 blocking.Add(card);
             }
         }
@@ -655,10 +661,10 @@ namespace KingdomWatch.Game
 
         // ---- Building blocks ----
 
-        private static bool Changed(ref long last, long key)
+        private static bool Changed<T>(ref T last, T value) where T : struct, IEquatable<T>
         {
-            if (last == key) return false;
-            last = key;
+            if (last.Equals(value)) return false;
+            last = value;
             return true;
         }
 
