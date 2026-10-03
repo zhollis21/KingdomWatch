@@ -104,7 +104,21 @@ namespace KingdomWatch.Game
         public const int BushSizes = 4;
         public const int BareBush = 3;
 
-        public static int BushFruitOf(Season season) => season == Season.Winter ? BareBush : (int)season;
+        public static int BushFruitOf(Season season)
+        {
+            switch (season)
+            {
+                case Season.Spring:
+                case Season.Summer:
+                case Season.Autumn:
+                    return (int)season;
+                case Season.Winter:
+                    return BareBush;
+                default:
+                    // An undefined season would index past the fruit (#141 review).
+                    throw new System.ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
+            }
+        }
 
         // Berries.png's red berries, darkest first, recoloured for autumn's
         // orange and for a bush with nothing on it, where the berries take the
