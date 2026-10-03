@@ -548,9 +548,11 @@ namespace KingdomWatch.Game
         // game's lifetime; a copy through the GPU reads it once.
         public static Color32[] ReadPixels(Texture2D texture)
         {
+            // The active target is saved before the blit, which sets it:
+            // saved after, it would "restore" the temporary released below.
+            var previous = RenderTexture.active;
             var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
             Graphics.Blit(texture, target);
-            var previous = RenderTexture.active;
             RenderTexture.active = target;
             var copy = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
             copy.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0, false);
