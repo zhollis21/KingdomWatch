@@ -172,6 +172,31 @@ namespace KingdomWatch.Core.Tests.Land
         }
 
         [Test]
+        public void A_tree_given_back_its_only_claim_is_untouched_again()
+        {
+            // As a bush is: a touched cell always holds a claim, so a cell
+            // left with none cannot outlive a terrain rewrite unnoticed (the
+            // #141 review).
+            _land.Take(Tree);
+            _land.Return(Tree);
+
+            Assert.That(_land.StateAt(_grid.IndexOf(Tree)), Is.Zero);
+        }
+
+        [Test]
+        public void Every_claim_given_back_is_counted_and_a_rock_gives_none_back()
+        {
+            Assert.That(_land.Returns, Is.Zero);
+            _land.Take(Bush);
+            _land.Take(Tree);
+            _land.Return(Bush);
+            _land.Return(Tree);
+            _land.Return(Rock);
+
+            Assert.That(_land.Returns, Is.EqualTo(2L));
+        }
+
+        [Test]
         public void A_tree_with_no_claim_has_none_to_give_back()
         {
             Assert.That(() => _land.Return(Tree), Throws.InvalidOperationException);

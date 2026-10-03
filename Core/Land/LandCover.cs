@@ -165,8 +165,11 @@ namespace KingdomWatch.Core.Land
                         throw new InvalidOperationException(at + " has no claim to give back.");
                     }
 
+                    // A cell with no claim left is untouched again, tree or
+                    // bush: a touched cell always holds a claim (#141 review).
                     var left = Count(cell) - 1;
-                    _cells[cell] = left == 0 && _grid.KindAt(cell) == TerrainKind.Scrub ? 0 : Pack(Period(cell), left);
+                    _cells[cell] = left == 0 ? 0 : Pack(Period(cell), left);
+                    Returns++;
                     break;
             }
         }
@@ -196,6 +199,14 @@ namespace KingdomWatch.Core.Land
                 : since >= RegrowDays / 2 ? TreeStage.Sapling
                 : TreeStage.Stump;
         }
+
+        /// <summary>
+        /// Claims given back so far. Time makes land workable again only at a
+        /// season's start or a regrowth, which a dawn's search sees; a claim
+        /// given back does it mid-day, so a search that found nothing compares
+        /// this with what it was then and looks again (#141 review).
+        /// </summary>
+        public long Returns { get; private set; }
 
         /// <summary>Cells in the cover: the grid's.</summary>
         public int CellCount => _cells.Length;

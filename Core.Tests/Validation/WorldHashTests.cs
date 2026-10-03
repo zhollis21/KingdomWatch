@@ -184,8 +184,8 @@ namespace KingdomWatch.Core.Tests.Validation
         {
             // Which bushes are bare and which trees are down decides every
             // site a band finds (#26): a pick moves the section, the same pick
-            // on another bush moves it somewhere else, and giving the only
-            // claim back returns it to where an untouched map was.
+            // on another bush moves it somewhere else, and giving the claim
+            // back moves it again, since returns are counted (the #141 review).
             var world = new WorkWorld(1UL, WorkWorld.ScrubOnly());
             var fresh = new WorldHash().AddLand(world.Land).Value;
 
@@ -199,10 +199,46 @@ namespace KingdomWatch.Core.Tests.Validation
             Assert.Multiple(() =>
             {
                 Assert.That(picked, Is.Not.EqualTo(fresh));
-                Assert.That(returned, Is.EqualTo(fresh));
+                Assert.That(returned, Is.Not.EqualTo(picked).And.Not.EqualTo(fresh));
                 Assert.That(elsewhere, Is.Not.EqualTo(picked), "the cell is folded in, not only the state");
                 Assert.That(() => new WorldHash().AddLand(null!), Throws.ArgumentNullException);
             });
+        }
+
+        [Test]
+        public void The_land_cover_s_limits_are_folded_in()
+        {
+            // The same claims read differently under other limits: seven picks
+            // strip a bush that gives seven and leave one that gives ten ripe
+            // (the #141 review).
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.Camp);
+            var before = new WorldHash().AddLand(world.Land).Value;
+
+            world.Land.BushPicks = world.Land.BushPicks + 1;
+            var morePicks = new WorldHash().AddLand(world.Land).Value;
+            world.Land.TreeCuts = world.Land.TreeCuts + 1;
+            var moreCuts = new WorldHash().AddLand(world.Land).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(morePicks, Is.Not.EqualTo(before), "picks");
+                Assert.That(moreCuts, Is.Not.EqualTo(morePicks), "cuts");
+            });
+        }
+
+        [Test]
+        public void Whether_bands_settle_is_folded_in()
+        {
+            // Two worlds alike but for the switch decide their next councils
+            // differently (the #141 review).
+            var world = new WorkWorld();
+            world.NewWanderingBand(WorkWorld.Camp, 0);
+            var settling = new WorldHash().AddCouncils(world.Nomads).Value;
+
+            world.Nomads.Settles = false;
+
+            Assert.That(new WorldHash().AddCouncils(world.Nomads).Value, Is.Not.EqualTo(settling));
         }
 
         [Test]

@@ -487,7 +487,7 @@ namespace KingdomWatch.Core.Work
         public SiteSurvey SurveyOf(ICommunity group, JobKind job)
         {
             var site = SiteOf(TrackedFor(group), job);
-            return new SiteSurvey(site.Reachable, site.Destination, site.Cost, site.ReturnCost);
+            return new SiteSurvey(site.Reachable, site.Destination, site.Cost, site.ReturnCost, site.LandReturns);
         }
 
         /// <summary>
@@ -821,7 +821,10 @@ namespace KingdomWatch.Core.Work
                 // or another band's - is found again, from the same place
                 // and over the same known map, so pickers move on to the
                 // next bush or tree rather than walk to a bare one (#26).
-                if (site.Reachable && !_land.IsWorkable(site.Destination))
+                // A search that found nothing looks again once a claim has
+                // been given back since, here or by another band (#141 review).
+                if ((site.Reachable && !_land.IsWorkable(site.Destination))
+                    || (!site.Reachable && site.LandReturns != _land.Returns))
                 {
                     FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
                 }
@@ -960,6 +963,7 @@ namespace KingdomWatch.Core.Work
         // side - the camp cell instead of the site cell, at the least.
         private void FindSite(WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
         {
+            site.LandReturns = _land.Returns;
             site.Reachable = _pathfinder.TryFindNearest(
                 from, Mover, JobTable.Terrain(job), known, _land.Ripe, MaxSiteRadius, site.Route, out var cost);
 
@@ -1200,6 +1204,9 @@ namespace KingdomWatch.Core.Work
             public long Cost { get; set; }
 
             public long ReturnCost { get; set; }
+
+            // LandCover.Returns when this site was last searched for.
+            public long LandReturns { get; set; }
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
 

@@ -19,12 +19,13 @@ namespace KingdomWatch.Core.Work
     /// </remarks>
     public readonly struct SiteSurvey
     {
-        internal SiteSurvey(bool reachable, WorldPosition destination, long cost, long returnCost)
+        internal SiteSurvey(bool reachable, WorldPosition destination, long cost, long returnCost, long landReturns)
         {
             Reachable = reachable;
             Destination = destination;
             Cost = cost;
             ReturnCost = returnCost;
+            LandReturns = landReturns;
         }
 
         public bool Reachable { get; }
@@ -36,5 +37,11 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>Path cost back along the same route, reversed.</summary>
         public long ReturnCost { get; }
+
+        /// <summary>
+        /// <see cref="Land.LandCover.Returns"/> when the search ran: a search
+        /// that found nothing looks again once it has moved (#141 review).
+        /// </summary>
+        public long LandReturns { get; }
     }
 }

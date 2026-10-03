@@ -781,6 +781,35 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_claim_given_back_after_the_bushes_ran_out_is_picked_the_same_day()
+        {
+            // One bush, every trip on it claimed, and the search that followed
+            // found nothing. A forager dies on the way and the claim goes back;
+            // the next worker home looks again rather than idling until dawn
+            // (the #141 review).
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillWoodAndStone(band);
+            var foragers = w.JoinAdults(band, w.Land.BushPicks + 1);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False, "every trip claimed");
+
+            var dying = foragers.Find(f => w.Jobs.HasTask(f));
+            var trip = w.Jobs.TaskOf(dying);
+            w.Advance(SimulationTime.TicksPerHour);
+            w.Deaths.Die(dying, new Reasons(ReasonCode.Illness));
+            w.AdvanceTo(trip.End);
+
+            // The first worker home takes the claim back, which strips the bush
+            // again; the rest find nothing, as before.
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.EqualTo(1), "one forager out again");
+                Assert.That(w.Land.ClaimsAt(w.Grid.IndexOf(WorkWorld.Camp)), Is.EqualTo(w.Land.BushPicks), "the returned trip, taken");
+            });
+        }
+
+        [Test]
         public void A_band_whose_only_bush_is_stripped_stops_foraging_until_it_fruits_again()
         {
             var w = new WorkWorld();

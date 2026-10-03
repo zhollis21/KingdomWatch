@@ -383,6 +383,12 @@ namespace KingdomWatch.Core.Validation
 
             Open(Section.Land, touched);
 
+            // The limits say how the counts read, and the returns whether a
+            // search that found nothing looks again (the #141 review).
+            Mix(land.BushPicks);
+            Mix(land.TreeCuts);
+            Mix(land.Returns);
+
             for (var cell = 0; cell < land.CellCount; cell++)
             {
                 var state = land.StateAt(cell);
@@ -692,6 +698,7 @@ namespace KingdomWatch.Core.Validation
                     Mix(survey.Destination);
                     Mix(survey.Cost);
                     Mix(survey.ReturnCost);
+                    Mix(survey.LandReturns);
                     Mix(siteRoute.Count);
 
                     for (var j = 0; j < siteRoute.Count; j++)
@@ -723,6 +730,10 @@ namespace KingdomWatch.Core.Validation
             nomads.CopyTrackedTo(_communities);
             _communities.Sort(static (a, b) => a.Id.CompareTo(b.Id));
             Open(Section.Councils, _communities.Count);
+
+            // Whether a council may settle decides the next ones as much as
+            // any band's pressure does (the #141 review).
+            Mix(nomads.Settles ? 1 : 0);
 
             for (var i = 0; i < _communities.Count; i++)
             {
