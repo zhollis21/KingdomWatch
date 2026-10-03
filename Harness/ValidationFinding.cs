@@ -77,6 +77,12 @@ namespace KingdomWatch.Harness
 
         /// <summary>A ledger's flows do not account for its stock.</summary>
         ConservationBroken = 20,
+
+        /// <summary>
+        /// The land cover holds claims a cell cannot have: on ground that is
+        /// neither a bush nor a tree, or more than its bush or tree allows.
+        /// </summary>
+        LandClaimInvalid = 21,
     }
 
     /// <summary>

@@ -95,11 +95,12 @@ namespace KingdomWatch.Core.Needs
     {
         /// <summary>
         /// Food one person draws at one meal, which is one per day - so also
-        /// their daily draw. A spring <see cref="PrimitiveTier.Forage"/> yields
-        /// a little more than this, so one forager's trip feeds one person
-        /// with a margin toward the winter store.
+        /// their daily draw. One: a unit of food is a person's day (#26; it
+        /// was a third of one, and a band's winter store ran to thousands).
+        /// A spring <see cref="PrimitiveTier.Forage"/> trip feeds one person,
+        /// a summer or autumn one two.
         /// </summary>
-        public const int DailyRation = 3;
+        public const int DailyRation = 1;
 
         /// <summary>Ticks between one holder's meals.</summary>
         public const long MealInterval = SimulationTime.TicksPerDay;

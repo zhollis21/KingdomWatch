@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Land;
 
 namespace KingdomWatch.Harness
 {
@@ -29,6 +30,7 @@ namespace KingdomWatch.Harness
             var seed = 1;
             var seeds = 0;
             var soakEntities = 0;
+            var bushPicks = LandCover.DefaultBushPicks;
 
             // Options come in pairs; an odd count means a flag without its value.
             if (args.Length % 2 != 0)
@@ -57,6 +59,9 @@ namespace KingdomWatch.Harness
                     case "--soak" when parsed && value > 0:
                         soakEntities = value;
                         break;
+                    case "--bush-picks" when parsed && value > 0 && value <= LandCover.MaxClaims:
+                        bushPicks = value;
+                        break;
                     default:
                         return Usage();
                 }
@@ -71,16 +76,16 @@ namespace KingdomWatch.Harness
                 return Soak(soakEntities, years);
             }
 
-            return seeds > 0 ? Sweep(seeds, years) : RunChronicle(unchecked((ulong)seed), years);
+            return seeds > 0 ? Sweep(seeds, years, bushPicks) : RunChronicle(unchecked((ulong)seed), years, bushPicks);
         }
 
-        private static int RunChronicle(ulong seed, int years)
+        private static int RunChronicle(ulong seed, int years, int bushPicks)
         {
-            Console.WriteLine($"  World: seed {seed}, {N(years)} years, {WorldRun.Width}x{WorldRun.Height} placeholder map");
+            Console.WriteLine($"  World: seed {seed}, {N(years)} years, {WorldRun.Width}x{WorldRun.Height} placeholder map, {N(bushPicks)} trips a bush");
             Console.WriteLine();
 
             var stopwatch = Stopwatch.StartNew();
-            var run = new WorldRun(seed).RunYears(years);
+            var run = Run(seed, years, bushPicks);
             stopwatch.Stop();
 
             Chronicle.Write(run, Console.Out);
@@ -90,15 +95,15 @@ namespace KingdomWatch.Harness
             return run.Held ? 0 : 1;
         }
 
-        private static int Sweep(int seeds, int years)
+        private static int Sweep(int seeds, int years, int bushPicks)
         {
-            Console.WriteLine($"  Sweep: {N(seeds)} seeds, {N(years)} years each");
+            Console.WriteLine($"  Sweep: {N(seeds)} seeds, {N(years)} years each, {N(bushPicks)} trips a bush");
             var failed = 0;
             var stopwatch = Stopwatch.StartNew();
 
             for (var seed = 1UL; seed <= (ulong)seeds; seed++)
             {
-                var run = new WorldRun(seed).RunYears(years);
+                var run = Run(seed, years, bushPicks);
                 var last = run.Years[run.Years.Count - 1];
                 var (westLow, westHigh, eastLow, eastHigh) = Range(run);
                 Console.WriteLine(
@@ -138,6 +143,15 @@ namespace KingdomWatch.Harness
             return 0;
         }
 
+        // The world with its bushes set, so a sweep can try another number of
+        // trips a bush without a rebuild (#26).
+        private static WorldRun Run(ulong seed, int years, int bushPicks)
+        {
+            var run = new WorldRun(seed);
+            run.World.Land.BushPicks = bushPicks;
+            return run.RunYears(years);
+        }
+
         private static (int, int, int, int) Range(WorldRun run)
         {
             int westLow = run.FoundingWest, westHigh = run.FoundingWest;
@@ -160,7 +174,7 @@ namespace KingdomWatch.Harness
 
         private static int Usage()
         {
-            Console.Error.WriteLine("Usage: KingdomWatch.Harness [--seed N | --seeds N] [--years N]");
+            Console.Error.WriteLine("Usage: KingdomWatch.Harness [--seed N | --seeds N] [--years N] [--bush-picks N]");
             Console.Error.WriteLine("       KingdomWatch.Harness --soak ENTITIES [--years N]");
             return 2;
         }

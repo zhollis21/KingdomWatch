@@ -17,6 +17,14 @@ namespace KingdomWatch.Core.Tests.Performance
             new[] { new ResourceQuantity(ResourceKind.Food, 2) },
             1L);
 
+        // A gathering recipe of the test's own, so the workload's food
+        // balance does not move when the forage yields are retuned (#26).
+        private static readonly Recipe Pick = new Recipe(
+            "Pick",
+            System.Array.Empty<ResourceQuantity>(),
+            new[] { new ResourceQuantity(ResourceKind.Food, 4) },
+            1L);
+
         [Test]
         public void Every_operation_at_steady_state_allocates_nothing()
         {
@@ -37,8 +45,8 @@ namespace KingdomWatch.Core.Tests.Performance
             {
                 ledger.Gather(ResourceKind.Stone, 2);
                 ledger.Gather(ResourceKind.Wood, 2);
-                ledger.BeginRecipe(PrimitiveTier.Forage);
-                ledger.CompleteRecipe(PrimitiveTier.Forage);
+                ledger.BeginRecipe(Pick);
+                ledger.CompleteRecipe(Pick);
                 ledger.BeginRecipe(Cook);
                 ledger.CompleteRecipe(Cook);
                 ledger.BeginRecipe(Cook);

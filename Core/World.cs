@@ -5,6 +5,7 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.History;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
@@ -79,7 +80,8 @@ namespace KingdomWatch.Core
 
             Pathfinder = new Pathfinder(Grid, TerrainRules.Default);
             KnownMaps = new KnownMaps(Grid);
-            Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps);
+            Land = new LandCover(Grid, Clock);
+            Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps, Land);
             Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households, Jobs);
 
             Aging = new Aging(Bus, People, settings);
@@ -90,7 +92,12 @@ namespace KingdomWatch.Core
             Matchmaking = new Matchmaking(Bus, People, Family, Partnerships, Rng);
             Generator = new BandGenerator(Bus, People, Genealogy, Family, Households, settings, Rng);
             Founding = new Founding(Bus, Deaths, Fertility, Hunger, Warmth, Jobs, Matchmaking, KnownMaps);
-            Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps);
+            Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps, Land);
+
+            // No settling until farms (#100): a settlement living off berries
+            // strips what it can reach and starves within a year (#26's
+            // harness runs). Founding itself is unchanged and tested.
+            Nomads.Settles = false;
 
             Bus.Subscribe(Aging);
             Bus.Subscribe(Mortality);
@@ -169,6 +176,8 @@ namespace KingdomWatch.Core
 
         public KnownMaps KnownMaps { get; }
 
+        public LandCover Land { get; }
+
         public Jobs Jobs { get; }
 
         public Deaths Deaths { get; }
@@ -233,7 +242,7 @@ namespace KingdomWatch.Core
         /// <summary>
         /// The canonical hash of every section <see cref="WorldHash"/> has:
         /// terrain, next ids, people, households, settlements, wandering
-        /// bands, known maps, partnerships, genealogy, memories, work in hand,
+        /// bands, known maps, land cover, partnerships, genealogy, memories, work in hand,
         /// band councils, famine, the recorded history, each system's tracked
         /// communities (the #108 review), every stream's
         /// bookings (the #97 review note on #17) and the pending queue.
@@ -264,6 +273,7 @@ namespace KingdomWatch.Core
                 .AddSettlements(Founding, People)
                 .AddBands(_hashBands, People)
                 .AddKnownMaps(KnownMaps)
+                .AddLand(Land)
                 .AddPartnerships(Partnerships)
                 .AddGenealogy(Genealogy)
                 .AddMemories(Memories)

@@ -38,12 +38,13 @@ namespace KingdomWatch.Core.Tests.Nomadic
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new NomadicBands(null!, w.People, path, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, null!, path, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, null!, w.Founding, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, path, null!, w.Demographics.Rng, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, null!, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, w.Demographics.Rng, null!), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(null!, w.People, path, w.Founding, w.Demographics.Rng, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, null!, path, w.Founding, w.Demographics.Rng, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, null!, w.Founding, w.Demographics.Rng, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, null!, w.Demographics.Rng, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, null!, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, w.Demographics.Rng, null!, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new NomadicBands(bus, w.People, path, w.Founding, w.Demographics.Rng, w.KnownMaps, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -195,6 +196,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // wiring bug, and the council must not have dropped the band
             // before finding out.
             var w = new WorkWorld();
+            WorkWorld.NeverRunsOut(w.Land);
             var band = new MobileGroup(
                 w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
             w.Deaths.Track(band);
@@ -261,6 +263,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // booked.
             // Nobody dies, so the pressure crosses on exactly the last council.
             var w = new WorkWorld(1UL, WorkWorld.DefaultMap(), Immortal);
+            WorkWorld.NeverRunsOut(w.Land);
             var band = new MobileGroup(
                 w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
             var end = new SimulationTime(long.MaxValue);
@@ -667,6 +670,52 @@ namespace KingdomWatch.Core.Tests.Nomadic
             AdvanceToCouncil(w, 1);
 
             Assert.That(band.Destination, Is.Not.Null, "left on the first day");
+        }
+
+        [TestCase(false, TestName = "A camp with fruit in reach is kept")]
+        [TestCase(true, TestName = "A camp picked clean is left at the next council")]
+        public void A_camp_picked_clean_is_left_at_the_next_council(bool stripped)
+        {
+            // #26: a stripped bush is still scrub but not food, so a band that
+            // has picked its camp bare moves on to the bush it can see,
+            // rather than sitting out CampDays on its stores.
+            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
+            grid.Set(RankingCamp, TerrainKind.Scrub);
+            grid.Set(new WorldPosition(28, 15), TerrainKind.Scrub);
+            var w = new WorkWorld(1UL, grid);
+            var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            for (var i = 0; stripped && i < w.Land.BushPicks; i++)
+            {
+                w.Land.Take(RankingCamp);
+            }
+
+            AdvanceToCouncil(w, 1);
+
+            Assert.That(band.Destination is object, Is.EqualTo(stripped));
+        }
+
+        [Test]
+        public void In_winter_a_camp_by_bare_bushes_is_kept()
+        {
+            // Every bush is bare in winter and fruits in spring, so a band
+            // waits out the cold on its stores rather than wandering in
+            // search of berries nobody has.
+            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
+            grid.Set(RankingCamp, TerrainKind.Scrub);
+            var w = new WorkWorld(1UL, grid);
+            w.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason));
+            var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
+            w.JoinAdults(band, 1);
+
+            AdvanceToCouncil(w, 3 * (int)SimulationTime.DaysPerSeason + 2);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Land.HasFruit(RankingCamp), Is.False, "bare");
+                Assert.That(band.Destination, Is.Null, "and kept");
+            });
         }
 
         [TestCase(1UL)]
@@ -1153,6 +1202,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // wander forever, so the guarantee is worth a test rather than an
             // argument.
             var w = new WorkWorld();
+            WorkWorld.NeverRunsOut(w.Land);
             var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
             w.JoinAdults(band, 4);
 
@@ -1165,6 +1215,28 @@ namespace KingdomWatch.Core.Tests.Nomadic
             w.AdvanceTo(w.Now.Plus(days * Day));
 
             Assert.That(w.Founding.All, Is.Not.Empty, "a band that can see good land still settles on it");
+        }
+
+        [Test]
+        public void With_settling_off_a_band_under_pressure_on_good_land_keeps_wandering()
+        {
+            // The world turns settling off until farms (#26); the same band
+            // that settles above stays a band.
+            var w = new WorkWorld();
+            WorkWorld.NeverRunsOut(w.Land);
+            w.Nomads.Settles = false;
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
+            w.JoinAdults(band, 4);
+
+            var days = (int)(NomadicBands.SettlingPressure / 4L) + (int)SimulationTime.DaysPerYear;
+            w.AdvanceTo(w.Now.Plus(days * Day));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Nomads.PressureOf(band), Is.GreaterThanOrEqualTo(NomadicBands.SettlingPressure), "it wanted to");
+                Assert.That(w.Founding.All, Is.Empty);
+                Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1));
+            });
         }
 
         private static int KnownCells(WorkWorld w, MobileGroup band)

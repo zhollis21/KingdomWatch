@@ -180,12 +180,39 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void The_land_cover_is_folded_in_cell_by_cell()
+        {
+            // Which bushes are bare and which trees are down decides every
+            // site a band finds (#26): a pick moves the section, the same pick
+            // on another bush moves it somewhere else, and giving the only
+            // claim back returns it to where an untouched map was.
+            var world = new WorkWorld(1UL, WorkWorld.ScrubOnly());
+            var fresh = new WorldHash().AddLand(world.Land).Value;
+
+            world.Land.Take(WorkWorld.Camp);
+            var picked = new WorldHash().AddLand(world.Land).Value;
+            world.Land.Return(WorkWorld.Camp);
+            var returned = new WorldHash().AddLand(world.Land).Value;
+            world.Land.Take(WorkWorld.ForestCell);
+            var elsewhere = new WorldHash().AddLand(world.Land).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(picked, Is.Not.EqualTo(fresh));
+                Assert.That(returned, Is.EqualTo(fresh));
+                Assert.That(elsewhere, Is.Not.EqualTo(picked), "the cell is folded in, not only the state");
+                Assert.That(() => new WorldHash().AddLand(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void Settlements_and_their_supplies_are_folded_in()
         {
             // The one section DemographicWorld cannot reach, so it needs a
             // world that founds something. Without this the section was
             // written, shipped and never once executed.
             var world = new WorkWorld();
+            WorkWorld.NeverRunsOut(world.Land);
             var band = world.NewWanderingBand(WorkWorld.Camp, 0);
 
             world.JoinAdults(band, 60);

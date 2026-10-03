@@ -81,13 +81,14 @@ namespace KingdomWatch.Harness
         public long? EastDiedOut { get; private set; }
 
         /// <summary>
-        /// Whether the run passed what M1 asks of it (section 19): it broke no
-        /// invariant, and neither homeland died out. A world can die out
-        /// without breaking a rule, so <see cref="IsClean"/> alone is not a
-        /// pass (the #103 review). Settling is not part of it: a short run
-        /// ends before any band settles, and that is not a failure.
+        /// Whether the run passed: it broke no invariant. A homeland dying out
+        /// used to fail it too (the #103 review), but since #26 berries run
+        /// out and some homelands starve before farms exist (#100), so a
+        /// die-out is reported - <see cref="WestDiedOut"/>,
+        /// <see cref="EastDiedOut"/>, the chronicle and the sweep line - and
+        /// not failed. Settling is not part of it either.
         /// </summary>
-        public bool Held => IsClean && WestDiedOut is null && EastDiedOut is null;
+        public bool Held => IsClean;
 
         /// <summary>
         /// Advances year by year, validating after each, and stops at the first
@@ -149,7 +150,8 @@ namespace KingdomWatch.Harness
                 .CheckGenealogy(world.Genealogy, world.People, world.Clock)
                 .CheckSchedule(world.Clock, world.People, _communities, world.Households)
                 .CheckJobs(world.Jobs, world.People, world.Clock)
-                .CheckCommunities(_communities, world.People, world.Clock);
+                .CheckCommunities(_communities, world.People, world.Clock)
+                .CheckLand(world.Land, world.Grid, world.Clock);
 
             // Each system's own tracked set: a community one system still has
             // events booked for and another has let go has no other symptom.

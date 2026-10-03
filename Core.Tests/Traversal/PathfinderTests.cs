@@ -720,6 +720,37 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_site_filter_passes_over_cells_it_refuses_to_the_next_nearest()
+        {
+            // A stripped bush is still scrub and still known (#26): the filter
+            // is the last say, and the search walks on to the next one.
+            var grid = Map(
+                ".f..f",
+                ".....");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var near = grid.IndexOf(new WorldPosition(1, 0));
+
+            var found = finder.TryFindNearest(
+                Origin, Transport.Foot, TerrainMask(TerrainKind.Forest), default, new Refusing(near), 8, route, out _);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.True);
+                Assert.That(route[route.Count - 1], Is.EqualTo(new WorldPosition(4, 0)));
+            });
+        }
+
+        private sealed class Refusing : ISiteFilter
+        {
+            private readonly int _cell;
+
+            public Refusing(int cell) => _cell = cell;
+
+            public bool Accepts(int cell) => cell != _cell;
+        }
+
+        [Test]
         public void An_empty_known_mask_is_omniscient_and_matches_the_overload_without_one()
         {
             var grid = Map(

@@ -2,6 +2,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Tests.Work;
 using KingdomWatch.Core.Traversal;
@@ -32,7 +33,11 @@ namespace KingdomWatch.Core.Tests.Performance
             var grid = WorkWorld.DefaultMap();
             var pathfinder = new Pathfinder(grid, TerrainRules.Default);
             var knownMaps = new KnownMaps(grid);
-            var jobs = new Jobs(clock, people, pathfinder, knownMaps);
+            // The default map's one bush feeds forty for a month only if it
+            // never runs out; running out is LandCoverTests' and JobsTests'.
+            var land = new LandCover(grid, clock);
+            WorkWorld.NeverRunsOut(land);
+            var jobs = new Jobs(clock, people, pathfinder, knownMaps, land);
             var hunger = new Hunger(bus, people);
             var router = new ScheduledEventRouter();
             router.Register(ScheduledEventKind.WorkDayDue, jobs);

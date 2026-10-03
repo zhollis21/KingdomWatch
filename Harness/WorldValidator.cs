@@ -4,8 +4,10 @@ using System.Collections.ObjectModel;
 using System.Text;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
 namespace KingdomWatch.Harness
@@ -599,6 +601,41 @@ namespace KingdomWatch.Harness
                 {
                     Add(ValidationRule.ConservationBroken, now, owner,
                         kind + " does not balance against its flows.");
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Every cell the land cover has touched (#26) is a bush or a tree,
+        /// holding no more claims than one gives: a terrain rewrite under a
+        /// claimed cell, or the picks or cuts lowered past what was already
+        /// claimed, leaves land the site search would misread.
+        /// </summary>
+        public WorldValidator CheckLand(LandCover land, TerrainGrid grid, SimulationClock clock)
+        {
+            Require(land, nameof(land));
+            Require(grid, nameof(grid));
+            Require(clock, nameof(clock));
+
+            var now = clock.Now;
+
+            for (var cell = 0; cell < land.CellCount; cell++)
+            {
+                if (land.StateAt(cell) == 0)
+                {
+                    continue;
+                }
+
+                var kind = grid[grid.PositionAt(cell)];
+                var most = kind == TerrainKind.Scrub ? land.BushPicks : kind == TerrainKind.Forest ? land.TreeCuts : 0;
+
+                if (land.ClaimsAt(cell) > most)
+                {
+                    Add(ValidationRule.LandClaimInvalid, now, EntityId.None,
+                        grid.PositionAt(cell) + " is " + kind + " with " + land.ClaimsAt(cell)
+                        + " claims; it can hold " + most + ".");
                 }
             }
 

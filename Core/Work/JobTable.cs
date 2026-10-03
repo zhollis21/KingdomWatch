@@ -17,9 +17,9 @@ namespace KingdomWatch.Core.Work
     /// worked at the nearest cell of a terrain that has the thing. Foraging
     /// takes berry scrub, wood needs forest and stone needs rocks; open
     /// plains have none of them (#137), so a band that can reach none
-    /// of a kind simply does not gather it. The mapping is placeholder
-    /// in the <see cref="PrimitiveTier"/> sense: a table for a later resource
-    /// model (#26) to make finite and per-cell.
+    /// of a kind simply does not gather it. Whether a given bush or tree has
+    /// anything left is <see cref="Land.LandCover"/>'s (#26); this says only
+    /// which terrain a job looks at.
     /// </remarks>
     public static class JobTable
     {

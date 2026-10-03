@@ -23,8 +23,11 @@ namespace KingdomWatch.Core.Data
     /// **Foraging follows the seasons; nothing else does** (#53). Section 9's
     /// "famine is a timing problem" needs the one food source to be lean for
     /// part of the year. <see cref="Forage"/> is the spring yield, and
-    /// <see cref="ForageIn"/> returns the recipe for any season: richer in
-    /// summer and autumn, thin in winter. Deadfall and surface stone are there all year.
+    /// <see cref="ForageIn"/> returns the recipe for any season. Since #26
+    /// the lean part is winter alone, when the bushes are bare and nobody
+    /// forages; spring, summer and autumn yield alike, the whole-number
+    /// rounding of what were richer summers and autumns. Deadfall and
+    /// surface stone are there all year.
     /// A season's recipe differs from the others only in its output, so a
     /// task's duration never depends on when it starts.
     ///
@@ -33,26 +36,33 @@ namespace KingdomWatch.Core.Data
     /// harness tuned (#17): at 3/4/4/1 about one homeland in seven starved
     /// within forty years, because a settlement with more dependents than
     /// workers could not store a winter; 4/6/6/1 is the lowest tried where
-    /// none did across 64 seeds. Nothing here is a balance decision.
+    /// none did across 64 seeds. #26 made one food a person's day (it was a
+    /// third of one), so those are 1⅓/2/2 now. Spring rounds up to 2, the
+    /// same as summer and autumn: rounding it down to 1 starved every
+    /// homeland within two years once bushes ran out (#26's sweeps).
+    /// Stores read a third as large. Nothing
+    /// here is a balance decision.
     /// </remarks>
     public static class PrimitiveTier
     {
         /// <summary>
-        /// Half a day's foraging feeds a person for a day and a little over.
-        /// The spring yield, and the base the other seasons are measured
-        /// against.
+        /// A trip feeds two people for a day. The spring yield, and the base
+        /// the other seasons are measured against.
         /// </summary>
-        public static readonly Recipe Forage = ForageYielding("Forage", 4);
+        public static readonly Recipe Forage = ForageYielding("Forage", 2);
 
-        /// <summary>Summer's foraging: the land at its most generous.</summary>
-        public static readonly Recipe ForageSummer = ForageYielding("Forage (summer)", 6);
+        /// <summary>Summer's foraging: as spring's since #26.</summary>
+        public static readonly Recipe ForageSummer = ForageYielding("Forage (summer)", 2);
 
-        /// <summary>Autumn's foraging: nuts, late fruit, the last of the year's plenty.</summary>
-        public static readonly Recipe ForageAutumn = ForageYielding("Forage (autumn)", 6);
+        /// <summary>Autumn's foraging: nuts and late fruit, as spring's since #26.</summary>
+        public static readonly Recipe ForageAutumn = ForageYielding("Forage (autumn)", 2);
 
         /// <summary>
-        /// Winter's foraging: not enough to feed the forager, so a band that
-        /// did not store food in autumn cannot forage its way through.
+        /// Winter's foraging. Until #26 it was a third of a forager's own day,
+        /// so a band that did not store food in autumn could not forage its
+        /// way through. Since #26 berry bushes are bare all winter, so nothing
+        /// forages then and this recipe is not run; it stays as the season's entry until a
+        /// winter food source (#114's game) gives foraging something to find.
         /// </summary>
         public static readonly Recipe ForageWinter = ForageYielding("Forage (winter)", 1);
 

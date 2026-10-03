@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Traversal;
 
@@ -79,8 +80,10 @@ namespace KingdomWatch.Core.Work
     /// however many candidates there are and whether or not any of them
     /// connect - so every worker on a job walks the same route to the same
     /// cell. Three searches per band per day rather than one per task, and
-    /// placeholder in the <see cref="PrimitiveTier"/> sense: sites are
-    /// infinite and identical until #26 makes them neither. Sites remember
+    /// one more whenever a site is spent (#26): a trip claims its harvest
+    /// from <see cref="LandCover"/> as it sets out, and a pick that finds its
+    /// site bare searches again from the same place, so a band strips one
+    /// bush and moves to the next. Stone stays infinite. Sites remember
     /// where they were found from, and a pick made from anywhere else finds
     /// them again first - so a band that moves (#54) need not tell anyone;
     /// <see cref="RefreshSites"/> is there for a caller that wants the new
@@ -216,6 +219,7 @@ namespace KingdomWatch.Core.Work
         private readonly Pathfinder _pathfinder;
         private readonly KnownMaps _knownMaps;
         private readonly TerrainGrid _grid;
+        private readonly LandCover _land;
 
         // A list, scanned by id, for the same reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
@@ -231,12 +235,13 @@ namespace KingdomWatch.Core.Work
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
 
-        public Jobs(SimulationClock clock, PersonStore people, Pathfinder pathfinder, KnownMaps knownMaps)
+        public Jobs(SimulationClock clock, PersonStore people, Pathfinder pathfinder, KnownMaps knownMaps, LandCover land)
         {
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _people = people ?? throw new ArgumentNullException(nameof(people));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
+            _land = land ?? throw new ArgumentNullException(nameof(land));
             _grid = pathfinder.Grid;
         }
 
@@ -579,6 +584,9 @@ namespace KingdomWatch.Core.Work
                     tracked.Group.SharedSupplies.CancelRecipe(recipe);
                 }
 
+                // The trip claimed its harvest when it set out (#26); one that
+                // never comes home leaves the fruit on the bush.
+                _land.Return(task.Destination);
                 slot.Clear();
 
                 // The band keeps its dawn count of the living: this person is
@@ -758,6 +766,12 @@ namespace KingdomWatch.Core.Work
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
+            // The harvest is claimed now, not on the way home (#26): whoever
+            // takes a bush's last trip leaves it bare for the next picker,
+            // whose ChooseJob then finds the next bush. Cannot refuse -
+            // ChooseJob only offers a site that can be worked.
+            _land.Take(site.Destination);
+
             var slot = SlotFor(worker.Index);
             slot.Task = new WorkTask(
                 worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, recipe.Duration, site.ReturnCost * TicksPerCostUnit,
@@ -803,6 +817,15 @@ namespace KingdomWatch.Core.Work
                 var job = Priority[i];
                 var site = SiteOf(tracked, job);
 
+                // A site spent since it was found - by this band's last pick
+                // or another band's - is found again, from the same place
+                // and over the same known map, so pickers move on to the
+                // next bush or tree rather than walk to a bare one (#26).
+                if (site.Reachable && !_land.IsWorkable(site.Destination))
+                {
+                    FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
+                }
+
                 if (!site.Reachable)
                 {
                     continue;
@@ -818,8 +841,8 @@ namespace KingdomWatch.Core.Work
 
                 // Needed at all, and strictly further short than the best so
                 // far - compared as fractions by cross-multiplying. Food's
-                // target is up to 120 per person and wood's about 10, so the
-                // products fit a long until some 88 million people share one
+                // target is up to 40 per person and wood's about 10, so the
+                // products fit a long until some 150 million people share one
                 // community. Checked so that a world past that throws rather
                 // than quietly sending hands to the wrong store (the #103
                 // review).
@@ -938,7 +961,7 @@ namespace KingdomWatch.Core.Work
         private void FindSite(WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
         {
             site.Reachable = _pathfinder.TryFindNearest(
-                from, Mover, JobTable.Terrain(job), known, MaxSiteRadius, site.Route, out var cost);
+                from, Mover, JobTable.Terrain(job), known, _land.Ripe, MaxSiteRadius, site.Route, out var cost);
 
             if (!site.Reachable)
             {
