@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -12,10 +13,16 @@ namespace KingdomWatch.Game.Editor
     // Game/Builds/Windows (git-ignored) and exits 0 once built, 1 otherwise.
     // tools/Profile.ps1 runs it; -buildTarget saves a switch of the open
     // profile, which is Android.
+    //
+    // The scripted run is compiled in under UNITY_INCLUDE_INSTRUMENTATION,
+    // which Unity 6.6 defines from the managed code variant rather than from
+    // BuildOptions.Development (DEVELOPMENT_BUILD is deprecated), so the
+    // variant is set here: Instrumented, the least that defines it.
     public static class DevBuild
     {
         public static void Windows()
         {
+            PlayerSettings.SetManagedCodeVariant(NamedBuildTarget.Standalone, ManagedCodeVariant.Instrumented);
             var project = Directory.GetParent(Application.dataPath).FullName;
             var options = new BuildPlayerOptions
             {

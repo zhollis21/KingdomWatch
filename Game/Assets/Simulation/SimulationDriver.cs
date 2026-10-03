@@ -42,7 +42,7 @@ namespace KingdomWatch.Game
         private readonly List<Object> hudOwned = new List<Object>();
         private readonly List<Vector2> settlementPositions = new List<Vector2>();
         private readonly List<Vector2> bandPositions = new List<Vector2>();
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
         // Flies the camera in place of input when launched with -scripted-run.
         private ScriptedRun scriptedRun;
         private bool demoSelect;
@@ -84,7 +84,7 @@ namespace KingdomWatch.Game
             view.Show(world);
             rig = new CameraRig(view.sceneCamera, world.Grid.Width, world.Grid.Height);
             input = new ViewInput(rig, view);
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             // -hud-notch insets the panel as a phone's cutout and rounded corners
             // would, to look at the layout on a screen that has neither.
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-hud-notch") >= 0)
@@ -100,7 +100,7 @@ namespace KingdomWatch.Game
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).
             rig.Apply(hud.Reserved, hud.TopInset);
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             scriptedRun = ScriptedRun.FromCommandLine(rig, view, world);
             // -hud-demo selects someone and opens the debug card, so a run's
             // screenshots show those parts of the panel too.
@@ -130,7 +130,7 @@ namespace KingdomWatch.Game
             // A long frame (a hitch, a debugger pause) is capped rather than
             // caught up, so one slow frame cannot become a burst of sim years.
             var seconds = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             // A scripted run counts frames, not seconds, and stops the clock
             // while a stop fills in, so two runs reach each stop on the same
             // day however fast each draws.
@@ -155,7 +155,7 @@ namespace KingdomWatch.Game
         private void LateUpdate()
         {
             if (view == null || rig == null || hud == null) return;
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             if (scriptedRun != null) scriptedRun.Step(Time.unscaledDeltaTime);
             else
 #endif
@@ -170,7 +170,7 @@ namespace KingdomWatch.Game
             rig.Apply(hud.Reserved, hud.TopInset);
             view.Refresh(world, rig.RequestedPixelsPerCell, UiScale, paused);
             DropVanishedSelection();
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             if (demoSelect && Time.frameCount > 5)
             {
                 demoSelect = false;

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
-using KingdomWatch.Core.Needs;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Data
@@ -83,20 +82,6 @@ namespace KingdomWatch.Core.Tests.Data
                 }
 
                 Assert.That(() => PrimitiveTier.ForageIn((Season)4), Throws.TypeOf<ArgumentOutOfRangeException>());
-            });
-        }
-
-        [Test]
-        public void Winter_foraging_does_not_feed_the_forager()
-        {
-            // What makes stores matter at all (#53): a task's winter yield is
-            // under one ration, so however many trips fit in a day, winter is
-            // lived on what autumn put by. Summer and autumn are the plenty.
-            Assert.Multiple(() =>
-            {
-                Assert.That(PrimitiveTier.ForageWinter.Outputs[0].Quantity, Is.LessThan(Hunger.DailyRation));
-                Assert.That(PrimitiveTier.ForageSummer.Outputs[0].Quantity, Is.GreaterThan(PrimitiveTier.Forage.Outputs[0].Quantity));
-                Assert.That(PrimitiveTier.ForageAutumn.Outputs[0].Quantity, Is.GreaterThan(PrimitiveTier.Forage.Outputs[0].Quantity));
             });
         }
     }

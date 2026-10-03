@@ -323,6 +323,23 @@ namespace KingdomWatch.Core.Traversal
             ReadOnlySpan<bool> known,
             int radius,
             List<WorldPosition> route,
+            out long cost) =>
+            TryFindNearest(from, mover, acceptable, known, null, radius, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, int, List{WorldPosition}, out long)"/>,
+        /// with a last say per cell: a site counts as found only when
+        /// <paramref name="filter"/> also accepts it - a bush with fruit on
+        /// it, a tree still standing (#26). Null accepts every cell.
+        /// </summary>
+        public bool TryFindNearest(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            ISiteFilter? filter,
+            int radius,
+            List<WorldPosition> route,
             out long cost)
         {
             if (route is null)
@@ -367,7 +384,9 @@ namespace KingdomWatch.Core.Traversal
             {
                 var current = PopCheapest();
 
-                if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
+                if (acceptable[(int)_grid.KindAt(current)]
+                    && (known.IsEmpty || known[current])
+                    && (filter is null || filter.Accepts(current)))
                 {
                     cost = _gScore[current];
                     WriteRoute(start, current, route);

@@ -10,7 +10,8 @@ namespace KingdomWatch.Game
     // pointer is on a thing and what to call it.
     public sealed class Tip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler
     {
-        public Hud Hud;
+        // Set by the Hud when it makes the tip, never saved with a scene.
+        [NonSerialized] public Hud Hud;
         public string Text;
 
         public void OnPointerEnter(PointerEventData eventData)

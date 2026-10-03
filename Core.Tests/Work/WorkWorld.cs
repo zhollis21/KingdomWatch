@@ -3,6 +3,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
@@ -59,7 +60,7 @@ namespace KingdomWatch.Core.Tests.Work
             Founding = new Founding(
                 Demographics.Bus, Deaths, Demographics.Fertility, Hunger, Warmth, Jobs, Demographics.Matchmaking, KnownMaps);
             Nomads = new NomadicBands(
-                Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng, KnownMaps);
+                Demographics.Bus, People, Demographics.Base.Pathfinder, Founding, Demographics.Rng, KnownMaps, Land);
             Router.Register(ScheduledEventKind.WarmthDue, Warmth);
             Router.Register(ScheduledEventKind.WorkDayDue, Jobs);
             Router.Register(ScheduledEventKind.TaskCompleted, Jobs);
@@ -93,6 +94,16 @@ namespace KingdomWatch.Core.Tests.Work
             return grid;
         }
 
+        // As much fruit and wood on every bush and tree as a cell holds, for
+        // fixtures about settling or something else that runs for years on
+        // the default map's one bush and one tree (#26). Set before anyone
+        // works.
+        internal static void NeverRunsOut(LandCover land)
+        {
+            land.BushPicks = LandCover.MaxClaims;
+            land.TreeCuts = LandCover.MaxClaims;
+        }
+
         // Berry scrub only, as far as the eye can see: foraging works
         // underfoot and nothing else works anywhere.
         internal static TerrainGrid ScrubOnly() => new TerrainGrid(Width, Height, TerrainKind.Scrub);
@@ -106,6 +117,8 @@ namespace KingdomWatch.Core.Tests.Work
         // One map store, the one Jobs was built with: a second instance
         // would leave Founding handing over a map nobody works from.
         internal KnownMaps KnownMaps => Demographics.Base.KnownMaps;
+
+        internal LandCover Land => Demographics.Base.Land;
 
         internal Founding Founding { get; }
 

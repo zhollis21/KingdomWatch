@@ -20,14 +20,14 @@ namespace KingdomWatch.Core.Tests.Validation
     /// that holds its invariants across seeds.
     /// </summary>
     /// <remarks>
-    /// A century rather than the harness's two: every homeland that died out
-    /// in #17's tuning runs did so inside the first ten years, and past a
-    /// century the population has no ceiling yet (#69, #26), so the second
-    /// hundred years is minutes of CI that finds nothing the first did not.
-    /// The full run is <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
+    /// A century rather than the harness's two: the second hundred years is
+    /// minutes of CI that finds nothing the first did not. The full run is
+    /// <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
     ///
-    /// "Stable" is survival only. Neither homeland may die out; there is no
-    /// upper bound to assert until housing or land can limit growth.
+    /// Survival is not asserted. Since #26 berries run out, and until farms
+    /// (#100) some homelands starve; the harness reports each die-out rather
+    /// than failing on it. Nor is a population ceiling, though land now
+    /// gives one.
     ///
     /// This replaced the 30-year fixture sweeps: the validator checks every
     /// rule they checked, after every year, on the world the harness runs.
@@ -73,34 +73,17 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void Neither_homeland_dies_out_on_any_seed()
-        {
-            var report = new StringBuilder();
-
-            foreach (var run in Runs)
-            {
-                if (run.WestDiedOut != null || run.EastDiedOut != null)
-                {
-                    report.AppendLine(
-                        "seed " + run.World.Seed + ": west died out " + (run.WestDiedOut?.ToString() ?? "never")
-                        + ", east " + (run.EastDiedOut?.ToString() ?? "never"));
-                }
-            }
-
-            Assert.That(report.ToString(), Is.Empty);
-        }
-
-        [Test]
         public void The_milestones_M1_can_reach_fire_on_every_seed()
         {
-            // Economy ladder section 9's first milestone, and first settlement
-            // standing in for the rest until buildings exist (#100).
+            // Economy ladder section 9's first milestone. First settlement
+            // stood in for the rest until buildings exist (#100), but the
+            // world settles no band until farms do (#26), so none settles.
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
                     Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "seed " + run.World.Seed + ": camp at world start");
-                    Assert.That(run.FirstSettlement, Is.Not.Null, "seed " + run.World.Seed + ": never settled");
+                    Assert.That(run.FirstSettlement, Is.Null, "seed " + run.World.Seed + ": settled with settling off");
                 }
             });
         }
@@ -320,6 +303,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 .AddSettlements(world.Founding, world.People)
                 .AddBands(bands, world.People)
                 .AddKnownMaps(world.KnownMaps)
+                .AddLand(world.Land)
                 .AddPartnerships(world.Partnerships)
                 .AddGenealogy(world.Genealogy)
                 .AddMemories(world.Memories)
@@ -416,12 +400,13 @@ namespace KingdomWatch.Core.Tests.Validation
             });
         }
 
-        [TestCase(0, TestName = "A west that dies out is a failed run even when it validates clean")]
-        [TestCase(1, TestName = "An east that dies out is a failed run even when it validates clean")]
-        public void A_homeland_that_dies_out_is_a_failed_run_even_when_it_validates_clean(int side)
+        [TestCase(0, TestName = "A west that dies out is reported, not failed")]
+        [TestCase(1, TestName = "An east that dies out is reported, not failed")]
+        public void A_homeland_that_dies_out_is_reported_not_failed(int side)
         {
-            // The #103 review: the harness exited 0 on a world where a
-            // homeland had died out, because it read only the validator.
+            // The #103 review made a die-out fail the run; #26 made it a
+            // report, since berries run out and homelands can starve until
+            // farms. It must still be seen: the year, and the chronicle line.
             // Everyone on one side of the river dies before the first year.
             var run = new WorldRun(1UL);
             var communities = new List<ICommunity>();
@@ -444,7 +429,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(run.IsClean, Is.True, "a world can die out without breaking a rule");
                 Assert.That(died, Is.EqualTo(1L), "the first year that ended with nobody there");
                 Assert.That(lived, Is.Null);
-                Assert.That(run.Held, Is.False);
+                Assert.That(run.Held, Is.True, "reported, not failed");
                 Assert.That(text.ToString(), Does.Contain((side == 0 ? "West" : "East") + " died out in year 1."));
             });
         }

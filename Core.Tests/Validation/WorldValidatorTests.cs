@@ -6,6 +6,7 @@ using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Tests.Lifecycle;
 using KingdomWatch.Core.Tests.Work;
+using KingdomWatch.Core.Traversal;
 using KingdomWatch.Harness;
 using NUnit.Framework;
 
@@ -708,7 +709,59 @@ namespace KingdomWatch.Core.Tests.Validation
                     Throws.ArgumentNullException);
                 Assert.That(
                     () => validator.CheckSupplies(null!, EntityId.None, clock), Throws.ArgumentNullException);
+                var work = new WorkWorld();
+                Assert.That(() => validator.CheckLand(null!, work.Grid, work.Clock), Throws.ArgumentNullException);
+                Assert.That(() => validator.CheckLand(work.Land, null!, work.Clock), Throws.ArgumentNullException);
+                Assert.That(() => validator.CheckLand(work.Land, work.Grid, null!), Throws.ArgumentNullException);
             });
+        }
+
+        [Test]
+        public void Land_with_claims_inside_what_its_bushes_and_trees_give_is_clean()
+        {
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.Camp);
+            world.Land.Take(WorkWorld.ForestCell);
+
+            var validator = new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock);
+
+            Assert.That(validator.IsClean, Is.True, validator.Report(0UL));
+        }
+
+        [Test]
+        public void More_picks_claimed_than_a_bush_now_gives_is_caught()
+        {
+            // The picks are settable, and lowering them under a bush already
+            // picked leaves it holding more claims than it has.
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.Camp);
+            world.Land.Take(WorkWorld.Camp);
+            world.Land.BushPicks = 1;
+
+            Assert.That(RulesOf(new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock)), Does.Contain(ValidationRule.LandClaimInvalid));
+        }
+
+        [Test]
+        public void More_cuts_claimed_than_a_tree_now_takes_is_caught()
+        {
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.ForestCell);
+            world.Land.Take(WorkWorld.ForestCell);
+            world.Land.TreeCuts = 1;
+
+            Assert.That(RulesOf(new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock)), Does.Contain(ValidationRule.LandClaimInvalid));
+        }
+
+        [Test]
+        public void A_claimed_cell_rewritten_to_other_ground_is_caught()
+        {
+            // A bridge or the shape-terrain power rewrites cells (section 12);
+            // a claim left on plains is land the site search would misread.
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.Camp);
+            world.Grid.Set(WorkWorld.Camp, TerrainKind.Plains);
+
+            Assert.That(RulesOf(new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock)), Does.Contain(ValidationRule.LandClaimInvalid));
         }
 
         [Test]

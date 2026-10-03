@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using KingdomWatch.Core;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Traversal;
 using Unity.Profiling;
 using UnityEngine;
@@ -57,6 +58,10 @@ namespace KingdomWatch.Game
         // trees and rocks, too many to keep, let alone animate every frame.
         private const int ChunkSize = 32;
 
+        // Trees and bushes Regrow looks at a frame: a few chunks' worth, so
+        // a screenful of chunks is gone over in a few frames.
+        private const int GrowingPerFrame = 4096;
+
         // Milliseconds of chunk building a frame may spend, at least one chunk
         // whatever it costs, so a zoom or a fast pan fills in over a few
         // frames rather than hitching on one. The colour map lies under the
@@ -90,6 +95,7 @@ namespace KingdomWatch.Game
         // Named in a capture, so a slow frame says which part was slow (#132).
         private static readonly ProfilerMarker BuildMarker = new ProfilerMarker("KW.View.BuildChunks");
         private static readonly ProfilerMarker LayLandMarker = new ProfilerMarker("KW.View.LayLand");
+        private static readonly ProfilerMarker RegrowMarker = new ProfilerMarker("KW.View.Regrow");
         private static readonly ProfilerMarker AnimateMarker = new ProfilerMarker("KW.View.Animate");
         private static readonly ProfilerMarker PeopleMarker = new ProfilerMarker("KW.View.People");
         private static readonly ProfilerMarker CommunitiesMarker = new ProfilerMarker("KW.View.Communities");
@@ -215,6 +221,12 @@ namespace KingdomWatch.Game
         private readonly List<Vector3Int> changedCorners = new List<Vector3Int>();
         private readonly List<TileBase> changedCornerTiles = new List<TileBase>();
         private readonly List<TileChangeData> changedFlowers = new List<TileChangeData>();
+        // The land's bushes and trees (#26), the instant the view is drawing,
+        // the built chunk Regrow looked at last, and its tile writes.
+        private LandCover land;
+        private SimulationTime simNow;
+        private int regrowChunk;
+        private readonly List<TileChangeData> changedGrowth = new List<TileChangeData>();
         // The zoomed-out map in the art's colours (#130), one per season,
         // made when the world is shown; and the season on show.
         private ArtColours artColours;
@@ -275,6 +287,8 @@ namespace KingdomWatch.Game
             // Terrain is static until bridges (section 12, M6) rewrite cells;
             // then this belongs in Refresh, behind a change check.
             grid = world.Grid;
+            land = world.Land;
+            simNow = world.Now;
             shoreMasks = new byte[(width + 1) * (height + 1)];
             art = ArtSet.Load(owned);
             if (art != null)
@@ -298,6 +312,7 @@ namespace KingdomWatch.Game
         public void Refresh(World world, float pixelsPerCell, float scale, bool paused)
         {
             uiScale = scale;
+            simNow = world.Now;
             Band = BandFor(pixelsPerCell, scale);
             if (!paused) animationTime += Time.unscaledDeltaTime;
             var tiled = art != null && Band != ZoomBand.Far;
@@ -316,6 +331,8 @@ namespace KingdomWatch.Game
             // Every frame, zoomed in or out, so the season has got as far
             // wherever the view goes next.
             if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
+            // Zoomed out too, for the reason LayLand is.
+            if (art != null) using (RegrowMarker.Auto()) Regrow();
             if (tiled)
             {
                 // The water's own tile animation, which the Tilemap runs.
@@ -797,7 +814,9 @@ namespace KingdomWatch.Game
                 var kind = grid[new WorldPosition(x, y)];
                 if (kind == TerrainKind.Forest) colour = ArtColours.Over(colour, artColours.Trees[TreeOf(hash)]);
                 else if (kind == TerrainKind.Rocks) colour = ArtColours.Over(colour, artColours.Rocks[hash % (uint)artColours.Rocks.Length]);
-                else if (kind == TerrainKind.Scrub) colour = ArtColours.Over(colour, artColours.Bushes[hash % (uint)artColours.Bushes.Length]);
+                // The season's fruit: the zoomed-out map is made once per
+                // season, so it shows no bush picked clean or tree felled.
+                else if (kind == TerrainKind.Scrub) colour = ArtColours.Over(colour, artColours.Bushes[ArtSet.BushFruitOf((Season)season) * ArtSet.BushSizes + (int)(hash % ArtSet.BushSizes)]);
                 else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && season != (int)Season.Winter)
                 {
                     colour = ArtColours.Over(colour, artColours.FlatDecor[(hash >> 12) / 8 % (uint)artColours.FlatDecor.Length]);
@@ -1091,22 +1110,21 @@ namespace KingdomWatch.Game
         private void StandScenery(Chunk chunk, int x, int y, int block, uint hash, Season season)
         {
             var kind = grid[new WorldPosition(x, y)];
-            if (kind == TerrainKind.Forest)
+            if (kind == TerrainKind.Forest || kind == TerrainKind.Scrub)
             {
-                var tree = TreeOf(hash);
-                Stand(chunk, art.Trees[tree], art.TreeTiles[tree], x, y, block, 0.3f);
+                // A tree on every forest cell and a berry bush on every scrub
+                // cell, each as the land has it (#26): a stump or a sapling
+                // where a tree was felled, and the season's fruit or a bare
+                // bush. Kept current by Regrow.
+                var growth = GrowthOf(kind, x, y);
+                var (sprite, tile) = GrowingArt(kind, growth, hash);
+                var renderer = Stand(chunk, sprite, tile, x, y, block, 0.3f);
+                chunk.Growing.Add(new Growing(x, y, kind == TerrainKind.Scrub, growth, renderer));
             }
             else if (kind == TerrainKind.Rocks)
             {
                 var rock = hash % (uint)art.Rocks.Length;
                 Stand(chunk, art.Rocks[rock], art.RockTiles[rock], x, y, block, 0.3f);
-            }
-            else if (kind == TerrainKind.Scrub)
-            {
-                // A berry bush on every scrub cell: what looks like food is
-                // food (#137).
-                var bush = hash % (uint)art.Bushes.Length;
-                Stand(chunk, art.Bushes[bush], art.BushTiles[bush], x, y, block, 0.3f);
             }
             else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash))
             {
@@ -1135,10 +1153,75 @@ namespace KingdomWatch.Game
         // Something standing in a cell: a tile in the standing scenery when
         // the chunk's scenery is tiled, else a renderer that sorts like
         // people, so people walk behind it.
-        private void Stand(Chunk chunk, Sprite sprite, Tile tile, int x, int y, int block, float nudge)
+        // Returns the renderer, or null when tiled.
+        private SpriteRenderer Stand(Chunk chunk, Sprite sprite, Tile tile, int x, int y, int block, float nudge)
         {
-            if (chunk.SceneryTiled) standingBlock[block] = new TileChangeData(standingBlock[block].position, tile, Color.white, Nudged(x, y, nudge));
-            else Lay(chunk, sprite, null, x, y, nudge, true);
+            if (chunk.SceneryTiled)
+            {
+                standingBlock[block] = new TileChangeData(standingBlock[block].position, tile, Color.white, Nudged(x, y, nudge));
+                return null;
+            }
+            return Lay(chunk, sprite, null, x, y, nudge, true);
+        }
+
+        // How a tree or bush stands now: for a bush, its fruit (ArtSet's
+        // BushFruitOf the season, or BareBush); for a tree, its TreeStage.
+        private int GrowthOf(TerrainKind kind, int x, int y)
+        {
+            var at = new WorldPosition(x, y);
+            if (kind == TerrainKind.Scrub) return land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
+            return (int)land.StageOf(at);
+        }
+
+        // A felled tree is its own stump, then a small tree of its kind, then
+        // itself again; a bush keeps its size whatever its fruit.
+        private (Sprite Sprite, Tile Tile) GrowingArt(TerrainKind kind, int growth, uint hash)
+        {
+            if (kind == TerrainKind.Scrub)
+            {
+                var bush = growth * ArtSet.BushSizes + (int)(hash % ArtSet.BushSizes);
+                return (art.Bushes[bush], art.BushTiles[bush]);
+            }
+            var tree = TreeOf(hash);
+            switch ((TreeStage)growth)
+            {
+                case TreeStage.Stump: return (art.Stumps[tree], art.StumpTiles[tree]);
+                case TreeStage.Sapling: return (art.Trees[tree / 3 * 3], art.TreeTiles[tree / 3 * 3]);
+                default: return (art.Trees[tree], art.TreeTiles[tree]);
+            }
+        }
+
+        // Brings the trees and bushes of the built chunks up to date with the
+        // land (#26): a bush picked clean, the next season's fruit, a tree
+        // felled or grown back. Nothing tells the view when the land changes,
+        // and a season or a regrowth changes it without anything happening,
+        // so it looks: a slice of the built chunks each frame, round and
+        // round, so the cost is the same however busy the land is, and a
+        // change shows within a few frames. Allocates only on a frame where
+        // a tiled one changed.
+        private void Regrow()
+        {
+            if (resident.Count == 0) return;
+            var looked = 0;
+            for (var n = 0; n < resident.Count && looked < GrowingPerFrame; n++)
+            {
+                regrowChunk = (regrowChunk + 1) % resident.Count;
+                var chunk = resident[regrowChunk];
+                for (var i = 0; i < chunk.Growing.Count; i++)
+                {
+                    var growing = chunk.Growing[i];
+                    var kind = growing.Bush ? TerrainKind.Scrub : TerrainKind.Forest;
+                    var growth = GrowthOf(kind, growing.X, growing.Y);
+                    if (growth == growing.Shown) continue;
+                    var (sprite, tile) = GrowingArt(kind, growth, CellHash(growing.X, growing.Y));
+                    if (growing.Renderer != null) growing.Renderer.sprite = sprite;
+                    else changedGrowth.Add(new TileChangeData(new Vector3Int(growing.X, height - 1 - growing.Y, 0), tile, Color.white, Nudged(growing.X, growing.Y, 0.3f)));
+                    chunk.Growing[i] = new Growing(growing.X, growing.Y, growing.Bush, growth, growing.Renderer);
+                }
+                looked += chunk.Growing.Count;
+            }
+            if (changedGrowth.Count > 0) standingMap.SetTiles(changedGrowth.ToArray(), true);
+            changedGrowth.Clear();
         }
 
         private TileBase GroundTile(Season season, uint hash)
@@ -1576,6 +1659,29 @@ namespace KingdomWatch.Game
             // Each flower's tile as it is when blooming, and its cell.
             public readonly List<(TileChangeData Tile, int Cell)> FlowerTiles = new List<(TileChangeData, int)>();
             public readonly List<(SpriteRenderer Renderer, Sprite[] Frames, uint Phase)> Animated = new List<(SpriteRenderer, Sprite[], uint)>();
+
+            // Its trees and bushes, as Regrow last drew them.
+            public readonly List<Growing> Growing = new List<Growing>();
+        }
+
+        // A tree or bush as drawn: its cell, which, its growth (see
+        // GrowthOf), and its renderer, null when the chunk's scenery is tiled.
+        private readonly struct Growing
+        {
+            public Growing(int x, int y, bool bush, int shown, SpriteRenderer renderer)
+            {
+                X = x;
+                Y = y;
+                Bush = bush;
+                Shown = shown;
+                Renderer = renderer;
+            }
+
+            public int X { get; }
+            public int Y { get; }
+            public bool Bush { get; }
+            public int Shown { get; }
+            public SpriteRenderer Renderer { get; }
         }
 
         private sealed class Camp

@@ -27,10 +27,11 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Jobs(null!, w.People, pathfinder, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Jobs(w.Clock, null!, pathfinder, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Jobs(w.Clock, w.People, null!, w.KnownMaps), Throws.ArgumentNullException);
-                Assert.That(() => new Jobs(w.Clock, w.People, pathfinder, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(null!, w.People, pathfinder, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, null!, pathfinder, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, w.People, null!, w.KnownMaps, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, w.People, pathfinder, null!, w.Land), Throws.ArgumentNullException);
+                Assert.That(() => new Jobs(w.Clock, w.People, pathfinder, w.KnownMaps, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -251,12 +252,12 @@ namespace KingdomWatch.Core.Tests.Work
         [TestCase(30L, JobKind.Forager, TestName = "From summer twenty days of food is short of the winter ahead")]
         public void From_summer_the_food_target_carries_the_coming_winter(long startDay, JobKind expected)
         {
-            // Two people draw six a day, so 120 is twenty days: past the
+            // Two people draw two a day, so 40 is twenty days: past the
             // ten-day target in spring, well short of ten plus a winter's
             // thirty once summer starts.
             var w = new WorkWorld();
             w.AdvanceTo(SimulationTime.FromDays(startDay));
-            var band = w.NewBand(WorkWorld.Camp, 120);
+            var band = w.NewBand(WorkWorld.Camp, 40);
             WorkWorld.FillWoodAndStone(band);
             var first = w.Join(band, 30L);
             w.Join(band, 31L);
@@ -286,36 +287,34 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_winter_forager_brings_home_the_winter_yield()
+        public void Nobody_forages_in_winter_because_every_bush_is_bare()
         {
+            // A starving band with a bush underfoot: in winter there is
+            // nothing on it (#26), so foraging has no site and the hands go
+            // to wood instead.
             var w = new WorkWorld();
             w.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason));
             var band = w.NewBand(WorkWorld.Camp, 0);
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
-            var task = w.Jobs.TaskOf(adult);
-            w.AdvanceTo(task.Start.Plus(task.TravelTicks + task.WorkTicks + task.ReturnTicks));
 
             Assert.Multiple(() =>
             {
-                Assert.That(task.Job, Is.EqualTo(JobKind.Forager));
-                Assert.That(task.WorkTicks, Is.EqualTo(PrimitiveTier.ForageWinter.Duration));
-                Assert.That(
-                    band.SharedSupplies.Flows(ResourceKind.Food).Gathered,
-                    Is.EqualTo((long)PrimitiveTier.ForageWinter.Outputs[0].Quantity));
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False);
+                Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Woodcutter));
             });
         }
 
         [Test]
         public void What_is_on_its_way_home_counts_toward_the_food_target()
         {
-            // Two people draw six a day; ten days is sixty. With 57 in store
+            // Two people draw two a day; ten days is twenty. With 19 in store
             // the first picker sees nine days and forages; the second sees
-            // 57 + 3 on its way = ten days, and with every other store full
+            // 19 + 1 on its way = ten days, and with every other store full
             // has nothing to do.
             var w = new WorkWorld();
-            var band = w.NewBand(WorkWorld.Camp, 57);
+            var band = w.NewBand(WorkWorld.Camp, 19);
             WorkWorld.FillWoodAndStone(band);
             var first = w.Join(band, 30L);
             var second = w.Join(band, 31L);
@@ -729,6 +728,104 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void Death_gives_the_trips_claim_back_to_the_bush()
+        {
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillWoodAndStone(band);
+            var worker = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.Land.ClaimsAt(w.Grid.IndexOf(WorkWorld.Camp)), Is.EqualTo(1));
+
+            w.Deaths.Die(worker, new Reasons(ReasonCode.Illness));
+
+            Assert.That(w.Land.ClaimsAt(w.Grid.IndexOf(WorkWorld.Camp)), Is.Zero);
+        }
+
+        [Test]
+        public void Foragers_strip_the_nearest_bush_then_spread_to_the_next_and_none_walks_to_a_bare_one()
+        {
+            // A row of bushes east of camp, each a step further. Every
+            // forager sets out at dawn; the first five take the camp bush's
+            // picks, the next five the next bush's, and so on (#26).
+            var grid = new TerrainGrid(WorkWorld.Width, WorkWorld.Height, TerrainKind.Plains);
+            grid.Set(WorkWorld.ForestCell, TerrainKind.Forest);
+            grid.Set(WorkWorld.RocksCell, TerrainKind.Rocks);
+
+            for (var x = WorkWorld.Camp.X; x < WorkWorld.Camp.X + 4; x++)
+            {
+                grid.Set(new WorldPosition(x, WorkWorld.Camp.Y), TerrainKind.Scrub);
+            }
+
+            var w = new WorkWorld(1UL, grid);
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillWoodAndStone(band);
+            var foragers = w.JoinAdults(band, 2 * w.Land.BushPicks + 1);
+            w.AdvanceToDawn();
+
+            var at = new Dictionary<WorldPosition, int>();
+
+            foreach (var forager in foragers)
+            {
+                var destination = w.Jobs.TaskOf(forager).Destination;
+                at[destination] = at.TryGetValue(destination, out var n) ? n + 1 : 1;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(at[WorkWorld.Camp], Is.EqualTo(w.Land.BushPicks), "the camp bush, stripped");
+                Assert.That(at[new WorldPosition(WorkWorld.Camp.X + 1, WorkWorld.Camp.Y)], Is.EqualTo(w.Land.BushPicks), "then the next");
+                Assert.That(at[new WorldPosition(WorkWorld.Camp.X + 2, WorkWorld.Camp.Y)], Is.EqualTo(1), "then one more");
+                Assert.That(w.Land.IsWorkable(WorkWorld.Camp), Is.False);
+            });
+        }
+
+        [Test]
+        public void A_claim_given_back_after_the_bushes_ran_out_is_picked_the_same_day()
+        {
+            // One bush, every trip on it claimed, and the search that followed
+            // found nothing. A forager dies on the way and the claim goes back;
+            // the next worker home looks again rather than idling until dawn
+            // (the #141 review).
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillWoodAndStone(band);
+            var foragers = w.JoinAdults(band, w.Land.BushPicks + 1);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False, "every trip claimed");
+
+            var dying = foragers.Find(f => w.Jobs.HasTask(f));
+            var trip = w.Jobs.TaskOf(dying);
+            w.Advance(SimulationTime.TicksPerHour);
+            w.Deaths.Die(dying, new Reasons(ReasonCode.Illness));
+            w.AdvanceTo(trip.End);
+
+            // The first worker home takes the claim back, which strips the bush
+            // again; the rest find nothing, as before.
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.EqualTo(1), "one forager out again");
+                Assert.That(w.Land.ClaimsAt(w.Grid.IndexOf(WorkWorld.Camp)), Is.EqualTo(w.Land.BushPicks), "the returned trip, taken");
+            });
+        }
+
+        [Test]
+        public void A_band_whose_only_bush_is_stripped_stops_foraging_until_it_fruits_again()
+        {
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillWoodAndStone(band);
+            w.JoinAdults(band, 2 * w.Land.BushPicks);
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.EqualTo(w.Land.BushPicks), "one bush, its trips");
+                Assert.That(w.Jobs.HasSite(band, JobKind.Forager), Is.False, "and nowhere else to pick");
+            });
+        }
+
+        [Test]
         public void Vacating_someone_with_no_task_is_harmless()
         {
             var w = new WorkWorld();
@@ -1075,12 +1172,12 @@ namespace KingdomWatch.Core.Tests.Work
         public void The_pick_counts_tasks_not_the_job_field()
         {
             // The record's Job is a mirror anyone can write through the bulk
-            // span. Three people draw nine a day and have 87 in store - nine
+            // span. Three people draw three a day and have 29 in store - nine
             // days, one forage short of the target. A phantom Forager on a
             // child must not be counted as that forage, and an undefined
             // value must not break the pick.
             var w = new WorkWorld();
-            var band = w.NewBand(WorkWorld.Camp, 87);
+            var band = w.NewBand(WorkWorld.Camp, 29);
             WorkWorld.FillWoodAndStone(band);
             var adult = w.Join(band, 30L);
             var child = w.Join(band, 8L);
@@ -1091,7 +1188,7 @@ namespace KingdomWatch.Core.Tests.Work
 
             w.AdvanceToDawn();
 
-            Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Forager), "87 + nothing on its way = nine days");
+            Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Forager), "29 + nothing on its way = nine days");
         }
 
         [Test]
@@ -1122,6 +1219,7 @@ namespace KingdomWatch.Core.Tests.Work
         public void A_band_with_a_day_of_food_feeds_itself_for_a_year()
         {
             var w = new WorkWorld(5UL, WorkWorld.DefaultMap());
+            WorkWorld.NeverRunsOut(w.Land);
             var band = w.NewBand(WorkWorld.Camp, 30 * Hunger.DailyRation);
 
             for (var i = 0; i < 30; i++)
@@ -1263,20 +1361,21 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void The_bands_appetite_is_the_one_counted_at_dawn()
         {
-            // Six adults draw 18 a day, so 120 food is under seven days and
+            // Six adults draw six a day, so 40 food is under seven days and
             // foraging is wanted. Three die mid-morning; the survivors draw
-            // nine a day, which would make the same store a fortnight and
+            // three a day, which would make the same store thirteen days and
             // send them for wood instead. Jobs hears about a death but never
             // about a birth or a join, so a count kept through the day would
             // only ever shrink - the band works to the appetite it counted at
             // dawn, and finds out about the loss at the next one.
             var w = new WorkWorld();
-            var band = w.NewBand(WorkWorld.Camp, 120);
+            WorkWorld.NeverRunsOut(w.Land);
+            var band = w.NewBand(WorkWorld.Camp, 40);
             WorkWorld.FillWoodAndStone(band);
             var adults = w.JoinAdults(band, 6);
 
             w.AdvanceToDawn();
-            Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager), "120 against 18 a day is under the ten-day target");
+            Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager), "40 against six a day is under the ten-day target");
 
             var trip = w.Jobs.TaskOf(adults[0]);
             w.Advance(SimulationTime.TicksPerHour);
@@ -1290,7 +1389,7 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(120L + 3L * Yield), "three of the six delivered");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(40L + 3L * Yield), "three of the six delivered");
                 Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager));
                 Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.Forager));
                 Assert.That(w.People.GetJob(adults[2]), Is.EqualTo(JobKind.Forager), "still feeding the six counted at dawn");

@@ -187,7 +187,7 @@ namespace KingdomWatch.Core.Tests.Needs
             // meal. The stream ends there because there is no tomorrow to
             // book into - not by throwing after the ledger has already moved.
             var world = new World();
-            var band = world.NewBand(1, 3);
+            var band = world.NewBand(1, Hunger.DailyRation);
             var lastMeal = new SimulationTime(long.MaxValue);
             world.Clock.AdvanceTo(lastMeal.Plus(-Hunger.MealInterval), world.Router);
             world.Hunger.Track(band);
@@ -640,7 +640,7 @@ namespace KingdomWatch.Core.Tests.Needs
         public void Days_of_food_is_stock_over_the_living_draw()
         {
             var world = new World();
-            var band = world.NewBand(3, 10 * 3 * Hunger.DailyRation + 2);
+            var band = world.NewBand(3, 10 * 3 * Hunger.DailyRation + 1);
             world.Hunger.Track(band);
             var empty = world.NewBand(0, 50);
             world.Hunger.Track(empty);

@@ -99,6 +99,38 @@ namespace KingdomWatch.Game
         // Swaying grass and flickering campfires, in frames per second.
         public const float DecorFramesPerSecond = 6f;
 
+        // Each fruit comes in four sizes of bush; spring's fruit is red,
+        // summer's purple and autumn's orange, and the fourth is no fruit.
+        public const int BushSizes = 4;
+        public const int BareBush = 3;
+
+        public static int BushFruitOf(Season season)
+        {
+            switch (season)
+            {
+                case Season.Spring:
+                case Season.Summer:
+                case Season.Autumn:
+                    return (int)season;
+                case Season.Winter:
+                    return BareBush;
+                default:
+                    // An undefined season would index past the fruit (#141 review).
+                    throw new System.ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
+            }
+        }
+
+        // Berries.png's red berries, darkest first, recoloured for autumn's
+        // orange and for a bush with nothing on it, where the berries take the
+        // leaves' greens. Only these exact colours change; the leaves and the
+        // outline are shared by every fruit.
+        private static readonly Color32[] RedBerries =
+            { new Color32(0x7A, 0x29, 0x34, 255), new Color32(0xC6, 0x2A, 0x37, 255), new Color32(0xD8, 0x46, 0x50, 255), new Color32(0xEB, 0xA2, 0xA9, 255) };
+        private static readonly Color32[] OrangeBerries =
+            { new Color32(0x8A, 0x4A, 0x1C, 255), new Color32(0xD9, 0x74, 0x1F, 255), new Color32(0xF0, 0x95, 0x3A, 255), new Color32(0xF8, 0xD2, 0x9A, 255) };
+        private static readonly Color32[] Leaves =
+            { new Color32(0x1E, 0x6F, 0x50, 255), new Color32(0x33, 0x98, 0x4B, 255), new Color32(0x33, 0x98, 0x4B, 255), new Color32(0x5A, 0xC5, 0x4F, 255) };
+
         public LoopTile[] Sparkles { get; private set; }
         public LoopTile[] Droplets { get; private set; }
         public LoopTile[] Fish { get; private set; }
@@ -109,7 +141,14 @@ namespace KingdomWatch.Game
         // berry bushes, on scrub, stand up and sort like trees. Each is one
         // frame, or several for the grass that sways.
         public Sprite[][] FlatDecor { get; private set; }
+
+        // Berry bushes by fruit, then size: (fruit, size) is
+        // Bushes[fruit * BushSizes + size]. Fruit is BushFruitOf a season,
+        // or BareBush for one picked clean or in winter (#26).
         public Sprite[] Bushes { get; private set; }
+
+        // Each tree's stump, in Trees order: what a felled tree leaves (#26).
+        public Sprite[] Stumps { get; private set; }
 
         // The same scenery as tiles, for the quarter and half size art, where
         // a tilemap stands it up rather than a renderer each (#131): one per
@@ -118,6 +157,7 @@ namespace KingdomWatch.Game
         public Tile[] TreeTiles { get; private set; }
         public Tile[] RockTiles { get; private set; }
         public Tile[] BushTiles { get; private set; }
+        public Tile[] StumpTiles { get; private set; }
         public TileBase[][] FlatDecorTiles { get; private set; }
 
         public Sprite BigTent { get; private set; }
@@ -237,6 +277,7 @@ namespace KingdomWatch.Game
         private bool LoadScenery()
         {
             var trees = new List<Sprite>();
+            var stumps = new List<Sprite>();
             foreach (var name in TreeFiles)
             {
                 // Three frames side by side: a stump, the tree, and the tree
@@ -244,9 +285,11 @@ namespace KingdomWatch.Game
                 var texture = Texture(Pack + "Trees/" + name);
                 if (texture == null) return false;
                 var width = texture.width / 3;
+                stumps.Add(Cut(texture, 0, 0, width, texture.height, new Vector2(0.5f, 16f / texture.height)));
                 trees.Add(Cut(texture, width, 0, width, texture.height, new Vector2(0.5f, 16f / texture.height)));
             }
             Trees = trees.ToArray();
+            Stumps = stumps.ToArray();
 
             var rocks = new Sprite[RockBottoms.Length];
             for (var i = 0; i < rocks.Length; i++)
@@ -286,14 +329,21 @@ namespace KingdomWatch.Game
 
             // Berry bushes for scrub (#137): Berries.png in 16 px tiles, red
             // berries down column 0 and purple down column 2, four sizes each.
+            // Orange and bare are the red column recoloured (#26).
             var berries = Texture(Pack + "Crops/Berries");
             if (berries == null) return false;
+            var pixels = ReadPixels(berries);
+            var orange = Recoloured(berries, pixels, OrangeBerries, "Orange berries");
+            var bare = Recoloured(berries, pixels, Leaves, "Bare bushes");
             var bushes = new List<Sprite>();
-            for (var row = 0; row < 4; row++)
+            void Column(Texture2D sheet, int left)
             {
-                bushes.Add(Cut(berries, 0, row * 16, 16, 16, new Vector2(0.5f, 2f / 16f)));
-                bushes.Add(Cut(berries, 32, row * 16, 16, 16, new Vector2(0.5f, 2f / 16f)));
+                for (var row = 0; row < BushSizes; row++) bushes.Add(Cut(sheet, left, row * 16, 16, 16, new Vector2(0.5f, 2f / 16f)));
             }
+            Column(berries, 0);
+            Column(berries, 32);
+            Column(orange, 0);
+            Column(bare, 0);
             Bushes = bushes.ToArray();
 
             // Tents stand on the ground 15 px above the bottom of their frame;
@@ -329,6 +379,7 @@ namespace KingdomWatch.Game
             const int border = 1;
             var pieces = new List<Sprite>();
             pieces.AddRange(Trees);
+            pieces.AddRange(Stumps);
             pieces.AddRange(Rocks);
             pieces.AddRange(Bushes);
             foreach (var frames in FlatDecor) pieces.AddRange(frames);
@@ -386,11 +437,13 @@ namespace KingdomWatch.Game
                 return taken;
             }
             Trees = Take(Trees.Length);
+            Stumps = Take(Stumps.Length);
             Rocks = Take(Rocks.Length);
             Bushes = Take(Bushes.Length);
             for (var i = 0; i < FlatDecor.Length; i++) FlatDecor[i] = Take(FlatDecor[i].Length);
 
             TreeTiles = System.Array.ConvertAll(Trees, NewTile);
+            StumpTiles = System.Array.ConvertAll(Stumps, NewTile);
             RockTiles = System.Array.ConvertAll(Rocks, NewTile);
             BushTiles = System.Array.ConvertAll(Bushes, NewTile);
             FlatDecorTiles = new TileBase[FlatDecor.Length][];
@@ -478,6 +531,50 @@ namespace KingdomWatch.Game
                 Resources.UnloadAsset(source);
             }
             return true;
+        }
+
+        // A copy of `source` with each colour in RedBerries swapped for the
+        // matching one in `to`, alpha kept: the berries alone change colour.
+        // The purple column's colours match none of them, and is left as is.
+        // RGBA32 and on the GPU only, as PackScenery's copy needs.
+        private Texture2D Recoloured(Texture2D source, Color32[] pixels, Color32[] to, string name)
+        {
+            var copy = (Color32[])pixels.Clone();
+            for (var i = 0; i < copy.Length; i++)
+            {
+                for (var c = 0; c < RedBerries.Length; c++)
+                {
+                    // Within a step or two: the read goes through the GPU and
+                    // back, which need not return every channel exactly.
+                    var from = RedBerries[c];
+                    if (Mathf.Abs(copy[i].r - from.r) > 2 || Mathf.Abs(copy[i].g - from.g) > 2 || Mathf.Abs(copy[i].b - from.b) > 2) continue;
+                    copy[i] = new Color32(to[c].r, to[c].g, to[c].b, copy[i].a);
+                    break;
+                }
+            }
+            var texture = Own(new Texture2D(source.width, source.height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = name });
+            texture.SetPixels32(copy);
+            texture.Apply(false, true);
+            return texture;
+        }
+
+        // The art is imported unreadable, which keeps it off the CPU for the
+        // game's lifetime; a copy through the GPU reads it once.
+        public static Color32[] ReadPixels(Texture2D texture)
+        {
+            // The active target is saved before the blit, which sets it:
+            // saved after, it would "restore" the temporary released below.
+            var previous = RenderTexture.active;
+            var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            Graphics.Blit(texture, target);
+            RenderTexture.active = target;
+            var copy = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
+            copy.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0, false);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            var pixels = copy.GetPixels32();
+            Object.Destroy(copy);
+            return pixels;
         }
 
         private static Texture2D Texture(string path)
@@ -687,21 +784,12 @@ namespace KingdomWatch.Game
             return share.w > 1f ? share / share.w : share;
         }
 
-        // The art is imported unreadable, which keeps it off the CPU for the
-        // game's lifetime; a copy through the GPU reads it once, here.
+        // Each texture read once (ArtSet.ReadPixels), however many pieces
+        // are cut from it.
         private Color32[] Pixels(Texture2D texture)
         {
             if (read.TryGetValue(texture, out var pixels)) return pixels;
-            var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-            Graphics.Blit(texture, target);
-            var previous = RenderTexture.active;
-            RenderTexture.active = target;
-            var copy = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
-            copy.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0, false);
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            pixels = copy.GetPixels32();
-            Object.Destroy(copy);
+            pixels = ArtSet.ReadPixels(texture);
             read.Add(texture, pixels);
             return pixels;
         }

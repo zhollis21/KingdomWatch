@@ -180,12 +180,102 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void The_land_cover_is_folded_in_cell_by_cell()
+        {
+            // Which bushes are bare and which trees are down decides every
+            // site a band finds (#26): a pick moves the section, the same pick
+            // on another bush - alike in every other way - moves it somewhere
+            // else, and giving the claim back moves it again, since returns
+            // are counted (the #141 review).
+            var world = new WorkWorld(1UL, WorkWorld.ScrubOnly());
+            var other = new WorkWorld(1UL, WorkWorld.ScrubOnly());
+            var fresh = new WorldHash().AddLand(world.Land).Value;
+
+            world.Land.Take(WorkWorld.Camp);
+            other.Land.Take(WorkWorld.ForestCell);
+            var picked = new WorldHash().AddLand(world.Land).Value;
+            var elsewhere = new WorldHash().AddLand(other.Land).Value;
+            world.Land.Return(WorkWorld.Camp);
+            var returned = new WorldHash().AddLand(world.Land).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(picked, Is.Not.EqualTo(fresh));
+                Assert.That(elsewhere, Is.Not.EqualTo(picked), "only the cell differs");
+                Assert.That(returned, Is.Not.EqualTo(picked).And.Not.EqualTo(fresh));
+                Assert.That(() => new WorldHash().AddLand(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
+        public void The_land_cover_s_limits_are_folded_in()
+        {
+            // The same claims read differently under other limits: seven picks
+            // strip a bush that gives seven and leave one that gives ten ripe
+            // (the #141 review).
+            var world = new WorkWorld();
+            world.Land.Take(WorkWorld.Camp);
+            var before = new WorldHash().AddLand(world.Land).Value;
+
+            world.Land.BushPicks = world.Land.BushPicks + 1;
+            var morePicks = new WorldHash().AddLand(world.Land).Value;
+            world.Land.TreeCuts = world.Land.TreeCuts + 1;
+            var moreCuts = new WorldHash().AddLand(world.Land).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(morePicks, Is.Not.EqualTo(before), "picks");
+                Assert.That(moreCuts, Is.Not.EqualTo(morePicks), "cuts");
+            });
+        }
+
+        [Test]
+        public void A_site_s_returns_count_is_folded_into_work()
+        {
+            // Two bands alike but for when their sites were searched: one
+            // before a claim was given back, one after. The bush is untouched
+            // again either way, so the site searches agree on everything but
+            // the returns count each kept (the #141 review).
+            static ulong WorkHash(bool returnedFirst)
+            {
+                var world = new WorkWorld();
+                var band = world.NewBand(WorkWorld.Camp, 0);
+
+                if (returnedFirst)
+                {
+                    world.Land.Take(WorkWorld.Camp);
+                    world.Land.Return(WorkWorld.Camp);
+                }
+
+                world.Jobs.RefreshSites(band);
+                return new WorldHash().AddWork(world.Jobs, world.People).Value;
+            }
+
+            Assert.That(WorkHash(returnedFirst: true), Is.Not.EqualTo(WorkHash(returnedFirst: false)));
+        }
+
+        [Test]
+        public void Whether_bands_settle_is_folded_in()
+        {
+            // Two worlds alike but for the switch decide their next councils
+            // differently (the #141 review).
+            var world = new WorkWorld();
+            world.NewWanderingBand(WorkWorld.Camp, 0);
+            var settling = new WorldHash().AddCouncils(world.Nomads).Value;
+
+            world.Nomads.Settles = false;
+
+            Assert.That(new WorldHash().AddCouncils(world.Nomads).Value, Is.Not.EqualTo(settling));
+        }
+
+        [Test]
         public void Settlements_and_their_supplies_are_folded_in()
         {
             // The one section DemographicWorld cannot reach, so it needs a
             // world that founds something. Without this the section was
             // written, shipped and never once executed.
             var world = new WorkWorld();
+            WorkWorld.NeverRunsOut(world.Land);
             var band = world.NewWanderingBand(WorkWorld.Camp, 0);
 
             world.JoinAdults(band, 60);

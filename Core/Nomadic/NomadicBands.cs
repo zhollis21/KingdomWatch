@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
@@ -62,8 +63,12 @@ namespace KingdomWatch.Core.Nomadic
     /// best first, until one is reachable in a day (#130). Nothing reachable
     /// means the band stays another day. A band moves after
     /// <see cref="CampDays"/>, or at the next council if its camp has no
-    /// food in reach; sites are infinite until #26 makes foraging exhaust
-    /// them. The machinery - a
+    /// food in reach. Food and wood here are what
+    /// <see cref="LandCover.Promising"/> counts (#26): a bush stripped this
+    /// season is not food, so a band that has picked its camp clean moves
+    /// on - except in winter, when every bush counts, because none has fruit
+    /// and all will in spring, and a band waits out the cold on its stores
+    /// rather than wander. The machinery - a
     /// route costed into a travel time, one arrival event - is what #35's
     /// founding parties and M4's armies reuse.
     ///
@@ -175,6 +180,7 @@ namespace KingdomWatch.Core.Nomadic
         private readonly Founding _founding;
         private readonly DeterministicRng _rng;
         private readonly KnownMaps _knownMaps;
+        private readonly LandCover _land;
 
         // A list, scanned by id, for the reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
@@ -202,7 +208,8 @@ namespace KingdomWatch.Core.Nomadic
             Pathfinder pathfinder,
             Founding founding,
             DeterministicRng rng,
-            KnownMaps knownMaps)
+            KnownMaps knownMaps,
+            LandCover land)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
@@ -210,6 +217,7 @@ namespace KingdomWatch.Core.Nomadic
             _founding = founding ?? throw new ArgumentNullException(nameof(founding));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
+            _land = land ?? throw new ArgumentNullException(nameof(land));
             _clock = bus.Clock;
             _grid = pathfinder.Grid;
             _scratchRoute = new List<WorldPosition>(_grid.CellCount);
@@ -223,6 +231,14 @@ namespace KingdomWatch.Core.Nomadic
 
         /// <summary>How many bands are wandering.</summary>
         public int TrackedCount => _tracked.Count;
+
+        /// <summary>
+        /// Whether a council may settle its band. On by default; the world
+        /// turns it off until farming exists (#26), because a settlement
+        /// cannot move and, living off berries alone, strips its reach and
+        /// starves within about a year of founding. Bands migrate instead.
+        /// </summary>
+        public bool Settles { get; set; } = true;
 
         /// <summary>
         /// Fills <paramref name="into"/> with every wandering band, in the order they were
@@ -508,7 +524,8 @@ namespace KingdomWatch.Core.Nomadic
 
             // Settling needs a tomorrow for the settlement's streams to book
             // into; on the world's last days the band stays a band.
-            if (tracked.Pressure >= SettlingPressure
+            if (Settles
+                && tracked.Pressure >= SettlingPressure
                 && Founding.HasRoomForStreams(now)
                 && CanSettleAt(band, band.Position))
             {
@@ -801,7 +818,7 @@ namespace KingdomWatch.Core.Nomadic
 
         private bool HasFoodInReach(MobileGroup band) =>
             _pathfinder.TryFindNearest(
-                band.Position, Jobs.Mover, JobTable.Terrain(JobKind.Forager), _knownMaps.For(band.Id), Jobs.MaxSiteRadius, _scratchRoute, out _);
+                band.Position, Jobs.Mover, JobTable.Terrain(JobKind.Forager), _knownMaps.For(band.Id), _land.Promising, Jobs.MaxSiteRadius, _scratchRoute, out _);
 
         // How many jobs would find a site from here; the path cost out to the
         // food site (long.MaxValue with none) and summed over every site
@@ -819,7 +836,7 @@ namespace KingdomWatch.Core.Nomadic
             {
                 var job = Jobs.Priority[i];
 
-                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, Jobs.MaxSiteRadius, _scratchRoute, out var cost))
+                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, _land.Promising, Jobs.MaxSiteRadius, _scratchRoute, out var cost))
                 {
                     continue;
                 }

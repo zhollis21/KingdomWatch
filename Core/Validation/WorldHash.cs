@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.History;
 using KingdomWatch.Core.Knowledge;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
@@ -87,6 +88,7 @@ namespace KingdomWatch.Core.Validation
             Famine = 15,
             Journal = 16,
             Tracked = 17,
+            Land = 18,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
@@ -346,6 +348,55 @@ namespace KingdomWatch.Core.Validation
                         Mix(word);
                         word = 0UL;
                     }
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in the land cover (#26): every touched cell's index and
+        /// state, in cell-index order.
+        /// </summary>
+        /// <remarks>
+        /// Which bushes are bare and which trees are down decides every site
+        /// a band finds and every camp it picks. Untouched cells are skipped,
+        /// so the fold costs a scan of the grid and a mix per touched cell
+        /// rather than a mix per cell (#130's lesson for terrain).
+        /// </remarks>
+        public WorldHash AddLand(LandCover land)
+        {
+            if (land is null)
+            {
+                throw new ArgumentNullException(nameof(land));
+            }
+
+            var touched = 0;
+
+            for (var cell = 0; cell < land.CellCount; cell++)
+            {
+                if (land.StateAt(cell) != 0)
+                {
+                    touched++;
+                }
+            }
+
+            Open(Section.Land, touched);
+
+            // The limits say how the counts read, and the returns whether a
+            // search that found nothing looks again (the #141 review).
+            Mix(land.BushPicks);
+            Mix(land.TreeCuts);
+            Mix(land.Returns);
+
+            for (var cell = 0; cell < land.CellCount; cell++)
+            {
+                var state = land.StateAt(cell);
+
+                if (state != 0)
+                {
+                    Mix(cell);
+                    Mix(state);
                 }
             }
 
@@ -647,6 +698,7 @@ namespace KingdomWatch.Core.Validation
                     Mix(survey.Destination);
                     Mix(survey.Cost);
                     Mix(survey.ReturnCost);
+                    Mix(survey.LandReturns);
                     Mix(siteRoute.Count);
 
                     for (var j = 0; j < siteRoute.Count; j++)
@@ -678,6 +730,10 @@ namespace KingdomWatch.Core.Validation
             nomads.CopyTrackedTo(_communities);
             _communities.Sort(static (a, b) => a.Id.CompareTo(b.Id));
             Open(Section.Councils, _communities.Count);
+
+            // Whether a council may settle decides the next ones as much as
+            // any band's pressure does (the #141 review).
+            Mix(nomads.Settles ? 1 : 0);
 
             for (var i = 0; i < _communities.Count; i++)
             {

@@ -1,4 +1,4 @@
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
