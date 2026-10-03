@@ -184,23 +184,25 @@ namespace KingdomWatch.Core.Tests.Validation
         {
             // Which bushes are bare and which trees are down decides every
             // site a band finds (#26): a pick moves the section, the same pick
-            // on another bush moves it somewhere else, and giving the claim
-            // back moves it again, since returns are counted (the #141 review).
+            // on another bush - alike in every other way - moves it somewhere
+            // else, and giving the claim back moves it again, since returns
+            // are counted (the #141 review).
             var world = new WorkWorld(1UL, WorkWorld.ScrubOnly());
+            var other = new WorkWorld(1UL, WorkWorld.ScrubOnly());
             var fresh = new WorldHash().AddLand(world.Land).Value;
 
             world.Land.Take(WorkWorld.Camp);
+            other.Land.Take(WorkWorld.ForestCell);
             var picked = new WorldHash().AddLand(world.Land).Value;
+            var elsewhere = new WorldHash().AddLand(other.Land).Value;
             world.Land.Return(WorkWorld.Camp);
             var returned = new WorldHash().AddLand(world.Land).Value;
-            world.Land.Take(WorkWorld.ForestCell);
-            var elsewhere = new WorldHash().AddLand(world.Land).Value;
 
             Assert.Multiple(() =>
             {
                 Assert.That(picked, Is.Not.EqualTo(fresh));
+                Assert.That(elsewhere, Is.Not.EqualTo(picked), "only the cell differs");
                 Assert.That(returned, Is.Not.EqualTo(picked).And.Not.EqualTo(fresh));
-                Assert.That(elsewhere, Is.Not.EqualTo(picked), "the cell is folded in, not only the state");
                 Assert.That(() => new WorldHash().AddLand(null!), Throws.ArgumentNullException);
             });
         }
@@ -225,6 +227,31 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(morePicks, Is.Not.EqualTo(before), "picks");
                 Assert.That(moreCuts, Is.Not.EqualTo(morePicks), "cuts");
             });
+        }
+
+        [Test]
+        public void A_site_s_returns_count_is_folded_into_work()
+        {
+            // Two bands alike but for when their sites were searched: one
+            // before a claim was given back, one after. The bush is untouched
+            // again either way, so the site searches agree on everything but
+            // the returns count each kept (the #141 review).
+            static ulong WorkHash(bool returnedFirst)
+            {
+                var world = new WorkWorld();
+                var band = world.NewBand(WorkWorld.Camp, 0);
+
+                if (returnedFirst)
+                {
+                    world.Land.Take(WorkWorld.Camp);
+                    world.Land.Return(WorkWorld.Camp);
+                }
+
+                world.Jobs.RefreshSites(band);
+                return new WorldHash().AddWork(world.Jobs, world.People).Value;
+            }
+
+            Assert.That(WorkHash(returnedFirst: true), Is.Not.EqualTo(WorkHash(returnedFirst: false)));
         }
 
         [Test]
