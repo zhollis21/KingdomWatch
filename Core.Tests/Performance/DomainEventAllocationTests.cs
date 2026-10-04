@@ -86,9 +86,9 @@ namespace KingdomWatch.Core.Tests.Performance
             var ids = new IdAllocator();
             var clock = new SimulationClock(ids);
             var bus = new DomainEventBus(clock);
-            // Two events per entity per day, for both passes; growth past
+            // Two events per entity per day, for all three passes; growth past
             // this would be an allocation the test is right to report.
-            var journal = new EventJournal(Entities * 2 * Days * 2);
+            var journal = new EventJournal(Entities * 2 * Days * 3);
             var reactor = new Reactor(clock);
             bus.Subscribe(journal);
             bus.Subscribe(reactor);
@@ -112,7 +112,13 @@ namespace KingdomWatch.Core.Tests.Performance
                     EntityId.None);
             }
 
-            // First pass grows the queue and JITs every path. Measure the second.
+            // First pass grows the queue and JITs every path. A second lets
+            // tiered recompilation settle: with dynamic PGO the runtime
+            // recompiles hot methods after a delay, and when that landed in
+            // the measured span it reported a few kilobytes that were the
+            // runtime's, not the bus's - intermittently, depending on what
+            // ran before (#100; gone with DOTNET_TieredPGO=0). Measure the third.
+            RunDays(clock, router, Days);
             RunDays(clock, router, Days);
             var heardAfterWarmUp = reactor.Heard;
 
