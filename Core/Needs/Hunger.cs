@@ -275,8 +275,16 @@ namespace KingdomWatch.Core.Needs
         public bool IsInFamine(ICommunity group) => TrackedFor(group).InFamine;
 
         /// <summary>
-        /// Whole days the holder's available food covers at the current
-        /// living headcount. <see cref="int.MaxValue"/> when nobody draws.
+        /// Meals a ledger holds: its Food, and its Grain at what milling makes
+        /// of it (<see cref="PrimitiveTier.MealsPerGrain"/>, #100).
+        /// </summary>
+        public static long MealsInStore(ResourceLedger stores) =>
+            stores.Available(ResourceKind.Food) + ((long)stores.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain);
+
+        /// <summary>
+        /// Whole days the holder's available food - Grain counted as the
+        /// meals it mills into - covers at the current living headcount.
+        /// <see cref="int.MaxValue"/> when nobody draws.
         /// </summary>
         /// <remarks>
         /// A query, not a prediction: nothing keeps it current, which is why it
@@ -304,7 +312,8 @@ namespace KingdomWatch.Core.Needs
             }
 
             var dailyDraw = (long)DailyRation * living;
-            return (int)(tracked.Group.SharedSupplies.Available(ResourceKind.Food) / dailyDraw);
+            var stores = tracked.Group.SharedSupplies;
+            return (int)(MealsInStore(stores) / dailyDraw);
         }
 
         public void Handle(ScheduledEvent scheduled, SimulationClock clock)
@@ -412,6 +421,16 @@ namespace KingdomWatch.Core.Needs
                 if (!_people.IsAlive(member) || SittingOf(_people.GetAgeStage(member)) != sitting)
                 {
                     continue;
+                }
+
+                // Food first; when it is gone, a Grain is milled into meals
+                // at the table (#100). Milling is household work, not a job
+                // (economy ladder section 3), and the ledger records it as
+                // the recipe it is.
+                if (ledger.Available(ResourceKind.Food) < DailyRation && ledger.Available(ResourceKind.Grain) > 0)
+                {
+                    ledger.BeginRecipe(PrimitiveTier.Mill);
+                    ledger.CompleteRecipe(PrimitiveTier.Mill);
                 }
 
                 if (ledger.Available(ResourceKind.Food) >= DailyRation)

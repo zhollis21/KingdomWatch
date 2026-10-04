@@ -43,7 +43,10 @@ namespace KingdomWatch.Core.Events
         OldAge = 10,
         /// <summary>A band grew and lingered long enough to want to stop (#54).</summary>
         PopulationPressure = 11,
-        /// <summary>The camp can feed and build: food and wood both within reach (#54).</summary>
+        /// <summary>
+        /// The camp can feed and build: food and wood both within reach (#54),
+        /// and - since #100 - early spring, bushes for a season, and ground for a barn.
+        /// </summary>
         LandSuitable = 12,
         /// <summary>Died with health at zero from nights without a lit hearth (#53).</summary>
         Froze = 13,

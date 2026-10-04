@@ -399,6 +399,75 @@ namespace KingdomWatch.Core.Traversal
             return false;
         }
 
+        /// <summary>
+        /// How many cells <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, int, List{WorldPosition}, out long)"/>
+        /// could land on from here: every cell inside the box whose terrain
+        /// the mask accepts, that <paramref name="known"/> says the searcher
+        /// has seen, and that a route reaches. Zero when the origin is
+        /// impassable.
+        /// </summary>
+        /// <remarks>
+        /// The same search run to exhaustion rather than stopped at the first
+        /// find - what a settlement's food in reach is counted by (#100), so
+        /// it counts exactly the bushes its foragers could be sent to.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius is negative, or the mover has
+        /// no defined transport.
+        /// </exception>
+        public int CountReachable(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            int radius)
+        {
+            if (!known.IsEmpty && known.Length < _grid.CellCount)
+            {
+                throw new ArgumentException(
+                    "The known mask covers " + known.Length + " cells; the grid has " + _grid.CellCount + ".",
+                    nameof(known));
+            }
+
+            if (acceptable.Length < DefinedTerrainKinds)
+            {
+                throw new ArgumentException(
+                    "The mask covers " + acceptable.Length + " kinds; TerrainKind has " + DefinedTerrainKinds + ".",
+                    nameof(acceptable));
+            }
+
+            if (radius < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
+            }
+
+            TransportGuard.RequireMover(mover);
+            var start = _grid.IndexOf(from);
+
+            if (!Passable(start, mover))
+            {
+                return 0;
+            }
+
+            BeginSearch();
+            Open(start, 0, start, 0);
+            var found = 0;
+
+            while (_heapCount > 0)
+            {
+                var current = PopCheapest();
+
+                if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
+                {
+                    found++;
+                }
+
+                Expand(current, mover, null, from, radius);
+            }
+
+            return found;
+        }
+
         // Closes a cell and opens its neighbours: eight-way, no cutting
         // corners, each priced by the cell it enters, with the heuristic
         // toward the goal when there is one - without, the search is

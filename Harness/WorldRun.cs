@@ -23,8 +23,10 @@ namespace KingdomWatch.Harness
     /// side of the river. The river is a wall until bridges (section 12), so
     /// nobody changes side.
     ///
-    /// Only milestone 1 of the economy ladder's section 9 can fire before
-    /// buildings exist (#100). First settlement stands in for the rest in M1.
+    /// Milestones 1 to 3 of the economy ladder's section 9 can fire: the
+    /// first camp, and since #100 a village's first house and first harvest,
+    /// which the chronicle reports. The rest wait on skills (#22) and the
+    /// buildings that need them.
     /// </remarks>
     public sealed class WorldRun
     {
@@ -83,7 +85,8 @@ namespace KingdomWatch.Harness
         /// <summary>
         /// Whether the run passed: it broke no invariant. A homeland dying out
         /// used to fail it too (the #103 review), but since #26 berries run
-        /// out and some homelands starve before farms exist (#100), so a
+        /// out and bands can starve on the move, and since #100 a village
+        /// that has cut every tree in its reach freezes (#147), so a
         /// die-out is reported - <see cref="WestDiedOut"/>,
         /// <see cref="EastDiedOut"/>, the chronicle and the sweep line - and
         /// not failed. Settling is not part of it either.
@@ -151,7 +154,8 @@ namespace KingdomWatch.Harness
                 .CheckSchedule(world.Clock, world.People, _communities, world.Households)
                 .CheckJobs(world.Jobs, world.People, world.Clock)
                 .CheckCommunities(_communities, world.People, world.Clock)
-                .CheckLand(world.Land, world.Grid, world.Clock);
+                .CheckLand(world.Land, world.Grid, world.Clock)
+                .CheckBuildings(world.Buildings, world.Founding, world.Households, world.Grid, world.Clock);
 
             // Each system's own tracked set: a community one system still has
             // events booked for and another has let go has no other symptom.

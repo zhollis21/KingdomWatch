@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
@@ -72,6 +74,7 @@ namespace KingdomWatch.Harness
         private readonly List<EntityId> _recorded = new List<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
+        private readonly HashSet<int> _footprints = new HashSet<int>();
 
         // Wrapped, not handed out raw: a List cast back from IReadOnlyList
         // could have findings removed behind the report (the #103 review).
@@ -636,6 +639,95 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.LandClaimInvalid, now, EntityId.None,
                         grid.PositionAt(cell) + " is " + kind + " with " + land.ClaimsAt(cell)
                         + " claims; it can hold " + most + ".");
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// The building rules (#100): every footprint on the map and over
+        /// nobody else's, cleared ground really cleared, every reference
+        /// resolving, and every count of hours inside the work there is.
+        /// </summary>
+        public WorldValidator CheckBuildings(
+            Buildings buildings, Founding settlements, Households households, TerrainGrid grid, SimulationClock clock)
+        {
+            Require(buildings, nameof(buildings));
+            Require(settlements, nameof(settlements));
+            Require(households, nameof(households));
+            Require(grid, nameof(grid));
+            Require(clock, nameof(clock));
+
+            var now = clock.Now;
+            _known.Clear();
+            _seen.Clear();
+            _footprints.Clear();
+
+            for (var i = 0; i < settlements.All.Count; i++)
+            {
+                _known.Add(settlements.All[i].Id);
+            }
+
+            var all = buildings.All;
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                _seen.Add(all[i].Id);
+            }
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                var building = all[i];
+
+                if (!_known.Contains(building.Settlement))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "belongs to " + building.Settlement + ", which is no settlement.");
+                }
+
+                if ((building.Kind == BuildingKind.Field) != !building.Barn.IsNone
+                    || (!building.Barn.IsNone && !_seen.Contains(building.Barn)))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "names barn " + building.Barn + ".");
+                }
+
+                if (!building.Occupant.IsNone
+                    && (building.Kind != BuildingKind.House || !building.IsComplete || !households.TryGet(building.Occupant, out _)))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "is lived in by " + building.Occupant + ".");
+                }
+
+                if (building.Claimed < 0L || building.Worked < 0L || building.Claimed + building.Worked > building.LabourTicks
+                    || building.ClaimedToday < 0L || building.WorkedToday < 0L
+                    || building.ClaimedToday + building.WorkedToday > Buildings.FieldDayTicks)
+                {
+                    Add(ValidationRule.BuildingLabour, now, building.Id,
+                        "has " + building.Claimed + " claimed and " + building.Worked + " worked of " + building.LabourTicks
+                        + ", and " + building.ClaimedToday + " claimed and " + building.WorkedToday + " worked today.");
+                }
+
+                for (var dy = 0; dy < building.Height; dy++)
+                {
+                    for (var dx = 0; dx < building.Width; dx++)
+                    {
+                        var at = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + dy);
+
+                        if (!grid.Contains(at))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "covers " + at + ", off the map.");
+                            continue;
+                        }
+
+                        if (!_footprints.Add(grid.IndexOf(at)))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "covers " + at + ", under another building.");
+                        }
+
+                        if (building.Cleared && (grid[at] == TerrainKind.Scrub || grid[at] == TerrainKind.Forest))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "is cleared, but " + at + " is " + grid[at] + ".");
+                        }
+                    }
                 }
             }
 

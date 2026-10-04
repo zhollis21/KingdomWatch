@@ -81,13 +81,28 @@ namespace KingdomWatch.Core.Data
             6L * SimulationTime.TicksPerHour);
 
         /// <summary>
+        /// Grain ground at a hand quern into meals (#100): one Grain makes
+        /// five. Household work rather than a job (economy ladder section 3),
+        /// so <see cref="Needs.Hunger"/> runs it at the meal itself when the
+        /// Food is gone, and its duration is nobody's working time.
+        /// </summary>
+        public static readonly Recipe Mill = new Recipe(
+            "Mill",
+            new[] { new ResourceQuantity(ResourceKind.Grain, 1) },
+            new[] { new ResourceQuantity(ResourceKind.Food, MealsPerGrain) },
+            SimulationTime.TicksPerHour);
+
+        /// <summary>Meals one Grain makes, milled.</summary>
+        public const int MealsPerGrain = 5;
+
+        /// <summary>
         /// Every tier-zero recipe at its base yield, in a fixed order - one
         /// per thing people can do, so the seasonal forms of
         /// <see cref="Forage"/> are not listed again. The order is part of
         /// the determinism contract for anything that iterates it.
         /// </summary>
         public static readonly IReadOnlyList<Recipe> Recipes =
-            new ReadOnlyCollection<Recipe>(new[] { Forage, GatherWood, GatherStone });
+            new ReadOnlyCollection<Recipe>(new[] { Forage, GatherWood, GatherStone, Mill });
 
         // Indexed by Season.
         private static readonly Recipe[] ForageBySeason = { Forage, ForageSummer, ForageAutumn, ForageWinter };

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.History;
@@ -81,7 +82,8 @@ namespace KingdomWatch.Core
             Pathfinder = new Pathfinder(Grid, TerrainRules.Default);
             KnownMaps = new KnownMaps(Grid);
             Land = new LandCover(Grid, Clock);
-            Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps, Land);
+            Buildings = new Buildings(Bus, People, Households, Pathfinder, KnownMaps, Land, new NoviceSkills());
+            Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps, Land, Buildings);
             Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households, Jobs);
 
             Aging = new Aging(Bus, People, settings);
@@ -92,13 +94,9 @@ namespace KingdomWatch.Core
             Matchmaking = new Matchmaking(Bus, People, Family, Partnerships, Rng);
             Generator = new BandGenerator(Bus, People, Genealogy, Family, Households, settings, Rng);
             Founding = new Founding(Bus, Deaths, Fertility, Hunger, Warmth, Jobs, Matchmaking, KnownMaps);
-            Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps, Land);
+            Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps, Land, Buildings);
 
-            // No settling until farms (#100): a settlement living off berries
-            // strips what it can reach and starves within a year (#26's
-            // harness runs). Founding itself is unchanged and tested.
-            Nomads.Settles = false;
-
+            Bus.Subscribe(Buildings);
             Bus.Subscribe(Aging);
             Bus.Subscribe(Mortality);
             Bus.Subscribe(Fertility);
@@ -177,6 +175,8 @@ namespace KingdomWatch.Core
         public KnownMaps KnownMaps { get; }
 
         public LandCover Land { get; }
+
+        public Buildings Buildings { get; }
 
         public Jobs Jobs { get; }
 
@@ -274,6 +274,7 @@ namespace KingdomWatch.Core
                 .AddBands(_hashBands, People)
                 .AddKnownMaps(KnownMaps)
                 .AddLand(Land)
+                .AddBuildings(Buildings)
                 .AddPartnerships(Partnerships)
                 .AddGenealogy(Genealogy)
                 .AddMemories(Memories)

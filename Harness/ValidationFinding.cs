@@ -83,6 +83,24 @@ namespace KingdomWatch.Harness
         /// neither a bush nor a tree, or more than its bush or tree allows.
         /// </summary>
         LandClaimInvalid = 21,
+
+        /// <summary>
+        /// A building's footprint is off the map, overlaps another's, or -
+        /// once cleared - still has scrub or forest on it (#100).
+        /// </summary>
+        BuildingFootprint = 22,
+
+        /// <summary>
+        /// A building names a settlement that does not exist, a field names
+        /// a barn that does not, or a house's occupant is no household (#100).
+        /// </summary>
+        BuildingReference = 23,
+
+        /// <summary>
+        /// A building's or field's hours are out of range: negative, or more
+        /// claimed and worked than there is work (#100).
+        /// </summary>
+        BuildingLabour = 24,
     }
 
     /// <summary>

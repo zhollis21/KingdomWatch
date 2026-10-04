@@ -175,6 +175,34 @@ namespace KingdomWatch.Core.Land
         }
 
         /// <summary>
+        /// Grubs out a bush or fells a tree for good, turning the cell to
+        /// plains (#100): the ground a building or field goes on. Plains grow
+        /// nothing, so nothing here regrows. Returns whether a standing tree
+        /// came down - its wood is the clearer's. Throws for a cell that is
+        /// neither scrub nor forest, which has nothing to clear.
+        /// </summary>
+        /// <remarks>
+        /// A claim on the cell from a trip already out is simply forgotten:
+        /// that trip still brings home what it set out for, and giving it
+        /// back later is a no-op, since plains record no claims.
+        /// </remarks>
+        public bool Clear(WorldPosition at)
+        {
+            var cell = _grid.IndexOf(at);
+            var kind = _grid.KindAt(cell);
+
+            if (kind != TerrainKind.Scrub && kind != TerrainKind.Forest)
+            {
+                throw new ArgumentException(at + " is " + kind + "; only scrub and forest are cleared.", nameof(at));
+            }
+
+            var felled = kind == TerrainKind.Forest && StageOf(at) == TreeStage.Standing;
+            _cells[cell] = 0;
+            _grid.Set(at, TerrainKind.Plains);
+            return felled;
+        }
+
+        /// <summary>
         /// Whether the bush at this position has fruit to show: false in
         /// winter and once it has been stripped this season. For the view.
         /// Throws for a cell that is not scrub, which has no bush to ask about.
