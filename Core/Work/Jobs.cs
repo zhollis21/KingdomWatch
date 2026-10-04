@@ -231,6 +231,10 @@ namespace KingdomWatch.Core.Work
         private readonly LandCover _land;
         private readonly Buildings? _buildings;
 
+        // What a gathering site must be: ripe, and not ground approved for a
+        // building and waiting to be cleared (the #148 review).
+        private readonly WorkableFilter _workable;
+
         // A list, scanned by id, for the same reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
 
@@ -258,6 +262,7 @@ namespace KingdomWatch.Core.Work
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _land = land ?? throw new ArgumentNullException(nameof(land));
             _buildings = buildings;
+            _workable = new WorkableFilter(land, buildings);
             _grid = pathfinder.Grid;
         }
 
@@ -885,8 +890,10 @@ namespace KingdomWatch.Core.Work
                 // A search that found nothing looks again once a claim has
                 // been given back since, here or by another band (#141 review).
                 // So is one cleared for a building since (#100): plains
-                // would otherwise read as workable forever.
-                if ((site.Reachable && (!_land.IsWorkable(site.Destination) || !JobTable.WorksOn(job, _grid[site.Destination])))
+                // would otherwise read as workable forever. And one approved
+                // for a building since, which nobody gathers on any more.
+                if ((site.Reachable && (!_land.IsWorkable(site.Destination) || !JobTable.WorksOn(job, _grid[site.Destination])
+                        || (_buildings is object && _buildings.IsReserved(site.Destination))))
                     || (!site.Reachable && site.LandReturns != _land.Returns))
                 {
                     FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
@@ -1105,7 +1112,7 @@ namespace KingdomWatch.Core.Work
         {
             site.LandReturns = _land.Returns;
             site.Reachable = _pathfinder.TryFindNearest(
-                from, Mover, JobTable.Terrain(job), known, _land.Ripe, MaxSiteRadius, site.Route, out var cost);
+                from, Mover, JobTable.Terrain(job), known, _workable, MaxSiteRadius, site.Route, out var cost);
 
             if (!site.Reachable)
             {
@@ -1328,6 +1335,21 @@ namespace KingdomWatch.Core.Work
             /// the time this is compared.
             /// </summary>
             public WorldPosition SitesFrom { get; set; }
+        }
+
+        private sealed class WorkableFilter : ISiteFilter
+        {
+            private readonly LandCover _land;
+            private readonly Buildings? _buildings;
+
+            public WorkableFilter(LandCover land, Buildings? buildings)
+            {
+                _land = land;
+                _buildings = buildings;
+            }
+
+            public bool Accepts(int cell) =>
+                _land.Ripe.Accepts(cell) && (_buildings is null || !_buildings.IsReserved(cell));
         }
 
         private sealed class Site

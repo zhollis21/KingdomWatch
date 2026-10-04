@@ -75,6 +75,7 @@ namespace KingdomWatch.Harness
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
         private readonly HashSet<int> _footprints = new HashSet<int>();
+        private readonly Dictionary<EntityId, Building> _buildingsById = new Dictionary<EntityId, Building>();
 
         // Wrapped, not handed out raw: a List cast back from IReadOnlyList
         // could have findings removed behind the report (the #103 review).
@@ -661,7 +662,6 @@ namespace KingdomWatch.Harness
 
             var now = clock.Now;
             _known.Clear();
-            _seen.Clear();
             _footprints.Clear();
 
             for (var i = 0; i < settlements.All.Count; i++)
@@ -671,9 +671,11 @@ namespace KingdomWatch.Harness
 
             var all = buildings.All;
 
+            _buildingsById.Clear();
+
             for (var i = 0; i < all.Count; i++)
             {
-                _seen.Add(all[i].Id);
+                _buildingsById[all[i].Id] = all[i];
             }
 
             for (var i = 0; i < all.Count; i++)
@@ -685,14 +687,23 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.BuildingReference, now, building.Id, "belongs to " + building.Settlement + ", which is no settlement.");
                 }
 
+                // A field's barn is a finished barn of the same settlement,
+                // not merely some building that exists (the #148 review).
                 if ((building.Kind == BuildingKind.Field) != !building.Barn.IsNone
-                    || (!building.Barn.IsNone && !_seen.Contains(building.Barn)))
+                    || (!building.Barn.IsNone
+                        && (!_buildingsById.TryGetValue(building.Barn, out var barn)
+                            || barn.Kind != BuildingKind.Barn || barn.Settlement != building.Settlement || !barn.IsComplete)))
                 {
                     Add(ValidationRule.BuildingReference, now, building.Id, "names barn " + building.Barn + ".");
                 }
 
+                // An occupant is a household of this settlement whose home,
+                // as Buildings keeps it the other way round, is this house.
                 if (!building.Occupant.IsNone
-                    && (building.Kind != BuildingKind.House || !building.IsComplete || !households.TryGet(building.Occupant, out _)))
+                    && (building.Kind != BuildingKind.House || !building.IsComplete
+                        || !households.TryGet(building.Occupant, out var household)
+                        || !LivesIn(household, building.Settlement, settlements)
+                        || !ReferenceEquals(buildings.HomeOf(building.Occupant), building)))
                 {
                     Add(ValidationRule.BuildingReference, now, building.Id, "is lived in by " + building.Occupant + ".");
                 }
@@ -732,6 +743,33 @@ namespace KingdomWatch.Harness
             }
 
             return this;
+        }
+
+        // Whether any of a household's members stands in this settlement.
+        private static bool LivesIn(Household household, EntityId settlement, Founding settlements)
+        {
+            for (var i = 0; i < settlements.All.Count; i++)
+            {
+                if (settlements.All[i].Id != settlement)
+                {
+                    continue;
+                }
+
+                var members = settlements.All[i].Members;
+
+                for (var m = 0; m < household.Members.Count; m++)
+                {
+                    for (var s = 0; s < members.Count; s++)
+                    {
+                        if (members[s] == household.Members[m])
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>A one-line report of everything found, for a sweep's output.</summary>

@@ -289,7 +289,7 @@ namespace KingdomWatch.Core.Tests.Construction
             }
 
             Assert.That(trees, Is.GreaterThan(0));
-            var expected = (trees * Buildings.FellTreeTicks) + ((cells - trees) * Buildings.ClearTicksPerCell);
+            var expected = (trees * w.World.Land.TreeCuts * Buildings.TicksPerCut) + ((cells - trees) * Buildings.ClearTicksPerCell);
 
             Assert.That(house.ClearTicks, Is.EqualTo(expected));
             Assert.That(w.Buildings.ShareOf(house, JobKind.Builder), Is.EqualTo(Buildings.ShareTicks));
@@ -301,7 +301,7 @@ namespace KingdomWatch.Core.Tests.Construction
             {
                 Assert.That(house.Cleared, Is.True);
                 Assert.That(house.IsComplete, Is.True);
-                Assert.That(w.Stores.Available(ResourceKind.Wood) - woodBefore, Is.EqualTo(trees * Buildings.WoodPerFelledTree));
+                Assert.That(w.Stores.Available(ResourceKind.Wood) - woodBefore, Is.EqualTo(trees * w.World.Land.TreeCuts * Buildings.WoodPerCut));
 
                 for (var dy = 0; dy < house.Height; dy++)
                 {
@@ -313,6 +313,52 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
             });
+        }
+
+        [Test]
+        public void Clearing_a_tree_costs_and_gives_only_the_cuts_it_has_left()
+        {
+            // The #148 review: a tree four cuts down had already given eight
+            // of its ten Wood, and clearing paid all ten again.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                    }
+                }
+
+                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+            });
+            var land = w.World.Land;
+
+            for (var y = 12; y <= 28; y++)
+            {
+                for (var x = 12; x <= 28; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    for (var cut = 0; cut < LandCover.DefaultTreeCuts - 1 && w.World.Grid[at] == TerrainKind.Forest; cut++)
+                    {
+                        land.Take(at);
+                    }
+                }
+            }
+
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var cells = house.Width * house.Height;
+            var perCut = PrimitiveTier.GatherWood.Duration;
+
+            Assert.That(house.ClearTicks, Is.EqualTo(cells * perCut), "one cut left on every tree");
+
+            var wood = w.Stores.Available(ResourceKind.Wood);
+            w.Finish(house);
+
+            Assert.That(w.Stores.Available(ResourceKind.Wood) - wood, Is.EqualTo(cells * PrimitiveTier.GatherWood.Outputs[0].Quantity));
         }
 
         [Test]
@@ -403,6 +449,52 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_harvest_day_left_unfinished_brings_in_nothing()
+        {
+            // The #148 review: Grain paid per share, with unfinished days
+            // forgotten at midnight, let one share a day harvest forever.
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            var day = SimulationTime.TicksPerDay;
+
+            for (var i = 0; i < Buildings.TendingDays; i++)
+            {
+                w.Buildings.Claim(field, JobKind.Farmer, Buildings.FieldDayTicks);
+                w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.FieldDayTicks, w.Stores);
+                w.World.Clock.AdvanceTo(w.World.Now.Plus(day), w.World.Router);
+            }
+
+            Assert.That(field.Stage, Is.EqualTo(FieldStage.Harvesting));
+            var grain = w.Stores.Flows(ResourceKind.Grain).Gathered;
+
+            // One share a day, never a whole day's work.
+            for (var i = 0; i < 2 * Buildings.HarvestDays; i++)
+            {
+                w.Buildings.Claim(field, JobKind.Farmer, Buildings.ShareTicks);
+                w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.ShareTicks, w.Stores);
+                w.World.Clock.AdvanceTo(w.World.Now.Plus(day), w.World.Router);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.EqualTo(grain), "no harvest day was finished");
+                Assert.That(field.Stage, Is.EqualTo(FieldStage.Harvesting));
+                Assert.That(field.DaysDone, Is.Zero);
+            });
+
+            // A whole day's work brings in that day's Grain.
+            w.Buildings.Claim(field, JobKind.Farmer, Buildings.ShareTicks);
+            w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.ShareTicks, w.Stores);
+            Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.EqualTo(grain), "half a day");
+            w.Buildings.Claim(field, JobKind.Farmer, Buildings.ShareTicks);
+            w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.ShareTicks, w.Stores);
+            Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.EqualTo(grain + Buildings.GrainPerHarvestDay));
+        }
+
+        [Test]
         public void Nobody_works_a_field_in_winter()
         {
             var w = new BuildingsWorld();
@@ -444,6 +536,26 @@ namespace KingdomWatch.Core.Tests.Construction
 
             w.World.Clock.AdvanceTo(new SimulationTime(SimulationTime.DaysPerSeason * SimulationTime.TicksPerDay), w.World.Router);
             Assert.That(w.Buildings.CanSettle(at, map, 12), Is.False, "the first day of summer");
+        }
+
+        [Test]
+        public void Skills_and_food_questions_refuse_what_is_not_a_question()
+        {
+            // The #148 review: a capability of None, or one cast from nowhere,
+            // must not quietly pass a build gate.
+            var w = new BuildingsWorld();
+            var skills = new NoviceSkills();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(skills.BestIn(w.Settlement, Capability.Farming), Is.EqualTo(SkillTier.Novice));
+                Assert.That(() => skills.BestIn(null!, Capability.Farming), Throws.ArgumentNullException);
+                Assert.That(() => skills.BestIn(w.Settlement, Capability.None), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => skills.BestIn(w.Settlement, (Capability)99), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.IsFoodShort(null!, 1), Throws.ArgumentNullException);
+                Assert.That(() => Buildings.YearlyNeed(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(Buildings.YearlyNeed(0), Is.Zero);
+            });
         }
 
         [Test]

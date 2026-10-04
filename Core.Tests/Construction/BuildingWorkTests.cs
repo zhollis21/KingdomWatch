@@ -164,6 +164,95 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void Nobody_gathers_on_ground_approved_for_a_building()
+        {
+            // The #148 review: approved ground stayed ordinary scrub until it
+            // was cleared, so foragers picked it while it waited, racing the
+            // Builders. Rocks everywhere but the camp, one patch of scrub
+            // beside it - the only ground a house fits, and the nearest
+            // forage - and another further out.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var near = x >= 21 && x <= 23 && y >= 20 && y <= 22;
+                        var far = x >= 30 && x <= 32 && y >= 20 && y <= 22;
+                        grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
+                    }
+                }
+
+                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+            });
+            w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
+            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.ClearTicks, Is.GreaterThan(0L));
+            w.Stores.Consume(ResourceKind.Food, w.Stores.Available(ResourceKind.Food));
+
+            w.World.Jobs.Track(w.Settlement);
+            w.World.AdvanceTo(new SimulationTime(7L * SimulationTime.TicksPerHour));
+
+            var foraging = w.Settlement.Members.Where(m => w.World.Jobs.HasTask(m) && w.World.Jobs.TaskOf(m).Job == JobKind.Forager).ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(foraging, Is.Not.Empty, "food is short, so people forage");
+                Assert.That(foraging.Select(m => w.World.Jobs.TaskOf(m).Destination).Where(house.Covers), Is.Empty);
+                Assert.That(w.World.Buildings.IsReserved(house.Anchor), Is.True);
+            });
+        }
+
+        [Test]
+        public void Foragers_out_when_ground_is_approved_find_somewhere_else_next_trip()
+        {
+            // Approval runs after the dawn picks, so the day's forage site
+            // was found before the ground under it was reserved.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var near = x >= 21 && x <= 23 && y >= 20 && y <= 22;
+                        var far = x >= 30 && x <= 32 && y >= 20 && y <= 22;
+                        grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
+                    }
+                }
+
+                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+            });
+            w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
+            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
+            // Bushes that never run out: only the reservation can move a
+            // forager off the site found at dawn.
+            w.World.Land.BushPicks = LandCover.MaxClaims;
+            w.Stores.Consume(ResourceKind.Food, w.Stores.Available(ResourceKind.Food));
+            w.World.Jobs.Track(w.Settlement);
+
+            w.World.AdvanceTo(new SimulationTime(KingdomWatch.Core.Work.Jobs.Dawn + 1L));
+            Assert.That(w.World.Jobs.SiteFor(w.Settlement, JobKind.Forager).X, Is.InRange(21, 23), "the near patch, before approval");
+
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var approved = w.World.Now;
+            w.World.AdvanceTo(new SimulationTime(15L * SimulationTime.TicksPerHour));
+
+            var later = w.Settlement.Members
+                .Where(m => w.World.Jobs.HasTask(m) && w.World.Jobs.TaskOf(m).Job == JobKind.Forager && w.World.Jobs.TaskOf(m).Start > approved)
+                .Select(m => w.World.Jobs.TaskOf(m).Destination)
+                .ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(later, Is.Not.Empty, "trips set out after approval");
+                Assert.That(later.Where(house.Covers), Is.Empty);
+            });
+        }
+
+        [Test]
         public void Grain_in_store_keeps_foragers_home()
         {
             var w = new KingdomWatch.Core.Tests.Work.WorkWorld();

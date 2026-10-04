@@ -1,3 +1,4 @@
+using System;
 using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Core.Construction
@@ -20,6 +21,25 @@ namespace KingdomWatch.Core.Construction
     /// </summary>
     public sealed class NoviceSkills : ISkillSource
     {
-        public SkillTier BestIn(ICommunity community, Capability capability) => SkillTier.Novice;
+        private static readonly bool[] DefinedCapabilities = EnumGuard.BuildMask(typeof(Capability));
+
+        /// <summary>
+        /// Novice. Refuses a missing community, and <see cref="Capability.None"/>
+        /// or an undefined value, so a corrupt gate cannot quietly pass.
+        /// </summary>
+        public SkillTier BestIn(ICommunity community, Capability capability)
+        {
+            if (community is null)
+            {
+                throw new ArgumentNullException(nameof(community));
+            }
+
+            if (capability == Capability.None || !EnumGuard.IsDefined(DefinedCapabilities, (int)capability))
+            {
+                throw new ArgumentOutOfRangeException(nameof(capability), capability, "Not a defined Capability, or None.");
+            }
+
+            return SkillTier.Novice;
+        }
     }
 }

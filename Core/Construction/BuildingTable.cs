@@ -9,7 +9,7 @@ namespace KingdomWatch.Core.Construction
     /// </summary>
     public readonly struct BuildingSpec
     {
-        public BuildingSpec(Capability skill, SkillTier minimumTier, int wood, int width, int height, long buildTicks)
+        internal BuildingSpec(Capability skill, SkillTier minimumTier, int wood, int width, int height, long buildTicks)
         {
             Skill = skill;
             MinimumTier = minimumTier;

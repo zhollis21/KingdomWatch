@@ -25,7 +25,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(land.Clear(at), Is.True, "still standing after one cut");
+                Assert.That(land.Clear(at), Is.EqualTo(LandCover.DefaultTreeCuts - 1), "still standing after one cut, with the rest to give");
                 Assert.That(grid[at], Is.EqualTo(TerrainKind.Plains));
                 Assert.That(land.StateAt(grid.IndexOf(at)), Is.Zero);
                 Assert.That(grid.Rewrites, Is.EqualTo(rewrites + 1));
@@ -46,9 +46,40 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.Multiple(() =>
             {
                 Assert.That(land.StageOf(stump), Is.EqualTo(TreeStage.Stump));
-                Assert.That(land.Clear(stump), Is.False);
-                Assert.That(land.Clear(new WorldPosition(2, 2)), Is.False);
+                Assert.That(land.Clear(stump), Is.Zero);
+                Assert.That(land.Clear(new WorldPosition(2, 2)), Is.Zero);
                 Assert.That(grid[new WorldPosition(2, 2)], Is.EqualTo(TerrainKind.Plains));
+            });
+        }
+
+        [Test]
+        public void A_tree_has_its_uncut_cuts_left_none_as_a_stump_and_all_again_once_grown_back()
+        {
+            var grid = new TerrainGrid(4, 4, TerrainKind.Forest);
+            grid.Set(new WorldPosition(3, 3), TerrainKind.Plains);
+            var clock = new SimulationClock(new IdAllocator());
+            var land = new LandCover(grid, clock);
+            var tree = new WorldPosition(1, 1);
+
+            Assert.That(land.CutsLeft(tree), Is.EqualTo(land.TreeCuts), "untouched");
+
+            land.Take(tree);
+            land.Take(tree);
+            Assert.That(land.CutsLeft(tree), Is.EqualTo(land.TreeCuts - 2));
+
+            for (var cut = 2; cut < land.TreeCuts; cut++)
+            {
+                land.Take(tree);
+            }
+
+            Assert.That(land.CutsLeft(tree), Is.Zero, "a stump");
+
+            clock.AdvanceTo(clock.Now.Plus(LandCover.RegrowDays * SimulationTime.TicksPerDay), new ScheduledEventRouter());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(land.CutsLeft(tree), Is.EqualTo(land.TreeCuts), "grown back");
+                Assert.That(() => land.CutsLeft(new WorldPosition(3, 3)), Throws.ArgumentException, "plains have no tree");
             });
         }
 

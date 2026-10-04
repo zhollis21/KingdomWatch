@@ -49,10 +49,12 @@ namespace KingdomWatch.Core.Construction
     /// search a work site is, so it is reachable and known. A footprint of
     /// open plains is taken if there is one; otherwise one of plains, scrub
     /// or forest, not under another building, which Builders clear before
-    /// building starts - <see cref="FellTreeTicks"/> for a standing tree,
-    /// what woodcutting takes to bring one down, and the wood it gives goes
+    /// building starts - <see cref="TicksPerCut"/> for each cut a standing tree has left,
+    /// what woodcutting takes for one, and the wood those cuts would have given goes
     /// into stock; <see cref="ClearTicksPerCell"/> for a bush or a stump.
-    /// Nothing regrows on cleared ground. Buildings block nobody's path
+    /// Approved ground is reserved: nobody gathers there until it is cleared
+    /// (<see cref="IsReserved(WorldPosition)"/>), so it is cleared as it was
+    /// priced. Nothing regrows on cleared ground. Buildings block nobody's path
     /// until #23 lays out roads.
     ///
     /// **Fields.** A field needs <see cref="TendingDays"/> days of
@@ -69,8 +71,9 @@ namespace KingdomWatch.Core.Construction
     /// still lets households form without one; #69 makes houses the limit.
     ///
     /// **Settling.** <see cref="CanSettle"/> is the band's half of the
-    /// bargain: early spring, a season of bushes in reach, and ground for a
-    /// barn - so a new village can feed itself to its first harvest.
+    /// bargain: early spring, bushes in reach whose year's fruit would cover
+    /// half as much again as a season's eating, and ground for a barn - so a
+    /// new village can feed itself to its first harvest.
     ///
     /// The numbers are placeholders, set by the harness.
     /// </remarks>
@@ -106,14 +109,13 @@ namespace KingdomWatch.Core.Construction
         public const long ClearTicksPerCell = Hour;
 
         /// <summary>
-        /// Worker-ticks to fell a standing tree for good: what woodcutting
-        /// takes to bring one down - every cut of <see cref="LandCover.TreeCuts"/>
-        /// at <see cref="PrimitiveTier.GatherWood"/>'s four hours.
+        /// Worker-ticks each cut a standing tree has left adds to clearing
+        /// it: what woodcutting takes for one (<see cref="PrimitiveTier.GatherWood"/>).
         /// </summary>
-        public const long FellTreeTicks = LandCover.DefaultTreeCuts * 4L * Hour;
+        public static readonly long TicksPerCut = PrimitiveTier.GatherWood.Duration;
 
-        /// <summary>Wood a standing tree gives when felled: what its cuts would have.</summary>
-        public const int WoodPerFelledTree = LandCover.DefaultTreeCuts * 2;
+        /// <summary>Wood each cut a tree had left gives the clearer: what woodcutting gets for one.</summary>
+        public static readonly int WoodPerCut = PrimitiveTier.GatherWood.Outputs[0].Quantity;
 
         /// <summary>
         /// A building's or field's target is its hours times this, so its
@@ -214,11 +216,25 @@ namespace KingdomWatch.Core.Construction
         }
 
         /// <summary>A year of meals for this many people.</summary>
-        public static long YearlyNeed(int living) => (long)Hunger.DailyRation * living * SimulationTime.DaysPerYear;
+        public static long YearlyNeed(int living) =>
+            living >= 0
+                ? (long)Hunger.DailyRation * living * SimulationTime.DaysPerYear
+                : throw new ArgumentOutOfRangeException(nameof(living), living, "Nobody is fewer than nobody.");
 
         /// <summary>The building whose footprint covers this cell, or null.</summary>
         public Building? At(WorldPosition at) =>
             _onCell.TryGetValue(_grid.IndexOf(at), out var building) ? building : null;
+
+        /// <summary>
+        /// Whether a cell is ground approved for a building and not cleared
+        /// yet: nobody gathers there (the #148 review), so the clearing it was
+        /// priced at is the clearing it gets. Trips already out when it was
+        /// approved still come home with what they claimed.
+        /// </summary>
+        public bool IsReserved(WorldPosition at) => IsReserved(_grid.IndexOf(at));
+
+        /// <summary><see cref="IsReserved(WorldPosition)"/>, by cell index.</summary>
+        public bool IsReserved(int cell) => _onCell.TryGetValue(cell, out var building) && !building.Cleared;
 
         /// <summary>The house a household lives in, or null.</summary>
         public Building? HomeOf(EntityId household) =>
@@ -232,16 +248,27 @@ namespace KingdomWatch.Core.Construction
             _pathfinder.CountReachable(at, Jobs.Mover, _scrub, _knownMaps.For(mapHolder), Jobs.MaxSiteRadius) * BushYearlyFood;
 
         /// <summary>
-        /// Whether a band of this many could settle here: the bushes in reach
-        /// would feed it half as much again as one season's eating, and there
-        /// is ground for a barn. A season, not a year, because that is what
-        /// they have to carry: a barn and a field are days of work, and the
-        /// first crop is in some fifteen days after - no camp on the
-        /// placeholder map has bushes for a year (#100's harness runs).
+        /// Whether a band of this many could settle here: a whole year's
+        /// picking of the bushes in reach (<see cref="ForageInReach"/>) would
+        /// cover half as much again as one season's eating, and there is
+        /// ground for a barn. That is a third of what the words "a season of
+        /// bushes" would suggest, since a bush gives a year's fruit over
+        /// three seasons; it is the measure the #100 harness runs were tuned
+        /// with, and one that camps on the placeholder map can pass - none
+        /// has bushes for a year's eating. It only has to carry the village to
+        /// its first harvest: a barn and a field are days of work, and the
+        /// first crop is in some fifteen days after.
         /// And only in the first half of spring, so the village has a whole
         /// growing season for its fields before its first winter: one that
         /// settled late in spring got a single crop in and starved.
         /// </summary>
+        /// <remarks>
+        /// Ground for a barn is checked on its own (the #148 review). The
+        /// house a barn needs first could take the only spot, or a barn could
+        /// fit where no field does, leaving a village that cannot farm. Rare
+        /// on a map that is mostly plains, and placement is #23's to replace,
+        /// so this checks the barn alone.
+        /// </remarks>
         public bool CanSettle(WorldPosition at, EntityId mapHolder, int living)
         {
             var now = _clock.Now;
@@ -261,6 +288,11 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public bool IsFoodShort(ICommunity settlement, int living)
         {
+            if (settlement is null)
+            {
+                throw new ArgumentNullException(nameof(settlement));
+            }
+
             var need = YearlyNeed(living);
 
             if (Hunger.MealsInStore(settlement.SharedSupplies) >= need)
@@ -526,16 +558,17 @@ namespace KingdomWatch.Core.Construction
             field.ClaimedToday -= ticks;
             field.WorkedToday += ticks;
 
-            // A share of a harvest day brings home its share of the day's
-            // Grain. Shares are half a day, so this divides exactly.
-            if (field.Stage == FieldStage.Harvesting)
-            {
-                stores.Gather(ResourceKind.Grain, checked((int)(ticks * GrainPerHarvestDay / FieldDayTicks)));
-            }
-
             if (field.WorkedToday < FieldDayTicks)
             {
                 return;
+            }
+
+            // A harvest day's Grain comes in when its last hours do: a day
+            // left unfinished is forgotten at midnight, and Grain paid per
+            // share would let a share a day harvest forever (the #148 review).
+            if (field.Stage == FieldStage.Harvesting)
+            {
+                stores.Gather(ResourceKind.Grain, GrainPerHarvestDay);
             }
 
             field.DaysDone++;
@@ -567,7 +600,7 @@ namespace KingdomWatch.Core.Construction
 
         private void ClearGround(Building building, ResourceLedger stores)
         {
-            var felled = 0;
+            var cuts = 0;
 
             for (var dy = 0; dy < building.Height; dy++)
             {
@@ -576,18 +609,18 @@ namespace KingdomWatch.Core.Construction
                     var at = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + dy);
                     var kind = _grid[at];
 
-                    if ((kind == TerrainKind.Scrub || kind == TerrainKind.Forest) && _land.Clear(at))
+                    if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest)
                     {
-                        felled++;
+                        cuts += _land.Clear(at);
                     }
                 }
             }
 
             building.Cleared = true;
 
-            if (felled > 0)
+            if (cuts > 0)
             {
-                stores.Gather(ResourceKind.Wood, felled * WoodPerFelledTree);
+                stores.Gather(ResourceKind.Wood, cuts * WoodPerCut);
             }
         }
 
@@ -719,8 +752,9 @@ namespace KingdomWatch.Core.Construction
         }
 
         // The clearing a footprint needs, priced as it stands when approved:
-        // a standing tree as long as woodcutting takes to bring one down, a
-        // bush or a stump an hour.
+        // a standing tree as long as woodcutting takes for the cuts it has
+        // left, a bush or a stump an hour. Nobody gathers on approved ground
+        // (IsReserved), so it stands the same when the Builders clear it.
         private long ClearTicksOf(BuildingKind kind, WorldPosition anchor)
         {
             var spec = BuildingTable.Of(kind);
@@ -732,10 +766,11 @@ namespace KingdomWatch.Core.Construction
                 {
                     var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
                     var terrain = _grid[at];
+                    var cuts = terrain == TerrainKind.Forest ? _land.CutsLeft(at) : 0;
 
-                    if (terrain == TerrainKind.Forest && _land.StageOf(at) == TreeStage.Standing)
+                    if (cuts > 0)
                     {
-                        ticks += FellTreeTicks;
+                        ticks += cuts * TicksPerCut;
                     }
                     else if (terrain == TerrainKind.Scrub || terrain == TerrainKind.Forest)
                     {

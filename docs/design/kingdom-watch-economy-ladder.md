@@ -470,8 +470,9 @@ the barn that farming starts from needs only *Novice* farming — the lowest
 tier, which everyone holds — so no skill has to be learned before it, and
 the reachability the crude form existed for holds without it. What the
 clearing also did, feeding a village before its first crop, is now the
-settling check's job: a band settles only in early spring, where the bushes
-in reach can carry it to its first harvest.
+settling check's job: a band settles only in early spring, where a year's
+picking of the bushes in reach would cover half as much again as a season's
+eating — enough to carry it to its first harvest.
 
 ---
 

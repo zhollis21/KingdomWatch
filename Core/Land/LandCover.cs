@@ -175,18 +175,44 @@ namespace KingdomWatch.Core.Land
         }
 
         /// <summary>
+        /// Cuts a tree has left before it falls: <see cref="TreeCuts"/> for
+        /// one untouched or grown back, fewer for one already being cut, none
+        /// for a stump or a sapling. What clearing it costs and gives (#100).
+        /// Throws for a cell that is not forest.
+        /// </summary>
+        public int CutsLeft(WorldPosition at)
+        {
+            var cell = CellOf(at, TerrainKind.Forest);
+
+            if (_cells[cell] == 0)
+            {
+                return TreeCuts;
+            }
+
+            var cuts = Count(cell);
+
+            if (cuts < TreeCuts)
+            {
+                return TreeCuts - cuts;
+            }
+
+            return _clock.Now.DayNumber - Period(cell) >= RegrowDays ? TreeCuts : 0;
+        }
+
+        /// <summary>
         /// Grubs out a bush or fells a tree for good, turning the cell to
         /// plains (#100): the ground a building or field goes on. Plains grow
-        /// nothing, so nothing here regrows. Returns whether a standing tree
-        /// came down - its wood is the clearer's. Throws for a cell that is
-        /// neither scrub nor forest, which has nothing to clear.
+        /// nothing, so nothing here regrows. Returns the cuts the tree had
+        /// left (<see cref="CutsLeft"/>) - their wood is the clearer's - or
+        /// zero for a bush. Throws for a cell that is neither scrub nor
+        /// forest, which has nothing to clear.
         /// </summary>
         /// <remarks>
         /// A claim on the cell from a trip already out is simply forgotten:
         /// that trip still brings home what it set out for, and giving it
         /// back later is a no-op, since plains record no claims.
         /// </remarks>
-        public bool Clear(WorldPosition at)
+        public int Clear(WorldPosition at)
         {
             var cell = _grid.IndexOf(at);
             var kind = _grid.KindAt(cell);
@@ -196,10 +222,10 @@ namespace KingdomWatch.Core.Land
                 throw new ArgumentException(at + " is " + kind + "; only scrub and forest are cleared.", nameof(at));
             }
 
-            var felled = kind == TerrainKind.Forest && StageOf(at) == TreeStage.Standing;
+            var cuts = kind == TerrainKind.Forest ? CutsLeft(at) : 0;
             _cells[cell] = 0;
             _grid.Set(at, TerrainKind.Plains);
-            return felled;
+            return cuts;
         }
 
         /// <summary>
