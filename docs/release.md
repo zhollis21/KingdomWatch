@@ -41,7 +41,16 @@ GameCI needs the `Unity_lic.ulf` file that Unity Hub writes when a Personal lice
 
 ### Art submodule
 
-Create a fine-grained personal access token with **read-only Contents** access to `zhollis21/KingdomWatch-Art` only. Check the pack's license allows shipping it inside a store build, which is a different question from keeping it out of this public repository.
+CI reads the art with a read-only deploy key of `zhollis21/KingdomWatch-Art` (its Settings → Deploy keys, "KingdomWatch release build"), whose private half is the secret `ART_REPO_SSH_KEY`. A deploy key opens only its own repository and does not expire. To replace it:
+
+```
+ssh-keygen -t ed25519 -N "" -f art_key
+gh api repos/zhollis21/KingdomWatch-Art/keys -f title="KingdomWatch release build" -f key="$(cat art_key.pub)" -F read_only=true
+gh secret set ART_REPO_SSH_KEY -R zhollis21/KingdomWatch < art_key
+rm art_key art_key.pub
+```
+
+Check the pack's license allows shipping it inside a store build, which is a different question from keeping it out of this public repository.
 
 ### Repository secrets and variables
 
@@ -55,7 +64,7 @@ Settings → Secrets and variables → Actions.
 | `ANDROID_KEYSTORE_BASE_64` | secret | Base64 of `upload.keystore` |
 | `ANDROID_KEYSTORE_PASSWORD` | secret | Keystore and key password |
 | `ANDROID_KEYSTORE_ALIAS` | variable | `kingdomwatch` (the alias you chose) |
-| `ART_REPO_TOKEN` | secret | The read-only token for the art repository |
+| `ART_REPO_SSH_KEY` | secret | Private half of the art repository's read-only deploy key |
 | `GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY` | secret | Full JSON key of the Play service account |
 
 ## The first upload
@@ -79,7 +88,7 @@ After that, a published GitHub Release (or a manual run with **deploy** on) uplo
 - **Licensing error:** replace `UNITY_LICENSE` (see above).
 - **Unity version not found:** GameCI pulls the editor image named by `Game/ProjectSettings/ProjectVersion.txt`. A new Unity patch release can take a while to appear there; check the [image list](https://hub.docker.com/r/unityci/editor/tags).
 - **No `KingdomWatch.Core.dll`:** the *Verify Core reached Unity* step failed, so Core did not build or its output path changed (`docs/unity.md`).
-- **Checkout fails on the submodule:** `ART_REPO_TOKEN` is missing or expired.
+- **Checkout art fails ("repository not found"):** `ART_REPO_SSH_KEY` is missing, or the deploy key was removed from the art repository.
 - **Version code already exists:** re-running a failed run reuses its run number, and so its version code. Start a fresh run instead.
 - **Upload fails but the build passed:** missing Play permissions for the service account, the first release not uploaded and rolled out by hand, or an open draft edit in Play Console.
 - **Play rejects the target API level:** the build targets the highest Android SDK in GameCI's image. Set `androidTargetSdkVersion` on the Unity build step (e.g. `AndroidApiLevel36`) to pin it.

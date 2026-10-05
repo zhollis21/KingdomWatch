@@ -77,13 +77,24 @@ jobs:
           [ -n "$KEYSTORE_PASSWORD" ] || { echo "::error::ANDROID_KEYSTORE_PASSWORD secret is not set"; exit 1; }
           [ -n "$KEYSTORE_ALIAS" ] || { echo "::error::ANDROID_KEYSTORE_ALIAS variable is not set"; exit 1; }
 
-      # The art lives in a private submodule (#121). The token needs read access to
-      # KingdomWatch-Art only; checkout uses it for the submodule fetch too.
-      - name: Checkout (with art submodule)
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The art lives in a private submodule (#121), read with a read-only deploy
+      # key of KingdomWatch-Art. A deploy key opens only its own repository, so the
+      # art is checked out separately, at the commit the submodule pins.
+      - name: Find pinned art commit
+        id: art
+        run: echo "sha=$(git rev-parse HEAD:Game/Assets/Art)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout art
         uses: actions/checkout@v7
         with:
-          submodules: recursive
-          token: ${{ secrets.ART_REPO_TOKEN }}
+          repository: zhollis21/KingdomWatch-Art
+          ref: ${{ steps.art.outputs.sha }}
+          path: Game/Assets/Art
+          ssh-key: ${{ secrets.ART_REPO_SSH_KEY }}
+          persist-credentials: false
 
       # Unity loads Core as a managed plug-in; every build of Core copies the DLL
       # into Game/Assets/KingdomWatch.Core/ (git-ignored). docs/unity.md.
