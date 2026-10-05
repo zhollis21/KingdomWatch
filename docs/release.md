@@ -11,7 +11,7 @@ The version name is the tag without the `v`. The version code is `YYMMDDNNN` (da
 
 The Unity build uses GameCI's own build script, configured entirely in the workflow: an App Bundle, no Development Build, no profiler, public debug symbols. The committed Android build profile (the development one, see `docs/unity.md`) is not used, because no profile is active on a fresh checkout.
 
-Every build includes the art from the private submodule. The bundle is the game players install, so the workflow keeps it as a downloadable artifact for five days; the raw art files never leave the submodule. There is no Unity `Library` cache, so each build imports from scratch: a cache would hold imported copies of the art where any workflow in this public repository could restore them.
+Every build includes the art from the private submodule. The bundle is the game players install, so the workflow keeps it as a downloadable artifact for five days; the raw art files never leave the submodule. There is no Unity `Library` cache, so each build imports from scratch, about 18 minutes in Unity. A cache would save roughly 8–10 of them, but releases could only restore one saved on `main`, which nothing keeps fresh; for occasional releases that run unattended, it is not worth the extra moving parts.
 
 ## One-time setup
 

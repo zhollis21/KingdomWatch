@@ -39,8 +39,8 @@ jobs:
   release:
     name: Build and upload
     runs-on: ubuntu-latest
-    # No Library cache: every build imports from scratch, which is slow but keeps
-    # imported copies of the licensed art out of the repository's Actions cache.
+    # No Library cache: every build imports from scratch (~18 min in Unity). See
+    # docs/release.md for why that is not worth caching yet.
     timeout-minutes: 90
 
     steps:
