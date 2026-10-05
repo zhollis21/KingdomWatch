@@ -15,12 +15,7 @@ on:
         required: true
         type: string
       deploy:
-        description: "Also upload to the Play internal track (needs the app to exist in Play Console)"
-        required: false
-        default: false
-        type: boolean
-      include_art:
-        description: "Include the licensed art. The artifact of a public repo is downloadable by any signed-in GitHub user, so leave off for a build you will download"
+        description: "Also upload to the Play internal track (needs the first bundle uploaded by hand, see docs/release.md)"
         required: false
         default: false
         type: boolean
@@ -34,19 +29,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build signed AAB
+  release:
+    name: Build and upload
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      # A release always ships the art. A manual run ships it only when asked: the
-      # AAB is uploaded as a workflow artifact, and in a public repository any
-      # signed-in GitHub user can download those.
-      INCLUDE_ART: ${{ github.event_name == 'release' || inputs.include_art }}
-    outputs:
-      version_name: ${{ steps.version.outputs.VERSION_NAME }}
-      version_code: ${{ steps.version.outputs.VERSION_CODE }}
-      encrypted: ${{ steps.pack.outputs.ENCRYPTED }}
+    # No Library cache: every build imports from scratch, which is slow but keeps
+    # imported copies of the licensed art out of the repository's Actions cache.
+    timeout-minutes: 90
 
     steps:
       - name: Set version numbers
@@ -77,13 +65,25 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "::notice::Building version $VERSION_NAME (code: $VERSION_CODE)"
 
+      # Without a keystore GameCI signs with Unity's debug key, which Play rejects
+      # only after the whole build; fail here instead.
+      - name: Check signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE_64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ vars.ANDROID_KEYSTORE_ALIAS }}
+        run: |
+          [ -n "$KEYSTORE_BASE64" ] || { echo "::error::ANDROID_KEYSTORE_BASE_64 secret is not set"; exit 1; }
+          [ -n "$KEYSTORE_PASSWORD" ] || { echo "::error::ANDROID_KEYSTORE_PASSWORD secret is not set"; exit 1; }
+          [ -n "$KEYSTORE_ALIAS" ] || { echo "::error::ANDROID_KEYSTORE_ALIAS variable is not set"; exit 1; }
+
       # The art lives in a private submodule (#121). The token needs read access to
       # KingdomWatch-Art only; checkout uses it for the submodule fetch too.
       - name: Checkout (with art submodule)
         uses: actions/checkout@v7
         with:
-          submodules: ${{ env.INCLUDE_ART == 'true' && 'recursive' || 'false' }}
-          token: ${{ env.INCLUDE_ART == 'true' && secrets.ART_REPO_TOKEN || github.token }}
+          submodules: recursive
+          token: ${{ secrets.ART_REPO_TOKEN }}
 
       # Unity loads Core as a managed plug-in; every build of Core copies the DLL
       # into Game/Assets/KingdomWatch.Core/ (git-ignored). docs/unity.md.
@@ -98,151 +98,56 @@ jobs:
       - name: Verify Core reached Unity
         run: test -f Game/Assets/KingdomWatch.Core/KingdomWatch.Core.dll
 
-      - name: Cache Unity Library
-        uses: actions/cache@v5
-        with:
-          path: Game/Library
-          key: Library-Android-${{ hashFiles('Game/Assets/**', 'Game/Packages/**', 'Game/ProjectSettings/**') }}
-          restore-keys: |
-            Library-Android-
-
-      # Decoded to the workspace root, which GameCI mounts at /github/workspace.
-      - name: Decode keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE_64 }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE_64 secret is empty or not set"
-            exit 1
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/upload.keystore"
-          SIZE=$(stat -c%s "$GITHUB_WORKSPACE/upload.keystore")
-          if [ "$SIZE" -lt 100 ]; then
-            echo "::error::Keystore file suspiciously small ($SIZE bytes)"
-            exit 1
-          fi
-
+      # GameCI's own build script, not one of ours: it builds without Development
+      # Build or the profiler (the committed Android build profile has both on, but
+      # it is not active on a fresh checkout), and it applies the version, signing
+      # and bundle settings below. It decodes the keystore into Game/upload.keystore.
       - name: Build with Unity
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_EMAIL: ${{ vars.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           projectPath: Game
           targetPlatform: Android
-          buildMethod: KingdomWatch.Game.Editor.ReleaseBuild.Android
-          # Secrets are masked in the log by GitHub.
-          customParameters: >-
-            -releaseVersion ${{ steps.version.outputs.VERSION_NAME }}
-            -releaseVersionCode ${{ steps.version.outputs.VERSION_CODE }}
-            -keystorePath /github/workspace/upload.keystore
-            -keystorePass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-            -keyaliasName ${{ vars.ANDROID_KEYSTORE_ALIAS }}
-            -keyaliasPass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          buildName: KingdomWatch
+          versioning: Custom
+          version: ${{ steps.version.outputs.VERSION_NAME }}
+          androidVersionCode: ${{ steps.version.outputs.VERSION_CODE }}
+          androidExportType: androidAppBundle
+          androidSymbolType: public
+          androidKeystoreName: upload.keystore
+          androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE_64 }}
+          androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          androidKeyaliasName: ${{ vars.ANDROID_KEYSTORE_ALIAS }}
+          androidKeyaliasPass: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
 
-      - name: Verify AAB output
-        run: |
-          find Game/Builds -name "*.aab" -type f
-          test "$(find Game/Builds -name '*.aab' -type f | wc -l)" -ge 1 || { echo "::error::No AAB produced"; exit 1; }
+      - name: Clean up keystore
+        if: always()
+        run: rm -f Game/upload.keystore
 
       - name: Checksum
         run: |
-          cd Game/Builds/Android
-          sha256sum *.aab | tee aab-checksums.txt
+          test -f build/Android/KingdomWatch.aab || { echo "::error::No AAB produced"; exit 1; }
+          sha256sum build/Android/KingdomWatch.aab | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # A bundle that contains the art is encrypted before it is stored, and the
-      # deploy job decrypts it. One without the art is stored as is, so it can be
-      # downloaded and uploaded to Play by hand.
-      - name: Pack AAB
-        id: pack
-        env:
-          PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
-        run: |
-          cd Game/Builds/Android
-          if [[ "$INCLUDE_ART" == "true" ]]; then
-            if [ -z "$PASSPHRASE" ]; then
-              echo "::error::ARTIFACT_PASSPHRASE secret is not set; refusing to publish a bundle containing the art unencrypted"
-              exit 1
-            fi
-            gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$PASSPHRASE" -o KingdomWatch.aab.gpg KingdomWatch.aab
-            rm KingdomWatch.aab
-            echo "ENCRYPTED=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ENCRYPTED=false" >> "$GITHUB_OUTPUT"
-          fi
-
+      # The bundle is the same game players install from Play, so storing it is no
+      # different from shipping it. Kept for the first upload, which is by hand.
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v7
         with:
           name: kingdomwatch-${{ steps.version.outputs.VERSION_NAME }}-${{ steps.version.outputs.VERSION_CODE }}
-          path: |
-            Game/Builds/Android/*.aab
-            Game/Builds/Android/*.aab.gpg
+          path: build/Android/KingdomWatch.aab
           retention-days: 5
           if-no-files-found: error
 
-      - name: Upload checksums
-        uses: actions/upload-artifact@v7
-        with:
-          name: checksums-${{ steps.version.outputs.VERSION_CODE }}
-          path: Game/Builds/Android/aab-checksums.txt
-          if-no-files-found: warn
-
-      - name: Build summary
-        if: success()
-        run: |
-          {
-            echo "## ✅ Build successful"
-            echo ""
-            echo "**Version:** ${{ steps.version.outputs.VERSION_NAME }} (code: ${{ steps.version.outputs.VERSION_CODE }})"
-            echo ""
-            echo '```'
-            cat Game/Builds/Android/aab-checksums.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Clean up keystore
-        if: always()
-        run: rm -f "$GITHUB_WORKSPACE/upload.keystore"
-
-  deploy:
-    name: Deploy to Play Console (internal)
-    needs: build
-    if: github.event_name == 'release' || inputs.deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Download signed AAB
-        uses: actions/download-artifact@v8
-        with:
-          name: kingdomwatch-${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
-          path: artifacts/aab
-
-      - name: Decrypt AAB
-        if: needs.build.outputs.encrypted == 'true'
-        env:
-          PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
-        run: |
-          gpg --batch --yes --decrypt --passphrase "$PASSPHRASE" -o artifacts/aab/KingdomWatch.aab artifacts/aab/KingdomWatch.aab.gpg
-          rm artifacts/aab/KingdomWatch.aab.gpg
-
-      - name: Locate AAB
-        id: artifacts
-        run: |
-          AAB_FILE=$(find artifacts/aab -name "*.aab" -type f | head -1)
-          if [ -z "$AAB_FILE" ]; then
-            echo "::error::No AAB found in downloaded artifacts"
-            exit 1
-          fi
-          echo "AAB_FILE=$AAB_FILE" >> "$GITHUB_OUTPUT"
-
       - name: Prepare release notes
+        if: github.event_name == 'release' || inputs.deploy
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_BODY: ${{ github.event.release.body }}
-          VERSION_NAME: ${{ needs.build.outputs.version_name }}
+          VERSION_NAME: ${{ steps.version.outputs.VERSION_NAME }}
         run: |
           mkdir -p distribution/whatsnew
           if [[ "$EVENT_NAME" == "release" && -n "$RELEASE_BODY" ]]; then
@@ -260,24 +165,31 @@ jobs:
           PY
 
       - name: Upload to Google Play (internal track)
-        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb # v1.1.3
+        if: github.event_name == 'release' || inputs.deploy
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY }}
           packageName: com.RainbowSprinkles.KingdomWatch
-          releaseFiles: ${{ steps.artifacts.outputs.AAB_FILE }}
+          releaseFiles: build/Android/KingdomWatch.aab
           track: internal
           status: completed
-          releaseName: ${{ needs.build.outputs.version_name }} (${{ needs.build.outputs.version_code }})
+          releaseName: ${{ steps.version.outputs.VERSION_NAME }} (${{ steps.version.outputs.VERSION_CODE }})
           whatsNewDirectory: distribution/whatsnew
 
-      - name: Deploy summary
+      - name: Summary
         if: always()
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.VERSION_NAME }}
+          VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
+          DEPLOY: ${{ github.event_name == 'release' || inputs.deploy }}
+          STATUS: ${{ job.status }}
         run: |
-          echo "## ${{ job.status == 'success' && '✅ Deployed to Play Console' || '❌ Play Console deploy failed' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Version:** ${{ needs.build.outputs.version_name }} (code: ${{ needs.build.outputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Track:** internal" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ job.status }}" != "success" ]]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Common causes: service account missing Play Console permissions; the first release must be uploaded by hand; version code already used; an open draft edit in Play Console." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo ""
+            echo "**Version:** $VERSION_NAME (code: $VERSION_CODE)"
+            echo "**Uploaded to Play internal track:** $([[ "$DEPLOY" == "true" && "$STATUS" == "success" ]] && echo yes || echo no)"
+            if [[ "$STATUS" != "success" && "$DEPLOY" == "true" ]]; then
+              echo ""
+              echo "Common causes: service account missing Play Console permissions; the first release was not uploaded and rolled out by hand; version code already used; an open draft edit in Play Console."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

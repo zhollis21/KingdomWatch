@@ -95,13 +95,15 @@ jobs:
               track: fromTrack,
             });
 
-            const releases = sourceTrack.releases;
-            if (!releases || releases.length === 0) {
-              throw new Error(`No releases found on '${fromTrack}' track`);
+            // A track can hold several releases (a draft beside a completed one, or
+            // an older one still rolling out), in no promised order. Promote the
+            // completed release with the highest version code.
+            const highestCode = r => Math.max(...(r.versionCodes || []).map(Number));
+            const completed = (sourceTrack.releases || []).filter(r => r.status === 'completed');
+            if (completed.length === 0) {
+              throw new Error(`No completed release found on '${fromTrack}' track`);
             }
-
-            // Use the most recent release
-            const release = releases[0];
+            const release = completed.reduce((a, b) => (highestCode(b) > highestCode(a) ? b : a));
             console.log(`Found release: ${release.name || 'unnamed'} (status: ${release.status})`);
             console.log(`Version codes: ${release.versionCodes?.join(', ')}`);
 
