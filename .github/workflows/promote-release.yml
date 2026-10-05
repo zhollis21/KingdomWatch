@@ -56,10 +56,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
+      # Pinned: an unpinned install would pick up a new release, and any break in
+      # it, with no change here.
       - name: Install Google APIs Client
-        run: npm install googleapis
+        run: npm install googleapis@183.0.0
 
       - name: Promote Release Between Tracks
         env:

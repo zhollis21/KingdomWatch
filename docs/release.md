@@ -7,9 +7,9 @@ Publishing a GitHub Release tagged `vX.Y.Z` builds a signed Android App Bundle i
 | `.github/workflows/android-release.yml` | Release published (or manual run): build Core, build the Unity project with GameCI, sign, upload to internal. A pull request that changes the workflow runs the same build as version `0.0.0-pr.N`, without the upload |
 | `.github/workflows/promote-release.yml` | Manual run: promote the newest completed release on one track to a higher one |
 
-The version name is the tag without the `v`. The version code is `YYMMDDNNN` (date plus run number), so it only ever goes up. The `bundleVersion` and `AndroidBundleVersionCode` in `ProjectSettings.asset` are overridden by the build and are only what a local build uses.
+The version name is the tag without the `v`. The version code is `YYDDDHHMM` (UTC year, day of year, hour and minute the build started), so it only ever goes up and a re-run gets a new one. The `bundleVersion` and `AndroidBundleVersionCode` in `ProjectSettings.asset` are overridden by the build and are only what a local build uses.
 
-The Unity build uses GameCI's own build script, configured entirely in the workflow: an App Bundle, no Development Build, no profiler, public debug symbols. The committed Android build profile (the development one, see `docs/unity.md`) is not used, because no profile is active on a fresh checkout.
+The Unity build uses GameCI's own build script, configured entirely in the workflow: an App Bundle, no Development Build, no profiler, public debug symbols. Unity writes the symbols beside the bundle as `…-IL2CPP.symbols.zip`; the upload sends both, so Play can name the functions in native crash reports. The committed Android build profile (the development one, see `docs/unity.md`) is not used, because no profile is active on a fresh checkout.
 
 Every build includes the art from the private submodule. The bundle is the game players install, so the workflow keeps it as a downloadable artifact for five days; the raw art files never leave the submodule. There is no Unity `Library` cache, so each build imports from scratch, about 18 minutes in Unity. A cache would save roughly 8–10 of them, but releases could only restore one saved on `main`, which nothing keeps fresh; for occasional releases that run unattended, it is not worth the extra moving parts.
 
@@ -69,9 +69,9 @@ Settings → Secrets and variables → Actions.
 
 ## The first upload
 
-1. Add everything above except `GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY`.
+1. Add everything above. The first build does not use `GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY`, but every upload after it does.
 2. Actions → *Android Release Build & Deploy* → Run workflow. Enter a version; leave **deploy** off.
-3. When it finishes, open the run and download the `kingdomwatch-…` artifact, a zip holding `KingdomWatch.aab`. Unzip it.
+3. When it finishes, open the run and download the `kingdomwatch-…` artifact, a zip holding `KingdomWatch.aab` and the symbols zip. Unzip it.
 4. In Play Console: Testing → Internal testing → Create release, upload the `.aab`, then **roll it out**. Play also asks for the app's content declarations (Policy → App content) before the first rollout.
 
 After that, a published GitHub Release (or a manual run with **deploy** on) uploads on its own.
@@ -89,6 +89,6 @@ After that, a published GitHub Release (or a manual run with **deploy** on) uplo
 - **Unity version not found:** GameCI pulls the editor image named by `Game/ProjectSettings/ProjectVersion.txt`. A new Unity patch release can take a while to appear there; check the [image list](https://hub.docker.com/r/unityci/editor/tags).
 - **No `KingdomWatch.Core.dll`:** the *Verify Core reached Unity* step failed, so Core did not build or its output path changed (`docs/unity.md`).
 - **Checkout art fails ("repository not found"):** `ART_REPO_SSH_KEY` is missing, or the deploy key was removed from the art repository.
-- **Version code already exists:** re-running a failed run reuses its run number, and so its version code. Start a fresh run instead.
+- **A release never ran:** builds that upload run one at a time, and GitHub keeps only one waiting. Publishing a third release while one builds and another waits cancels the waiting one; run it again by hand.
 - **Upload fails but the build passed:** missing Play permissions for the service account, the first release not uploaded and rolled out by hand, or an open draft edit in Play Console.
 - **Play rejects the target API level:** the build targets the highest Android SDK in GameCI's image. Set `androidTargetSdkVersion` on the Unity build step (e.g. `AndroidApiLevel36`) to pin it.

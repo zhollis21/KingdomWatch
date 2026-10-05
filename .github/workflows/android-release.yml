@@ -30,10 +30,13 @@ on:
 permissions:
   contents: read
 
-# Version codes must be unique and increasing, so builds queue rather than race.
+# Uploads run one at a time. GitHub keeps one waiting run per group, so a third
+# release published while one builds and one waits replaces the waiting one.
+# PR runs never upload, so they get a group of their own per PR and must not
+# bump a waiting release.
 concurrency:
-  group: android-release
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('android-release-pr-{0}', github.event.pull_request.number) || 'android-release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   release:
@@ -51,7 +54,6 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
           INPUT_VERSION: ${{ inputs.version }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [[ "$EVENT_NAME" == "release" ]]; then
             VERSION_NAME="${TAG_NAME#v}"
@@ -67,9 +69,10 @@ jobs:
             exit 1
           fi
 
-          # YYMMDDNNN: date plus the last three digits of the run number. Increasing,
-          # 1000 builds a day, well under Android's 2,100,000,000 ceiling, good to 2099.
-          VERSION_CODE="$(date -u '+%y%m%d')$(printf '%03d' $((RUN_NUMBER % 1000)))"
+          # YYDDDHHMM: UTC year, day of year, hour, minute. It only goes up, a re-run
+          # gets a fresh one, and it stays under Android's 2,100,000,000 to 2099.
+          # Uploads run one at a time (concurrency above), so two never share a minute.
+          VERSION_CODE="$(date -u '+%y%j%H%M')"
 
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
@@ -148,9 +151,15 @@ jobs:
         if: always()
         run: rm -f Game/upload.keystore
 
-      - name: Checksum
+      # Unity writes the native debug symbols beside the bundle, not inside it. Play
+      # needs them to turn native crash reports into function names.
+      - name: Find outputs
+        id: outputs
         run: |
           test -f build/Android/KingdomWatch.aab || { echo "::error::No AAB produced"; exit 1; }
+          SYMBOLS=$(find build/Android -maxdepth 1 -name '*.symbols.zip' | head -1)
+          [ -n "$SYMBOLS" ] || { echo "::error::No native debug symbols produced"; exit 1; }
+          echo "SYMBOLS=$SYMBOLS" >> "$GITHUB_OUTPUT"
           sha256sum build/Android/KingdomWatch.aab | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The bundle is the same game players install from Play, so storing it is no
@@ -159,7 +168,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: kingdomwatch-${{ steps.version.outputs.VERSION_NAME }}-${{ steps.version.outputs.VERSION_CODE }}
-          path: build/Android/KingdomWatch.aab
+          path: |
+            build/Android/KingdomWatch.aab
+            ${{ steps.outputs.outputs.SYMBOLS }}
           retention-days: 5
           if-no-files-found: error
 
@@ -192,6 +203,7 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY }}
           packageName: com.RainbowSprinkles.KingdomWatch
           releaseFiles: build/Android/KingdomWatch.aab
+          debugSymbols: ${{ steps.outputs.outputs.SYMBOLS }}
           track: internal
           status: completed
           releaseName: ${{ steps.version.outputs.VERSION_NAME }} (${{ steps.version.outputs.VERSION_CODE }})
