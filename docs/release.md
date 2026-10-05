@@ -35,7 +35,9 @@ Register the upload certificate with Play (it is shown when you create the app w
 
 ### Unity license (Personal)
 
-GameCI activates with a license file. Follow [game-ci's activation guide](https://game.ci/docs/github/activation) to produce `Unity_lic.ulf` once; the secret is its full text. Personal licenses can expire or need re-activation: if a build fails with a licensing error, redo the activation and replace the secret.
+GameCI needs the `Unity_lic.ulf` file that Unity Hub writes when a Personal license is activated on a computer signed in to your Unity account. It cannot be generated in CI or from a phone: [GameCI's activation guide](https://game.ci/docs/github/activation) says to install Unity Hub, sign in, add a free personal license (Preferences → Licenses → Add), then copy the file from `C:\ProgramData\Unity\Unity_lic.ulf` (Windows), `/Library/Application Support/Unity/Unity_lic.ulf` (macOS) or `~/.local/share/unity3d/Unity/Unity_lic.ulf` (Linux). A license activated on one operating system works for builds on another. The secret `UNITY_LICENSE` is the full text of that file. If a build later fails with a licensing error, activate again and replace the secret.
+
+If you already have the Editor licensed on a computer, the file is already there; copying its text into the secret is all that is left.
 
 ### Art submodule
 
