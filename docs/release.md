@@ -4,7 +4,7 @@ Publishing a GitHub Release tagged `vX.Y.Z` builds a signed Android App Bundle i
 
 | Workflow | Does |
 | --- | --- |
-| `.github/workflows/android-release.yml` | Release published (or manual run): build Core, build the Unity project with GameCI, sign, upload to internal |
+| `.github/workflows/android-release.yml` | Release published (or manual run): build Core, build the Unity project with GameCI, sign, upload to internal. A pull request that changes the workflow runs the same build as version `0.0.0-pr.N`, without the upload |
 | `.github/workflows/promote-release.yml` | Manual run: promote the newest completed release on one track to a higher one |
 
 The version name is the tag without the `v`. The version code is `YYMMDDNNN` (date plus run number), so it only ever goes up. The `bundleVersion` and `AndroidBundleVersionCode` in `ProjectSettings.asset` are overridden by the build and are only what a local build uses.

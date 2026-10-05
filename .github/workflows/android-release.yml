@@ -1,5 +1,6 @@
 # Builds a signed Android App Bundle of the Unity game and uploads it to Google Play.
-# Trigger: publishing a GitHub Release tagged vX.Y.Z (or a manual run).
+# Trigger: publishing a GitHub Release tagged vX.Y.Z (or a manual run). A pull
+# request that changes this file runs the build without uploading.
 # Pipeline: build Core -> Unity build (GameCI) -> upload to the Play Console internal track.
 # Setup, secrets and the first-release steps are in docs/release.md.
 name: Android Release Build & Deploy
@@ -19,6 +20,12 @@ on:
         required: false
         default: false
         type: boolean
+
+  # A change to this pipeline is tested by running it: the full build, without
+  # the Play upload.
+  pull_request:
+    paths:
+      - .github/workflows/android-release.yml
 
 permissions:
   contents: read
@@ -43,10 +50,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           TAG_NAME: ${{ github.event.release.tag_name }}
           INPUT_VERSION: ${{ inputs.version }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [[ "$EVENT_NAME" == "release" ]]; then
             VERSION_NAME="${TAG_NAME#v}"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            VERSION_NAME="0.0.0-pr.$PR_NUMBER"
           else
             VERSION_NAME="${INPUT_VERSION#v}"
           fi
