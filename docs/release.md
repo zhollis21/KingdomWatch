@@ -55,6 +55,18 @@ Settings → Secrets and variables → Actions.
 | `ANDROID_KEYSTORE_ALIAS` | variable | `kingdomwatch` (the alias you chose) |
 | `GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY` | secret | Full JSON key of the Play service account |
 | `ART_REPO_TOKEN` | secret | The read-only token for the art repository |
+| `ARTIFACT_PASSPHRASE` | secret | Any long random string; encrypts bundles that contain the art |
+
+## The first upload, from a phone
+
+Play needs the first bundle uploaded by hand. To get one without a computer:
+
+1. Add the secrets above except `GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY` and `ART_REPO_TOKEN` (GitHub in a phone browser, desktop site). A release build also needs `ARTIFACT_PASSPHRASE` (any long random string).
+2. Actions → *Android Release Build & Deploy* → Run workflow. Enter a version; leave **deploy** and **include_art** off.
+3. When it finishes, open the run and download the `kingdomwatch-…` artifact. It is a zip holding `KingdomWatch.aab`.
+4. Unzip it in your phone's Files app, then upload the `.aab` in Play Console (Testing → Internal testing → Create release), in the desktop-site view of the browser.
+
+That bundle is built **without the art**, on purpose: this repository is public and any signed-in GitHub user can download its workflow artifacts. A build that includes the art (every release, or a manual run with **include_art**) is encrypted with `ARTIFACT_PASSPHRASE` before it is stored, and only the deploy job decrypts it, so it cannot be downloaded and installed by hand.
 
 ## Cutting a release
 

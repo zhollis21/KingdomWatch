@@ -14,6 +14,16 @@ on:
         description: "Version number (e.g., 0.1.0)"
         required: true
         type: string
+      deploy:
+        description: "Also upload to the Play internal track (needs the app to exist in Play Console)"
+        required: false
+        default: false
+        type: boolean
+      include_art:
+        description: "Include the licensed art. The artifact of a public repo is downloadable by any signed-in GitHub user, so leave off for a build you will download"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -28,9 +38,15 @@ jobs:
     name: Build signed AAB
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # A release always ships the art. A manual run ships it only when asked: the
+      # AAB is uploaded as a workflow artifact, and in a public repository any
+      # signed-in GitHub user can download those.
+      INCLUDE_ART: ${{ github.event_name == 'release' || inputs.include_art }}
     outputs:
       version_name: ${{ steps.version.outputs.VERSION_NAME }}
       version_code: ${{ steps.version.outputs.VERSION_CODE }}
+      encrypted: ${{ steps.pack.outputs.ENCRYPTED }}
 
     steps:
       - name: Set version numbers
@@ -66,8 +82,8 @@ jobs:
       - name: Checkout (with art submodule)
         uses: actions/checkout@v7
         with:
-          submodules: recursive
-          token: ${{ secrets.ART_REPO_TOKEN }}
+          submodules: ${{ env.INCLUDE_ART == 'true' && 'recursive' || 'false' }}
+          token: ${{ env.INCLUDE_ART == 'true' && secrets.ART_REPO_TOKEN || github.token }}
 
       # Unity loads Core as a managed plug-in; every build of Core copies the DLL
       # into Game/Assets/KingdomWatch.Core/ (git-ignored). docs/unity.md.
@@ -135,11 +151,34 @@ jobs:
           cd Game/Builds/Android
           sha256sum *.aab | tee aab-checksums.txt
 
+      # A bundle that contains the art is encrypted before it is stored, and the
+      # deploy job decrypts it. One without the art is stored as is, so it can be
+      # downloaded and uploaded to Play by hand.
+      - name: Pack AAB
+        id: pack
+        env:
+          PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
+        run: |
+          cd Game/Builds/Android
+          if [[ "$INCLUDE_ART" == "true" ]]; then
+            if [ -z "$PASSPHRASE" ]; then
+              echo "::error::ARTIFACT_PASSPHRASE secret is not set; refusing to publish a bundle containing the art unencrypted"
+              exit 1
+            fi
+            gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$PASSPHRASE" -o KingdomWatch.aab.gpg KingdomWatch.aab
+            rm KingdomWatch.aab
+            echo "ENCRYPTED=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ENCRYPTED=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v7
         with:
           name: kingdomwatch-${{ steps.version.outputs.VERSION_NAME }}-${{ steps.version.outputs.VERSION_CODE }}
-          path: Game/Builds/Android/*.aab
+          path: |
+            Game/Builds/Android/*.aab
+            Game/Builds/Android/*.aab.gpg
           retention-days: 5
           if-no-files-found: error
 
@@ -170,6 +209,7 @@ jobs:
   deploy:
     name: Deploy to Play Console (internal)
     needs: build
+    if: github.event_name == 'release' || inputs.deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -179,6 +219,14 @@ jobs:
         with:
           name: kingdomwatch-${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
           path: artifacts/aab
+
+      - name: Decrypt AAB
+        if: needs.build.outputs.encrypted == 'true'
+        env:
+          PASSPHRASE: ${{ secrets.ARTIFACT_PASSPHRASE }}
+        run: |
+          gpg --batch --yes --decrypt --passphrase "$PASSPHRASE" -o artifacts/aab/KingdomWatch.aab artifacts/aab/KingdomWatch.aab.gpg
+          rm artifacts/aab/KingdomWatch.aab.gpg
 
       - name: Locate AAB
         id: artifacts
