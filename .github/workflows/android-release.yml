@@ -1,0 +1,235 @@
+# Builds a signed Android App Bundle of the Unity game and uploads it to Google Play.
+# Trigger: publishing a GitHub Release tagged vX.Y.Z (or a manual run).
+# Pipeline: build Core -> Unity build (GameCI) -> upload to the Play Console internal track.
+# Setup, secrets and the first-release steps are in docs/release.md.
+name: Android Release Build & Deploy
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (e.g., 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Version codes must be unique and increasing, so builds queue rather than race.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build signed AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version_name: ${{ steps.version.outputs.VERSION_NAME }}
+      version_code: ${{ steps.version.outputs.VERSION_CODE }}
+
+    steps:
+      - name: Set version numbers
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            VERSION_NAME="${TAG_NAME#v}"
+          else
+            VERSION_NAME="${INPUT_VERSION#v}"
+          fi
+
+          # X.Y.Z or X.Y.Z-suffix (1.2.3, 1.2.3-rc.1)
+          if [[ ! "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$ ]]; then
+            echo "::error::Invalid version format '$VERSION_NAME'. Expected: X.Y.Z or X.Y.Z-suffix"
+            exit 1
+          fi
+
+          # YYMMDDNNN: date plus the last three digits of the run number. Increasing,
+          # 1000 builds a day, well under Android's 2,100,000,000 ceiling, good to 2099.
+          VERSION_CODE="$(date -u '+%y%m%d')$(printf '%03d' $((RUN_NUMBER % 1000)))"
+
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "::notice::Building version $VERSION_NAME (code: $VERSION_CODE)"
+
+      # The art lives in a private submodule (#121). The token needs read access to
+      # KingdomWatch-Art only; checkout uses it for the submodule fetch too.
+      - name: Checkout (with art submodule)
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.ART_REPO_TOKEN }}
+
+      # Unity loads Core as a managed plug-in; every build of Core copies the DLL
+      # into Game/Assets/KingdomWatch.Core/ (git-ignored). docs/unity.md.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build Core
+        run: dotnet build Core/KingdomWatch.Core.csproj --configuration Release
+
+      - name: Verify Core reached Unity
+        run: test -f Game/Assets/KingdomWatch.Core/KingdomWatch.Core.dll
+
+      - name: Cache Unity Library
+        uses: actions/cache@v5
+        with:
+          path: Game/Library
+          key: Library-Android-${{ hashFiles('Game/Assets/**', 'Game/Packages/**', 'Game/ProjectSettings/**') }}
+          restore-keys: |
+            Library-Android-
+
+      # Decoded to the workspace root, which GameCI mounts at /github/workspace.
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE_64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE_64 secret is empty or not set"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/upload.keystore"
+          SIZE=$(stat -c%s "$GITHUB_WORKSPACE/upload.keystore")
+          if [ "$SIZE" -lt 100 ]; then
+            echo "::error::Keystore file suspiciously small ($SIZE bytes)"
+            exit 1
+          fi
+
+      - name: Build with Unity
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: Game
+          targetPlatform: Android
+          buildMethod: KingdomWatch.Game.Editor.ReleaseBuild.Android
+          # Secrets are masked in the log by GitHub.
+          customParameters: >-
+            -releaseVersion ${{ steps.version.outputs.VERSION_NAME }}
+            -releaseVersionCode ${{ steps.version.outputs.VERSION_CODE }}
+            -keystorePath /github/workspace/upload.keystore
+            -keystorePass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+            -keyaliasName ${{ vars.ANDROID_KEYSTORE_ALIAS }}
+            -keyaliasPass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+
+      - name: Verify AAB output
+        run: |
+          find Game/Builds -name "*.aab" -type f
+          test "$(find Game/Builds -name '*.aab' -type f | wc -l)" -ge 1 || { echo "::error::No AAB produced"; exit 1; }
+
+      - name: Checksum
+        run: |
+          cd Game/Builds/Android
+          sha256sum *.aab | tee aab-checksums.txt
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: kingdomwatch-${{ steps.version.outputs.VERSION_NAME }}-${{ steps.version.outputs.VERSION_CODE }}
+          path: Game/Builds/Android/*.aab
+          retention-days: 5
+          if-no-files-found: error
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v7
+        with:
+          name: checksums-${{ steps.version.outputs.VERSION_CODE }}
+          path: Game/Builds/Android/aab-checksums.txt
+          if-no-files-found: warn
+
+      - name: Build summary
+        if: success()
+        run: |
+          {
+            echo "## ✅ Build successful"
+            echo ""
+            echo "**Version:** ${{ steps.version.outputs.VERSION_NAME }} (code: ${{ steps.version.outputs.VERSION_CODE }})"
+            echo ""
+            echo '```'
+            cat Game/Builds/Android/aab-checksums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/upload.keystore"
+
+  deploy:
+    name: Deploy to Play Console (internal)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download signed AAB
+        uses: actions/download-artifact@v8
+        with:
+          name: kingdomwatch-${{ needs.build.outputs.version_name }}-${{ needs.build.outputs.version_code }}
+          path: artifacts/aab
+
+      - name: Locate AAB
+        id: artifacts
+        run: |
+          AAB_FILE=$(find artifacts/aab -name "*.aab" -type f | head -1)
+          if [ -z "$AAB_FILE" ]; then
+            echo "::error::No AAB found in downloaded artifacts"
+            exit 1
+          fi
+          echo "AAB_FILE=$AAB_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release notes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          VERSION_NAME: ${{ needs.build.outputs.version_name }}
+        run: |
+          mkdir -p distribution/whatsnew
+          if [[ "$EVENT_NAME" == "release" && -n "$RELEASE_BODY" ]]; then
+            printf '%s\n' "$RELEASE_BODY" > distribution/whatsnew/whatsnew-en-US
+          else
+            echo "Version $VERSION_NAME" > distribution/whatsnew/whatsnew-en-US
+          fi
+          # Play limits release notes to 500 characters (code points, not bytes).
+          python3 - <<'PY'
+          path = 'distribution/whatsnew/whatsnew-en-US'
+          text = open(path, encoding='utf-8').read()
+          if len(text) > 500:
+              open(path, 'w', encoding='utf-8').write(text[:497] + '...')
+              print('::warning::Release notes truncated to 500 characters')
+          PY
+
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb # v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY }}
+          packageName: com.RainbowSprinkles.KingdomWatch
+          releaseFiles: ${{ steps.artifacts.outputs.AAB_FILE }}
+          track: internal
+          status: completed
+          releaseName: ${{ needs.build.outputs.version_name }} (${{ needs.build.outputs.version_code }})
+          whatsNewDirectory: distribution/whatsnew
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          echo "## ${{ job.status == 'success' && '✅ Deployed to Play Console' || '❌ Play Console deploy failed' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** ${{ needs.build.outputs.version_name }} (code: ${{ needs.build.outputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Track:** internal" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ job.status }}" != "success" ]]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Common causes: service account missing Play Console permissions; the first release must be uploaded by hand; version code already used; an open draft edit in Play Console." >> "$GITHUB_STEP_SUMMARY"
+          fi

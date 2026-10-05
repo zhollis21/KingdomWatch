@@ -17,6 +17,7 @@ That sentence is the whole design. Everything else is in service of it.
 | What's done, what's next, what's blocked? | [The roadmap](https://zhollis21.github.io/KingdomWatch/) · [what to pick up now](https://zhollis21.github.io/KingdomWatch/#next.md) — generated from GitHub issues, never hand-edited |
 | How do we work in this repo? | [AGENTS.md](AGENTS.md) — conventions, the issue → `/kickoff` → PR loop, what the tests enforce |
 | How do I run Core in Unity? | [docs/unity.md](docs/unity.md) |
+| How do I release to Google Play? | [docs/release.md](docs/release.md) |
 | The backlog | [Issues](https://github.com/zhollis21/KingdomWatch/issues) · [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) M0–M9 |
 
 ## Build

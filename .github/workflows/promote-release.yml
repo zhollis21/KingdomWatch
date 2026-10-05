@@ -1,0 +1,160 @@
+# Promotes an existing release between Google Play Console tracks
+# Trigger: Manual workflow dispatch only
+# Supports: internal -> alpha -> beta -> production
+name: Promote Play Console Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_track:
+        description: "Source track (where the release currently is)"
+        required: true
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+      to_track:
+        description: "Destination track (where to promote the release)"
+        required: true
+        type: choice
+        options:
+          - alpha
+          - beta
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Promotion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Track Order
+        run: |
+          declare -A TRACK_ORDER=(["internal"]=0 ["alpha"]=1 ["beta"]=2 ["production"]=3)
+          FROM="${{ inputs.from_track }}"
+          TO="${{ inputs.to_track }}"
+
+          FROM_ORDER=${TRACK_ORDER[$FROM]}
+          TO_ORDER=${TRACK_ORDER[$TO]}
+
+          if [ "$FROM_ORDER" -ge "$TO_ORDER" ]; then
+            echo "::error::Cannot promote from '$FROM' to '$TO'. Destination must be a higher track."
+            exit 1
+          fi
+
+          echo "::notice::Promoting from $FROM to $TO"
+
+  promote:
+    name: Promote to ${{ inputs.to_track }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Install Google APIs Client
+        run: npm install googleapis
+
+      - name: Promote Release Between Tracks
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_CLOUD_SERVICE_ACCOUNT_KEY }}
+          PACKAGE_NAME: com.RainbowSprinkles.KingdomWatch
+          FROM_TRACK: ${{ inputs.from_track }}
+          TO_TRACK: ${{ inputs.to_track }}
+        run: |
+          node << 'SCRIPT'
+          const { google } = require('googleapis');
+
+          async function promote() {
+            const serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_JSON);
+            const auth = new google.auth.GoogleAuth({
+              credentials: serviceAccount,
+              scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+            });
+
+            const play = google.androidpublisher({ version: 'v3', auth });
+            const packageName = process.env.PACKAGE_NAME;
+            const fromTrack = process.env.FROM_TRACK;
+            const toTrack = process.env.TO_TRACK;
+
+            // Create an edit
+            const { data: edit } = await play.edits.insert({ packageName });
+            const editId = edit.id;
+            console.log(`Created edit: ${editId}`);
+
+            // Get the current release from the source track
+            const { data: sourceTrack } = await play.edits.tracks.get({
+              packageName,
+              editId,
+              track: fromTrack,
+            });
+
+            const releases = sourceTrack.releases;
+            if (!releases || releases.length === 0) {
+              throw new Error(`No releases found on '${fromTrack}' track`);
+            }
+
+            // Use the most recent release
+            const release = releases[0];
+            console.log(`Found release: ${release.name || 'unnamed'} (status: ${release.status})`);
+            console.log(`Version codes: ${release.versionCodes?.join(', ')}`);
+
+            // Set the release on the destination track
+            await play.edits.tracks.update({
+              packageName,
+              editId,
+              track: toTrack,
+              requestBody: {
+                track: toTrack,
+                releases: [{
+                  status: 'completed',
+                  versionCodes: release.versionCodes,
+                  releaseNotes: release.releaseNotes,
+                  name: release.name,
+                }],
+              },
+            });
+
+            console.log(`Promoted to '${toTrack}' track`);
+
+            // Commit the edit
+            await play.edits.commit({ packageName, editId });
+            console.log('Edit committed successfully');
+          }
+
+          promote().catch(err => {
+            console.error('Promotion failed:', err.message);
+            process.exit(1);
+          });
+          SCRIPT
+
+      - name: Generate Promotion Summary
+        if: success()
+        run: |
+          echo "## ✅ Release Promoted" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**From:** ${{ inputs.from_track }}" >> $GITHUB_STEP_SUMMARY
+          echo "**To:** ${{ inputs.to_track }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ inputs.to_track }}" == "production" ]]; then
+            echo "**Rollout:** 100%" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Generate Failure Summary
+        if: failure()
+        run: |
+          echo "## ❌ Promotion Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**From:** ${{ inputs.from_track }}" >> $GITHUB_STEP_SUMMARY
+          echo "**To:** ${{ inputs.to_track }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Common Issues" >> $GITHUB_STEP_SUMMARY
+          echo "- No release found on the source track" >> $GITHUB_STEP_SUMMARY
+          echo "- Service account lacks promotion permissions" >> $GITHUB_STEP_SUMMARY
+          echo "- Open draft edit in Play Console causing conflict" >> $GITHUB_STEP_SUMMARY

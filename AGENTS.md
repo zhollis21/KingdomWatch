@@ -37,6 +37,8 @@ The SDK is pinned in `global.json`. Shared compiler settings live in the root `D
 
 Unity consumes Core as a managed plug-in: every build of Core copies `KingdomWatch.Core.dll` into `Game/Assets/KingdomWatch.Core/` (git-ignored, #72), so build before opening the Unity project. Never compile Core's source inside Unity; that would be a second compilation of the assembly the determinism strategy needs to be one. See `docs/unity.md`.
 
+Releases to Google Play are built and uploaded by `.github/workflows/android-release.yml` and promoted by `promote-release.yml`; the build itself is `Game/Assets/Editor/ReleaseBuild.cs`, which states its own release settings rather than reading the (development) Android build profile. Setup, secrets and the first-release steps are in `docs/release.md`. Never commit a keystore.
+
 The game's art is licensed but not redistributable, so it lives in a private submodule at `Game/Assets/Art` (#121). Never copy anything from it into this repository, which is public: not the images, not a crop of them, and not an exported screenshot committed as a fixture. The game runs without the submodule, drawing plain markers.
 
 Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
