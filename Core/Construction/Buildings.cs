@@ -233,8 +233,19 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public bool IsReserved(WorldPosition at) => IsReserved(_grid.IndexOf(at));
 
-        /// <summary><see cref="IsReserved(WorldPosition)"/>, by cell index.</summary>
-        public bool IsReserved(int cell) => _onCell.TryGetValue(cell, out var building) && !building.Cleared;
+        /// <summary>
+        /// <see cref="IsReserved(WorldPosition)"/>, by cell index. Throws for
+        /// an index off the grid, as the position form does.
+        /// </summary>
+        public bool IsReserved(int cell)
+        {
+            if (cell < 0 || cell >= _grid.CellCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cell), cell, "Not a cell of the grid.");
+            }
+
+            return _onCell.TryGetValue(cell, out var building) && !building.Cleared;
+        }
 
         /// <summary>The house a household lives in, or null.</summary>
         public Building? HomeOf(EntityId household) =>
@@ -271,11 +282,17 @@ namespace KingdomWatch.Core.Construction
         /// </remarks>
         public bool CanSettle(WorldPosition at, EntityId mapHolder, int living)
         {
+            // Inputs first, in every season: checked after the season, they
+            // were refused in early spring and silently accepted the rest of
+            // the year.
+            var need = YearlyNeed(living);
+            _grid.IndexOf(at);
+            _knownMaps.For(mapHolder);
             var now = _clock.Now;
 
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
-                && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= YearlyNeed(living) * SettleNumerator
+                && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
                 && TryPlace(BuildingKind.Barn, at, at, mapHolder, out _);
         }
 
@@ -320,7 +337,8 @@ namespace KingdomWatch.Core.Construction
         /// to households without one, and when <paramref name="idle"/> says
         /// there were hands to spare, the next building is approved if the
         /// other four conditions hold. Bands are not settlements and build
-        /// nothing.
+        /// nothing. Refuses counts that cannot be: a negative one, or more
+        /// hands idle than people alive (the #148 review).
         /// </summary>
         public void AtDawn(ICommunity settlement, int idle, int living)
         {
@@ -332,6 +350,16 @@ namespace KingdomWatch.Core.Construction
             if (settlement.Id.Kind != EntityKind.Settlement)
             {
                 throw new ArgumentException(settlement.Id + " is not a settlement; only settlements build.", nameof(settlement));
+            }
+
+            if (living < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(living), living, "Nobody is fewer than nobody.");
+            }
+
+            if (idle < 0 || idle > living)
+            {
+                throw new ArgumentOutOfRangeException(nameof(idle), idle, "Between none and the " + living + " alive.");
             }
 
             AssignHomes(settlement);

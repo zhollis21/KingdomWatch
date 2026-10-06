@@ -279,7 +279,9 @@ namespace KingdomWatch.Core.Needs
         /// of it (<see cref="PrimitiveTier.MealsPerGrain"/>, #100).
         /// </summary>
         public static long MealsInStore(ResourceLedger stores) =>
-            stores.Available(ResourceKind.Food) + ((long)stores.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain);
+            stores is null
+                ? throw new ArgumentNullException(nameof(stores))
+                : stores.Available(ResourceKind.Food) + ((long)stores.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain);
 
         /// <summary>
         /// Whole days the holder's available food - Grain counted as the

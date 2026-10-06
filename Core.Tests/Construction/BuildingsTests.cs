@@ -623,6 +623,47 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void Settling_refuses_what_it_cannot_mean_in_any_season()
+        {
+            // Found sweeping for the #148 review's class: the season was
+            // checked first, so outside early spring a bad count, an
+            // off-map position or a map nobody keeps came back as "no".
+            var w = new BuildingsWorld();
+            w.World.Clock.AdvanceTo(new SimulationTime(SimulationTime.DaysPerSeason * SimulationTime.TicksPerDay), w.World.Router);
+            var map = w.Settlement.Id;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.CanSettle(BuildingsWorld.Centre, map, 1), Is.False, "summer");
+                Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, map, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.CanSettle(new WorldPosition(-1, 0), map, 1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, new EntityId(EntityKind.MobileGroup, 999UL), 1), Throws.InvalidOperationException);
+            });
+        }
+
+        [Test]
+        public void A_dawn_refuses_counts_that_cannot_be()
+        {
+            // The #148 review: more hands idle than people alive passed the
+            // spare-hands gate, and a negative count quietly skipped it.
+            var w = new BuildingsWorld();
+            w.Wood(100);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Buildings.AtDawn(w.Settlement, -1, w.Living), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.AtDawn(w.Settlement, 0, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.AtDawn(w.Settlement, 2, 1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(w.Buildings.All, Is.Empty, "a refused dawn approved nothing");
+                Assert.That(() => w.Buildings.AtDawn(w.Settlement, 0, 0), Throws.Nothing, "nobody idle among nobody");
+                Assert.That(() => w.Buildings.IsReserved(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.IsReserved(w.World.Grid.CellCount), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(w.Buildings.IsReserved(0), Is.False);
+                Assert.That(() => KingdomWatch.Core.Needs.Hunger.MealsInStore(null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void No_demand_no_building()
         {
             // Everyone housed and a year in store: nothing is wanted.
