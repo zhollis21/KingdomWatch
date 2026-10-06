@@ -600,8 +600,6 @@ namespace KingdomWatch.Core.Construction
 
         private void ClearGround(Building building, ResourceLedger stores)
         {
-            var cuts = 0;
-
             for (var dy = 0; dy < building.Height; dy++)
             {
                 for (var dx = 0; dx < building.Width; dx++)
@@ -611,16 +609,19 @@ namespace KingdomWatch.Core.Construction
 
                     if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest)
                     {
-                        cuts += _land.Clear(at);
+                        _land.Clear(at);
                     }
                 }
             }
 
             building.Cleared = true;
 
-            if (cuts > 0)
+            // The Wood of the cuts the clearing was priced at: a claim out at
+            // approval and given back since leaves a tree with a cut more than
+            // anyone was charged for, and that cut is not paid.
+            if (building.ClearCuts > 0)
             {
-                stores.Gather(ResourceKind.Wood, cuts * WoodPerCut);
+                stores.Gather(ResourceKind.Wood, building.ClearCuts * WoodPerCut);
             }
         }
 
@@ -720,10 +721,10 @@ namespace KingdomWatch.Core.Construction
             }
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
-            var clearTicks = ClearTicksOf(kind, anchor);
+            var clearTicks = ClearTicksOf(kind, anchor, out var clearCuts);
             var building = new Building(
                 _clock.Ids.Next(EntityKind.Building), kind, settlement.Id, barn?.Id ?? EntityId.None,
-                anchor, clearTicks, clearTicks + spec.BuildTicks);
+                anchor, clearTicks, clearCuts, clearTicks + spec.BuildTicks);
 
             _all.Add(building);
 
@@ -754,11 +755,13 @@ namespace KingdomWatch.Core.Construction
         // The clearing a footprint needs, priced as it stands when approved:
         // a standing tree as long as woodcutting takes for the cuts it has
         // left, a bush or a stump an hour. Nobody gathers on approved ground
-        // (IsReserved), so it stands the same when the Builders clear it.
-        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor)
+        // (IsReserved), and a claim already out that comes back changes
+        // nothing: clearing pays the timber priced here (ClearCuts).
+        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, out int timber)
         {
             var spec = BuildingTable.Of(kind);
             var ticks = 0L;
+            timber = 0;
 
             for (var dy = 0; dy < spec.Height; dy++)
             {
@@ -771,6 +774,7 @@ namespace KingdomWatch.Core.Construction
                     if (cuts > 0)
                     {
                         ticks += cuts * TicksPerCut;
+                        timber += cuts;
                     }
                     else if (terrain == TerrainKind.Scrub || terrain == TerrainKind.Forest)
                     {

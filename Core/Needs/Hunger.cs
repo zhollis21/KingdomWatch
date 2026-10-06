@@ -312,8 +312,10 @@ namespace KingdomWatch.Core.Needs
             }
 
             var dailyDraw = (long)DailyRation * living;
+            // Saturated: Grain counts as five meals, so a full store of it is
+            // more days than an int holds (the #148 review).
             var stores = tracked.Group.SharedSupplies;
-            return (int)(MealsInStore(stores) / dailyDraw);
+            return (int)Math.Min(int.MaxValue, MealsInStore(stores) / dailyDraw);
         }
 
         public void Handle(ScheduledEvent scheduled, SimulationClock clock)

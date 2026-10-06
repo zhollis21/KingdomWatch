@@ -708,9 +708,12 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.BuildingReference, now, building.Id, "is lived in by " + building.Occupant + ".");
                 }
 
-                if (building.Claimed < 0L || building.Worked < 0L || building.Claimed + building.Worked > building.LabourTicks
-                    || building.ClaimedToday < 0L || building.WorkedToday < 0L
-                    || building.ClaimedToday + building.WorkedToday > Buildings.FieldDayTicks)
+                // Each count bounded on its own before the two are compared
+                // with what is left, so corrupted counters near long.MaxValue
+                // cannot wrap a sum past the check (the #148 review).
+                if (!WithinLimit(building.Worked, building.Claimed, building.LabourTicks)
+                    || !WithinLimit(building.WorkedToday, building.ClaimedToday, Buildings.FieldDayTicks)
+                    || building.ClearCuts < 0)
                 {
                     Add(ValidationRule.BuildingLabour, now, building.Id,
                         "has " + building.Claimed + " claimed and " + building.Worked + " worked of " + building.LabourTicks
@@ -744,6 +747,11 @@ namespace KingdomWatch.Harness
 
             return this;
         }
+
+        // Whether work done and work claimed both fit inside a limit together,
+        // without adding them.
+        private static bool WithinLimit(long worked, long claimed, long limit) =>
+            worked >= 0L && claimed >= 0L && worked <= limit && claimed <= limit - worked;
 
         // Whether any of a household's members stands in this settlement.
         private static bool LivesIn(Household household, EntityId settlement, Founding settlements)

@@ -432,6 +432,7 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.Barn);
                 Mix(building.Anchor);
                 Mix(building.ClearTicks);
+                Mix(building.ClearCuts);
                 Mix(building.LabourTicks);
                 Mix(building.Claimed);
                 Mix(building.Worked);

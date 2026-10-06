@@ -362,6 +362,62 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void Clearing_pays_the_cuts_it_was_priced_at_even_when_a_claim_comes_back()
+        {
+            // The #148 review: a woodcutter out at approval holds a cut that
+            // is priced as done; dying on the way gives it back, and the tree
+            // then had a cut more than clearing charged for.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                    }
+                }
+
+                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+            });
+            var land = w.World.Land;
+            var claimed = new System.Collections.Generic.List<WorldPosition>();
+
+            for (var y = 17; y <= 23; y++)
+            {
+                for (var x = 17; x <= 23; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (w.World.Grid[at] == TerrainKind.Forest)
+                    {
+                        land.Take(at);
+                        claimed.Add(at);
+                    }
+                }
+            }
+
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var cells = house.Width * house.Height;
+            Assert.That(house.ClearTicks, Is.EqualTo(cells * (LandCover.DefaultTreeCuts - 1) * Buildings.TicksPerCut), "priced with the claimed cut done");
+
+            // Every trip out comes back empty-handed: the claims go back.
+            foreach (var at in claimed)
+            {
+                land.Return(at);
+            }
+
+            var wood = w.Stores.Available(ResourceKind.Wood);
+            w.Finish(house);
+
+            Assert.That(
+                w.Stores.Available(ResourceKind.Wood) - wood,
+                Is.EqualTo(cells * (LandCover.DefaultTreeCuts - 1) * Buildings.WoodPerCut),
+                "the Wood of the cuts it charged for, not the cut given back");
+        }
+
+        [Test]
         public void Open_plains_are_preferred_to_clearing()
         {
             // Scrub right up to the camp, plains a little further out.
@@ -728,6 +784,17 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Stores.Gather(ResourceKind.Grain, w.Living);
 
             Assert.That(w.World.Hunger.DaysOfFood(w.Settlement), Is.EqualTo(before + PrimitiveTier.MealsPerGrain));
+        }
+
+        [Test]
+        public void Days_of_food_saturate_rather_than_wrap()
+        {
+            // The #148 review: Grain counts five meals, so a full ledger of it
+            // is more days than an int holds, and the cast wrapped negative.
+            var w = new BuildingsWorld(people: 3);
+            w.Stores.Gather(ResourceKind.Grain, int.MaxValue - w.Stores.Available(ResourceKind.Grain));
+
+            Assert.That(w.World.Hunger.DaysOfFood(w.Settlement), Is.EqualTo(int.MaxValue));
         }
 
         // Nobody has any skill at all.

@@ -46,6 +46,7 @@ namespace KingdomWatch.Core.Construction
             EntityId barn,
             WorldPosition anchor,
             long clearTicks,
+            int clearCuts,
             long labourTicks)
         {
             Id = id;
@@ -55,6 +56,7 @@ namespace KingdomWatch.Core.Construction
             Barn = barn;
             Anchor = anchor;
             ClearTicks = clearTicks;
+            ClearCuts = clearCuts;
             LabourTicks = labourTicks;
             Cleared = clearTicks == 0L;
             Stage = kind == BuildingKind.Field ? FieldStage.Tending : FieldStage.None;
@@ -88,6 +90,14 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Worker-ticks of clearing scrub and forest off the footprint before building starts.</summary>
         public long ClearTicks { get; }
+
+        /// <summary>
+        /// The cuts of standing timber <see cref="ClearTicks"/> was priced at,
+        /// whose Wood clearing pays - the quote, not whatever stands when the
+        /// ground is cleared, so a claim given back since cannot pay a cut
+        /// nobody was charged for (the #148 review).
+        /// </summary>
+        public int ClearCuts { get; }
 
         /// <summary>Worker-ticks in all, clearing included.</summary>
         public long LabourTicks { get; }
