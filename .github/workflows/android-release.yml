@@ -130,13 +130,16 @@ jobs:
       # and bundle settings below. It decodes the keystore into Game/upload.keystore.
       - name: Build with Unity
         # Pinned to a commit: this step is handed the Unity login and the signing key,
-        # and a tag can be moved to other code.
-        uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
+        # and a tag can be moved to other code. From v6 the action downloads the
+        # game-ci CLI that does the build, so cliVersion is pinned too (its default
+        # is the newest release).
+        uses: game-ci/unity-builder@eb1b9fba120c6e62c9fb7a7a81d6c107ce004c45 # v6.0.0
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ vars.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
+          cliVersion: v0.1.72
           projectPath: Game
           targetPlatform: Android
           buildName: KingdomWatch
