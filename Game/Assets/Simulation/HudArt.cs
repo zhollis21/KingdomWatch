@@ -36,6 +36,7 @@ namespace KingdomWatch.Game
         public Sprite Wood { get; private set; }
         public Sprite Stone { get; private set; }
         public Sprite Berries { get; private set; }
+        public Sprite Grain { get; private set; }
 
         // The point under a name plate: a pixel triangle in the plate's colours.
         public Sprite Tail { get; private set; }
@@ -105,7 +106,8 @@ namespace KingdomWatch.Game
             var buttonIcons = Resources.Load<Texture2D>(Ui + "UI_Button_Icons");
             var resources = Resources.Load<Texture2D>(Icons + "Resources_Icons_Outline");
             var food = Resources.Load<Texture2D>(Icons + "Food_Icons_Outline");
-            if (frames == null || font == null || buttonIcons == null || resources == null || food == null) return null;
+            var crops = Resources.Load<Texture2D>("Cute_Fantasy/Crops/Crops");
+            if (frames == null || font == null || buttonIcons == null || resources == null || food == null || crops == null) return null;
 
             var art = new HudArt { FontTexture = font };
             art.White = White1(owned);
@@ -119,6 +121,8 @@ namespace KingdomWatch.Game
             art.Stone = Cell(resources, 0, 80, owned);
             // The cherries stand in for berries.
             art.Berries = Cell(food, 96, 96, owned);
+            // The sheaf at the end of the crop sheet's wheat row.
+            art.Grain = Cell(crops, 96, 16, owned);
             var skin = Resources.Load<Texture2D>("Cute_Fantasy/Player/Player_Base/Player_Base_animations");
             var hair = Resources.Load<Texture2D>("Cute_Fantasy/Player/Head/Hair_1/Hair_1_Brown");
             if (skin != null && hair != null)

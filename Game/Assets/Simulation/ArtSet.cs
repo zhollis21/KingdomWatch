@@ -83,7 +83,7 @@ namespace KingdomWatch.Game
 
         // Sheets 0 and 1 are the body and the hands, which everyone shares.
         private int[] shoes, pants, hair;
-        private int[] forager, woodcutter, stoneGatherer, unemployed;
+        private int[] forager, woodcutter, stoneGatherer, farmer, builder, unemployed;
 
         private ArtSet(List<Object> owned) => this.owned = owned;
 
@@ -169,6 +169,19 @@ namespace KingdomWatch.Game
         public Sprite Woodpile { get; private set; }
         public Sprite StonePile { get; private set; }
 
+        // Wall and roof colours of one house design and of the barn, picked
+        // per building from its id (#150).
+        public Sprite[] Houses { get; private set; }
+        public Sprite[] Barns { get; private set; }
+
+        // Tilled soil, the nine pieces of a bordered patch: FarmLand[row * 3 +
+        // column], where row and column are 0 on a field's north or west edge,
+        // 2 on its south or east edge, and 1 inside.
+        public Tile[] FarmLand { get; private set; }
+
+        // Wheat from sown to ripe, a cell each: seed, sprouts, in flower, ripe.
+        public Tile[] Wheat { get; private set; }
+
         public static int ShoreMask(bool topLeft, bool topRight, bool bottomLeft, bool bottomRight) =>
             (topLeft ? 1 : 0) | (topRight ? 2 : 0) | (bottomLeft ? 4 : 0) | (bottomRight ? 8 : 0);
 
@@ -180,7 +193,7 @@ namespace KingdomWatch.Game
         {
             if (Resources.Load<Texture2D>(Player + "Player_Base/Player_Base_animations") == null) return null;
             var art = new ArtSet(owned);
-            return art.LoadTerrain() && art.LoadScenery() && art.PackScenery() && art.LoadVillagers() ? art : null;
+            return art.LoadTerrain() && art.LoadScenery() && art.PackScenery() && art.LoadBuildings() && art.LoadVillagers() ? art : null;
         }
 
         public Ground GroundOf(Season season) => Seasons[(int)season];
@@ -201,6 +214,8 @@ namespace KingdomWatch.Game
             var shirts = job == JobKind.Forager ? forager
                 : job == JobKind.Woodcutter ? woodcutter
                 : job == JobKind.StoneGatherer ? stoneGatherer
+                : job == JobKind.Farmer ? farmer
+                : job == JobKind.Builder ? builder
                 : unemployed;
             return new Look(new[]
             {
@@ -461,6 +476,43 @@ namespace KingdomWatch.Game
             return true;
         }
 
+        private bool LoadBuildings()
+        {
+            // A house's walls meet the ground 16 px above the bottom of its
+            // frame, a barn's 15 px.
+            var houses = new List<Sprite>();
+            var barns = new List<Sprite>();
+            foreach (var walls in new[] { "Base", "Green", "Red" })
+            {
+                foreach (var roof in new[] { "Black", "Blue", "Red" })
+                {
+                    var house = Texture(Pack + "Buildings/Buildings/Houses/Wood/House_1_Wood_" + walls + "_" + roof);
+                    var barn = Texture(Pack + "Buildings/Buildings/Unique_Buildings/Barn/Barn_" + walls + "_" + roof);
+                    if (house == null || barn == null) return false;
+                    houses.Add(Cut(house, 0, 0, house.width, house.height, new Vector2(0.5f, 16f / house.height)));
+                    barns.Add(Cut(barn, 0, 0, barn.width, barn.height, new Vector2(0.5f, 15f / barn.height)));
+                }
+            }
+            Houses = houses.ToArray();
+            Barns = barns.ToArray();
+
+            // FarmLand_Tile.png in 16 px tiles from the top left: the bordered
+            // patch is columns 1-3, rows 0-2. Crops.png has a crop to every
+            // two rows, wheat first: its seed, sprouts, flowering and ripe
+            // wheat are columns 2-5 of row 1.
+            var soil = Texture(Pack + "Tiles/FarmLand/FarmLand_Tile");
+            var crops = Texture(Pack + "Crops/Crops");
+            if (soil == null || crops == null) return false;
+            FarmLand = new Tile[9];
+            for (var row = 0; row < 3; row++)
+                for (var column = 0; column < 3; column++)
+                    FarmLand[row * 3 + column] = NewTile(Cut(soil, (column + 1) * PixelsPerCell, row * PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
+            Wheat = new Tile[4];
+            for (var stage = 0; stage < Wheat.Length; stage++)
+                Wheat[stage] = NewTile(Cut(crops, (stage + 2) * PixelsPerCell, PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
+            return true;
+        }
+
         private bool LoadVillagers()
         {
             var paths = new List<string> { Player + "Player_Base/Player_Base_animations", Player + "Hands/Hands_1_Bare" };
@@ -479,6 +531,11 @@ namespace KingdomWatch.Game
             pants = Add(Each(PantsColours, c => Player + "Legs/OG_Pants/Pants_1_" + c));
             forager = Add(Each(new[] { "Blue", "Green", "Orange", "White_and_Brown" }, c => Player + "Chest/Farmer_Shirt/Farmer_Shirt_1_" + c));
             woodcutter = Add(Each(new[] { "Red", "Green", "Blue", "Brown" }, c => Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_" + c));
+            // Farmers and builders wear the shirts of the trades nearest theirs,
+            // in the colours foragers and woodcutters do not, as stone gatherers
+            // and the jobless share the plain shirt (#150).
+            farmer = Add(Each(new[] { "Black", "Pink", "Purple", "Red" }, c => Player + "Chest/Farmer_Shirt/Farmer_Shirt_1_" + c));
+            builder = Add(Each(new[] { "Black", "Orange", "Pink", "Purple", "White" }, c => Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_" + c));
             stoneGatherer = Add(Each(new[] { "Black", "Brown", "Purple", "Blue" }, c => Player + "Chest/OG_Shirt/Shirt_1_" + c));
             unemployed = Add(Each(new[] { "Green", "Red", "Orange", "Pink" }, c => Player + "Chest/OG_Shirt/Shirt_1_" + c));
             var hairs = new List<string>();

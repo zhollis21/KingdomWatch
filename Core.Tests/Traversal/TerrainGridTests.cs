@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Traversal;
 using NUnit.Framework;
@@ -36,6 +37,121 @@ namespace KingdomWatch.Core.Tests.Traversal
                 Assert.That(grid[new WorldPosition(2, 1)], Is.EqualTo(TerrainKind.Plains));
                 Assert.That(grid[new WorldPosition(1, 1)], Is.EqualTo(TerrainKind.Plains));
             });
+        }
+
+        [Test]
+        public void Changes_since_a_count_are_the_cells_rewritten_after_it_in_order()
+        {
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+            grid.Set(new WorldPosition(0, 0), TerrainKind.Plains);
+            var seen = grid.Rewrites;
+            grid.Set(new WorldPosition(3, 2), TerrainKind.Plains);
+            grid.Set(new WorldPosition(1, 1), TerrainKind.Plains);
+            var changed = new List<int>();
+
+            var kept = grid.TryChangesSince(seen, changed);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(kept, Is.True);
+                Assert.That(changed, Is.EqualTo(new[] { 11, 5 }));
+            });
+        }
+
+        [Test]
+        public void A_reader_that_is_up_to_date_is_given_nothing()
+        {
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+            var changed = new List<int>();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(grid.TryChangesSince(0L, changed), Is.True);
+                Assert.That(changed, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void A_reader_further_behind_than_the_log_keeps_is_told_to_reread_the_map()
+        {
+            // One change more than the log holds: the oldest is gone, so a
+            // list would be missing a cell and the reader must start over.
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+            for (var i = 0; i <= TerrainGrid.ChangeLogCapacity; i++)
+            {
+                grid.Set(new WorldPosition(i % 4, 0), TerrainKind.Plains);
+            }
+
+            var behind = new List<int> { 99 };
+            var caughtUp = new List<int>();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(grid.TryChangesSince(0L, behind), Is.False);
+                Assert.That(behind, Is.Empty, "a refusal must not leave the previous answer in a reused list");
+                Assert.That(grid.TryChangesSince(1L, caughtUp), Is.True);
+                Assert.That(caughtUp, Has.Count.EqualTo(TerrainGrid.ChangeLogCapacity));
+            });
+        }
+
+        [Test]
+        public void Changes_come_back_in_order_after_the_log_has_wrapped()
+        {
+            // Rewrite i lands at slot i modulo the capacity, so a full log
+            // read after more than its capacity starts mid-array.
+            var grid = new TerrainGrid(5, 1, TerrainKind.Forest);
+            var total = TerrainGrid.ChangeLogCapacity + 3;
+            for (var i = 0; i < total; i++)
+            {
+                grid.Set(new WorldPosition(i % 5, 0), TerrainKind.Plains);
+            }
+
+            var changed = new List<int>();
+            grid.TryChangesSince(total - TerrainGrid.ChangeLogCapacity, changed);
+
+            var expected = new List<int>();
+            for (var i = 3; i < total; i++)
+            {
+                expected.Add(i % 5);
+            }
+
+            Assert.That(changed, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void A_reused_list_holds_only_the_latest_answer()
+        {
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+            grid.Set(new WorldPosition(1, 0), TerrainKind.Plains);
+            var changed = new List<int> { 7, 8 };
+
+            grid.TryChangesSince(0L, changed);
+
+            Assert.That(changed, Is.EqualTo(new[] { 1 }));
+        }
+
+        [Test]
+        public void A_count_the_grid_has_not_reached_is_refused()
+        {
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+            var changed = new List<int> { 5 };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => grid.TryChangesSince(1L, changed), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(changed, Is.Empty, "a refusal must not leave the previous answer in a reused list");
+                Assert.That(() => grid.TryChangesSince(-1L, new List<int>()), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => grid.TryChangesSince(long.MinValue, new List<int>()), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => grid.TryChangesSince(long.MaxValue, new List<int>()), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void Reading_changes_into_a_null_list_is_refused()
+        {
+            var grid = new TerrainGrid(4, 3, TerrainKind.Forest);
+
+            Assert.That(() => grid.TryChangesSince(0L, null!), Throws.ArgumentNullException);
         }
 
         [Test]
