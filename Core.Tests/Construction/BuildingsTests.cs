@@ -222,6 +222,28 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_field_still_being_sown_feeds_nobody_yet()
+        {
+            // All plains, so nothing in reach but the field; and nothing in
+            // store. One person, whom one standing field feeds.
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            w.Dawn();
+            var field = w.Latest;
+            Assume.That(field?.Kind, Is.EqualTo(BuildingKind.Field));
+            w.Stores.Consume(ResourceKind.Food, w.Stores.Available(ResourceKind.Food));
+            Assume.That(w.Stores.Available(ResourceKind.Grain), Is.Zero, "no harvest yet");
+
+            Assert.That(w.Buildings.IsFoodShort(w.Settlement, 1), Is.True, "a field going up grows nothing");
+
+            w.Finish(w.Buildings.All[w.Buildings.All.Count - 1]);
+
+            Assert.That(w.Buildings.IsFoodShort(w.Settlement, 1), Is.False, "a field standing feeds one");
+        }
+
+        [Test]
         public void A_village_with_a_year_in_store_is_not_short_of_food()
         {
             var w = new BuildingsWorld();
@@ -600,6 +622,77 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(w.Heard.Count(e => e.Kind == DomainEventKind.FieldHarvested && e.PrimaryEntity == field.Id), Is.EqualTo(1));
             });
         }
+
+        [Test]
+        public void Winter_kills_a_growing_crop_and_the_field_is_sown_fresh()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            WorkFieldDays(w, field, 4);
+
+            // The last dawn of autumn: the crop is still growing.
+            AdvanceToDay(w, (3L * SimulationTime.DaysPerSeason) - 1L);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            Assert.That(field.DaysDone, Is.EqualTo(4), "autumn takes nothing");
+
+            // Winter, and first another settlement's dawn: its frost is its own.
+            AdvanceToDay(w, 3L * SimulationTime.DaysPerSeason);
+            var other = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(3, 3)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Buildings.AtDawn(other, 0, other.Members.Count);
+            Assert.That(field.DaysDone, Is.EqualTo(4), "another village's winter");
+
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Stage, Is.EqualTo(FieldStage.Tending));
+                Assert.That(field.DaysDone, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void Winter_takes_the_unharvested_rest_but_not_the_grain_already_in()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            WorkFieldDays(w, field, Buildings.TendingDays + 2);
+            Assume.That(field.Stage, Is.EqualTo(FieldStage.Harvesting));
+            var grain = w.Stores.Flows(ResourceKind.Grain).Gathered;
+            Assume.That(grain, Is.EqualTo(2 * Buildings.GrainPerHarvestDay));
+
+            AdvanceToDay(w, 3L * SimulationTime.DaysPerSeason);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Stage, Is.EqualTo(FieldStage.Tending));
+                Assert.That(field.DaysDone, Is.Zero);
+                Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.EqualTo(grain));
+                Assert.That(w.Heard.Any(e => e.Kind == DomainEventKind.FieldHarvested), Is.False, "a harvest cut short is not a harvest");
+            });
+        }
+
+        // Whole days of field work, one a day from now.
+        private static void WorkFieldDays(BuildingsWorld w, Building field, int days)
+        {
+            for (var i = 0; i < days; i++)
+            {
+                w.Buildings.Claim(field, JobKind.Farmer, Buildings.FieldDayTicks);
+                w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.FieldDayTicks, w.Stores);
+                w.World.Clock.AdvanceTo(w.World.Now.Plus(SimulationTime.TicksPerDay), w.World.Router);
+            }
+        }
+
+        private static void AdvanceToDay(BuildingsWorld w, long day) =>
+            w.World.Clock.AdvanceTo(new SimulationTime(day * SimulationTime.TicksPerDay), w.World.Router);
 
         [Test]
         public void A_harvest_day_left_unfinished_brings_in_nothing()

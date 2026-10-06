@@ -373,6 +373,11 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentOutOfRangeException(nameof(idle), idle, "Between none and the " + living + " alive.");
             }
 
+            if (_clock.Now.Season == Season.Winter)
+            {
+                Frost(settlement);
+            }
+
             AssignHomes(settlement);
 
             if (idle > 0)
@@ -661,6 +666,25 @@ namespace KingdomWatch.Core.Construction
             if (building.ClearCuts > 0)
             {
                 stores.Gather(ResourceKind.Wood, building.ClearCuts * WoodPerCut);
+            }
+        }
+
+        // Winter kills what stands in the settlement's fields: a growing crop,
+        // or the part of a harvest not yet brought in - its finished days'
+        // Grain is already in store. Each field is sown afresh, to be tended
+        // from the spring (#150). Every winter dawn, which finds the fields
+        // already sown from the first.
+        private void Frost(ICommunity settlement)
+        {
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var field = _all[i];
+
+                if (field.Settlement == settlement.Id && field.Kind == BuildingKind.Field)
+                {
+                    field.Stage = FieldStage.Tending;
+                    field.DaysDone = 0;
+                }
             }
         }
 
