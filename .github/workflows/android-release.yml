@@ -124,19 +124,32 @@ jobs:
       - name: Verify Core reached Unity
         run: test -f Game/Assets/KingdomWatch.Core/KingdomWatch.Core.dll
 
+      # The editor image is pinned by digest below, so GameCI no longer picks it
+      # from the project's Unity version. Fail here if the two drift apart.
+      - name: Check the pinned editor matches the project
+        run: |
+          PROJECT=$(sed -n 's/^m_EditorVersion: //p' Game/ProjectSettings/ProjectVersion.txt | tr -d '\r')
+          [ "$PROJECT" == "6000.6.0f1" ] || { echo "::error::The project is on Unity $PROJECT but the release build's editor image is pinned to 6000.6.0f1. Update customImage in android-release.yml (docs/release.md)."; exit 1; }
+
       # GameCI's own build script, not one of ours: it builds without Development
       # Build or the profiler (the committed Android build profile has both on, but
       # it is not active on a fresh checkout), and it applies the version, signing
       # and bundle settings below. It decodes the keystore into Game/upload.keystore.
       - name: Build with Unity
         # Pinned to a commit: this step is handed the Unity login and the signing key,
-        # and a tag can be moved to other code.
-        uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
+        # and a tag can be moved to other code. From v6 the action downloads the
+        # game-ci CLI that does the build, so cliVersion is pinned too (its default
+        # is the newest release). The CLI's release assets are not immutable, so its
+        # tag could still be repointed; that is accepted as trusting GameCI, as is
+        # the action itself. The editor image the build runs in is pinned by digest.
+        uses: game-ci/unity-builder@eb1b9fba120c6e62c9fb7a7a81d6c107ce004c45 # v6.0.0
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ vars.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
+          cliVersion: v0.1.72
+          customImage: unityci/editor:ubuntu-6000.6.0f1-android-3@sha256:fef473d4a04f89e5d9d1ae7adcf7efadba2bf48ddd1df0b4abb9c23f0ad131a4
           projectPath: Game
           targetPlatform: Android
           buildName: KingdomWatch
