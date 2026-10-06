@@ -460,6 +460,82 @@ namespace KingdomWatch.Core.Tests.Construction
             }
         }
 
+        [Test]
+        public void Nothing_is_built_in_a_neighbouring_settlements_yard()
+        {
+            // The #153 review: placement kept only the builder's own yard.
+            var w = new BuildingsWorld(people: 40);
+            var neighbour = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(27, 20)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            var radius = Buildings.CampYardRadius;
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var y = building.Anchor.Y - clearance; y < building.Anchor.Y + building.Height; y++)
+                {
+                    for (var x = building.Anchor.X; x < building.Anchor.X + building.Width; x++)
+                    {
+                        var inYard = System.Math.Abs(x - neighbour.Position.X) <= radius && System.Math.Abs(y - neighbour.Position.Y) <= radius;
+                        Assert.That(inYard, Is.False, building + " or its roof takes (" + x + ", " + y + ") in " + neighbour.Id + "'s yard");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void A_band_does_not_settle_where_its_yard_is_built_on()
+        {
+            // The #153 review's sibling: a camp founded beside a standing
+            // house would have its yard built on, or roofed over, from the
+            // start. Bushes in a block north and another south, in reach of
+            // the camps asked about.
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(18 + (i % 10), BuildingsWorld.Size - 4 + (i / 10)), TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(18 + (i % 10), 8 + (i / 10)), TerrainKind.Scrub);
+                }
+            });
+            w.Wood(100);
+            var house = w.BuildNext();
+            var south = house.Anchor.Y + house.Height;
+            var roofTop = house.Anchor.Y - BuildingTable.Of(BuildingKind.House).Clearance;
+            var radius = Buildings.CampYardRadius;
+            var map = w.Settlement.Id;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius - 1), map, 12), Is.False, "the yard's edge reaches the house");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius), map, 12), Is.True, "one row further, clear of it");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius), map, 12), Is.False, "the yard's edge reaches the roof");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius - 1), map, 12), Is.True, "one row further, clear of it");
+            });
+        }
+
+        [Test]
+        public void The_camps_to_keep_clear_refuse_null()
+        {
+            var w = new BuildingsWorld();
+
+            Assert.That(() => w.Buildings.Camps = null!, Throws.ArgumentNullException);
+        }
+
         // Forty people with wood to spare, built up as far as sixteen
         // buildings: houses, barns and fields enough that buildings go up on
         // every side of the camp and both north and south of each other.

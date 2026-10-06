@@ -1036,6 +1036,9 @@ namespace KingdomWatch.Game
                 seasonMaps[season] = first ? colourGround.sprite : Own(Sprite.Create(texture, new Rect(0, 0, width, height), Vector2.zero, 1f));
             }
             if (old == null) return;
+            // The old spring texture is destroyed below; the minimap reads
+            // the map through this field (MakeMinimap).
+            terrainTexture = seasonMaps[0].texture;
             foreach (var sprite in old)
             {
                 Destroy(sprite.texture);
