@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
@@ -72,6 +74,8 @@ namespace KingdomWatch.Harness
         private readonly List<EntityId> _recorded = new List<EntityId>();
         private readonly Dictionary<EntityId, EntityId> _placed = new Dictionary<EntityId, EntityId>();
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
+        private readonly HashSet<int> _footprints = new HashSet<int>();
+        private readonly Dictionary<EntityId, Building> _buildingsById = new Dictionary<EntityId, Building>();
 
         // Wrapped, not handed out raw: a List cast back from IReadOnlyList
         // could have findings removed behind the report (the #103 review).
@@ -640,6 +644,140 @@ namespace KingdomWatch.Harness
             }
 
             return this;
+        }
+
+        /// <summary>
+        /// The building rules (#100): every footprint on the map and over
+        /// nobody else's, cleared ground really cleared, every reference
+        /// resolving, and every count of hours inside the work there is.
+        /// </summary>
+        public WorldValidator CheckBuildings(
+            Buildings buildings, Founding settlements, Households households, TerrainGrid grid, SimulationClock clock)
+        {
+            Require(buildings, nameof(buildings));
+            Require(settlements, nameof(settlements));
+            Require(households, nameof(households));
+            Require(grid, nameof(grid));
+            Require(clock, nameof(clock));
+
+            var now = clock.Now;
+            _known.Clear();
+            _footprints.Clear();
+
+            for (var i = 0; i < settlements.All.Count; i++)
+            {
+                _known.Add(settlements.All[i].Id);
+            }
+
+            var all = buildings.All;
+
+            _buildingsById.Clear();
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                _buildingsById[all[i].Id] = all[i];
+            }
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                var building = all[i];
+
+                if (!_known.Contains(building.Settlement))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "belongs to " + building.Settlement + ", which is no settlement.");
+                }
+
+                // A field's barn is a finished barn of the same settlement,
+                // not merely some building that exists (the #148 review).
+                if ((building.Kind == BuildingKind.Field) != !building.Barn.IsNone
+                    || (!building.Barn.IsNone
+                        && (!_buildingsById.TryGetValue(building.Barn, out var barn)
+                            || barn.Kind != BuildingKind.Barn || barn.Settlement != building.Settlement || !barn.IsComplete)))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "names barn " + building.Barn + ".");
+                }
+
+                // An occupant is a household of this settlement whose home,
+                // as Buildings keeps it the other way round, is this house.
+                if (!building.Occupant.IsNone
+                    && (building.Kind != BuildingKind.House || !building.IsComplete
+                        || !households.TryGet(building.Occupant, out var household)
+                        || !LivesIn(household, building.Settlement, settlements)
+                        || !ReferenceEquals(buildings.HomeOf(building.Occupant), building)))
+                {
+                    Add(ValidationRule.BuildingReference, now, building.Id, "is lived in by " + building.Occupant + ".");
+                }
+
+                // Each count bounded on its own before the two are compared
+                // with what is left, so corrupted counters near long.MaxValue
+                // cannot wrap a sum past the check (the #148 review).
+                if (!WithinLimit(building.Worked, building.Claimed, building.LabourTicks)
+                    || !WithinLimit(building.WorkedToday, building.ClaimedToday, Buildings.FieldDayTicks)
+                    || building.ClearCuts < 0)
+                {
+                    Add(ValidationRule.BuildingLabour, now, building.Id,
+                        "has " + building.Claimed + " claimed and " + building.Worked + " worked of " + building.LabourTicks
+                        + ", and " + building.ClaimedToday + " claimed and " + building.WorkedToday + " worked today.");
+                }
+
+                for (var dy = 0; dy < building.Height; dy++)
+                {
+                    for (var dx = 0; dx < building.Width; dx++)
+                    {
+                        var at = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + dy);
+
+                        if (!grid.Contains(at))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "covers " + at + ", off the map.");
+                            continue;
+                        }
+
+                        if (!_footprints.Add(grid.IndexOf(at)))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "covers " + at + ", under another building.");
+                        }
+
+                        if (building.Cleared && (grid[at] == TerrainKind.Scrub || grid[at] == TerrainKind.Forest))
+                        {
+                            Add(ValidationRule.BuildingFootprint, now, building.Id, "is cleared, but " + at + " is " + grid[at] + ".");
+                        }
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        // Whether work done and work claimed both fit inside a limit together,
+        // without adding them.
+        private static bool WithinLimit(long worked, long claimed, long limit) =>
+            worked >= 0L && claimed >= 0L && worked <= limit && claimed <= limit - worked;
+
+        // Whether any of a household's members stands in this settlement.
+        private static bool LivesIn(Household household, EntityId settlement, Founding settlements)
+        {
+            for (var i = 0; i < settlements.All.Count; i++)
+            {
+                if (settlements.All[i].Id != settlement)
+                {
+                    continue;
+                }
+
+                var members = settlements.All[i].Members;
+
+                for (var m = 0; m < household.Members.Count; m++)
+                {
+                    for (var s = 0; s < members.Count; s++)
+                    {
+                        if (members[s] == household.Members[m])
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>A one-line report of everything found, for a sweep's output.</summary>

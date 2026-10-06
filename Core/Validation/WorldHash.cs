@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.History;
 using KingdomWatch.Core.Knowledge;
@@ -89,6 +90,7 @@ namespace KingdomWatch.Core.Validation
             Journal = 16,
             Tracked = 17,
             Land = 18,
+            Buildings = 19,
         }
 
         // Kept between calls: a hash taken once per simulated day over a long
@@ -398,6 +400,49 @@ namespace KingdomWatch.Core.Validation
                     Mix(cell);
                     Mix(state);
                 }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Folds in every building (#100), in creation order - which is id
+        /// order - with all its state: where it stands, the work claimed and
+        /// done, whether its ground is cleared, who lives in it, and a
+        /// field's stage and today's counts.
+        /// </summary>
+        public WorldHash AddBuildings(Buildings buildings)
+        {
+            if (buildings is null)
+            {
+                throw new ArgumentNullException(nameof(buildings));
+            }
+
+            var all = buildings.All;
+            Open(Section.Buildings, all.Count);
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                var building = all[i];
+
+                Mix(building.Id);
+                Mix((int)building.Kind);
+                Mix((int)building.Tier);
+                Mix(building.Settlement);
+                Mix(building.Barn);
+                Mix(building.Anchor);
+                Mix(building.ClearTicks);
+                Mix(building.ClearCuts);
+                Mix(building.LabourTicks);
+                Mix(building.Claimed);
+                Mix(building.Worked);
+                Mix(building.Cleared ? 1 : 0);
+                Mix(building.Occupant);
+                Mix((int)building.Stage);
+                Mix(building.DaysDone);
+                Mix(building.CountsDay);
+                Mix(building.ClaimedToday);
+                Mix(building.WorkedToday);
             }
 
             return this;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Land;
@@ -109,6 +110,14 @@ namespace KingdomWatch.Core.Work
     /// walks with the band, and tomorrow's pass finds sites from the new
     /// camp. Nothing here reads or writes a person's own position, because
     /// nothing moves one step by step yet (#25).
+    ///
+    /// **Settlements also build and farm** (#100). A settlement's approved
+    /// building and its fields are two more needs, ranked by the same
+    /// shortfall rule: <see cref="Construction.Buildings"/> says how many
+    /// worker-ticks nobody has claimed against a target, and a Builder or
+    /// Farmer trip claims a share of them rather than a harvest. After the
+    /// dawn pass, the hands nobody needed are what lets the settlement
+    /// approve its next building. Grain in store counts toward food, milled.
     ///
     /// **Bands and settlements alike.** What is tracked is an
     /// <see cref="ICommunity"/>: a settlement works exactly as a band does,
@@ -220,6 +229,11 @@ namespace KingdomWatch.Core.Work
         private readonly KnownMaps _knownMaps;
         private readonly TerrainGrid _grid;
         private readonly LandCover _land;
+        private readonly Buildings? _buildings;
+
+        // What a gathering site must be: ripe, and not ground approved for a
+        // building and waiting to be cleared (the #148 review).
+        private readonly WorkableFilter _workable;
 
         // A list, scanned by id, for the same reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
@@ -235,13 +249,20 @@ namespace KingdomWatch.Core.Work
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
 
-        public Jobs(SimulationClock clock, PersonStore people, Pathfinder pathfinder, KnownMaps knownMaps, LandCover land)
+        /// <param name="buildings">
+        /// What settlements build and farm (#100); null for a world where
+        /// nobody does, as in fixtures about gathering alone.
+        /// </param>
+        public Jobs(
+            SimulationClock clock, PersonStore people, Pathfinder pathfinder, KnownMaps knownMaps, LandCover land, Buildings? buildings = null)
         {
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _people = people ?? throw new ArgumentNullException(nameof(people));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _land = land ?? throw new ArgumentNullException(nameof(land));
+            _buildings = buildings;
+            _workable = new WorkableFilter(land, buildings);
             _grid = pathfinder.Grid;
         }
 
@@ -575,18 +596,28 @@ namespace KingdomWatch.Core.Work
             if (slot is object)
             {
                 var task = slot.Task;
-                var recipe = JobTable.Recipe(task.Job, task.Start.Season);
                 var tracked = TrackedFor(task.Holder);
                 _clock.Cancel(task.Completion);
 
-                if (recipe.Inputs.Count > 0)
+                if (JobTable.IsGathering(task.Job))
                 {
-                    tracked.Group.SharedSupplies.CancelRecipe(recipe);
+                    var recipe = JobTable.Recipe(task.Job, task.Start.Season);
+
+                    if (recipe.Inputs.Count > 0)
+                    {
+                        tracked.Group.SharedSupplies.CancelRecipe(recipe);
+                    }
+
+                    // The trip claimed its harvest when it set out (#26); one that
+                    // never comes home leaves the fruit on the bush.
+                    _land.Return(task.Destination);
+                }
+                else
+                {
+                    // Hours claimed on a building go back the same way (#100).
+                    RequireBuildings().Unclaim(task.Destination, task.Job, task.WorkTicks);
                 }
 
-                // The trip claimed its harvest when it set out (#26); one that
-                // never comes home leaves the fruit on the bush.
-                _land.Return(task.Destination);
                 slot.Clear();
 
                 // The band keeps its dawn count of the living: this person is
@@ -666,6 +697,7 @@ namespace KingdomWatch.Core.Work
                 RefreshSites(tracked);
 
                 var members = tracked.Group.Members;
+                var idle = 0;
 
                 for (var i = 0; i < members.Count; i++)
                 {
@@ -679,7 +711,17 @@ namespace KingdomWatch.Core.Work
                         continue;
                     }
 
-                    TryStart(tracked, member);
+                    if (!TryStart(tracked, member))
+                    {
+                        idle++;
+                    }
+                }
+
+                // After the picks, so that hands nobody needed this morning
+                // are the spare labour a new building waits for (#100).
+                if (_buildings is object && tracked.Group.Id.Kind == EntityKind.Settlement)
+                {
+                    _buildings.AtDawn(tracked.Group, idle, tracked.Living);
                 }
             }
 
@@ -722,9 +764,17 @@ namespace KingdomWatch.Core.Work
 
             var tracked = TrackedFor(task.Holder);
 
-            // Gathering has no inputs in process, so completing is a Gather;
-            // the ledger tallies it as such.
-            tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job, task.Start.Season));
+            if (JobTable.IsGathering(task.Job))
+            {
+                // Gathering has no inputs in process, so completing is a Gather;
+                // the ledger tallies it as such.
+                tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job, task.Start.Season));
+            }
+            else
+            {
+                RequireBuildings().Credit(task.Destination, task.Job, task.WorkTicks, tracked.Group.SharedSupplies);
+            }
+
             slot.Clear();
             tracked.OnDuty[(int)task.Job]--;
             _people.SetJob(worker, JobKind.None);
@@ -747,7 +797,7 @@ namespace KingdomWatch.Core.Work
             }
 
             var now = _clock.Now;
-            var job = ChooseJob(tracked, now);
+            var job = ChooseJob(tracked, now, out var building);
 
             if (job == JobKind.None)
             {
@@ -755,26 +805,40 @@ namespace KingdomWatch.Core.Work
             }
 
             var site = SiteOf(tracked, job);
-            var recipe = JobTable.Recipe(job, now.Season);
-            var end = now.Plus(TripTicks(site, recipe));
+            var work = WorkTicksOf(job, building, now);
+            var end = now.Plus(TripTicks(site, work));
 
             // Inputs first: BeginRecipe refuses before it moves anything, and
             // a booking for an instant after now cannot be refused, so
             // neither step can leave the other half done.
             var ledger = tracked.Group.SharedSupplies;
-            ledger.BeginRecipe(recipe);
+
+            if (building is null)
+            {
+                ledger.BeginRecipe(JobTable.Recipe(job, now.Season));
+            }
+
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
-            // The harvest is claimed now, not on the way home (#26): whoever
-            // takes a bush's last trip leaves it bare for the next picker,
-            // whose ChooseJob then finds the next bush. Cannot refuse -
-            // ChooseJob only offers a site that can be worked.
-            _land.Take(site.Destination);
+            if (building is null)
+            {
+                // The harvest is claimed now, not on the way home (#26): whoever
+                // takes a bush's last trip leaves it bare for the next picker,
+                // whose ChooseJob then finds the next bush. Cannot refuse -
+                // ChooseJob only offers a site that can be worked.
+                _land.Take(site.Destination);
+            }
+            else
+            {
+                // So are a building's hours (#100): the next Builder or
+                // Farmer sees only what is left.
+                RequireBuildings().Claim(building, job, work);
+            }
 
             var slot = SlotFor(worker.Index);
             slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, recipe.Duration, site.ReturnCost * TicksPerCostUnit,
+                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
                 tracked.Group.Position, site.Destination, completion);
             slot.CopyRoute(site.Route);
             _people.SetJob(worker, job);
@@ -797,11 +861,12 @@ namespace KingdomWatch.Core.Work
         // job instead sent every hand to food while food was short, and a
         // settlement short of food all year froze with an empty woodpile
         // (#17's first 200-year runs).
-        private JobKind ChooseJob(Tracked tracked, SimulationTime now)
+        private JobKind ChooseJob(Tracked tracked, SimulationTime now, out Building? building)
         {
             var ticksUntilDusk = TicksUntilDusk(now);
             var season = now.Season;
             var winterDays = WinterDaysAhead(now);
+            var ledger = tracked.Group.SharedSupplies;
 
             // At least one: the dawn pass counts before anything starts, and
             // a pick follows either that pass - which only offers a living
@@ -811,6 +876,7 @@ namespace KingdomWatch.Core.Work
             var chosen = JobKind.None;
             long chosenShort = 0L;
             long chosenTarget = 1L;
+            building = null;
 
             for (var i = 0; i < Priority.Count; i++)
             {
@@ -823,7 +889,11 @@ namespace KingdomWatch.Core.Work
                 // next bush or tree rather than walk to a bare one (#26).
                 // A search that found nothing looks again once a claim has
                 // been given back since, here or by another band (#141 review).
-                if ((site.Reachable && !_land.IsWorkable(site.Destination))
+                // So is one cleared for a building since (#100): plains
+                // would otherwise read as workable forever. And one approved
+                // for a building since, which nobody gathers on any more.
+                if ((site.Reachable && (!_land.IsWorkable(site.Destination) || !JobTable.WorksOn(job, _grid[site.Destination])
+                        || (_buildings is object && _buildings.IsReserved(site.Destination))))
                     || (!site.Reachable && site.LandReturns != _land.Returns))
                 {
                     FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
@@ -834,13 +904,20 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                if (TripTicks(site, JobTable.Recipe(job, season)) > ticksUntilDusk)
+                if (TripTicks(site, JobTable.Recipe(job, season).Duration) > ticksUntilDusk)
                 {
                     continue;
                 }
 
                 var target = TargetOf(tracked, job, living, winterDays);
-                var shortBy = target - Expected(tracked, tracked.Group.SharedSupplies, ResourceOf(job));
+                var shortBy = target - Expected(tracked, ledger, ResourceOf(job));
+
+                // Grain is eaten too, milled (#100), so it counts toward the
+                // food a forager would otherwise be sent for.
+                if (job == JobKind.Forager)
+                {
+                    shortBy -= (long)ledger.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain;
+                }
 
                 // Needed at all, and strictly further short than the best so
                 // far - compared as fractions by cross-multiplying. Food's
@@ -857,8 +934,78 @@ namespace KingdomWatch.Core.Work
                 }
             }
 
+            // A settlement's building and its fields rank by the same rule:
+            // the hours nobody has claimed, against a target of the hours
+            // times Buildings.NeedScale (#100). Worker-ticks rather than
+            // units of stock, so the products stay far inside a long.
+            if (_buildings is object && tracked.Group.Id.Kind == EntityKind.Settlement)
+            {
+                var id = tracked.Group.Id;
+
+                if (_buildings.TryBuildWork(id, out var project, out var buildShort, out var buildTarget)
+                    && Fits(tracked, JobKind.Builder, project, now, ticksUntilDusk)
+                    && checked(buildShort * chosenTarget) > checked(chosenShort * buildTarget))
+                {
+                    chosen = JobKind.Builder;
+                    chosenShort = buildShort;
+                    chosenTarget = buildTarget;
+                    building = project;
+                }
+
+                if (_buildings.TryFieldWork(id, out var field, out var fieldShort, out var fieldTarget)
+                    && Fits(tracked, JobKind.Farmer, field, now, ticksUntilDusk)
+                    && checked(fieldShort * chosenTarget) > checked(chosenShort * fieldTarget))
+                {
+                    chosen = JobKind.Farmer;
+                    building = field;
+                }
+            }
+
+            if (chosen != JobKind.Builder && chosen != JobKind.Farmer)
+            {
+                building = null;
+            }
+
             return chosen;
         }
+
+        // Whether a trip to work this building can be routed and is home by
+        // dusk. The route is the job's site, kept until the target or the
+        // ground changes - clearing rewrites cells, and with them the cost.
+        private bool Fits(Tracked tracked, JobKind job, Building building, SimulationTime now, long ticksUntilDusk)
+        {
+            var site = SiteOf(tracked, job);
+
+            if (!site.Reachable || site.Destination != building.Anchor || site.Rewrites != _grid.Rewrites)
+            {
+                site.Rewrites = _grid.Rewrites;
+                site.Reachable = _pathfinder.TryFindRoute(
+                    tracked.SitesFrom, building.Anchor, Mover, 2 * MaxSiteRadius, site.Route, out var cost);
+
+                if (!site.Reachable)
+                {
+                    return false;
+                }
+
+                site.Destination = building.Anchor;
+                site.Cost = cost;
+                _scratchRoute.Clear();
+                _scratchRoute.AddRange(site.Route);
+                _scratchRoute.Reverse();
+                site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
+            }
+
+            return TripTicks(site, WorkTicksOf(job, building, now)) <= ticksUntilDusk;
+        }
+
+        // How long one task of a job works at its site: a gathering recipe's
+        // duration, or a share of a building's hours.
+        private long WorkTicksOf(JobKind job, Building? building, SimulationTime now) =>
+            building is null ? JobTable.Recipe(job, now.Season).Duration : RequireBuildings().ShareOf(building, job);
+
+        private Buildings RequireBuildings() =>
+            _buildings ?? throw new InvalidOperationException(
+                "A Builder or Farmer task needs the buildings it works on; this Jobs was made without them.");
 
         // One walk of the membership per band per dawn, where a walk per pick
         // used to be: the pick is what scales with workers, so the scan inside
@@ -965,7 +1112,7 @@ namespace KingdomWatch.Core.Work
         {
             site.LandReturns = _land.Returns;
             site.Reachable = _pathfinder.TryFindNearest(
-                from, Mover, JobTable.Terrain(job), known, _land.Ripe, MaxSiteRadius, site.Route, out var cost);
+                from, Mover, JobTable.Terrain(job), known, _workable, MaxSiteRadius, site.Route, out var cost);
 
             if (!site.Reachable)
             {
@@ -982,8 +1129,8 @@ namespace KingdomWatch.Core.Work
 
         // Out, work, and back - the back leg priced on its own, since the
         // cells entered walking home are not the cells entered walking out.
-        private static long TripTicks(Site site, Recipe recipe) =>
-            (site.Cost * TicksPerCostUnit) + recipe.Duration + (site.ReturnCost * TicksPerCostUnit);
+        private static long TripTicks(Site site, long workTicks) =>
+            (site.Cost * TicksPerCostUnit) + workTicks + (site.ReturnCost * TicksPerCostUnit);
 
         private bool IsWorker(PersonHandle member) =>
             _people.IsAlive(member) && Works(_people.GetAgeStage(member));
@@ -1190,6 +1337,21 @@ namespace KingdomWatch.Core.Work
             public WorldPosition SitesFrom { get; set; }
         }
 
+        private sealed class WorkableFilter : ISiteFilter
+        {
+            private readonly LandCover _land;
+            private readonly Buildings? _buildings;
+
+            public WorkableFilter(LandCover land, Buildings? buildings)
+            {
+                _land = land;
+                _buildings = buildings;
+            }
+
+            public bool Accepts(int cell) =>
+                _land.Ripe.Accepts(cell) && (_buildings is null || !_buildings.IsReserved(cell));
+        }
+
         private sealed class Site
         {
             public Site()
@@ -1207,6 +1369,10 @@ namespace KingdomWatch.Core.Work
 
             // LandCover.Returns when this site was last searched for.
             public long LandReturns { get; set; }
+
+            // TerrainGrid.Rewrites when a Builder's or Farmer's route was
+            // last found: clearing changes what the walk costs (#100).
+            public long Rewrites { get; set; }
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
 

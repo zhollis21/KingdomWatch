@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
@@ -181,6 +182,7 @@ namespace KingdomWatch.Core.Nomadic
         private readonly DeterministicRng _rng;
         private readonly KnownMaps _knownMaps;
         private readonly LandCover _land;
+        private readonly Buildings? _buildings;
 
         // A list, scanned by id, for the reason Hunger's is.
         private readonly List<Tracked> _tracked = new List<Tracked>();
@@ -209,7 +211,8 @@ namespace KingdomWatch.Core.Nomadic
             Founding founding,
             DeterministicRng rng,
             KnownMaps knownMaps,
-            LandCover land)
+            LandCover land,
+            Buildings? buildings = null)
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
@@ -218,6 +221,7 @@ namespace KingdomWatch.Core.Nomadic
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _land = land ?? throw new ArgumentNullException(nameof(land));
+            _buildings = buildings;
             _clock = bus.Clock;
             _grid = pathfinder.Grid;
             _scratchRoute = new List<WorldPosition>(_grid.CellCount);
@@ -233,10 +237,11 @@ namespace KingdomWatch.Core.Nomadic
         public int TrackedCount => _tracked.Count;
 
         /// <summary>
-        /// Whether a council may settle its band. On by default; the world
-        /// turns it off until farming exists (#26), because a settlement
-        /// cannot move and, living off berries alone, strips its reach and
-        /// starves within about a year of founding. Bands migrate instead.
+        /// Whether a council may settle its band. On by default. The world
+        /// had it off between #26 and #100, while a settlement that could not
+        /// move lived off berries alone and starved within about a year of
+        /// founding; buildings brought farming and a stricter land check
+        /// (<see cref="CanSettleAt"/>). Fixtures about wandering turn it off.
         /// </summary>
         public bool Settles { get; set; } = true;
 
@@ -427,12 +432,16 @@ namespace KingdomWatch.Core.Nomadic
 
         /// <summary>
         /// Whether this band could settle at a position: it knows a forager's
-        /// site and a woodcutter's within reach of it.
+        /// site and a woodcutter's within reach of it, and - in a world with
+        /// buildings (#100) - the bushes it knows in reach would feed it with
+        /// a margin, and there is ground for a barn
+        /// (<see cref="Buildings.CanSettle"/>).
         /// </summary>
         public bool CanSettleAt(MobileGroup band, WorldPosition at)
         {
-            Score(_knownMaps.For(BandId(band)), at, out var viable);
-            return viable;
+            var id = BandId(band);
+            Score(_knownMaps.For(id), at, out var viable);
+            return viable && (_buildings is null || _buildings.CanSettle(at, id, Living(band)));
         }
 
         private static EntityId BandId(MobileGroup band) =>

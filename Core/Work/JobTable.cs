@@ -13,7 +13,11 @@ namespace KingdomWatch.Core.Work
     /// is, kept apart.
     /// </summary>
     /// <remarks>
-    /// Every M1 job is a gathering recipe from <see cref="PrimitiveTier"/>,
+    /// Builders and Farmers (#100) are jobs with neither: their work is
+    /// hours put into a building, which <see cref="Construction.Buildings"/>
+    /// owns, so everything here but <see cref="IsJob"/> refuses them.
+    ///
+    /// Every gathering job is a recipe from <see cref="PrimitiveTier"/>,
     /// worked at the nearest cell of a terrain that has the thing. Foraging
     /// takes berry scrub, wood needs forest and stone needs rocks; open
     /// plains have none of them (#137), so a band that can reach none
@@ -36,7 +40,7 @@ namespace KingdomWatch.Core.Work
         /// <see cref="Jobs"/> asks <see cref="Recipe(JobKind, Season)"/>.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a defined job, or <see cref="JobKind.None"/>, which runs nothing.
+        /// Not a gathering job (<see cref="IsGathering"/>): undefined, <see cref="JobKind.None"/>, or a Builder or Farmer, which run no recipe.
         /// </exception>
         public static Recipe Recipe(JobKind job) => Recipe(job, Season.Spring);
 
@@ -45,7 +49,7 @@ namespace KingdomWatch.Core.Work
         /// changes with it (<see cref="PrimitiveTier.ForageIn"/>, #53).
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a defined job, or <see cref="JobKind.None"/>, which runs nothing;
+        /// Not a gathering job (<see cref="IsGathering"/>), which runs no recipe;
         /// or not a defined season.
         /// </exception>
         public static Recipe Recipe(JobKind job, Season season)
@@ -70,7 +74,7 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>Whether this job can be worked on a cell of this terrain.</summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a defined job, or <see cref="JobKind.None"/>; or not a defined
+        /// Not a gathering job (<see cref="IsGathering"/>); or not a defined
         /// terrain, or <see cref="TerrainKind.None"/> - the same contract as
         /// <see cref="TerrainRules"/>, so a corrupted cell is named rather
         /// than treated as one nothing works on.
@@ -101,11 +105,11 @@ namespace KingdomWatch.Core.Work
         /// the shape <see cref="Traversal.Pathfinder.TryFindNearest"/> takes.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a defined job, or <see cref="JobKind.None"/>.
+        /// Not a gathering job (<see cref="IsGathering"/>).
         /// </exception>
         public static ReadOnlySpan<bool> Terrain(JobKind job)
         {
-            if (!IsJob(job))
+            if (!IsGathering(job))
             {
                 throw NotAJob(job);
             }
@@ -117,6 +121,15 @@ namespace KingdomWatch.Core.Work
         public static bool IsJob(JobKind job) =>
             EnumGuard.IsDefined(DefinedKinds, (int)job) && job != JobKind.None;
 
+        /// <summary>
+        /// Whether this job runs a gathering recipe on a terrain - every job
+        /// but <see cref="JobKind.Builder"/> and <see cref="JobKind.Farmer"/>,
+        /// whose work is hours put into a building (#100) and who have
+        /// neither a recipe nor a terrain here.
+        /// </summary>
+        public static bool IsGathering(JobKind job) =>
+            IsJob(job) && job != JobKind.Builder && job != JobKind.Farmer;
+
         private static bool[][] BuildTerrainMasks()
         {
             var masks = new bool[DefinedKinds.Length][];
@@ -125,7 +138,7 @@ namespace KingdomWatch.Core.Work
             {
                 masks[job] = new bool[DefinedTerrain.Length];
 
-                if (!IsJob((JobKind)job))
+                if (!IsGathering((JobKind)job))
                 {
                     continue;
                 }
@@ -140,6 +153,6 @@ namespace KingdomWatch.Core.Work
         }
 
         private static ArgumentOutOfRangeException NotAJob(JobKind job) =>
-            new ArgumentOutOfRangeException(nameof(job), job, "Not a defined JobKind, or None.");
+            new ArgumentOutOfRangeException(nameof(job), job, "Not a defined gathering JobKind.");
     }
 }

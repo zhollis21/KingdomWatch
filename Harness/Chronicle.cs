@@ -38,6 +38,13 @@ namespace KingdomWatch.Harness
             // only the first is news.
             var camped = new HashSet<EntityId>();
 
+            // A village raises buildings and brings in harvests for as long
+            // as it stands; only its first of each is news - section 9's
+            // "first permanent structure" (a house: nothing else can come
+            // first, since a barn needs one) and "first farm" (#100).
+            var built = new HashSet<EntityId>();
+            var harvested = new HashSet<EntityId>();
+
             output.WriteLine(
                 "Year 0: west " + run.FoundingWest + ", east " + run.FoundingEast + " (the founding bands)");
 
@@ -55,7 +62,9 @@ namespace KingdomWatch.Harness
                 {
                     var entry = journal[next];
 
-                    if (entry.Kind == DomainEventKind.CampPitched && !camped.Add(entry.PrimaryEntity))
+                    if ((entry.Kind == DomainEventKind.CampPitched && !camped.Add(entry.PrimaryEntity))
+                        || (entry.Kind == DomainEventKind.BuildingCompleted && !built.Add(entry.SecondaryEntity))
+                        || (entry.Kind == DomainEventKind.FieldHarvested && !harvested.Add(entry.SecondaryEntity)))
                     {
                         continue;
                     }
@@ -142,6 +151,10 @@ namespace KingdomWatch.Harness
                     return entry.PrimaryEntity + " was formed" + From(entry);
                 case DomainEventKind.HouseholdDissolved:
                     return entry.PrimaryEntity + " dissolved" + Because(entry);
+                case DomainEventKind.BuildingCompleted:
+                    return entry.SecondaryEntity + " finished its first house";
+                case DomainEventKind.FieldHarvested:
+                    return entry.SecondaryEntity + " brought in its first harvest";
                 default:
                     return entry.Kind + " " + entry.PrimaryEntity + From(entry);
             }

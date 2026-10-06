@@ -31,5 +31,18 @@ namespace KingdomWatch.Core.Data
 
         /// <summary>Runs <see cref="PrimitiveTier.GatherStone"/>: stone from rocks.</summary>
         StoneGatherer = 3,
+
+        /// <summary>
+        /// Clears and raises a settlement's buildings (#100). Not a recipe:
+        /// the work is hours put into a <see cref="Construction.Building"/>.
+        /// </summary>
+        Builder = 4,
+
+        /// <summary>
+        /// Tends and harvests a settlement's fields (#100). Not a recipe:
+        /// the work is hours put into a field, which yields Grain on its
+        /// harvest days.
+        /// </summary>
+        Farmer = 5,
     }
 }

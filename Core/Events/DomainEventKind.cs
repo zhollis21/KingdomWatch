@@ -65,5 +65,21 @@ namespace KingdomWatch.Core.Events
         /// 9's "first camp" milestone.
         /// </summary>
         CampPitched = 15,
+
+        /// <summary>
+        /// A building's last hour of work was done (#100). Published by
+        /// <see cref="Construction.Buildings"/>, with the building first and its
+        /// settlement second; a house's first is section 9's "first
+        /// permanent structure" milestone.
+        /// </summary>
+        BuildingCompleted = 16,
+
+        /// <summary>
+        /// A field's harvest came in (#100). Published by
+        /// <see cref="Construction.Buildings"/>, with the field first and its
+        /// settlement second; the first is section 9's "first farm"
+        /// milestone.
+        /// </summary>
+        FieldHarvested = 17,
     }
 }

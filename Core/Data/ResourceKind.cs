@@ -33,5 +33,13 @@ namespace KingdomWatch.Core.Data
         Food = 1,
         Wood = 2,
         Stone = 3,
+
+        /// <summary>
+        /// Harvested from a field (#100). Not eaten as it is: a meal takes
+        /// Food, and when the Food is gone a Grain is milled into five
+        /// (<see cref="PrimitiveTier.Mill"/>) at the table, since the ladder
+        /// makes milling household work rather than anyone's job.
+        /// </summary>
+        Grain = 4,
     }
 }

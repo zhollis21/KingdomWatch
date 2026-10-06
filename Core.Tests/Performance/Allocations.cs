@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace KingdomWatch.Core.Tests.Performance
 {
@@ -23,6 +24,13 @@ namespace KingdomWatch.Core.Tests.Performance
                 throw new ArgumentNullException(nameof(work));
             }
 
+            // A pause before measuring lets the runtime finish recompiling
+            // the warmed-up methods in the background. With dynamic PGO that
+            // recompilation landing inside the measured span reported a few
+            // kilobytes that were the runtime's, not the code's - one full
+            // run in four or so, in whichever test it happened to hit (#148;
+            // gone with DOTNET_TieredPGO=0, and with a pause like this one).
+            Thread.Sleep(200);
             var before = GC.GetAllocatedBytesForCurrentThread();
             work();
             return GC.GetAllocatedBytesForCurrentThread() - before;

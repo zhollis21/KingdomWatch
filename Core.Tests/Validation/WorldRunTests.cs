@@ -24,10 +24,11 @@ namespace KingdomWatch.Core.Tests.Validation
     /// minutes of CI that finds nothing the first did not. The full run is
     /// <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
     ///
-    /// Survival is not asserted. Since #26 berries run out, and until farms
-    /// (#100) some homelands starve; the harness reports each die-out rather
-    /// than failing on it. Nor is a population ceiling, though land now
-    /// gives one.
+    /// Survival is not asserted. Since #26 berries run out and bands can
+    /// starve on the move, and since #100 villages farm but cut the trees in
+    /// their reach faster than they regrow, and freeze once those are gone (#147);
+    /// the harness reports each die-out rather than failing on it. Nor is a
+    /// population ceiling, though land now gives one.
     ///
     /// This replaced the 30-year fixture sweeps: the validator checks every
     /// rule they checked, after every year, on the world the harness runs.
@@ -75,15 +76,15 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void The_milestones_M1_can_reach_fire_on_every_seed()
         {
-            // Economy ladder section 9's first milestone. First settlement
-            // stood in for the rest until buildings exist (#100), but the
-            // world settles no band until farms do (#26), so none settles.
+            // Economy ladder section 9's first milestone, and a settlement:
+            // with farming (#100) settling is back on, and every seed's
+            // stronger band settles in its first few springs.
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
                     Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "seed " + run.World.Seed + ": camp at world start");
-                    Assert.That(run.FirstSettlement, Is.Null, "seed " + run.World.Seed + ": settled with settling off");
+                    Assert.That(run.FirstSettlement, Is.Not.Null, "seed " + run.World.Seed + ": never settled");
                 }
             });
         }
@@ -304,6 +305,7 @@ namespace KingdomWatch.Core.Tests.Validation
                 .AddBands(bands, world.People)
                 .AddKnownMaps(world.KnownMaps)
                 .AddLand(world.Land)
+                .AddBuildings(world.Buildings)
                 .AddPartnerships(world.Partnerships)
                 .AddGenealogy(world.Genealogy)
                 .AddMemories(world.Memories)
@@ -467,6 +469,38 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(written, Does.Not.Contain(" other"), "every death this world publishes has a named cause");
                 Assert.That(() => Chronicle.Write(null!, text), Throws.ArgumentNullException);
                 Assert.That(() => Chronicle.Write(run, null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
+        public void The_chronicle_prints_each_village_s_first_house_and_first_harvest_once()
+        {
+            // Seed 1 settles in year 3 and farms that summer (#100).
+            var run = new WorldRun(1UL).RunYears(5L);
+            var text = new StringWriter();
+            Chronicle.Write(run, text);
+            var written = text.ToString();
+            var journal = run.World.Journal;
+            var built = new HashSet<EntityId>();
+            var harvested = new HashSet<EntityId>();
+
+            for (var i = 0; i < journal.Count; i++)
+            {
+                if (journal[i].Kind == DomainEventKind.BuildingCompleted)
+                {
+                    built.Add(journal[i].SecondaryEntity);
+                }
+                else if (journal[i].Kind == DomainEventKind.FieldHarvested)
+                {
+                    harvested.Add(journal[i].SecondaryEntity);
+                }
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(harvested, Is.Not.Empty, "a village farmed");
+                Assert.That(Occurrences(written, "finished its first house"), Is.EqualTo(built.Count), "one per village, not one per building");
+                Assert.That(Occurrences(written, "brought in its first harvest"), Is.EqualTo(harvested.Count), "one per village, not one per crop");
             });
         }
 

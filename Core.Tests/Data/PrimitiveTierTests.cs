@@ -15,7 +15,7 @@ namespace KingdomWatch.Core.Tests.Data
     public sealed class PrimitiveTierTests
     {
         [Test]
-        public void Every_recipe_is_gathering_and_runs_on_an_empty_ledger()
+        public void Every_recipe_but_milling_is_gathering_and_each_runs_on_just_its_inputs()
         {
             Assert.Multiple(() =>
             {
@@ -23,7 +23,12 @@ namespace KingdomWatch.Core.Tests.Data
                 {
                     var ledger = new ResourceLedger();
 
-                    Assert.That(recipe.IsGathering, Is.True, recipe.Name);
+                    foreach (var input in recipe.Inputs)
+                    {
+                        ledger.Gather(input.Kind, input.Quantity);
+                    }
+
+                    Assert.That(recipe.IsGathering, Is.EqualTo(recipe != PrimitiveTier.Mill), recipe.Name);
                     Assert.That(() => ledger.BeginRecipe(recipe), Throws.Nothing, recipe.Name);
                     Assert.That(() => ledger.CompleteRecipe(recipe), Throws.Nothing, recipe.Name);
                     Assert.That(ledger.AuditBalances(), Is.True, recipe.Name);
@@ -51,7 +56,7 @@ namespace KingdomWatch.Core.Tests.Data
             {
                 Assert.That(
                     PrimitiveTier.Recipes,
-                    Is.EqualTo(new[] { PrimitiveTier.Forage, PrimitiveTier.GatherWood, PrimitiveTier.GatherStone }));
+                    Is.EqualTo(new[] { PrimitiveTier.Forage, PrimitiveTier.GatherWood, PrimitiveTier.GatherStone, PrimitiveTier.Mill }));
                 Assert.That(PrimitiveTier.Recipes.Select(r => r.Name), Is.Unique);
                 Assert.That(PrimitiveTier.Recipes, Is.Not.InstanceOf<Recipe[]>());
                 Assert.That(

@@ -21,5 +21,6 @@ namespace KingdomWatch.Core.Data
         Dynasty = 5,
         MobileGroup = 6,
         Animal = 7,
+        Building = 8,
     }
 }

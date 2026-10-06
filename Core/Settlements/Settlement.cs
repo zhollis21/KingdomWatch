@@ -13,7 +13,9 @@ namespace KingdomWatch.Core.Settlements
     /// <remarks>
     /// Deliberately no more than an <see cref="ICommunity"/> that cannot
     /// move. Section 12's settlement - layout, buildings, housing stock,
-    /// territory, a ruler - is M3 and after: the town planner is #23, the
+    /// territory, a ruler - is M3 and after. Its buildings are kept by
+    /// <see cref="Construction.Buildings"/> against its id rather than here
+    /// (#100); the town planner that lays them out is #23, the
     /// housing stock that regulates household formation is #69, founding and
     /// abandonment with a population floor are #35, and polities are M7.
     /// Until #69, a settlement's households are housed by
