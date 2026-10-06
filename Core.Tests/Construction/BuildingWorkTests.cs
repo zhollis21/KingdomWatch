@@ -177,13 +177,19 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var near = x >= 21 && x <= 23 && y >= 20 && y <= 22;
-                        var far = x >= 30 && x <= 32 && y >= 20 && y <= 22;
+                        var near = x >= 24 && x <= 28 && y >= 20 && y <= 24;
+                        var far = x >= 33 && x <= 37 && y >= 20 && y <= 24;
                         grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
                     }
                 }
 
                 grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+
+                // A lane across the camp yard to the near patch.
+                for (var x = BuildingsWorld.Centre.X + 1; x < 24; x++)
+                {
+                    grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
+                }
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
@@ -216,13 +222,19 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var near = x >= 21 && x <= 23 && y >= 20 && y <= 22;
-                        var far = x >= 30 && x <= 32 && y >= 20 && y <= 22;
+                        var near = x >= 24 && x <= 28 && y >= 20 && y <= 24;
+                        var far = x >= 33 && x <= 37 && y >= 20 && y <= 24;
                         grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
                     }
                 }
 
                 grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+
+                // A lane across the camp yard to the near patch.
+                for (var x = BuildingsWorld.Centre.X + 1; x < 24; x++)
+                {
+                    grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
+                }
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
@@ -233,7 +245,7 @@ namespace KingdomWatch.Core.Tests.Construction
             w.World.Jobs.Track(w.Settlement);
 
             w.World.AdvanceTo(new SimulationTime(KingdomWatch.Core.Work.Jobs.Dawn + 1L));
-            Assert.That(w.World.Jobs.SiteFor(w.Settlement, JobKind.Forager).X, Is.InRange(21, 23), "the near patch, before approval");
+            Assert.That(w.World.Jobs.SiteFor(w.Settlement, JobKind.Forager).X, Is.InRange(24, 28), "the near patch, before approval");
 
             w.Dawn();
             var house = w.Buildings.All.Single();

@@ -733,8 +733,9 @@ namespace KingdomWatch.Game
         // Houses and barns (#150) stand as their sprites, centred on their
         // footprint's south edge and sorted by it, so people south of one walk
         // in front of it; fields are soil and wheat in the field tilemaps
-        // (LayField). Each is see-through until built. The sprites are wider
-        // than the footprints, and neighbours overlap. Without the art, each
+        // (LayField). Each is see-through until built. A sprite fits its
+        // footprint's width, and its roof stands over the rows north of it
+        // that Core keeps clear (BuildingSpec.Clearance). Without the art, each
         // is a block of colour on its footprint. Hidden at Far zoom, where the
         // settlement's marker stands for them all.
         private void DrawBuildings()

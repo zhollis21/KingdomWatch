@@ -382,9 +382,10 @@ namespace KingdomWatch.Core.Tests.Construction
             var land = w.World.Land;
             var claimed = new System.Collections.Generic.List<WorldPosition>();
 
-            for (var y = 17; y <= 23; y++)
+            // Every tree a house beside the camp could stand on.
+            for (var y = 12; y <= 28; y++)
             {
-                for (var x = 17; x <= 23; x++)
+                for (var x = 12; x <= 28; x++)
                 {
                     var at = new WorldPosition(x, y);
 
@@ -415,6 +416,102 @@ namespace KingdomWatch.Core.Tests.Construction
                 w.Stores.Available(ResourceKind.Wood) - wood,
                 Is.EqualTo(cells * (LandCover.DefaultTreeCuts - 1) * Buildings.WoodPerCut),
                 "the Wood of the cuts it charged for, not the cut given back");
+        }
+
+        [Test]
+        public void Nothing_is_built_in_the_camp_yard()
+        {
+            var w = BuildVillage();
+            var radius = Buildings.CampYardRadius;
+
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var y = building.Anchor.Y - clearance; y < building.Anchor.Y + building.Height; y++)
+                {
+                    for (var x = building.Anchor.X; x < building.Anchor.X + building.Width; x++)
+                    {
+                        var inYard = System.Math.Abs(x - BuildingsWorld.Centre.X) <= radius && System.Math.Abs(y - BuildingsWorld.Centre.Y) <= radius;
+                        Assert.That(inYard, Is.False, building + " or its roof takes (" + x + ", " + y + ") in the camp yard");
+                    }
+                }
+            }
+        }
+
+        // Forty people with wood to spare, built up as far as sixteen
+        // buildings: houses, barns and fields enough that buildings go up on
+        // every side of the camp and both north and south of each other.
+        private static BuildingsWorld BuildVillage()
+        {
+            var w = new BuildingsWorld(people: 40);
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            Assume.That(w.Buildings.All.Count(b => BuildingTable.Of(b.Kind).Clearance > 0), Is.GreaterThanOrEqualTo(4), "enough roofs to crowd");
+            return w;
+        }
+
+        [Test]
+        public void No_roof_stands_over_another_building_or_the_camp()
+        {
+            var w = BuildVillage();
+
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var dy = 1; dy <= clearance; dy++)
+                {
+                    for (var dx = 0; dx < building.Width; dx++)
+                    {
+                        var under = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y - dy);
+                        if (under.Y < 0)
+                        {
+                            continue;
+                        }
+
+                        Assert.That(w.Buildings.At(under), Is.Null, building + "'s roof stands over " + w.Buildings.At(under));
+                        Assert.That(under, Is.Not.EqualTo(BuildingsWorld.Centre), building + "'s roof stands over the camp");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void A_roof_may_hang_off_the_north_edge_of_the_map()
+        {
+            // Rocks everywhere but the camp, a lane north from it, and the
+            // top rows: the only room for a house is against the north edge,
+            // where its roof stands off the map.
+            var house = BuildingTable.Of(BuildingKind.House);
+            var camp = new WorldPosition(20, 8);
+            var w = new BuildingsWorld(
+                paint: grid =>
+                {
+                    for (var y = 0; y < BuildingsWorld.Size; y++)
+                    {
+                        for (var x = 0; x < BuildingsWorld.Size; x++)
+                        {
+                            var open = y < house.Height || (x == camp.X && y <= camp.Y);
+                            grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
+                        }
+                    }
+                },
+                camp: camp);
+            w.Wood(100);
+
+            w.Dawn();
+
+            Assert.That(w.Buildings.All.Single().Anchor.Y, Is.Zero);
         }
 
         [Test]

@@ -19,7 +19,9 @@ namespace KingdomWatch.Core.Tests.Construction
         internal const int Size = 40;
         internal static readonly WorldPosition Centre = new WorldPosition(20, 20);
 
-        internal BuildingsWorld(int people = 12, System.Action<TerrainGrid>? paint = null)
+        // `camp` moves the settlement off the middle, for the fixtures that
+        // need it by an edge.
+        internal BuildingsWorld(int people = 12, System.Action<TerrainGrid>? paint = null, WorldPosition? camp = null)
         {
             var grid = new TerrainGrid(Size, Size, TerrainKind.Plains);
             paint?.Invoke(grid);
@@ -27,7 +29,7 @@ namespace KingdomWatch.Core.Tests.Construction
             World.Bus.Subscribe(this);
             World.Nomads.Settles = false;
 
-            var band = World.AddBand(people, Centre);
+            var band = World.AddBand(people, camp ?? Centre);
             Settlement = World.Founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
 
             // Nobody works on their own: the tests are the only builders and
