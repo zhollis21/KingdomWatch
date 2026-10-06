@@ -86,7 +86,7 @@ After that, a published GitHub Release (or a manual run with **deploy** on) uplo
 ## If it breaks
 
 - **Licensing error:** replace `UNITY_LICENSE` (see above).
-- **Unity version not found:** GameCI pulls the editor image named by `Game/ProjectSettings/ProjectVersion.txt`. A new Unity patch release can take a while to appear there; check the [image list](https://hub.docker.com/r/unityci/editor/tags).
+- **"The project is on Unity X but the editor image is pinned to Y":** the Unity editor was upgraded. The build runs in GameCI's editor image pinned by digest (`customImage` in `android-release.yml`), because the Unity login and signing key are handed to it and a tag can be repointed. Find the new version's `ubuntu-<version>-android-3` tag in the [image list](https://hub.docker.com/r/unityci/editor/tags) (a new patch release can take a while to appear), take its digest, and update both `customImage` and the version in the *Check the pinned editor matches the project* step.
 - **No `KingdomWatch.Core.dll`:** the *Verify Core reached Unity* step failed, so Core did not build or its output path changed (`docs/unity.md`).
 - **Checkout art fails ("repository not found"):** `ART_REPO_SSH_KEY` is missing, or the deploy key was removed from the art repository.
 - **A release or promotion never ran:** uploads and promotions run one at a time (Play cancels an app's other open edits when one is committed), and GitHub keeps only one waiting. Starting a third while one runs and another waits cancels the waiting one; run it again by hand.
