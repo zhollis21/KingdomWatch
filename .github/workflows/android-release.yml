@@ -30,8 +30,10 @@ on:
 permissions:
   contents: read
 
-# Uploads run one at a time. GitHub keeps one waiting run per group, so a third
-# release published while one builds and one waits replaces the waiting one.
+# Uploads run one at a time, and never beside promote-release.yml (same group):
+# Play deletes an app's other open edits when one is committed. GitHub keeps one
+# waiting run per group, so a run queued while one runs and one waits replaces
+# the waiting one.
 # PR runs never upload, so they get a group of their own per PR and must not
 # bump a waiting release.
 concurrency:
@@ -127,7 +129,9 @@ jobs:
       # it is not active on a fresh checkout), and it applies the version, signing
       # and bundle settings below. It decodes the keystore into Game/upload.keystore.
       - name: Build with Unity
-        uses: game-ci/unity-builder@v4
+        # Pinned to a commit: this step is handed the Unity login and the signing key,
+        # and a tag can be moved to other code.
+        uses: game-ci/unity-builder@4423ee75828dff56037d1d1cfdac6b68e3a6ba00 # v4.8.2
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ vars.UNITY_EMAIL }}

@@ -89,6 +89,6 @@ After that, a published GitHub Release (or a manual run with **deploy** on) uplo
 - **Unity version not found:** GameCI pulls the editor image named by `Game/ProjectSettings/ProjectVersion.txt`. A new Unity patch release can take a while to appear there; check the [image list](https://hub.docker.com/r/unityci/editor/tags).
 - **No `KingdomWatch.Core.dll`:** the *Verify Core reached Unity* step failed, so Core did not build or its output path changed (`docs/unity.md`).
 - **Checkout art fails ("repository not found"):** `ART_REPO_SSH_KEY` is missing, or the deploy key was removed from the art repository.
-- **A release never ran:** builds that upload run one at a time, and GitHub keeps only one waiting. Publishing a third release while one builds and another waits cancels the waiting one; run it again by hand.
+- **A release or promotion never ran:** uploads and promotions run one at a time (Play cancels an app's other open edits when one is committed), and GitHub keeps only one waiting. Starting a third while one runs and another waits cancels the waiting one; run it again by hand.
 - **Upload fails but the build passed:** missing Play permissions for the service account, the first release not uploaded and rolled out by hand, or an open draft edit in Play Console.
 - **Play rejects the target API level:** the build targets the highest Android SDK in GameCI's image. Set `androidTargetSdkVersion` on the Unity build step (e.g. `AndroidApiLevel36`) to pin it.

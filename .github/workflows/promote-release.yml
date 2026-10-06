@@ -26,6 +26,12 @@ on:
 permissions:
   contents: read
 
+# Shares android-release.yml's group so a promotion never runs beside an upload:
+# Play deletes an app's other open edits when one is committed.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
 jobs:
   validate:
     name: Validate Promotion
