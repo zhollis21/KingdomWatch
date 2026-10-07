@@ -428,9 +428,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
         private sealed class NoRoom : IHousing
         {
-            public bool HasVacancy => false;
+            public bool HasVacancy(EntityId community) => false;
 
-            public EntityId Claim() => throw new InvalidOperationException("full");
+            public EntityId Claim(EntityId community) => throw new InvalidOperationException("full");
 
             public void Release(EntityId home)
             {

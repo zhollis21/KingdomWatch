@@ -409,7 +409,8 @@ namespace KingdomWatch.Core.Validation
         /// Folds in every building (#100), in creation order - which is id
         /// order - with all its state: where it stands, the work claimed and
         /// done, whether its ground is cleared, who lives in it, and a
-        /// field's stage and today's counts.
+        /// field's stage and today's counts; then the settlements' store
+        /// readings (<see cref="Buildings.StoreTrends"/>).
         /// </summary>
         public WorldHash AddBuildings(Buildings buildings)
         {
@@ -443,6 +444,19 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.CountsDay);
                 Mix(building.ClaimedToday);
                 Mix(building.WorkedToday);
+            }
+
+            // Then each settlement's yearly store readings (#149), in the
+            // order Buildings first saw them, which is founding order.
+            var trends = buildings.StoreTrends;
+            Mix(trends.Count);
+
+            for (var i = 0; i < trends.Count; i++)
+            {
+                Mix(trends[i].Settlement);
+                Mix(trends[i].LastYear);
+                Mix(trends[i].ThisYear);
+                Mix(trends[i].ReadOn);
             }
 
             return this;

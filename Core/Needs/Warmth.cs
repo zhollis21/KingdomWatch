@@ -41,7 +41,14 @@ namespace KingdomWatch.Core.Needs
     /// **When wood is short, homes with children are lit first.** Hearths
     /// are lit in a fixed order - households with a dependent (infant, child
     /// or adolescent) in them, then the rest, each in the order they formed,
-    /// and the communal fire last - until the wood runs out. It is
+    /// and the communal fire last - and only as many as the woodpile can keep
+    /// lit every night but the last <see cref="HardshipNights"/> before
+    /// spring (#149). Lighting every hearth until the wood ran out warmed
+    /// everyone for the first half of a short winter and nobody for the rest,
+    /// and since nobody lives through a dozen dark nights, a village died
+    /// whole; rationed, the same houses stay dark all winter and the rest
+    /// live. A woodpile a few nights short lights everyone, as it did: those
+    /// last dark nights cost nobody their life. It is
     /// <see cref="Hunger"/>'s protect-the-next-generation rule at the unit a
     /// fire actually warms, and it reads the way a chronicle would tell it:
     /// the old couple's house went cold first. Formation order is id order,
@@ -82,6 +89,14 @@ namespace KingdomWatch.Core.Needs
 
         /// <summary>Health lost per cold night once past the grace period.</summary>
         public const short ExposureDamagePerNight = 10;
+
+        /// <summary>
+        /// Dark nights at the end of a winter that a woodpile is not rationed
+        /// against: the grace period and half a full-health person's damage,
+        /// a gap anyone warm until then lives through - <see cref="Hunger.HardshipDays"/>'s
+        /// reasoning, at the fire (#149).
+        /// </summary>
+        public const long HardshipNights = (ExposureGrace / SimulationTime.TicksPerDay) + (Hunger.FullHealth / ExposureDamagePerNight / 2);
 
         /// <summary>
         /// Burning is a resource change, so it runs in the physical phase, as
@@ -350,8 +365,13 @@ namespace KingdomWatch.Core.Needs
 
             // Every fire burns the same, so the lit ones are a prefix of the
             // lighting order: rank below this is lit, at or above it is dark.
+            // As many as the woodpile can keep lit every night but the last
+            // HardshipNights before spring, rounded up so the wood is never
+            // left unburned (#149).
             var ledger = group.SharedSupplies;
-            var lit = Math.Min(hearths, ledger.Available(ResourceKind.Wood) / FuelPerFire);
+            var nights = Math.Max(1L, now.DaysUntilSpring - HardshipNights);
+            var fires = ledger.Available(ResourceKind.Wood) / FuelPerFire;
+            var lit = (int)Math.Min(hearths, (fires + nights - 1L) / nights);
 
             if (lit > 0)
             {

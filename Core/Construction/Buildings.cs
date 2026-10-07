@@ -9,6 +9,7 @@ using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
+using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
@@ -77,7 +78,7 @@ namespace KingdomWatch.Core.Construction
     ///
     /// The numbers are placeholders, set by the harness.
     /// </remarks>
-    public sealed class Buildings : IDomainEventSubscriber
+    public sealed class Buildings : IDomainEventSubscriber, IFoodOutlook
     {
         private const long Hour = SimulationTime.TicksPerHour;
 
@@ -144,12 +145,24 @@ namespace KingdomWatch.Core.Construction
         private const long SettleNumerator = 3L;
         private const long SettleDenominator = 2L;
 
+        /// <summary>
+        /// A new household's house waits until the forest in reach gives this
+        /// many quarters of what its hearths, the new one included, burn in a
+        /// winter (<see cref="CanFuelAnotherHearth"/>): the rest is the wood
+        /// houses, barns and fields are built from.
+        /// </summary>
+        public const long WoodHeadroomNumerator = 5L;
+
+        /// <summary>The denominator of <see cref="WoodHeadroomNumerator"/>.</summary>
+        public const long WoodHeadroomDenominator = 4L;
+
         private static readonly int DefinedTerrainKinds = EnumGuard.BuildMask(typeof(TerrainKind)).Length;
 
         private readonly DomainEventBus _bus;
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
         private readonly Households _households;
+        private readonly Partnerships _partnerships;
         private readonly Pathfinder _pathfinder;
         private readonly TerrainGrid _grid;
         private readonly KnownMaps _knownMaps;
@@ -171,7 +184,16 @@ namespace KingdomWatch.Core.Construction
 
         private IReadOnlyList<ICommunity> _camps = Array.Empty<ICommunity>();
 
+        // The house claimed for a household being formed, until its forming
+        // is announced and it moves in (Claim, On).
+        private Building? _claimed;
+
+        // Founding order: the order a settlement is first seen at a dawn.
+        private readonly List<StoreTrend> _trends = new List<StoreTrend>();
+        private readonly ReadOnlyCollection<StoreTrend> _trendsView;
+
         private readonly bool[] _scrub;
+        private readonly bool[] _forest;
         private readonly bool[] _ground;
         private readonly FootprintFilter _footprint;
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
@@ -181,6 +203,7 @@ namespace KingdomWatch.Core.Construction
             DomainEventBus bus,
             PersonStore people,
             Households households,
+            Partnerships partnerships,
             Pathfinder pathfinder,
             KnownMaps knownMaps,
             LandCover land,
@@ -189,6 +212,7 @@ namespace KingdomWatch.Core.Construction
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _people = people ?? throw new ArgumentNullException(nameof(people));
             _households = households ?? throw new ArgumentNullException(nameof(households));
+            _partnerships = partnerships ?? throw new ArgumentNullException(nameof(partnerships));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
             _knownMaps = knownMaps ?? throw new ArgumentNullException(nameof(knownMaps));
             _land = land ?? throw new ArgumentNullException(nameof(land));
@@ -196,9 +220,12 @@ namespace KingdomWatch.Core.Construction
             _clock = bus.Clock;
             _grid = pathfinder.Grid;
             _allView = _all.AsReadOnly();
+            _trendsView = _trends.AsReadOnly();
 
             _scrub = new bool[DefinedTerrainKinds];
             _scrub[(int)TerrainKind.Scrub] = true;
+            _forest = new bool[DefinedTerrainKinds];
+            _forest[(int)TerrainKind.Forest] = true;
             _ground = new bool[DefinedTerrainKinds];
             _ground[(int)TerrainKind.Plains] = true;
             _ground[(int)TerrainKind.Scrub] = true;
@@ -305,7 +332,7 @@ namespace KingdomWatch.Core.Construction
         /// on a map that is mostly plains, and placement is #23's to replace,
         /// so this checks the barn alone.
         /// </remarks>
-        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living)
+        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living, int hearths = 0)
         {
             // Inputs first, in every season: checked after the season, they
             // were refused in early spring and silently accepted the rest of
@@ -318,6 +345,7 @@ namespace KingdomWatch.Core.Construction
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
+                && WoodInReach(at, mapHolder) * WoodHeadroomDenominator * 2L >= (long)hearths * Warmth.FuelPerFire * SimulationTime.DaysPerSeason * WoodHeadroomNumerator
                 && YardIsClear(at)
                 && TryPlace(BuildingKind.Barn, at, at, mapHolder, out _);
         }
@@ -325,10 +353,17 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether a settlement is outgrowing its food: bushes in reach and
         /// fields standing give less than five quarters of a year's eating,
-        /// and the stores do not already hold a year of it. What a barn and
-        /// its fields are built for; a village sitting on a year's Grain
-        /// builds no more fields however few bushes it has.
+        /// and the stores do not already hold a year of it - or they do, but
+        /// held more a year ago (<see cref="StoreTrends"/>). What a barn and
+        /// its fields are built for; a village sitting on a year's Grain that
+        /// is not shrinking builds no more fields however few bushes it has.
         /// </summary>
+        /// <remarks>
+        /// A store falling year on year is a village eating its savings: in
+        /// the #100 harness runs one held off new fields for seventeen years
+        /// on a year's Grain that was draining the whole time, and by the year
+        /// food counted as short it had no wood left to build with (#149).
+        /// </remarks>
         public bool IsFoodShort(ICommunity settlement, int living)
         {
             if (settlement is null)
@@ -338,7 +373,7 @@ namespace KingdomWatch.Core.Construction
 
             var need = YearlyNeed(living);
 
-            if (Hunger.MealsInStore(settlement.SharedSupplies) >= need)
+            if (Hunger.MealsInStore(settlement.SharedSupplies) >= need && !IsStoreFalling(settlement.Id))
             {
                 return false;
             }
@@ -356,6 +391,133 @@ namespace KingdomWatch.Core.Construction
             }
 
             return supply * ShortDenominator < need * ShortNumerator;
+        }
+
+        /// <summary>
+        /// <see cref="IsFoodShort(ICommunity, int)"/> for a settlement, counting its
+        /// living members; false for any other community, which builds no
+        /// fields to be short of. What holds back a hungry village's courtship
+        /// and births (<see cref="IFoodOutlook"/>, #69).
+        /// </summary>
+        public bool IsFoodShort(EntityId community)
+        {
+            if (community.Kind != EntityKind.Settlement)
+            {
+                return false;
+            }
+
+            var settlement = CampOf(community);
+            var members = settlement.Members;
+            var living = 0;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (_people.IsAlive(members[i]))
+                {
+                    living++;
+                }
+            }
+
+            return IsFoodShort(settlement, living);
+        }
+
+        /// <summary>
+        /// Wood a year the forest in a settlement's reach gives back: every
+        /// forest cell its woodcutters could be sent to, felled and grown
+        /// again every <see cref="LandCover.RegrowDays"/>. A cell is counted
+        /// whether its tree stands today or not, since a stump is a tree in
+        /// five years; cleared ground is plains and is not.
+        /// </summary>
+        public long WoodInReach(ICommunity settlement)
+        {
+            if (settlement is null)
+            {
+                throw new ArgumentNullException(nameof(settlement));
+            }
+
+            return WoodInReach(settlement.Position, settlement.Id);
+        }
+
+        /// <summary>
+        /// <see cref="WoodInReach(ICommunity)"/> of a place, for a community
+        /// there knowing what <paramref name="mapHolder"/> knows.
+        /// </summary>
+        public long WoodInReach(WorldPosition at, EntityId mapHolder)
+        {
+            var trees = _pathfinder.CountReachable(at, Jobs.Mover, _forest, _knownMaps.For(mapHolder), Jobs.MaxSiteRadius);
+            return (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
+        }
+
+        /// <summary>
+        /// Whether the forest in reach (<see cref="WoodInReach"/>) would keep
+        /// one more hearth than the settlement has lit through every winter,
+        /// with <see cref="WoodHeadroomNumerator"/>/<see cref="WoodHeadroomDenominator"/>
+        /// of it to spare for building. What a house for a new household
+        /// waits on (#69): a home is a hearth, and the land has to carry it.
+        /// </summary>
+        public bool CanFuelAnotherHearth(ICommunity settlement)
+        {
+            var hearths = Warmth.CountHearths(
+                (settlement ?? throw new ArgumentNullException(nameof(settlement))).Members, _people, _scratchHearths);
+            var burn = (hearths + 1L) * Warmth.FuelPerFire * SimulationTime.DaysPerSeason;
+            return WoodInReach(settlement) * WoodHeadroomDenominator >= burn * WoodHeadroomNumerator;
+        }
+
+        /// <summary>
+        /// Each settlement's meals in store at its last two first-days-of-spring,
+        /// in founding order: what <see cref="IsFoodShort"/> reads to tell a
+        /// store being saved from one being eaten.
+        /// </summary>
+        public IReadOnlyList<StoreTrend> StoreTrends => _trendsView;
+
+        /// <summary>
+        /// Whether a settlement has a home for a new household: a finished
+        /// house nobody lives in, and no household of its own still in a
+        /// tent - those are housed first, oldest first (#69).
+        /// For <see cref="SettlementHousing"/>.
+        /// </summary>
+        public bool HasVacancy(EntityId settlement) => !(FreeHouse(settlement) is null) && !TryFirstUnhoused(CampOf(settlement), out _);
+
+        /// <summary>
+        /// Takes the settlement's first free house for the household about to
+        /// form, and returns its id. The household moves in when its forming
+        /// is announced (<see cref="DomainEventKind.HouseholdFormed"/>), which
+        /// <see cref="Households.Form"/> does next. Throws when there is no
+        /// vacancy, or a claim is still waiting for its household.
+        /// For <see cref="SettlementHousing"/>.
+        /// </summary>
+        public EntityId Claim(EntityId settlement)
+        {
+            if (!(_claimed is null))
+            {
+                throw new InvalidOperationException(
+                    _claimed + " was claimed and no household has moved in yet; a second claim would hand it out twice.");
+            }
+
+            if (!HasVacancy(settlement))
+            {
+                throw new InvalidOperationException(settlement + " has no house free for a new household.");
+            }
+
+            _claimed = FreeHouse(settlement)!;
+            return _claimed.Id;
+        }
+
+        /// <summary>
+        /// A house given back by a household that has dissolved. Its
+        /// <see cref="DomainEventKind.HouseholdDissolved"/> has already
+        /// emptied it, since <see cref="Households.Dissolve"/> announces
+        /// before it releases; this only checks that it did.
+        /// For <see cref="SettlementHousing"/>.
+        /// </summary>
+        public void Release(EntityId home)
+        {
+            var house = Find(home);
+
+            if (house is null || house.Kind != BuildingKind.House || !house.Occupant.IsNone)
+            {
+                throw new InvalidOperationException(home + " is not an empty house, so it cannot be given back.");
+            }
         }
 
         /// <summary>
@@ -393,6 +555,7 @@ namespace KingdomWatch.Core.Construction
                 Frost(settlement);
             }
 
+            ReadStore(settlement);
             AssignHomes(settlement);
 
             if (idle > 0)
@@ -563,6 +726,20 @@ namespace KingdomWatch.Core.Construction
 
         public void On(in DomainEvent published)
         {
+            // The household a claimed house was taken for moves in as its
+            // forming is announced (Claim).
+            if (published.Kind == DomainEventKind.HouseholdFormed)
+            {
+                if (!(_claimed is null) && published.SecondaryEntity == _claimed.Id)
+                {
+                    _claimed.Occupant = published.PrimaryEntity;
+                    _homeOf.Add(published.PrimaryEntity, _claimed);
+                    _claimed = null;
+                }
+
+                return;
+            }
+
             if (published.Kind != DomainEventKind.HouseholdDissolved)
             {
                 return;
@@ -727,6 +904,129 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
+        // One house kept ready for the next couple (#69): none stands empty,
+        // a single woman and a single man are waiting, and the land can fuel
+        // the hearth the house would light. A household in a tent is housed
+        // first, so it is not asked about here.
+        private bool WantsSpareHouse(ICommunity settlement)
+        {
+            if (!(FreeHouse(settlement.Id) is null))
+            {
+                return false;
+            }
+
+            var women = false;
+            var men = false;
+            var members = settlement.Members;
+
+            for (var i = 0; i < members.Count && !(women && men); i++)
+            {
+                var member = members[i];
+
+                if (!_people.IsAlive(member) || !AgeStages.IsAdult(_people.GetAgeStage(member))
+                    || !_partnerships.ActivePartnerOf(_people.GetId(member)).IsNone)
+                {
+                    continue;
+                }
+
+                women |= _people.GetSex(member) == Sex.Female;
+                men |= _people.GetSex(member) == Sex.Male;
+            }
+
+            return women && men && CanFuelAnotherHearth(settlement);
+        }
+
+        // The settlement's first finished house nobody lives in or has
+        // claimed, in creation order.
+        private Building? FreeHouse(EntityId settlement)
+        {
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var house = _all[i];
+
+                if (house.Settlement == settlement && house.Kind == BuildingKind.House && house.IsComplete
+                    && house.Occupant.IsNone && !ReferenceEquals(house, _claimed))
+                {
+                    return house;
+                }
+            }
+
+            return null;
+        }
+
+        private Building? Find(EntityId building)
+        {
+            for (var i = 0; i < _all.Count; i++)
+            {
+                if (_all[i].Id == building)
+                {
+                    return _all[i];
+                }
+            }
+
+            return null;
+        }
+
+        private ICommunity CampOf(EntityId settlement)
+        {
+            for (var i = 0; i < _camps.Count; i++)
+            {
+                if (_camps[i].Id == settlement)
+                {
+                    return _camps[i];
+                }
+            }
+
+            throw new InvalidOperationException(settlement + " is not a settlement Buildings knows (Camps).");
+        }
+
+        // On the first day of each year, what the stores hold moves this
+        // year's reading to last year's (IsFoodShort's trend).
+        private void ReadStore(ICommunity settlement)
+        {
+            StoreTrend? trend = null;
+
+            for (var i = 0; i < _trends.Count && trend is null; i++)
+            {
+                if (_trends[i].Settlement == settlement.Id)
+                {
+                    trend = _trends[i];
+                }
+            }
+
+            if (trend is null)
+            {
+                trend = new StoreTrend(settlement.Id);
+                _trends.Add(trend);
+            }
+
+            var day = _clock.Now.DayNumber;
+
+            if (_clock.Now.DayOfYear != 0 || trend.ReadOn == day)
+            {
+                return;
+            }
+
+            trend.LastYear = trend.ThisYear;
+            trend.ThisYear = Hunger.MealsInStore(settlement.SharedSupplies);
+            trend.ReadOn = day;
+        }
+
+        private bool IsStoreFalling(EntityId settlement)
+        {
+            for (var i = 0; i < _trends.Count; i++)
+            {
+                var trend = _trends[i];
+
+                if (trend.Settlement == settlement)
+                {
+                    return trend.LastYear >= 0L && trend.ThisYear < trend.LastYear;
+                }
+            }
+
+            return false;
+        }
+
         private void Plan(ICommunity settlement, int living)
         {
             Building? barnWithRoom = null;
@@ -773,7 +1073,7 @@ namespace KingdomWatch.Core.Construction
                     from = settlement.Position;
                 }
             }
-            else if (TryFirstUnhoused(settlement, out _))
+            else if (TryFirstUnhoused(settlement, out _) || WantsSpareHouse(settlement))
             {
                 kind = BuildingKind.House;
                 from = settlement.Position;

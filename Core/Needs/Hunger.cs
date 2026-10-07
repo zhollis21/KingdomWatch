@@ -46,6 +46,16 @@ namespace KingdomWatch.Core.Needs
     /// with the household, not the polity. This replaced the insertion-order
     /// placeholder #51 shipped with.
     ///
+    /// **A winter store is rationed to the spring** (#149). Nothing grows in
+    /// winter, so each winter meal serves only as many as the store can feed
+    /// every day until the last <see cref="HardshipDays"/> before spring, in
+    /// the same sittings; the rest go without even while food is left.
+    /// Served until it ran out instead, a store that covered half a winter
+    /// fed everyone for half of it and nobody after, and a village starved
+    /// whole rather than losing its old. Rationed to the spring itself, a
+    /// band a few days short lost the people it denied all winter, where
+    /// going hungry for those few days at the end would have cost nobody.
+    ///
     /// **Damage here, death elsewhere.** An unfed member past
     /// <see cref="StarvationGrace"/> loses <see cref="StarvationDamagePerMeal"/>
     /// health per missed meal. A missed meal never takes health below zero,
@@ -124,6 +134,15 @@ namespace KingdomWatch.Core.Needs
         /// to undo.
         /// </summary>
         public const short RecoveryPerMeal = 5;
+
+        /// <summary>
+        /// Days unfed at the end of a winter that a winter store is not
+        /// rationed against: the grace period and half a full-health person's
+        /// damage, a gap anyone fed until then lives through. A store that
+        /// covers the winter but these feeds everyone; one that does not is
+        /// rationed to them (#149).
+        /// </summary>
+        public const long HardshipDays = (StarvationGrace / SimulationTime.TicksPerDay) + (FullHealth / StarvationDamagePerMeal / 2);
 
         /// <summary>
         /// Meals are resource changes, so they run in the physical phase and
@@ -377,14 +396,15 @@ namespace KingdomWatch.Core.Needs
         {
             var fed = 0;
             var unfed = 0;
+            var servings = Servings(tracked.Group.SharedSupplies, now);
 
             // Three sittings, each a pass over the members in group order:
             // dependents, then adults, then elders. Three passes rather than a
             // sort because a sort would need somewhere to put the sorted
             // handles, and this runs inside the tick loop.
-            ServeSitting(tracked, now, Sitting.Dependents, ref fed, ref unfed);
-            ServeSitting(tracked, now, Sitting.Adults, ref fed, ref unfed);
-            ServeSitting(tracked, now, Sitting.Elders, ref fed, ref unfed);
+            ServeSitting(tracked, now, Sitting.Dependents, servings, ref fed, ref unfed);
+            ServeSitting(tracked, now, Sitting.Adults, servings, ref fed, ref unfed);
+            ServeSitting(tracked, now, Sitting.Elders, servings, ref fed, ref unfed);
 
             var group = tracked.Group;
 
@@ -409,8 +429,25 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
+        // How many this meal serves: everyone, except in winter, when it is
+        // what the store can feed every day until the last HardshipDays
+        // before spring, rounded up so a store too small for even one person
+        // still feeds someone today. Those last days are a gap the fed can
+        // live through, so a store that covers all but them feeds everyone.
+        // Nothing grows in winter, so nothing coming in is counted.
+        private static long Servings(ResourceLedger stores, SimulationTime now)
+        {
+            if (now.Season != Season.Winter)
+            {
+                return long.MaxValue;
+            }
+
+            var days = Math.Max(1L, now.DaysUntilSpring - HardshipDays);
+            return (MealsInStore(stores) + (days * DailyRation) - 1L) / (days * DailyRation);
+        }
+
         private void ServeSitting(
-            Tracked tracked, SimulationTime now, Sitting sitting, ref int fed, ref int unfed)
+            Tracked tracked, SimulationTime now, Sitting sitting, long servings, ref int fed, ref int unfed)
         {
             var ledger = tracked.Group.SharedSupplies;
             var members = tracked.Group.Members;
@@ -431,13 +468,15 @@ namespace KingdomWatch.Core.Needs
                 // at the table (#100). Milling is household work, not a job
                 // (economy ladder section 3), and the ledger records it as
                 // the recipe it is.
-                if (ledger.Available(ResourceKind.Food) < DailyRation && ledger.Available(ResourceKind.Grain) > 0)
+                var served = fed < servings;
+
+                if (served && ledger.Available(ResourceKind.Food) < DailyRation && ledger.Available(ResourceKind.Grain) > 0)
                 {
                     ledger.BeginRecipe(PrimitiveTier.Mill);
                     ledger.CompleteRecipe(PrimitiveTier.Mill);
                 }
 
-                if (ledger.Available(ResourceKind.Food) >= DailyRation)
+                if (served && ledger.Available(ResourceKind.Food) >= DailyRation)
                 {
                     ledger.Consume(ResourceKind.Food, DailyRation);
                     _people.SetLastFedAt(member, now);

@@ -66,9 +66,11 @@ namespace KingdomWatch.Core.Lifecycle
 
         /// <summary>
         /// Whether two people may partner right now, and if not, the first
-        /// reason why. Changes nothing.
+        /// reason why. Changes nothing. The community is where they would
+        /// make their home (<see cref="IHousing"/>); <see cref="EntityId.None"/>
+        /// names none, and camp space answers for it.
         /// </summary>
-        public PartnerRefusal Evaluate(PersonHandle a, PersonHandle b)
+        public PartnerRefusal Evaluate(PersonHandle a, PersonHandle b, EntityId community = default)
         {
             // Read through the store before anything else, so a stale handle
             // throws where the bug is rather than coming back as a refusal -
@@ -118,7 +120,7 @@ namespace KingdomWatch.Core.Lifecycle
                     return PartnerRefusal.CousinTaboo;
             }
 
-            if (!_households.HasVacancy)
+            if (!_households.HasVacancy(community) && HomeToShare(a, b, out _) is null)
             {
                 return PartnerRefusal.NoHomeAvailable;
             }
@@ -129,9 +131,11 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>
         /// Partners two eligible people: announces the marriage with the
         /// caller's reasons, records the partnership against that event,
-        /// forms a household in a new home, and moves both in along with
+        /// forms a household in a new home in the community, and moves both in along with
         /// any dependent children of theirs from wherever they were - the
-        /// household they leave, or none.
+        /// household they leave, or none. With no home free, one of them whose
+        /// household has no couple in it takes the other in instead, and that
+        /// household is the one returned: a family home inherited (#69).
         /// A household left empty is dissolved. Throws when
         /// <see cref="Evaluate"/> would refuse.
         /// </summary>
@@ -143,9 +147,9 @@ namespace KingdomWatch.Core.Lifecycle
         /// book reactions into a later phase, so nothing they can do depends
         /// on the household already standing.
         /// </remarks>
-        public Household Partner(PersonHandle a, PersonHandle b, Reasons reasons)
+        public Household Partner(PersonHandle a, PersonHandle b, Reasons reasons, EntityId community = default)
         {
-            var refusal = Evaluate(a, b);
+            var refusal = Evaluate(a, b, community);
 
             if (refusal != PartnerRefusal.None)
             {
@@ -153,17 +157,82 @@ namespace KingdomWatch.Core.Lifecycle
                     a + " and " + b + " may not partner: " + refusal + ".");
             }
 
+            var incomer = default(PersonHandle);
+            var shared = _households.HasVacancy(community) ? null : HomeToShare(a, b, out incomer);
             var idA = _people.GetId(a);
             var idB = _people.GetId(b);
             var formedBy = _bus.Publish(DomainEventKind.MarriageFormed, idA, idB, reasons);
 
             _partnerships.Form(idA, idB, formedBy, _bus.Clock.Now);
 
-            var household = _households.Form();
+            // A home of their own if there is one; otherwise the one of them
+            // whose household had no couple in it takes the other in -
+            // found before the partnership made them one.
+            if (shared is object)
+            {
+                MoveIn(incomer, shared);
+                return shared;
+            }
+
+            var household = _households.Form(community);
             MoveIn(a, household);
             MoveIn(b, household);
 
             return household;
+        }
+
+        /// <summary>
+        /// The most couples one household holds: the parents and one married
+        /// child, the heir who brings a spouse into the family home when no
+        /// home is free (#69).
+        /// </summary>
+        public const int MaxCouplesPerHousehold = 2;
+
+        // The household one of the two can bring the other into when there
+        // is no home free (#69): their own, if it holds fewer than
+        // MaxCouplesPerHousehold couples - the stem family, where one child
+        // marries in while the parents live - so a family home passes to the
+        // next generation rather than standing full of the unmarried until
+        // everyone in it has died. The first of the two whose household
+        // qualifies; null when neither does.
+        private Household? HomeToShare(PersonHandle a, PersonHandle b, out PersonHandle incomer)
+        {
+            if (HasRoomForCouple(_households.Of(a)))
+            {
+                incomer = b;
+                return _households.Of(a);
+            }
+
+            if (HasRoomForCouple(_households.Of(b)))
+            {
+                incomer = a;
+                return _households.Of(b);
+            }
+
+            incomer = default;
+            return null;
+        }
+
+        // Partnered members are counted, so a couple counts twice.
+        private bool HasRoomForCouple(Household? household)
+        {
+            if (household is null)
+            {
+                return false;
+            }
+
+            var members = household.Members;
+            var partnered = 0;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (_people.IsAlive(members[i]) && !_partnerships.ActivePartnerOf(_people.GetId(members[i])).IsNone)
+                {
+                    partnered++;
+                }
+            }
+
+            return partnered < 2 * MaxCouplesPerHousehold;
         }
 
         private void RequireRecorded(EntityId person, string paramName)

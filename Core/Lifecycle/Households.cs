@@ -60,13 +60,17 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>Every household, oldest first. The order to iterate in.</summary>
         public IReadOnlyList<Household> All => _orderedView;
 
-        /// <summary>Whether <see cref="Form"/> would find a home right now.</summary>
-        public bool HasVacancy => _housing.HasVacancy;
+        /// <summary>
+        /// Whether <see cref="Form"/> would find a home in this community
+        /// right now. <see cref="EntityId.None"/> asks for no community in
+        /// particular, which camp space answers (<see cref="IHousing"/>).
+        /// </summary>
+        public bool HasVacancy(EntityId community = default) => _housing.HasVacancy(community);
 
         /// <summary>
-        /// Forms an empty household in a newly claimed home and announces it.
-        /// Throws when the housing has no vacancy - ask <see cref="HasVacancy"/>
-        /// first, as <see cref="FamilyFormation"/> does.
+        /// Forms an empty household in a newly claimed home in this community
+        /// and announces it. Throws when the housing has no vacancy there -
+        /// ask <see cref="HasVacancy"/> first, as <see cref="FamilyFormation"/> does.
         /// </summary>
         /// <remarks>
         /// Empty at birth so that the members who then join are recorded
@@ -83,14 +87,14 @@ namespace KingdomWatch.Core.Lifecycle
         /// transaction layer this simulation does not have; what counts as a
         /// resumable state is the snapshot's (#15).
         /// </remarks>
-        public Household Form()
+        public Household Form(EntityId community = default)
         {
-            if (!_housing.HasVacancy)
+            if (!_housing.HasVacancy(community))
             {
-                throw new InvalidOperationException("No home is available for a new household.");
+                throw new InvalidOperationException("No home is available for a new household in " + community + ".");
             }
 
-            var home = _housing.Claim();
+            var home = _housing.Claim(community);
             var household = new Household(_clock.Ids.Next(EntityKind.Household), home, _clock.Now);
 
             _bus.Publish(DomainEventKind.HouseholdFormed, household.Id, home);
