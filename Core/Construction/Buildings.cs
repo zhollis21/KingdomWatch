@@ -163,6 +163,14 @@ namespace KingdomWatch.Core.Construction
         /// <summary>The denominator of <see cref="WoodHeadroomNumerator"/>.</summary>
         public const long WoodHeadroomDenominator = 4L;
 
+        /// <summary>
+        /// Years of eating a store must hold to count as cover even while it
+        /// falls (<see cref="IsFoodShort(ICommunity, int)"/>): a village
+        /// living off savings that deep keeps growing, and stops only as they
+        /// run low.
+        /// </summary>
+        public const long DeepStoreYears = 5L;
+
         private static readonly int DefinedTerrainKinds = EnumGuard.BuildMask(typeof(TerrainKind)).Length;
 
         private readonly DomainEventBus _bus;
@@ -331,13 +339,6 @@ namespace KingdomWatch.Core.Construction
         /// And only in the first half of spring, so the village has a whole
         /// growing season for its fields before its first winter: one that
         /// settled late in spring got a single crop in and starved.
-        /// And only where the forest in reach (<see cref="WoodInReach(WorldPosition, EntityId)"/>)
-        /// would fuel at least half of the band's <paramref name="hearths"/>
-        /// through every winter, with <see cref="CanFuelAnotherHearth"/>'s
-        /// headroom (#69): a village that settled where it could fuel none
-        /// of them froze in its first winters, and one asked to fuel them all
-        /// found nowhere big enough and starved as a band. Rationing shrinks
-        /// it to the rest. No hearths, no wood asked.
         /// </summary>
         /// <remarks>
         /// Ground for a barn is checked on its own (the #148 review). The
@@ -346,7 +347,7 @@ namespace KingdomWatch.Core.Construction
         /// on a map that is mostly plains, and placement is #23's to replace,
         /// so this checks the barn alone.
         /// </remarks>
-        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living, int hearths = 0)
+        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living)
         {
             // Inputs first, in every season: checked after the season, they
             // were refused in early spring and silently accepted the rest of
@@ -359,7 +360,6 @@ namespace KingdomWatch.Core.Construction
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
-                && WoodInReach(at, mapHolder) * WoodHeadroomDenominator * 2L >= (long)hearths * Warmth.FuelPerFire * SimulationTime.DaysPerSeason * WoodHeadroomNumerator
                 && YardIsClear(at)
                 && TryPlace(BuildingKind.Barn, at, at, mapHolder, out _);
         }
@@ -368,7 +368,8 @@ namespace KingdomWatch.Core.Construction
         /// Whether a settlement is outgrowing its food: bushes in reach and
         /// fields standing give less than five quarters of a year's eating,
         /// and the stores do not already hold a year of it - or they do, but
-        /// held more a year ago (<see cref="StoreTrends"/>). What a barn and
+        /// held more a year ago (<see cref="StoreTrends"/>) and hold less than
+        /// <see cref="DeepStoreYears"/> years of it. What a barn and
         /// its fields are built for; a village sitting on a year's Grain that
         /// is not shrinking builds no more fields however few bushes it has.
         /// </summary>
@@ -387,7 +388,9 @@ namespace KingdomWatch.Core.Construction
 
             var need = YearlyNeed(living);
 
-            if (Hunger.MealsInStore(settlement.SharedSupplies) >= need && !IsStoreFalling(settlement.Id))
+            var meals = Hunger.MealsInStore(settlement.SharedSupplies);
+
+            if (meals >= need * DeepStoreYears || (meals >= need && !IsStoreFalling(settlement.Id)))
             {
                 return false;
             }
@@ -449,16 +452,8 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(settlement));
             }
 
-            return WoodInReach(settlement.Position, settlement.Id);
-        }
-
-        /// <summary>
-        /// <see cref="WoodInReach(ICommunity)"/> of a place, for a community
-        /// there knowing what <paramref name="mapHolder"/> knows.
-        /// </summary>
-        public long WoodInReach(WorldPosition at, EntityId mapHolder)
-        {
-            var trees = _pathfinder.CountReachable(at, Jobs.Mover, _forest, _knownMaps.For(mapHolder), Jobs.MaxSiteRadius);
+            var trees = _pathfinder.CountReachable(
+                settlement.Position, Jobs.Mover, _forest, _knownMaps.For(settlement.Id), Jobs.MaxSiteRadius);
             return (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
         }
 

@@ -207,14 +207,14 @@ namespace KingdomWatch.Core.Tests.Construction
         public void Wood_in_reach_is_every_forest_cell_grown_back_once_a_regrowth()
         {
             var w = new BuildingsWorld(paint: Woods);
+            var bare = new BuildingsWorld();
             var trees = 5 * 30;
             var expected = (long)trees * w.World.Land.TreeCuts * Buildings.WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
 
             Assert.Multiple(() =>
             {
                 Assert.That(w.Buildings.WoodInReach(w.Settlement), Is.EqualTo(expected));
-                Assert.That(w.Buildings.WoodInReach(w.Settlement.Position, w.Settlement.Id), Is.EqualTo(expected));
-                Assert.That(new BuildingsWorld().Buildings.WoodInReach(BuildingsWorld.Centre, new BuildingsWorld().Settlement.Id), Is.Zero);
+                Assert.That(bare.Buildings.WoodInReach(bare.Settlement), Is.Zero);
                 Assert.That(() => w.Buildings.WoodInReach(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Buildings.CanFuelAnotherHearth(null!), Throws.ArgumentNullException);
             });
@@ -239,7 +239,9 @@ namespace KingdomWatch.Core.Tests.Construction
             // #149: one village held off new fields for seventeen years on a
             // year's Grain that was draining the whole time. Read on the first
             // day of each year; lower than the year before, it is no cover.
+            // Wood for the winter, so the village is the same size a year on.
             var w = new BuildingsWorld();
+            w.Wood(10_000);
             var need = Buildings.YearlyNeed(w.Living);
             w.Stores.Gather(ResourceKind.Food, (int)(3 * need));
             w.Buildings.AtDawn(w.Settlement, 0, w.Living);
@@ -263,9 +265,34 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_store_deep_enough_is_cover_even_while_it_falls()
+        {
+            // A village living off savings that deep keeps growing; only as
+            // they run low does a falling store stop counting. Wood for the
+            // winter, so the village is the same size a year on.
+            var w = new BuildingsWorld();
+            w.Wood(10_000);
+            var need = Buildings.YearlyNeed(w.Living);
+            w.Stores.Gather(ResourceKind.Food, (int)((Buildings.DeepStoreYears + 2L) * need));
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            w.World.Clock.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerYear), w.World.Router);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            var trend = w.Buildings.StoreTrends.Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(trend.ThisYear, Is.LessThan(trend.LastYear), "falling");
+                Assert.That(Hunger.MealsInStore(w.Stores), Is.GreaterThanOrEqualTo(Buildings.DeepStoreYears * need));
+                Assert.That(w.Buildings.IsFoodShort(w.Settlement, w.Living), Is.False);
+            });
+        }
+
+        [Test]
         public void A_year_s_food_in_a_store_that_is_growing_is_cover()
         {
+            // Wood for the winter, so the village is the same size a year on.
             var w = new BuildingsWorld();
+            w.Wood(10_000);
             var need = Buildings.YearlyNeed(w.Living);
             w.Stores.Gather(ResourceKind.Food, (int)need);
             w.Buildings.AtDawn(w.Settlement, 0, w.Living);
@@ -311,32 +338,6 @@ namespace KingdomWatch.Core.Tests.Construction
             var read = new KingdomWatch.Core.Validation.WorldHash().AddBuildings(w.Buildings).Value;
 
             Assert.That(read, Is.Not.EqualTo(before));
-        }
-
-        [Test]
-        public void A_band_settles_only_where_the_forest_fuels_half_its_hearths()
-        {
-            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
-            void Bushes(TerrainGrid grid)
-            {
-                for (var i = 0; i < bushes; i++)
-                {
-                    grid.Set(new WorldPosition(5 + (i % 30), 30 + (i / 30)), TerrainKind.Scrub);
-                }
-            }
-
-            var bare = new BuildingsWorld(paint: Bushes);
-            var wooded = new BuildingsWorld(paint: grid => { Bushes(grid); Woods(grid); });
-            var wood = wooded.Buildings.WoodInReach(BuildingsWorld.Centre, wooded.Settlement.Id);
-            var half = (int)(wood * Buildings.WoodHeadroomDenominator * 2L / (Warmth.FuelPerFire * SimulationTime.DaysPerSeason * Buildings.WoodHeadroomNumerator));
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(bare.Buildings.CanSettle(BuildingsWorld.Centre, bare.Settlement.Id, 12, 0), Is.True, "no hearths, no wood needed");
-                Assert.That(bare.Buildings.CanSettle(BuildingsWorld.Centre, bare.Settlement.Id, 12, 1), Is.False, "no forest");
-                Assert.That(wooded.Buildings.CanSettle(BuildingsWorld.Centre, wooded.Settlement.Id, 12, half), Is.True, "the most the forest carries twice over");
-                Assert.That(wooded.Buildings.CanSettle(BuildingsWorld.Centre, wooded.Settlement.Id, 12, half + 1), Is.False, "one more");
-            });
         }
 
         // Food enough that the settlement is never short, so its plans are

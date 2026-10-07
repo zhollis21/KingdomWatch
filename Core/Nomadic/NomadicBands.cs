@@ -6,7 +6,6 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Land;
-using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
@@ -177,7 +176,6 @@ namespace KingdomWatch.Core.Nomadic
         private readonly DomainEventBus _bus;
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
-        private readonly List<EntityId> _hearthScratch = new List<EntityId>();
         private readonly Pathfinder _pathfinder;
         private readonly TerrainGrid _grid;
         private readonly Founding _founding;
@@ -443,8 +441,7 @@ namespace KingdomWatch.Core.Nomadic
         {
             var id = BandId(band);
             Score(_knownMaps.For(id), at, out var viable);
-            return viable && (_buildings is null
-                || _buildings.CanSettle(at, id, Living(band), Warmth.CountHearths(band.Members, _people, _hearthScratch)));
+            return viable && (_buildings is null || _buildings.CanSettle(at, id, Living(band)));
         }
 
         private static EntityId BandId(MobileGroup band) =>

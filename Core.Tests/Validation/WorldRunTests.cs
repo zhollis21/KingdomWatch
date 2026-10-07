@@ -522,8 +522,9 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void The_chronicle_prints_each_village_s_first_house_and_first_harvest_once()
         {
-            // Seed 1 settles in year 5 - since #69 a band settles only where
-            // the forest can fuel it - and farms that summer (#100).
+            // Seed 1 settles in year 5 - since #69 a band on the road has no
+            // children, so its settling pressure builds more slowly - and
+            // farms that summer (#100).
             var run = new WorldRun(1UL).RunYears(7L);
             var text = new StringWriter();
             Chronicle.Write(run, text);

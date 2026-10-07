@@ -260,6 +260,30 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_widower_marrying_into_a_family_home_leaves_his_own_to_dissolve()
+        {
+            // The inherited home's crossing with the move-in: he leaves the
+            // household he was alone in, and it goes, as it does when a
+            // couple takes a new house.
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(2));
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var his = w.NewCouple(out var late, out var widower);
+            w.Deaths.Die(late, Reasons.None);
+
+            var formed = w.Family.Partner(daughter, widower, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home));
+                Assert.That(home.Members, Does.Contain(widower));
+                Assert.That(w.Households.TryGet(his.Id, out _), Is.False, "his old household is gone");
+                Assert.That(w.Households.Count, Is.EqualTo(1));
+                w.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
         public void A_family_home_holds_two_couples_at_most()
         {
             var w = new HouseholdWorld(FamilyFormationSettings.Default, new Rooms(1));
