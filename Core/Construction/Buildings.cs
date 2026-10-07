@@ -67,9 +67,16 @@ namespace KingdomWatch.Core.Construction
     /// of hands is a day later, never a crop lost. Nobody works a field in
     /// winter.
     ///
-    /// **Homes.** A finished house goes to the first household in the
-    /// settlement without one, in member order, at the next dawn. Camp space
-    /// still lets households form without one; #69 makes houses the limit.
+    /// **Homes, and the housing stock** (#69). A finished house goes to the
+    /// first household in the settlement without one, in member order, at
+    /// the next dawn: the band's tent families are housed first. A new
+    /// household forms only into a finished house nobody lives in, once no
+    /// tent family is waiting (<see cref="HasVacancy"/>, through
+    /// <see cref="SettlementHousing"/>). Beyond the tent families, one spare
+    /// house is built for the next couple when single adults of both sexes
+    /// are waiting and the forest in reach can fuel the hearth it would
+    /// light (<see cref="CanFuelAnotherHearth"/>) - housing, land and food
+    /// together are what limit a village's growth.
     ///
     /// **Settling.** <see cref="CanSettle"/> is the band's half of the
     /// bargain: early spring, bushes in reach whose year's fruit would cover

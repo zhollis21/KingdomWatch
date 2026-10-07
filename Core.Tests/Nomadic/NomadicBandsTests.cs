@@ -1203,15 +1203,18 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // argument.
             var w = new WorkWorld();
             WorkWorld.NeverRunsOut(w.Land);
-            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
-            w.JoinAdults(band, 4);
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(Twelve));
+            w.JoinAdults(band, Twelve);
 
             Assert.That(w.Nomads.CanSettleAt(band, WorkWorld.Camp), Is.True, "it can see food and wood from the first camp");
             Assert.That(w.Founding.All, Is.Empty, "but not until the pressure is there");
 
-            // Pressure is member-days, so four adults reach the threshold in
-            // SettlingPressure / 4 days; a year's slack covers the councils.
-            var days = (int)(NomadicBands.SettlingPressure / 4L) + (int)SimulationTime.DaysPerYear;
+            // Pressure is member-days, so twelve adults reach the threshold in
+            // SettlingPressure / 12 days; a year's slack covers the days on
+            // the road, when no council sits. Twelve rather than four: since
+            // #69 a band on the move has no children, and four ageing adults
+            // with none to follow them die before their decades add up.
+            var days = (int)(NomadicBands.SettlingPressure / Twelve) + (int)SimulationTime.DaysPerYear;
             w.AdvanceTo(w.Now.Plus(days * Day));
 
             Assert.That(w.Founding.All, Is.Not.Empty, "a band that can see good land still settles on it");
@@ -1225,10 +1228,11 @@ namespace KingdomWatch.Core.Tests.Nomadic
             var w = new WorkWorld();
             WorkWorld.NeverRunsOut(w.Land);
             w.Nomads.Settles = false;
-            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(4));
-            w.JoinAdults(band, 4);
+            var band = w.NewWanderingBand(WorkWorld.Camp, WorkWorld.PlentifulFood(Twelve));
+            w.JoinAdults(band, Twelve);
 
-            var days = (int)(NomadicBands.SettlingPressure / 4L) + (int)SimulationTime.DaysPerYear;
+            // The slack the test above allows.
+            var days = (int)(NomadicBands.SettlingPressure / Twelve) + (int)SimulationTime.DaysPerYear;
             w.AdvanceTo(w.Now.Plus(days * Day));
 
             Assert.Multiple(() =>
@@ -1238,6 +1242,9 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 Assert.That(w.Nomads.TrackedCount, Is.EqualTo(1));
             });
         }
+
+        // The band the two settling tests above wander with.
+        private const int Twelve = 12;
 
         private static int KnownCells(WorkWorld w, MobileGroup band)
         {

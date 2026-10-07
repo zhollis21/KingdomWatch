@@ -431,10 +431,11 @@ namespace KingdomWatch.Core.Needs
 
         // How many this meal serves: everyone, except in winter, when it is
         // what the store can feed every day until the last HardshipDays
-        // before spring, rounded up so a store too small for even one person
-        // still feeds someone today. Those last days are a gap the fed can
-        // live through, so a store that covers all but them feeds everyone.
-        // Nothing grows in winter, so nothing coming in is counted.
+        // before spring, and at least one while there is a meal, so a store
+        // too small for even one person to the spring still feeds someone
+        // today. Those last days are a gap the fed can live through, so a
+        // store that covers all but them feeds everyone. Nothing grows in
+        // winter, so nothing coming in is counted.
         private static long Servings(ResourceLedger stores, SimulationTime now)
         {
             if (now.Season != Season.Winter)
@@ -443,7 +444,8 @@ namespace KingdomWatch.Core.Needs
             }
 
             var days = Math.Max(1L, now.DaysUntilSpring - HardshipDays);
-            return (MealsInStore(stores) + (days * DailyRation) - 1L) / (days * DailyRation);
+            var meals = MealsInStore(stores) / DailyRation;
+            return meals > 0L ? Math.Max(1L, meals / days) : 0L;
         }
 
         private void ServeSitting(

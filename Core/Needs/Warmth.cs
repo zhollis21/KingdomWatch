@@ -366,12 +366,12 @@ namespace KingdomWatch.Core.Needs
             // Every fire burns the same, so the lit ones are a prefix of the
             // lighting order: rank below this is lit, at or above it is dark.
             // As many as the woodpile can keep lit every night but the last
-            // HardshipNights before spring, rounded up so the wood is never
-            // left unburned (#149).
+            // HardshipNights before spring (#149), and at least one while
+            // there is wood for one, so none is left unburned.
             var ledger = group.SharedSupplies;
             var nights = Math.Max(1L, now.DaysUntilSpring - HardshipNights);
             var fires = ledger.Available(ResourceKind.Wood) / FuelPerFire;
-            var lit = (int)Math.Min(hearths, (fires + nights - 1L) / nights);
+            var lit = (int)Math.Min(hearths, fires > 0 ? Math.Max(1L, fires / nights) : 0L);
 
             if (lit > 0)
             {
