@@ -4,10 +4,10 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.History;
 using KingdomWatch.Core.Lifecycle;
-using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.WorldGen;
 

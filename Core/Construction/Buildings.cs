@@ -331,6 +331,13 @@ namespace KingdomWatch.Core.Construction
         /// And only in the first half of spring, so the village has a whole
         /// growing season for its fields before its first winter: one that
         /// settled late in spring got a single crop in and starved.
+        /// And only where the forest in reach (<see cref="WoodInReach(WorldPosition, EntityId)"/>)
+        /// would fuel at least half of the band's <paramref name="hearths"/>
+        /// through every winter, with <see cref="CanFuelAnotherHearth"/>'s
+        /// headroom (#69): a village that settled where it could fuel none
+        /// of them froze in its first winters, and one asked to fuel them all
+        /// found nowhere big enough and starved as a band. Rationing shrinks
+        /// it to the rest. No hearths, no wood asked.
         /// </summary>
         /// <remarks>
         /// Ground for a barn is checked on its own (the #148 review). The
@@ -501,13 +508,13 @@ namespace KingdomWatch.Core.Construction
                     _claimed + " was claimed and no household has moved in yet; a second claim would hand it out twice.");
             }
 
-            if (!HasVacancy(settlement))
+            if (!HasVacancy(settlement) || !(FreeHouse(settlement) is Building house))
             {
                 throw new InvalidOperationException(settlement + " has no house free for a new household.");
             }
 
-            _claimed = FreeHouse(settlement)!;
-            return _claimed.Id;
+            _claimed = house;
+            return house.Id;
         }
 
         /// <summary>

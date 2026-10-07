@@ -80,6 +80,35 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_settlement_buildings_was_never_told_about_is_a_wiring_bug()
+        {
+            var w = new BuildingsWorld();
+            var stranger = new EntityId(EntityKind.Settlement, 999_999UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.Buildings.HasVacancy(stranger), Throws.Nothing, "no house of its own, so no question to ask");
+                Assert.That(w.Buildings.HasVacancy(stranger), Is.False);
+                Assert.That(() => w.Buildings.IsFoodShort(stranger), Throws.InvalidOperationException);
+            });
+        }
+
+        [Test]
+        public void No_spare_house_is_built_while_one_stands_empty()
+        {
+            var w = Fed(new BuildingsWorld(paint: Woods));
+            HouseEveryone(w);
+            Newcomer(w, Sex.Female);
+            Newcomer(w, Sex.Male);
+            EmptyOneHouse(w);
+            var before = w.Buildings.All.Count;
+
+            w.Dawn();
+
+            Assert.That(w.Buildings.All, Has.Count.EqualTo(before));
+        }
+
+        [Test]
         public void A_claim_cannot_be_made_twice_before_its_household_moves_in_or_without_a_vacancy()
         {
             var w = Fed(new BuildingsWorld());
@@ -167,7 +196,7 @@ namespace KingdomWatch.Core.Tests.Construction
             {
                 Assert.That(wooded.Buildings.CanFuelAnotherHearth(wooded.Settlement), Is.True);
                 Assert.That(built["wooded"], Is.EqualTo(1), "a spare house");
-                Assert.That(wooded.Latest!.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(wooded.Buildings.All[wooded.Buildings.All.Count - 1].Kind, Is.EqualTo(BuildingKind.House));
                 Assert.That(bare.Buildings.CanFuelAnotherHearth(bare.Settlement), Is.False);
                 Assert.That(built["bare"], Is.Zero, "no forest to fuel it");
                 Assert.That(built["lonely"], Is.Zero, "nobody for her to marry");
@@ -230,6 +259,26 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(w.Buildings.IsFoodShort(w.Settlement, w.Living), Is.True, "but it is falling");
                 Assert.That(w.Buildings.IsFoodShort(w.Settlement.Id), Is.True, "and so for the outlook");
                 Assert.That(w.Buildings.IsFoodShort(new EntityId(EntityKind.MobileGroup, 1UL)), Is.False, "a band builds no fields");
+            });
+        }
+
+        [Test]
+        public void A_year_s_food_in_a_store_that_is_growing_is_cover()
+        {
+            var w = new BuildingsWorld();
+            var need = Buildings.YearlyNeed(w.Living);
+            w.Stores.Gather(ResourceKind.Food, (int)need);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            w.World.Clock.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerYear - 1L), w.World.Router);
+            w.Stores.Gather(ResourceKind.Food, (int)(3 * need));
+            w.World.Clock.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerYear), w.World.Router);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            var trend = w.Buildings.StoreTrends.Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(trend.ThisYear, Is.GreaterThan(trend.LastYear));
+                Assert.That(w.Buildings.IsFoodShort(w.Settlement, w.Living), Is.False);
             });
         }
 
@@ -309,7 +358,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
                 if (w.Buildings.All.Count > before)
                 {
-                    w.Finish(w.Latest!);
+                    w.Finish(w.Buildings.All[w.Buildings.All.Count - 1]);
                 }
 
                 w.Buildings.AtDawn(w.Settlement, 0, w.Living);

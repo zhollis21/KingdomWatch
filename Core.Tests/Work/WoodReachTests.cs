@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Tests.Construction;
 using KingdomWatch.Core.Traversal;

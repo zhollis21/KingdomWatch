@@ -321,6 +321,28 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
+        public void A_winter_store_too_small_for_anyone_to_the_spring_still_feeds_one()
+        {
+            // Rationed, a single meal would feed nobody: it is not a winter's
+            // eating for anyone. It is never left uneaten.
+            var world = new World();
+            var band = world.NewBand(0, Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var child = world.NewMember(band, AgeStage.Child);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(child), Is.EqualTo(world.Clock.Now));
+                Assert.That(world.People.GetLastFedAt(elder), Is.LessThan(world.Clock.Now));
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.Zero);
+            });
+        }
+
+        [Test]
         public void A_winter_store_a_few_days_short_feeds_everyone()
         {
             // The last HardshipDays are a gap anyone fed until then lives

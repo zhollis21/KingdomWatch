@@ -277,6 +277,25 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void Either_partner_s_family_home_will_do()
+        {
+            // The first of the two whose household has room takes the other
+            // in: here only the second's does.
+            var w = new HouseholdWorld(FamilyFormationSettings.Default, new Rooms(1));
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+
+            var formed = w.Family.Partner(suitor, daughter, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home));
+                Assert.That(home.Members, Does.Contain(suitor));
+            });
+        }
+
+        [Test]
         public void A_widowed_parent_s_household_counts_no_couple()
         {
             var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(2));

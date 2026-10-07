@@ -16,7 +16,12 @@ namespace KingdomWatch.Core.Lifecycle
     /// </remarks>
     public interface IFoodOutlook
     {
-        /// <summary>Whether this community's food is short now. False for any community it does not judge.</summary>
+        /// <summary>
+        /// Whether this community's food is short now. False for a community
+        /// of a kind that is never short - a band builds no fields to be
+        /// short of; an implementation may throw for one of its own kind it
+        /// was never told about, a wiring bug.
+        /// </summary>
         bool IsFoodShort(EntityId community);
     }
 
