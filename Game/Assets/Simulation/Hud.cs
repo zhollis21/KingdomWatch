@@ -36,7 +36,7 @@ namespace KingdomWatch.Game
         public EntityKind CommunityKind;
         public ulong CommunityId;
         // What the community owns, and how much of each is free to use.
-        public int Food, Wood, Stone, FoodFree, WoodFree, StoneFree, DaysOfFood;
+        public int Food, Grain, Wood, Stone, FoodFree, GrainFree, WoodFree, StoneFree, DaysOfFood;
         public int CommunityPeople;
 
         public long Seed;
@@ -131,11 +131,11 @@ namespace KingdomWatch.Game
 
         // The selected community's stock, in the bar.
         private readonly RectTransform stockGroup;
-        private readonly Label foodNumber, woodNumber, stoneNumber;
-        private readonly RectTransform[] stockIcons = new RectTransform[3];
-        private readonly Label[] stockNumbers = new Label[3];
-        private readonly Tip foodTip, woodTip, stoneTip;
-        private (int, int, int, int, int, int, int) stockSeen = (int.MinValue, 0, 0, 0, 0, 0, 0);
+        private readonly Label foodNumber, grainNumber, woodNumber, stoneNumber;
+        private readonly RectTransform[] stockIcons = new RectTransform[4];
+        private readonly Label[] stockNumbers = new Label[4];
+        private readonly Tip foodTip, grainTip, woodTip, stoneTip;
+        private (int, int, int, int, int, int, int, int, int) stockSeen = (int.MinValue, 0, 0, 0, 0, 0, 0, 0, 0);
 
         // People: the selected community's with its name, or the world's.
         private readonly RectTransform peopleGroup, peopleIcon;
@@ -215,8 +215,9 @@ namespace KingdomWatch.Game
             peopleCount = BarText(peopleGroup, 0f);
             stockGroup = Child(bar, "Stock", 0f, 0f, 300f, BarHeight);
             foodNumber = BuildStock(0, art.Berries, out foodTip);
-            woodNumber = BuildStock(1, art.Wood, out woodTip);
-            stoneNumber = BuildStock(2, art.Stone, out stoneTip);
+            grainNumber = BuildStock(1, art.Grain, out grainTip);
+            woodNumber = BuildStock(2, art.Wood, out woodTip);
+            stoneNumber = BuildStock(3, art.Stone, out stoneTip);
 
             // The column.
             minimapCard = Card("Minimap", 0f, MinimapCardHeight);
@@ -449,7 +450,7 @@ namespace KingdomWatch.Game
 
         // ---- Stock ----
 
-        // An icon and its count, side by side. LayOutBar spaces the three along
+        // An icon and its count, side by side. LayOutBar spaces the four along
         // the group by how wide each count is.
         private Label BuildStock(int index, Sprite icon, out Tip tip)
         {
@@ -472,12 +473,15 @@ namespace KingdomWatch.Game
         {
             stockGroup.gameObject.SetActive(s.HasCommunity);
             if (!s.HasCommunity) return;
-            if (!Changed(ref stockSeen, (s.Food, s.Wood, s.Stone, s.FoodFree, s.WoodFree, s.StoneFree, s.DaysOfFood))) return;
+            if (!Changed(ref stockSeen, (s.Food, s.Grain, s.Wood, s.Stone, s.FoodFree, s.GrainFree, s.WoodFree, s.StoneFree, s.DaysOfFood))) return;
             foodNumber.Value = s.Food.ToString();
+            grainNumber.Value = s.Grain.ToString();
             woodNumber.Value = s.Wood.ToString();
             stoneNumber.Value = s.Stone.ToString();
-            var days = s.DaysOfFood == int.MaxValue ? "" : ", enough for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days");
+            // Days counts the Grain too, at the meals it mills into.
+            var days = s.DaysOfFood == int.MaxValue ? "" : ", enough for " + s.DaysOfFood + (s.DaysOfFood == 1 ? " day" : " days") + (s.GrainFree > 0 ? " with the Grain" : "");
             foodTip.Text = StockTip("Food", s.Food, s.FoodFree) + days;
+            grainTip.Text = StockTip("Grain", s.Grain, s.GrainFree) + ", " + PrimitiveTier.MealsPerGrain + " meals each milled";
             woodTip.Text = StockTip("Wood", s.Wood, s.WoodFree);
             stoneTip.Text = StockTip("Stone", s.Stone, s.StoneFree);
         }

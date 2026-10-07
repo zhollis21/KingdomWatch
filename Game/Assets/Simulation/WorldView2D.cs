@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using KingdomWatch.Core;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Traversal;
@@ -17,8 +18,9 @@ namespace KingdomWatch.Game
     public enum ZoomBand
     {
         Far,
-        // Roads, districts, farms and buildings belong here (section 16); Core
-        // has none yet, so until it does Medium draws what Near draws.
+        // Roads, districts, farms and buildings belong here (section 16).
+        // Buildings and fields draw from Medium in, and Core has no roads or
+        // districts yet, so until it does Medium draws what Near draws.
         Medium,
         Near,
     }
@@ -99,6 +101,8 @@ namespace KingdomWatch.Game
         private static readonly ProfilerMarker AnimateMarker = new ProfilerMarker("KW.View.Animate");
         private static readonly ProfilerMarker PeopleMarker = new ProfilerMarker("KW.View.People");
         private static readonly ProfilerMarker CommunitiesMarker = new ProfilerMarker("KW.View.Communities");
+        private static readonly ProfilerMarker BuildingsMarker = new ProfilerMarker("KW.View.Buildings");
+        private static readonly ProfilerMarker RewritesMarker = new ProfilerMarker("KW.View.Rewrites");
         // Inside BuildChunks: one chunk built, its parts, and one released.
         // Tilemap writes have no markers of their own, so without these they
         // all read as BuildChunks' self time.
@@ -143,6 +147,9 @@ namespace KingdomWatch.Game
         // Tents per camp: one per this many people, up to MaxTents.
         private const int PeoplePerTent = 12;
         private const int MaxTents = 5;
+
+        // How opaque a building or field is while it is still going up.
+        private const float UnbuiltAlpha = 0.45f;
 
         // Where a camp's tents stand, in cells from its fire: the big tent
         // behind it, the small ones either side and further back.
@@ -238,6 +245,30 @@ namespace KingdomWatch.Game
         private static readonly int PreviousId = Shader.PropertyToID("_Previous");
         private static readonly int TurnedId = Shader.PropertyToID("_Turned");
         private readonly List<Camp> camps = new List<Camp>();
+        // The cells Core has rewritten since the view last looked, as far as
+        // TerrainGrid.Rewrites had got then (#150); with the art, those whose
+        // zoomed-out colour is still to redraw, and the textures that does it
+        // through.
+        private long rewritesSeen;
+        private readonly List<int> rewritten = new List<int>();
+        private readonly List<int> farCells = new List<int>();
+        private Texture2D farScratch;
+        private Color32[] farPixels;
+        private bool terrainChanged;
+        // Houses, barns and fields (#150): one renderer each in All's order,
+        // which only grows, so a building keeps its slot; how many have had
+        // the chunks under them rebuilt to clear their flowers; and each
+        // field's tiles as last written (FieldLook), -1 until then.
+        private Buildings buildings;
+        private Transform buildingRoot;
+        private readonly List<SpriteRenderer> buildingSprites = new List<SpriteRenderer>();
+        private int buildingsPlaced;
+        private readonly List<int> fieldLooks = new List<int>();
+        private Tilemap fieldMap, cropMap;
+        private readonly List<TileChangeData> fieldTiles = new List<TileChangeData>();
+        private readonly List<TileChangeData> cropTiles = new List<TileChangeData>();
+        // Settlements with a finished house, which leave their tents behind.
+        private readonly HashSet<EntityId> housed = new HashSet<EntityId>();
         private Transform peopleRoot;
         private Transform communityRoot;
         private SpriteRenderer highlight;
@@ -279,14 +310,18 @@ namespace KingdomWatch.Game
             peopleRoot.SetParent(transform, false);
             communityRoot = new GameObject("Communities").transform;
             communityRoot.SetParent(transform, false);
+            buildingRoot = new GameObject("Buildings").transform;
+            buildingRoot.SetParent(transform, false);
 
             highlight = NewMarker("Selection", transform);
             highlight.color = new Color(1f, 0.92f, 0.2f);
             highlight.enabled = false;
 
-            // Terrain is static until bridges (section 12, M6) rewrite cells;
-            // then this belongs in Refresh, behind a change check.
+            // Drawn whole here; Refresh redraws the cells Core rewrites since
+            // (NoteRewrites).
             grid = world.Grid;
+            rewritesSeen = grid.Rewrites;
+            buildings = world.Buildings;
             land = world.Land;
             simNow = world.Now;
             shoreMasks = new byte[(width + 1) * (height + 1)];
@@ -328,6 +363,10 @@ namespace KingdomWatch.Game
                 sceneryRoot.gameObject.SetActive(tiled);
             }
             if (!tiled) ChunksWaiting = 0;
+            // Before anything is built from the grid this frame, and zoomed
+            // out too, so the map is never drawn from cells since rewritten.
+            using (RewritesMarker.Auto()) NoteRewrites();
+            using (BuildingsMarker.Auto()) PlaceBuildings();
             // Every frame, zoomed in or out, so the season has got as far
             // wherever the view goes next.
             if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
@@ -355,6 +394,7 @@ namespace KingdomWatch.Game
                 turnedSentFrame = Time.frameCount;
             }
             using (PeopleMarker.Auto()) DrawPeople(world);
+            using (BuildingsMarker.Auto()) DrawBuildings();
             using (CommunitiesMarker.Auto()) DrawCommunities(world, pixelsPerCell, tiled);
             DrawHighlight();
         }
@@ -467,9 +507,9 @@ namespace KingdomWatch.Game
         }
 
         // A marker per community at Far zoom; with the art, a camp per
-        // community at Medium and Near. Settlements camp too, until Core has
-        // buildings for them to live in (#23), but with a well, a woodpile
-        // and a stone pile that a band on the move would not have.
+        // community at Medium and Near. Settlements camp too, with a well, a
+        // woodpile and a stone pile that a band on the move would not have,
+        // and strike their tents once their first house stands (#150).
         private void DrawCommunities(World world, float pixelsPerCell, bool camped)
         {
             var used = 0;
@@ -511,7 +551,8 @@ namespace KingdomWatch.Game
             camp.Fire.sortingOrder = OrderAt(cellY);
             camp.Fire.sprite = art.Campfire[(int)(animationTime * ArtSet.DecorFramesPerSecond + index) % art.Campfire.Length];
 
-            var tents = Mathf.Clamp(Mathf.CeilToInt(communitySizes[index] / (float)PeoplePerTent), 1, MaxTents);
+            var tents = settled && housed.Contains(communityIds[index]) ? 0
+                : Mathf.Clamp(Mathf.CeilToInt(communitySizes[index] / (float)PeoplePerTent), 1, MaxTents);
             for (var i = 0; i < camp.Tents.Length; i++) Place(camp.Tents[i], i < tents, centre, TentOffsets[i]);
             for (var i = 0; i < camp.Props.Length; i++) Place(camp.Props[i], settled, centre, PropOffsets[i]);
         }
@@ -577,6 +618,227 @@ namespace KingdomWatch.Game
             var edge = marker.transform.GetChild(0).GetComponent<SpriteRenderer>();
             edge.sortingOrder = marker.sortingOrder - 2;
             edge.enabled = visible;
+        }
+
+        // Redraws what Core has rewritten since the last frame (#150): today
+        // clearing, scrub and forest turned to plains under a building. The
+        // chunks holding those cells are built again, and the zoomed-out map
+        // or the plain map recoloured cell by cell. When more was rewritten
+        // than the grid's change log keeps, the whole map is redrawn instead.
+        // Land turned to water or back - a bridge, section 12 - would move
+        // shorelines too (drawnWater, shoreMasks), which nothing redraws yet.
+        private void NoteRewrites()
+        {
+            if (grid.Rewrites == rewritesSeen) return;
+            var followed = grid.TryChangesSince(rewritesSeen, rewritten);
+            rewritesSeen = grid.Rewrites;
+            if (!followed)
+            {
+                RedrawEverything();
+                return;
+            }
+
+            foreach (var cell in rewritten)
+            {
+                int x = cell % width, y = cell / width;
+                if (art == null)
+                {
+                    terrainTexture.SetPixel(x, height - 1 - y, PlainColour(x, y));
+                    terrainChanged = true;
+                    continue;
+                }
+                StaleChunk(x, y);
+                farCells.Add(cell);
+            }
+            if (art != null) RedrawFar();
+            else if (terrainChanged)
+            {
+                terrainTexture.Apply(false);
+                terrainChanged = false;
+            }
+        }
+
+        private void RedrawEverything()
+        {
+            if (art == null)
+            {
+                DrawTerrain(grid);
+                return;
+            }
+            foreach (var chunk in resident) chunk.Stale = true;
+            farCells.Clear();
+            BuildSeasonMaps();
+        }
+
+        // Marks the built chunk holding a cell, if any, to be built again.
+        private void StaleChunk(int x, int y)
+        {
+            var chunk = ChunkAt(x, y);
+            if (chunk != null) chunk.Stale = true;
+        }
+
+        // farCells recoloured in each season's zoomed-out map, on the GPU,
+        // which is the only copy BuildSeasonMaps keeps: every colour written
+        // to one scratch texture, a row a season, sent once, then copied a
+        // pixel at a time into the maps.
+        private void RedrawFar()
+        {
+            var count = farCells.Count;
+            if (count == 0) return;
+            if (farScratch == null || farScratch.width < count)
+            {
+                if (farScratch != null) Destroy(farScratch);
+                farScratch = Own(new Texture2D(Mathf.NextPowerOfTwo(count), seasonMaps.Length, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, name = "Rewritten cells" });
+                farPixels = new Color32[farScratch.width * farScratch.height];
+            }
+
+            var across = farScratch.width;
+            for (var season = 0; season < seasonMaps.Length; season++)
+                for (var i = 0; i < count; i++)
+                    farPixels[season * across + i] = FarColour(farCells[i] % width, farCells[i] / width, season);
+            farScratch.SetPixels32(farPixels);
+            farScratch.Apply(false);
+
+            for (var season = 0; season < seasonMaps.Length; season++)
+            {
+                var map = seasonMaps[season].texture;
+                for (var i = 0; i < count; i++)
+                {
+                    int x = farCells[i] % width, y = farCells[i] / width;
+                    Graphics.CopyTexture(farScratch, 0, 0, i, season, 1, 1, map, 0, 0, x, height - 1 - y);
+                }
+            }
+            farCells.Clear();
+        }
+
+        // Builds again the chunks under buildings placed since the last
+        // frame, so their footprints lose their flowers (StandScenery).
+        // Buildings.All only grows.
+        private void PlaceBuildings()
+        {
+            var all = buildings.All;
+            if (art != null)
+            {
+                for (var i = buildingsPlaced; i < all.Count; i++)
+                {
+                    var building = all[i];
+                    for (var dy = 0; dy < building.Height; dy++)
+                        for (var dx = 0; dx < building.Width; dx++)
+                            StaleChunk(building.Anchor.X + dx, building.Anchor.Y + dy);
+                }
+            }
+            buildingsPlaced = all.Count;
+        }
+
+        // Houses and barns (#150) stand as their sprites, centred on their
+        // footprint's south edge and sorted by it, so people south of one walk
+        // in front of it; fields are soil and wheat in the field tilemaps
+        // (LayField). Each is see-through until built. A sprite fits its
+        // footprint's width, and its roof stands over the rows north of it
+        // that Core keeps clear (BuildingSpec.Clearance). Without the art, each
+        // is a block of colour on its footprint. Hidden at Far zoom, where the
+        // settlement's marker stands for them all.
+        private void DrawBuildings()
+        {
+            housed.Clear();
+            var all = buildings.All;
+            var visible = Band != ZoomBand.Far;
+            for (var i = 0; i < all.Count; i++)
+            {
+                var building = all[i];
+                if (building.Kind == BuildingKind.House && building.IsComplete) housed.Add(building.Settlement);
+                while (buildingSprites.Count <= i)
+                {
+                    buildingSprites.Add(NewBuilding());
+                    fieldLooks.Add(-1);
+                }
+
+                var sprite = buildingSprites[i];
+                var looks = art == null ? null
+                    : building.Kind == BuildingKind.House ? art.Houses
+                    : building.Kind == BuildingKind.Barn ? art.Barns
+                    : null;
+                if (art != null && building.Kind == BuildingKind.Field) LayField(i, building);
+                // A field draws in the tilemaps, and a kind with no art yet
+                // does not draw.
+                sprite.enabled = visible && (art == null || looks != null);
+                if (!sprite.enabled) continue;
+
+                var alpha = building.IsComplete ? 1f : UnbuiltAlpha;
+                var south = building.Anchor.Y + building.Height;
+                var middle = building.Anchor.X + building.Width / 2f;
+                if (art != null)
+                {
+                    // Picked from the id, so a building always looks the same.
+                    var pick = (int)((building.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
+                    sprite.sprite = looks[pick % looks.Length];
+                    sprite.transform.localPosition = new Vector3(OnArtPixel(middle), OnArtPixel(height - south), 0f);
+                    sprite.sortingOrder = OrderAt(south);
+                    sprite.color = new Color(1f, 1f, 1f, alpha);
+                }
+                else
+                {
+                    // Under the people, over the map.
+                    sprite.transform.localPosition = new Vector3(middle, height - south, 0f);
+                    sprite.transform.localScale = new Vector3(building.Width, building.Height, 1f);
+                    sprite.sortingOrder = -1;
+                    var colour = ColourOf(building.Kind);
+                    colour.a = alpha;
+                    sprite.color = colour;
+                }
+            }
+
+            // Each tile keeps its tint, which lock flags would drop. Allocates,
+            // and only on a frame where a field changed.
+            if (fieldTiles.Count == 0) return;
+            fieldMap.SetTiles(fieldTiles.ToArray(), true);
+            cropMap.SetTiles(cropTiles.ToArray(), true);
+            fieldTiles.Clear();
+            cropTiles.Clear();
+        }
+
+        // A field's tiles, queued when its look changes (FieldLook): nothing
+        // until it is cleared, see-through soil while it is sown, then soil
+        // with the wheat at its stage.
+        private void LayField(int index, Building field)
+        {
+            var look = FieldLook(field);
+            if (look == fieldLooks[index]) return;
+            fieldLooks[index] = look;
+            var tint = new Color(1f, 1f, 1f, look == 1 ? UnbuiltAlpha : 1f);
+            var crop = look >= 2 ? art.Wheat[look - 2] : null;
+            for (var dy = 0; dy < field.Height; dy++)
+            {
+                var row = dy == 0 ? 0 : dy == field.Height - 1 ? 2 : 1;
+                for (var dx = 0; dx < field.Width; dx++)
+                {
+                    var column = dx == 0 ? 0 : dx == field.Width - 1 ? 2 : 1;
+                    var position = new Vector3Int(field.Anchor.X + dx, height - 1 - (field.Anchor.Y + dy), 0);
+                    fieldTiles.Add(new TileChangeData(position, look == 0 ? null : art.FarmLand[row * 3 + column], tint, Matrix4x4.identity));
+                    cropTiles.Add(new TileChangeData(position, crop, Color.white, Matrix4x4.identity));
+                }
+            }
+        }
+
+        // 0 while the ground is uncleared, 1 while it is sown, then 2 plus
+        // its ArtSet.Wheat stage: seed, sprouts and flowering a third of the
+        // tending days each, and ripe through the harvest.
+        private static int FieldLook(Building field)
+        {
+            if (!field.Cleared) return 0;
+            if (!field.IsComplete) return 1;
+            if (field.Stage == FieldStage.Harvesting) return 5;
+            return 2 + Mathf.Min(2, field.DaysDone * 3 / Buildings.TendingDays);
+        }
+
+        private SpriteRenderer NewBuilding()
+        {
+            var renderer = new GameObject("Building").AddComponent<SpriteRenderer>();
+            renderer.transform.SetParent(buildingRoot, false);
+            renderer.sprite = unitSprite;
+            renderer.sharedMaterial = spriteMaterial;
+            renderer.enabled = false;
+            return renderer;
         }
 
         private void DrawHighlight()
@@ -721,6 +983,8 @@ namespace KingdomWatch.Game
                 case JobKind.Forager: return new Color(0.78f, 0.82f, 0.3f);
                 case JobKind.Woodcutter: return new Color(0.72f, 0.45f, 0.25f);
                 case JobKind.StoneGatherer: return new Color(0.72f, 0.72f, 0.76f);
+                case JobKind.Farmer: return new Color(0.92f, 0.78f, 0.2f);
+                case JobKind.Builder: return new Color(0.45f, 0.55f, 0.9f);
                 default: return new Color(0.95f, 0.62f, 0.35f);
             }
         }
@@ -730,16 +994,16 @@ namespace KingdomWatch.Game
             var pixels = new Color32[width * height];
             for (var y = 0; y < height; y++)
             {
-                for (var x = 0; x < width; x++)
-                {
-                    // Row 0 is the north edge, drawn at the top; texture rows count up from the bottom.
-                    var shade = ((x + y) & 1) == 0 ? 0 : 8;
-                    pixels[(height - 1 - y) * width + x] = ColourOf(grid[new WorldPosition(x, y)], shade);
-                }
+                // Row 0 is the north edge, drawn at the top; texture rows count up from the bottom.
+                for (var x = 0; x < width; x++) pixels[(height - 1 - y) * width + x] = PlainColour(x, y);
             }
             terrainTexture.SetPixels32(pixels);
             terrainTexture.Apply(false);
         }
+
+        // One cell of the map without the art: its kind's colour, a shade
+        // darker on alternate cells.
+        private Color32 PlainColour(int x, int y) => ColourOf(grid[new WorldPosition(x, y)], ((x + y) & 1) == 0 ? 0 : 8);
 
         // The zoomed-out map in the art's colours, once for each season, when
         // the world is shown. Refresh swaps between them as the seasons turn,
@@ -747,8 +1011,13 @@ namespace KingdomWatch.Game
         // it cost a frame's budget at 10,000x, where a season is over in
         // about a second (#130). The spread shows by choosing between two of
         // them on the GPU instead (ShowSpread).
+        //
+        // Called again, it makes them afresh from the grid and drops the old
+        // ones: for when more of the map was rewritten in one frame than
+        // RedrawFar could follow.
         private void BuildSeasonMaps()
         {
+            var old = seasonMaps;
             seasonMaps = new Sprite[4];
             var pixels = new Color32[width * height];
             for (var season = 0; season < seasonMaps.Length; season++)
@@ -757,13 +1026,26 @@ namespace KingdomWatch.Game
                 {
                     for (var x = 0; x < width; x++) pixels[(height - 1 - y) * width + x] = FarColour(x, y, season);
                 }
-                var texture = season == 0 ? terrainTexture : Own(new Texture2D(width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp });
+                // The first time, spring goes into the texture the map already shows.
+                var first = old == null && season == 0;
+                var texture = first ? terrainTexture : Own(new Texture2D(width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp });
                 texture.SetPixels32(pixels);
                 // Uploaded and then dropped from main memory: nothing reads it
-                // back.
+                // back. RedrawFar changes it on the GPU.
                 texture.Apply(false, true);
-                seasonMaps[season] = season == 0 ? colourGround.sprite : Own(Sprite.Create(texture, new Rect(0, 0, width, height), Vector2.zero, 1f));
+                seasonMaps[season] = first ? colourGround.sprite : Own(Sprite.Create(texture, new Rect(0, 0, width, height), Vector2.zero, 1f));
             }
+            if (old == null) return;
+            // The old spring texture is destroyed below; the minimap reads
+            // the map through this field (MakeMinimap).
+            terrainTexture = seasonMaps[0].texture;
+            foreach (var sprite in old)
+            {
+                Destroy(sprite.texture);
+                Destroy(sprite);
+            }
+            // Refresh puts the new ones on show.
+            shownSeason = -1;
         }
 
         // Lets the zoomed-out map show a season spreading, cell for cell as
@@ -825,6 +1107,17 @@ namespace KingdomWatch.Game
             return ArtColours.ToColour(colour);
         }
 
+        private static Color ColourOf(BuildingKind kind)
+        {
+            switch (kind)
+            {
+                case BuildingKind.House: return new Color(0.8f, 0.55f, 0.4f);
+                case BuildingKind.Barn: return new Color(0.62f, 0.24f, 0.2f);
+                case BuildingKind.Field: return new Color(0.88f, 0.76f, 0.38f);
+                default: return new Color(0.6f, 0.6f, 0.6f);
+            }
+        }
+
         private static Color32 ColourOf(TerrainKind kind, int shade)
         {
             switch (kind)
@@ -867,6 +1160,13 @@ namespace KingdomWatch.Game
             flatMap = NewTilemap("Flat scenery", Vector3.zero, -2, false);
             standingMap = NewTilemap("Standing scenery", Vector3.zero, -1, false);
             standingMap.GetComponent<TilemapRenderer>().sortOrder = TilemapRenderer.SortOrder.TopLeft;
+            // Fields (#150): tilled soil over the ground and under the
+            // shoreline, and the crop on it with the flat scenery, which a
+            // field's cells have none of. Laid over the whole map, not a chunk
+            // at a time: a village has a few dozen fields' worth of tiles.
+            fieldMap = NewTilemap("Fields", Vector3.zero, -4, false);
+            cropMap = NewTilemap("Crops", Vector3.zero, -2, false);
+            cropMap.GetComponent<TilemapRenderer>().sortOrder = TilemapRenderer.SortOrder.TopLeft;
             var mask = new GameObject("Map clip").AddComponent<SpriteMask>();
             mask.transform.SetParent(tiledGround.transform, false);
             mask.sprite = unitSprite;
@@ -922,8 +1222,9 @@ namespace KingdomWatch.Game
             var minRow = Mathf.FloorToInt((height - (centre.y + halfHeight)) / ChunkSize);
             var maxRow = Mathf.FloorToInt((height - (centre.y - halfHeight)) / ChunkSize);
 
-            // What needs building: a chunk not built, or built for the other
-            // side of DecorFrom or LiveSceneryFrom. Nearest the middle of the
+            // What needs building: a chunk not built, built from cells since
+            // rewritten or before a building stood on it, or built for the
+            // other side of DecorFrom or LiveSceneryFrom. Nearest the middle of the
             // screen first, so what is still filling in is at the edges.
             var centreColumn = Mathf.FloorToInt(centre.x / ChunkSize);
             var centreRow = Mathf.FloorToInt((height - centre.y) / ChunkSize);
@@ -933,7 +1234,7 @@ namespace KingdomWatch.Game
                 for (var column = Mathf.Max(0, minColumn); column <= Mathf.Min(chunksAcross - 1, maxColumn); column++)
                 {
                     var chunk = chunks[row * chunksAcross + column];
-                    if (chunk != null && chunk.WithDecor == withDecor && chunk.SceneryTiled == sceneryTiled) continue;
+                    if (chunk != null && !chunk.Stale && chunk.WithDecor == withDecor && chunk.SceneryTiled == sceneryTiled) continue;
                     var dx = column - centreColumn;
                     var dy = row - centreRow;
                     toBuild.Add((column, row, dx * dx + dy * dy));
@@ -1126,8 +1427,10 @@ namespace KingdomWatch.Game
                 var rock = hash % (uint)art.Rocks.Length;
                 Stand(chunk, art.Rocks[rock], art.RockTiles[rock], x, y, block, 0.3f);
             }
-            else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash))
+            else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && buildings.At(new WorldPosition(x, y)) == null)
             {
+                // Not under a building: a field's soil is no place for a
+                // flower, and a house hides its own.
                 // Flowers and sprouts; bushes grow only on scrub.
                 var pick = hash >> 12;
                 // A pixel or two at quarter size: not worth drawing there.
@@ -1207,6 +1510,10 @@ namespace KingdomWatch.Game
             {
                 regrowChunk = (regrowChunk + 1) % resident.Count;
                 var chunk = resident[regrowChunk];
+                // Built from cells since rewritten: a tree it drew may stand
+                // on cleared ground, which LandCover refuses to be asked
+                // about. It is built afresh when next in view.
+                if (chunk.Stale) continue;
                 for (var i = 0; i < chunk.Growing.Count; i++)
                 {
                     var growing = chunk.Growing[i];
@@ -1645,6 +1952,10 @@ namespace KingdomWatch.Game
             // Whether a land cell turned this frame, so its flowers may have
             // come or gone.
             public bool FlowersStale;
+
+            // Whether a cell of it was rewritten, or a building placed on it,
+            // since it was built: BuildWhatShows builds it again (#150).
+            public bool Stale;
 
             // Whether its flowers and sprouts were stood up (see DecorFrom).
             public bool WithDecor;

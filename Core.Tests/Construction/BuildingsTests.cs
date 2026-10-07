@@ -222,6 +222,28 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_field_still_being_sown_feeds_nobody_yet()
+        {
+            // All plains, so nothing in reach but the field; and nothing in
+            // store. One person, whom one standing field feeds.
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            w.Dawn();
+            var field = w.Latest;
+            Assume.That(field?.Kind, Is.EqualTo(BuildingKind.Field));
+            w.Stores.Consume(ResourceKind.Food, w.Stores.Available(ResourceKind.Food));
+            Assume.That(w.Stores.Available(ResourceKind.Grain), Is.Zero, "no harvest yet");
+
+            Assert.That(w.Buildings.IsFoodShort(w.Settlement, 1), Is.True, "a field going up grows nothing");
+
+            w.Finish(w.Buildings.All[w.Buildings.All.Count - 1]);
+
+            Assert.That(w.Buildings.IsFoodShort(w.Settlement, 1), Is.False, "a field standing feeds one");
+        }
+
+        [Test]
         public void A_village_with_a_year_in_store_is_not_short_of_food()
         {
             var w = new BuildingsWorld();
@@ -382,9 +404,10 @@ namespace KingdomWatch.Core.Tests.Construction
             var land = w.World.Land;
             var claimed = new System.Collections.Generic.List<WorldPosition>();
 
-            for (var y = 17; y <= 23; y++)
+            // Every tree a house beside the camp could stand on.
+            for (var y = 12; y <= 28; y++)
             {
-                for (var x = 17; x <= 23; x++)
+                for (var x = 12; x <= 28; x++)
                 {
                     var at = new WorldPosition(x, y);
 
@@ -415,6 +438,178 @@ namespace KingdomWatch.Core.Tests.Construction
                 w.Stores.Available(ResourceKind.Wood) - wood,
                 Is.EqualTo(cells * (LandCover.DefaultTreeCuts - 1) * Buildings.WoodPerCut),
                 "the Wood of the cuts it charged for, not the cut given back");
+        }
+
+        [Test]
+        public void Nothing_is_built_in_the_camp_yard()
+        {
+            var w = BuildVillage();
+            var radius = Buildings.CampYardRadius;
+
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var y = building.Anchor.Y - clearance; y < building.Anchor.Y + building.Height; y++)
+                {
+                    for (var x = building.Anchor.X; x < building.Anchor.X + building.Width; x++)
+                    {
+                        var inYard = System.Math.Abs(x - BuildingsWorld.Centre.X) <= radius && System.Math.Abs(y - BuildingsWorld.Centre.Y) <= radius;
+                        Assert.That(inYard, Is.False, building + " or its roof takes (" + x + ", " + y + ") in the camp yard");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void Nothing_is_built_in_a_neighbouring_settlements_yard()
+        {
+            // The #153 review: placement kept only the builder's own yard.
+            var w = new BuildingsWorld(people: 40);
+            var neighbour = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(27, 20)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            var radius = Buildings.CampYardRadius;
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var y = building.Anchor.Y - clearance; y < building.Anchor.Y + building.Height; y++)
+                {
+                    for (var x = building.Anchor.X; x < building.Anchor.X + building.Width; x++)
+                    {
+                        var inYard = System.Math.Abs(x - neighbour.Position.X) <= radius && System.Math.Abs(y - neighbour.Position.Y) <= radius;
+                        Assert.That(inYard, Is.False, building + " or its roof takes (" + x + ", " + y + ") in " + neighbour.Id + "'s yard");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void A_band_does_not_settle_where_its_yard_is_built_on()
+        {
+            // The #153 review's sibling: a camp founded beside a standing
+            // house would have its yard built on, or roofed over, from the
+            // start. Bushes in a block north and another south, in reach of
+            // the camps asked about.
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(18 + (i % 10), BuildingsWorld.Size - 4 + (i / 10)), TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(18 + (i % 10), 8 + (i / 10)), TerrainKind.Scrub);
+                }
+            });
+            w.Wood(100);
+            var house = w.BuildNext();
+            var south = house.Anchor.Y + house.Height;
+            var roofTop = house.Anchor.Y - BuildingTable.Of(BuildingKind.House).Clearance;
+            var radius = Buildings.CampYardRadius;
+            var map = w.Settlement.Id;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius - 1), map, 12), Is.False, "the yard's edge reaches the house");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius), map, 12), Is.True, "one row further, clear of it");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius), map, 12), Is.False, "the yard's edge reaches the roof");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius - 1), map, 12), Is.True, "one row further, clear of it");
+            });
+        }
+
+        [Test]
+        public void The_camps_to_keep_clear_refuse_null()
+        {
+            var w = new BuildingsWorld();
+
+            Assert.That(() => w.Buildings.Camps = null!, Throws.ArgumentNullException);
+        }
+
+        // Forty people with wood to spare, built up as far as sixteen
+        // buildings: houses, barns and fields enough that buildings go up on
+        // every side of the camp and both north and south of each other.
+        private static BuildingsWorld BuildVillage()
+        {
+            var w = new BuildingsWorld(people: 40);
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            Assume.That(w.Buildings.All.Count(b => BuildingTable.Of(b.Kind).Clearance > 0), Is.GreaterThanOrEqualTo(4), "enough roofs to crowd");
+            return w;
+        }
+
+        [Test]
+        public void No_roof_stands_over_another_building_or_the_camp()
+        {
+            var w = BuildVillage();
+
+            foreach (var building in w.Buildings.All)
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                for (var dy = 1; dy <= clearance; dy++)
+                {
+                    for (var dx = 0; dx < building.Width; dx++)
+                    {
+                        var under = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y - dy);
+                        if (under.Y < 0)
+                        {
+                            continue;
+                        }
+
+                        Assert.That(w.Buildings.At(under), Is.Null, building + "'s roof stands over " + w.Buildings.At(under));
+                        Assert.That(under, Is.Not.EqualTo(BuildingsWorld.Centre), building + "'s roof stands over the camp");
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void A_roof_may_hang_off_the_north_edge_of_the_map()
+        {
+            // Rocks everywhere but the camp, a lane north from it, and the
+            // top rows: the only room for a house is against the north edge,
+            // where its roof stands off the map.
+            var house = BuildingTable.Of(BuildingKind.House);
+            var camp = new WorldPosition(20, 8);
+            var w = new BuildingsWorld(
+                paint: grid =>
+                {
+                    for (var y = 0; y < BuildingsWorld.Size; y++)
+                    {
+                        for (var x = 0; x < BuildingsWorld.Size; x++)
+                        {
+                            var open = y < house.Height || (x == camp.X && y <= camp.Y);
+                            grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
+                        }
+                    }
+                },
+                camp: camp);
+            w.Wood(100);
+
+            w.Dawn();
+
+            Assert.That(w.Buildings.All.Single().Anchor.Y, Is.Zero);
         }
 
         [Test]
@@ -503,6 +698,77 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(w.Heard.Count(e => e.Kind == DomainEventKind.FieldHarvested && e.PrimaryEntity == field.Id), Is.EqualTo(1));
             });
         }
+
+        [Test]
+        public void Winter_kills_a_growing_crop_and_the_field_is_sown_fresh()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            WorkFieldDays(w, field, 4);
+
+            // The last dawn of autumn: the crop is still growing.
+            AdvanceToDay(w, (3L * SimulationTime.DaysPerSeason) - 1L);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+            Assert.That(field.DaysDone, Is.EqualTo(4), "autumn takes nothing");
+
+            // Winter, and first another settlement's dawn: its frost is its own.
+            AdvanceToDay(w, 3L * SimulationTime.DaysPerSeason);
+            var other = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(3, 3)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Buildings.AtDawn(other, 0, other.Members.Count);
+            Assert.That(field.DaysDone, Is.EqualTo(4), "another village's winter");
+
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Stage, Is.EqualTo(FieldStage.Tending));
+                Assert.That(field.DaysDone, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void Winter_takes_the_unharvested_rest_but_not_the_grain_already_in()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            WorkFieldDays(w, field, Buildings.TendingDays + 2);
+            Assume.That(field.Stage, Is.EqualTo(FieldStage.Harvesting));
+            var grain = w.Stores.Flows(ResourceKind.Grain).Gathered;
+            Assume.That(grain, Is.EqualTo(2 * Buildings.GrainPerHarvestDay));
+
+            AdvanceToDay(w, 3L * SimulationTime.DaysPerSeason);
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Stage, Is.EqualTo(FieldStage.Tending));
+                Assert.That(field.DaysDone, Is.Zero);
+                Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.EqualTo(grain));
+                Assert.That(w.Heard.Any(e => e.Kind == DomainEventKind.FieldHarvested), Is.False, "a harvest cut short is not a harvest");
+            });
+        }
+
+        // Whole days of field work, one a day from now.
+        private static void WorkFieldDays(BuildingsWorld w, Building field, int days)
+        {
+            for (var i = 0; i < days; i++)
+            {
+                w.Buildings.Claim(field, JobKind.Farmer, Buildings.FieldDayTicks);
+                w.Buildings.Credit(field.Anchor, JobKind.Farmer, Buildings.FieldDayTicks, w.Stores);
+                w.World.Clock.AdvanceTo(w.World.Now.Plus(SimulationTime.TicksPerDay), w.World.Router);
+            }
+        }
+
+        private static void AdvanceToDay(BuildingsWorld w, long day) =>
+            w.World.Clock.AdvanceTo(new SimulationTime(day * SimulationTime.TicksPerDay), w.World.Router);
 
         [Test]
         public void A_harvest_day_left_unfinished_brings_in_nothing()

@@ -105,6 +105,13 @@ namespace KingdomWatch.Core.Construction
         /// <summary>How far from its barn, in cells, a field may be laid out.</summary>
         public const int FieldRadius = 8;
 
+        /// <summary>
+        /// Cells from a settlement's camp, each way, kept free of footprints
+        /// and roofs: the yard its fire, well, woodpile, stone pile and
+        /// first tents stand in (#150).
+        /// </summary>
+        public const int CampYardRadius = 3;
+
         /// <summary>Worker-ticks to grub out a bush or clear a stump for good.</summary>
         public const long ClearTicksPerCell = Hour;
 
@@ -158,6 +165,12 @@ namespace KingdomWatch.Core.Construction
         private readonly Dictionary<int, Building> _onCell = new Dictionary<int, Building>();
         private readonly Dictionary<EntityId, Building> _homeOf = new Dictionary<EntityId, Building>();
 
+        // Cells under a roof (BuildingSpec.Clearance), which no footprint may
+        // take. Looked up, never iterated.
+        private readonly HashSet<int> _underRoof = new HashSet<int>();
+
+        private IReadOnlyList<ICommunity> _camps = Array.Empty<ICommunity>();
+
         private readonly bool[] _scrub;
         private readonly bool[] _ground;
         private readonly FootprintFilter _footprint;
@@ -195,6 +208,17 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Every building, oldest first. The order to iterate in.</summary>
         public IReadOnlyList<Building> All => _allView;
+
+        /// <summary>
+        /// Every settlement, whose camp yards placement keeps clear - not only
+        /// the builder's own (the #153 review). <see cref="World"/> sets it
+        /// to <see cref="Settlements.Founding.All"/>; empty until then.
+        /// </summary>
+        public IReadOnlyList<ICommunity> Camps
+        {
+            get => _camps;
+            set => _camps = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Food a year in a settlement's reach can give, as Food: every berry
@@ -261,7 +285,8 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether a band of this many could settle here: a whole year's
         /// picking of the bushes in reach (<see cref="ForageInReach"/>) would
-        /// cover half as much again as one season's eating, and there is
+        /// cover half as much again as one season's eating, nothing stands in
+        /// or roofs over the camp's yard (the #153 review), and there is
         /// ground for a barn. That is a third of what the words "a season of
         /// bushes" would suggest, since a bush gives a year's fruit over
         /// three seasons; it is the measure the #100 harness runs were tuned
@@ -293,6 +318,7 @@ namespace KingdomWatch.Core.Construction
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
+                && YardIsClear(at)
                 && TryPlace(BuildingKind.Barn, at, at, mapHolder, out _);
         }
 
@@ -360,6 +386,11 @@ namespace KingdomWatch.Core.Construction
             if (idle < 0 || idle > living)
             {
                 throw new ArgumentOutOfRangeException(nameof(idle), idle, "Between none and the " + living + " alive.");
+            }
+
+            if (_clock.Now.Season == Season.Winter)
+            {
+                Frost(settlement);
             }
 
             AssignHomes(settlement);
@@ -653,6 +684,25 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
+        // Winter kills what stands in the settlement's fields: a growing crop,
+        // or the part of a harvest not yet brought in - its finished days'
+        // Grain is already in store. Each field is sown afresh, to be tended
+        // from the spring (#150). Every winter dawn, which finds the fields
+        // already sown from the first.
+        private void Frost(ICommunity settlement)
+        {
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var field = _all[i];
+
+                if (field.Settlement == settlement.Id && field.Kind == BuildingKind.Field)
+                {
+                    field.Stage = FieldStage.Tending;
+                    field.DaysDone = 0;
+                }
+            }
+        }
+
         // Empty finished houses go to the settlement's households without
         // one, in the order their members stand in the settlement.
         private void AssignHomes(ICommunity settlement)
@@ -763,6 +813,19 @@ namespace KingdomWatch.Core.Construction
                     _onCell.Add(_grid.IndexOf(new WorldPosition(anchor.X + dx, anchor.Y + dy)), building);
                 }
             }
+
+            for (var dy = 1; dy <= spec.Clearance; dy++)
+            {
+                for (var dx = 0; dx < building.Width; dx++)
+                {
+                    var under = new WorldPosition(anchor.X + dx, anchor.Y - dy);
+
+                    if (_grid.Contains(under))
+                    {
+                        _underRoof.Add(_grid.IndexOf(under));
+                    }
+                }
+            }
         }
 
         private int FieldsOf(Building barn)
@@ -868,8 +931,9 @@ namespace KingdomWatch.Core.Construction
             At(at) ?? throw new InvalidOperationException("No building stands at " + at + ".");
 
         // A footprint anchored at a cell: every cell of it on the map, plains,
-        // scrub or forest, under no other building, and clear of the cell the
-        // settlement keeps for its camp.
+        // scrub or forest, under no other building or roof, and out of every
+        // settlement's camp yard (CampYardRadius); and its own roof's rows
+        // over neither (#150, the #153 review).
         private sealed class FootprintFilter : ISiteFilter
         {
             private readonly Buildings _owner;
@@ -895,7 +959,7 @@ namespace KingdomWatch.Core.Construction
                     {
                         var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
 
-                        if (!grid.Contains(at) || at == Keep)
+                        if (!grid.Contains(at) || InYard(at))
                         {
                             return false;
                         }
@@ -904,7 +968,23 @@ namespace KingdomWatch.Core.Construction
 
                         var kind = grid.KindAt(index);
 
-                        if (!_owner._ground[(int)kind] || (PlainsOnly && kind != TerrainKind.Plains) || _owner._onCell.ContainsKey(index))
+                        if (!_owner._ground[(int)kind] || (PlainsOnly && kind != TerrainKind.Plains) || _owner._onCell.ContainsKey(index)
+                            || _owner._underRoof.Contains(index))
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                // Its own roof, over nothing built and not over the yard; off
+                // the map, over nothing at all.
+                for (var dy = 1; dy <= Spec.Clearance; dy++)
+                {
+                    for (var dx = 0; dx < Spec.Width; dx++)
+                    {
+                        var under = new WorldPosition(anchor.X + dx, anchor.Y - dy);
+
+                        if (grid.Contains(under) && (InYard(under) || _owner._onCell.ContainsKey(grid.IndexOf(under))))
                         {
                             return false;
                         }
@@ -913,6 +993,51 @@ namespace KingdomWatch.Core.Construction
 
                 return true;
             }
+
+            // Within CampYardRadius of the camp, each way.
+            // In the builder's own camp yard or any other settlement's.
+            private bool InYard(WorldPosition at)
+            {
+                if (WithinYard(at, Keep))
+                {
+                    return true;
+                }
+
+                var camps = _owner._camps;
+
+                for (var i = 0; i < camps.Count; i++)
+                {
+                    if (WithinYard(at, camps[i].Position))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        // Within CampYardRadius of a camp, each way.
+        private static bool WithinYard(WorldPosition at, WorldPosition camp) =>
+            Math.Abs(at.X - camp.X) <= CampYardRadius && Math.Abs(at.Y - camp.Y) <= CampYardRadius;
+
+        // Whether a camp here would have a yard nothing stands in or roofs over.
+        private bool YardIsClear(WorldPosition camp)
+        {
+            for (var y = camp.Y - CampYardRadius; y <= camp.Y + CampYardRadius; y++)
+            {
+                for (var x = camp.X - CampYardRadius; x <= camp.X + CampYardRadius; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (_grid.Contains(at) && (_onCell.ContainsKey(_grid.IndexOf(at)) || _underRoof.Contains(_grid.IndexOf(at))))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
     }
 }

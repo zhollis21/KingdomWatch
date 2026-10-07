@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Core.Traversal
@@ -29,6 +30,9 @@ namespace KingdomWatch.Core.Traversal
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(TerrainKind));
 
         private readonly TerrainKind[] _cells;
+
+        // The index of each recent rewrite, at its number modulo the capacity.
+        private int[]? _changes;
 
         public TerrainGrid(int width, int height, TerrainKind fill)
         {
@@ -66,12 +70,72 @@ namespace KingdomWatch.Core.Traversal
         public bool Contains(WorldPosition position) =>
             position.X >= 0 && position.X < Width && position.Y >= 0 && position.Y < Height;
 
+        /// <summary>
+        /// Rewrites the change log keeps: a reader further behind than this
+        /// rereads the whole map (<see cref="TryChangesSince"/>).
+        /// </summary>
+        public const int ChangeLogCapacity = 4096;
+
         /// <summary>Rewrites a cell. Throws when off the map or the kind is undefined.</summary>
         public void Set(WorldPosition position, TerrainKind kind)
         {
             RequireKind(kind, nameof(kind));
-            _cells[IndexOf(position)] = kind;
+            var index = IndexOf(position);
+            _cells[index] = kind;
+            // Allocated on the first rewrite: most grids, every test's
+            // included, are never rewritten.
+            _changes ??= new int[ChangeLogCapacity];
+            _changes[Rewrites % ChangeLogCapacity] = index;
             Rewrites++;
+        }
+
+        /// <summary>
+        /// Fills <paramref name="into"/> with the index of every cell
+        /// rewritten since <see cref="Rewrites"/> was <paramref name="seen"/>,
+        /// oldest first, so a reader redraws what changed rather than the
+        /// whole map (#150). False, with the list empty, when more than
+        /// <see cref="ChangeLogCapacity"/> rewrites have happened since: the
+        /// oldest are gone, and the reader must reread the whole map.
+        /// </summary>
+        /// <remarks>
+        /// A record of what happened to the map, not part of it: the cells
+        /// say everything the world hash and saves need, so neither reads it.
+        /// </remarks>
+        /// <param name="seen">What <see cref="Rewrites"/> was when the reader last looked.</param>
+        /// <param name="into">The list to fill. Cleared before use.</param>
+        public bool TryChangesSince(long seen, List<int> into)
+        {
+            if (into is null)
+            {
+                throw new ArgumentNullException(nameof(into));
+            }
+
+            // Cleared before the guards, so a reused list never carries the
+            // previous answer through a refusal.
+            into.Clear();
+
+            if (seen < 0L || seen > Rewrites)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(seen), seen, "Not a count the grid has passed: it is at " + Rewrites + ".");
+            }
+
+            if (Rewrites - seen > ChangeLogCapacity)
+            {
+                return false;
+            }
+
+            // Null only while nothing has been rewritten, when there is
+            // nothing to add.
+            if (_changes is int[] changes)
+            {
+                for (var n = seen; n < Rewrites; n++)
+                {
+                    into.Add(changes[n % ChangeLogCapacity]);
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

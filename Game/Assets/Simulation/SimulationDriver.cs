@@ -259,9 +259,11 @@ namespace KingdomWatch.Game
                 s.CommunityKind = community.Id.Kind;
                 s.CommunityId = community.Id.Value;
                 s.Food = supplies.Stock(ResourceKind.Food);
+                s.Grain = supplies.Stock(ResourceKind.Grain);
                 s.Wood = supplies.Stock(ResourceKind.Wood);
                 s.Stone = supplies.Stock(ResourceKind.Stone);
                 s.FoodFree = supplies.Available(ResourceKind.Food);
+                s.GrainFree = supplies.Available(ResourceKind.Grain);
                 s.WoodFree = supplies.Available(ResourceKind.Wood);
                 s.StoneFree = supplies.Available(ResourceKind.Stone);
                 s.DaysOfFood = world.Hunger.DaysOfFood(community);

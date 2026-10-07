@@ -95,6 +95,7 @@ namespace KingdomWatch.Core
             Generator = new BandGenerator(Bus, People, Genealogy, Family, Households, settings, Rng);
             Founding = new Founding(Bus, Deaths, Fertility, Hunger, Warmth, Jobs, Matchmaking, KnownMaps);
             Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps, Land, Buildings);
+            Buildings.Camps = Founding.All;
 
             Bus.Subscribe(Buildings);
             Bus.Subscribe(Aging);
