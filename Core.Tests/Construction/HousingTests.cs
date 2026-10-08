@@ -109,6 +109,33 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_validator_names_a_household_whose_home_is_not_its_house()
+        {
+            // Households keeps a household's home and Buildings the house's
+            // occupant: the same fact from both ends, so they are checked
+            // against each other.
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            EmptyOneHouse(w);
+            var household = w.World.Households.Form(w.Settlement.Id);
+            w.World.Households.Join(household, Newcomer(w, Sex.Female));
+            var clean = new KingdomWatch.Harness.WorldValidator();
+            clean.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            // The house forgets its household, which still names it.
+            w.World.Bus.Publish(DomainEventKind.HouseholdDissolved, household.Id, EntityId.None);
+            var broken = new KingdomWatch.Harness.WorldValidator();
+            broken.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(clean.Findings, Is.Empty);
+                Assert.That(broken.Findings.Select(f => f.Rule), Is.EqualTo(new[] { KingdomWatch.Harness.ValidationRule.BuildingReference }));
+                Assert.That(broken.Findings.Single().Subject, Is.EqualTo(household.Id));
+            });
+        }
+
+        [Test]
         public void A_claim_cannot_be_made_twice_before_its_household_moves_in_or_without_a_vacancy()
         {
             var w = Fed(new BuildingsWorld());

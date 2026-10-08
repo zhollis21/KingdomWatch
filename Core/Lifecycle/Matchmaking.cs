@@ -40,6 +40,12 @@ namespace KingdomWatch.Core.Lifecycle
     /// the draw accepts is the one; the rest of the year's candidates are
     /// not consulted. A woman refused by everyone tries again next year.
     ///
+    /// **Only a settled people that can feed itself courts** (#69). A band on
+    /// the move marries nobody, and a settlement whose food is short
+    /// (<see cref="Food"/>) waits until it is not - a couple that married
+    /// into a family home needed no new house, so housing alone did not stop
+    /// them.
+    ///
     /// The numbers are placeholders: plausible, not tuned.
     ///
     /// Allocation-free after <see cref="Track"/>: the scan is by index over
