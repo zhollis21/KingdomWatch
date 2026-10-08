@@ -468,7 +468,11 @@ namespace KingdomWatch.Core.Needs
 
             var stores = group.SharedSupplies;
             var hearths = Warmth.CountHearths(group.Members, _people, _hearthScratch);
-            var warmToSpring = stores.Available(ResourceKind.Wood) >= (long)hearths * Warmth.FuelPerFire * now.DaysUntilSpring;
+            // Wood for every night but one counts as lasting: whether tonight's
+            // fire has burned depends on when this community's meals fall,
+            // and erring by a night is safe - one dark night is inside the
+            // cold's grace, so it costs nobody health (the #156 review).
+            var warmToSpring = stores.Available(ResourceKind.Wood) >= (long)hearths * Warmth.FuelPerFire * (now.DaysUntilSpring - 1L);
             var days = Math.Max(1L, now.DaysUntilSpring - (warmToSpring ? HardshipDays : SharedHardshipDays));
             var meals = MealsInStore(stores) / DailyRation;
             return meals > 0L ? Math.Max(1L, meals / days) : 0L;

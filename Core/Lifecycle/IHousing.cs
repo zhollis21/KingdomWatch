@@ -28,9 +28,12 @@ namespace KingdomWatch.Core.Lifecycle
         bool HasVacancy(EntityId community);
 
         /// <summary>
-        /// Takes a home in this community for a new household and returns its
-        /// id - <see cref="EntityId.None"/> when the housing has no identity
-        /// to give, as camp space does not. Throws when there is no vacancy.
+        /// The home in this community a household about to form will take,
+        /// by id - <see cref="EntityId.None"/> when the housing has no
+        /// identity to give, as camp space does not. Throws when there is no
+        /// vacancy. A home with an id is taken when the household's forming
+        /// is announced naming it (<see cref="Households.Form"/> does both),
+        /// so a claim on its own changes nothing.
         /// </summary>
         EntityId Claim(EntityId community);
 

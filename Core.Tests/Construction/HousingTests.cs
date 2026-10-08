@@ -136,26 +136,48 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void A_claim_cannot_be_made_twice_before_its_household_moves_in_or_without_a_vacancy()
+        public void A_claim_on_its_own_changes_nothing_and_needs_a_vacancy()
         {
+            // Claim names the house a household about to form will take; the
+            // household moves in when its forming is announced. On its own a
+            // claim leaves nothing behind - no state the world hash would have
+            // to see, nothing to go stale (the #156 review).
             var w = Fed(new BuildingsWorld());
             HouseEveryone(w);
 
             Assert.That(() => w.Buildings.Claim(w.Settlement.Id), Throws.InvalidOperationException, "no vacancy");
 
-            EmptyOneHouse(w);
-            EmptyOneHouse(w);
-            w.Buildings.Claim(w.Settlement.Id);
+            var house = EmptyOneHouse(w);
+            var before = new KingdomWatch.Core.Validation.WorldHash().AddBuildings(w.Buildings).Value;
+            var first = w.Buildings.Claim(w.Settlement.Id);
+            var second = w.Buildings.Claim(w.Settlement.Id);
 
             Assert.Multiple(() =>
             {
-                // A second house stands empty, but a vacancy is a promise that
-                // Claim succeeds, and it would not (the #156 review).
-                Assert.That(w.Buildings.HasVacancy(w.Settlement.Id), Is.False, "no vacancy while a claim waits");
+                Assert.That(first, Is.EqualTo(house.Id));
+                Assert.That(second, Is.EqualTo(house.Id), "the same house, since nobody has moved in");
+                Assert.That(w.Buildings.HasVacancy(w.Settlement.Id), Is.True);
+                Assert.That(house.Occupant.IsNone, Is.True);
+                Assert.That(new KingdomWatch.Core.Validation.WorldHash().AddBuildings(w.Buildings).Value, Is.EqualTo(before));
+            });
+        }
+
+        [Test]
+        public void A_household_announced_into_a_house_already_lived_in_is_refused()
+        {
+            // The house is taken by the announcement, so a second household
+            // named into it is a wiring bug, not a second occupant.
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            var lived = w.Buildings.All.First(b => b.Kind == BuildingKind.House && !b.Occupant.IsNone);
+            var occupant = lived.Occupant;
+
+            Assert.Multiple(() =>
+            {
                 Assert.That(
-                    () => w.Buildings.Claim(w.Settlement.Id),
-                    Throws.InvalidOperationException,
-                    "the first claim's household has not moved in");
+                    () => w.World.Bus.Publish(DomainEventKind.HouseholdFormed, new EntityId(EntityKind.Household, 999_999UL), lived.Id),
+                    Throws.InvalidOperationException);
+                Assert.That(lived.Occupant, Is.EqualTo(occupant), "the first household keeps it");
             });
         }
 

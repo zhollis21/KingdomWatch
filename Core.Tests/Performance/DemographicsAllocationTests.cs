@@ -38,7 +38,7 @@ namespace KingdomWatch.Core.Tests.Performance
                 MaxLifespanYears = 2_000L,
             };
             var w = new DemographicWorld(settings, 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             // Ten couples, and children of every age below adulthood so that
             // each boundary is crossed during the measured span.

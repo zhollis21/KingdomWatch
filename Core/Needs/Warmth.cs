@@ -394,7 +394,11 @@ namespace KingdomWatch.Core.Needs
             // the food is short too - and at least one while there is wood
             // for one, so none is left unburned.
             var ledger = group.SharedSupplies;
-            var fedToSpring = Hunger.MealsInStore(ledger) >= (long)Living(members) * Hunger.DailyRation * now.DaysUntilSpring;
+            // Food for every day but one counts as lasting: whether today's
+            // meal is eaten depends on when this community's meals fall, and
+            // erring by a day is safe - one missed meal is inside hunger's
+            // grace, so it costs nobody health (the #156 review).
+            var fedToSpring = Hunger.MealsInStore(ledger) >= (long)Living(members) * Hunger.DailyRation * (now.DaysUntilSpring - 1L);
             var nights = Math.Max(1L, now.DaysUntilSpring - (fedToSpring ? HardshipNights : SharedHardshipNights));
             var fires = ledger.Available(ResourceKind.Wood) / FuelPerFire;
             var lit = (int)Math.Min(hearths, fires > 0 ? Math.Max(1L, fires / nights) : 0L);

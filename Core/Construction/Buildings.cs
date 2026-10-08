@@ -199,10 +199,6 @@ namespace KingdomWatch.Core.Construction
 
         private IReadOnlyList<ICommunity> _camps = Array.Empty<ICommunity>();
 
-        // The house claimed for a household being formed, until its forming
-        // is announced and it moves in (Claim, On).
-        private Building? _claimed;
-
         // Founding order: the order a settlement is first seen at a dawn.
         private readonly List<StoreTrend> _trends = new List<StoreTrend>();
         private readonly ReadOnlyCollection<StoreTrend> _trendsView;
@@ -482,36 +478,28 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether a settlement has a home for a new household: a finished
         /// house nobody lives in, and no household of its own still in a
-        /// tent - those are housed first, oldest first (#69). None while a
-        /// claim waits for its household, since <see cref="Claim"/> would
-        /// refuse then however many houses stand empty (the #156 review).
+        /// tent - those are housed first, oldest first (#69).
         /// For <see cref="SettlementHousing"/>.
         /// </summary>
         public bool HasVacancy(EntityId settlement) =>
-            _claimed is null && !(FreeHouse(settlement) is null) && !TryFirstUnhoused(CampOf(settlement), out _);
+            !(FreeHouse(settlement) is null) && !TryFirstUnhoused(CampOf(settlement), out _);
 
         /// <summary>
-        /// Takes the settlement's first free house for the household about to
-        /// form, and returns its id. The household moves in when its forming
-        /// is announced (<see cref="DomainEventKind.HouseholdFormed"/>), which
-        /// <see cref="Households.Form"/> does next. Throws when there is no
-        /// vacancy, or a claim is still waiting for its household.
+        /// The house a household about to form in this settlement will take:
+        /// its first free one. Changes nothing - the household moves in when
+        /// its forming is announced (<see cref="DomainEventKind.HouseholdFormed"/>,
+        /// whose secondary entity is this id), which <see cref="Households.Form"/>
+        /// does next - so a claim never leaves state behind for the world
+        /// hash to miss (the #156 review). Throws when there is no vacancy.
         /// For <see cref="SettlementHousing"/>.
         /// </summary>
         public EntityId Claim(EntityId settlement)
         {
-            if (!(_claimed is null))
-            {
-                throw new InvalidOperationException(
-                    _claimed + " was claimed and no household has moved in yet; a second claim would hand it out twice.");
-            }
-
             if (!HasVacancy(settlement) || !(FreeHouse(settlement) is Building house))
             {
                 throw new InvalidOperationException(settlement + " has no house free for a new household.");
             }
 
-            _claimed = house;
             return house.Id;
         }
 
@@ -738,15 +726,24 @@ namespace KingdomWatch.Core.Construction
 
         public void On(in DomainEvent published)
         {
-            // The household a claimed house was taken for moves in as its
-            // forming is announced (Claim).
+            // A household formed into a house moves in as its forming is
+            // announced (Claim): the announcement names the house. One named
+            // into a house that is not an empty house of ours is a wiring
+            // bug, refused before anything changes.
             if (published.Kind == DomainEventKind.HouseholdFormed)
             {
-                if (!(_claimed is null) && published.SecondaryEntity == _claimed.Id)
+                if (published.SecondaryEntity.Kind == EntityKind.Building)
                 {
-                    _claimed.Occupant = published.PrimaryEntity;
-                    _homeOf.Add(published.PrimaryEntity, _claimed);
-                    _claimed = null;
+                    var home = Find(published.SecondaryEntity);
+
+                    if (home is null || home.Kind != BuildingKind.House || !home.IsComplete || !home.Occupant.IsNone)
+                    {
+                        throw new InvalidOperationException(
+                            published.PrimaryEntity + " was formed into " + published.SecondaryEntity + ", which is not an empty house.");
+                    }
+
+                    home.Occupant = published.PrimaryEntity;
+                    _homeOf.Add(published.PrimaryEntity, home);
                 }
 
                 return;
@@ -948,8 +945,8 @@ namespace KingdomWatch.Core.Construction
             return women && men && CanFuelAnotherHearth(settlement);
         }
 
-        // The settlement's first finished house nobody lives in or has
-        // claimed, in creation order.
+        // The settlement's first finished house nobody lives in, in creation
+        // order.
         private Building? FreeHouse(EntityId settlement)
         {
             for (var i = 0; i < _all.Count; i++)
@@ -957,7 +954,7 @@ namespace KingdomWatch.Core.Construction
                 var house = _all[i];
 
                 if (house.Settlement == settlement && house.Kind == BuildingKind.House && house.IsComplete
-                    && house.Occupant.IsNone && !ReferenceEquals(house, _claimed))
+                    && house.Occupant.IsNone)
                 {
                     return house;
                 }

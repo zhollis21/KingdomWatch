@@ -61,7 +61,7 @@ namespace KingdomWatch.Harness
             FoundingWest = CountSide(true);
             FoundingEast = CountSide(false);
             RememberFoundersSides();
-            ReadJournal(out _, out _);
+            ReadJournal(out _, out _, tally: false);
         }
 
         public World World { get; }
@@ -221,8 +221,11 @@ namespace KingdomWatch.Harness
         }
 
         // New journal entries since the last read: births and deaths counted
-        // for the homeland they happened in, milestone firsts noted.
-        private void ReadJournal(out YearTally west, out YearTally east)
+        // for the homeland they happened in, milestone firsts noted. What the
+        // journal held before the run started is history: read for its
+        // milestones, not tallied - and its dead are not in the sides the run
+        // started from, so tallying them would throw (the #156 review).
+        private void ReadJournal(out YearTally west, out YearTally east, bool tally = true)
         {
             west = default;
             east = default;
@@ -234,7 +237,7 @@ namespace KingdomWatch.Harness
 
                 switch (entry.Kind)
                 {
-                    case DomainEventKind.PersonBorn when entry.Time.Ticks > 0L:
+                    case DomainEventKind.PersonBorn when tally && entry.Time.Ticks > 0L:
                         var westBorn = SideOf(entry.SecondaryEntity, entry);
                         _westOf[entry.PrimaryEntity] = westBorn;
 
@@ -248,7 +251,7 @@ namespace KingdomWatch.Harness
                         }
 
                         break;
-                    case DomainEventKind.PersonDied:
+                    case DomainEventKind.PersonDied when tally:
                         if (SideOf(entry.PrimaryEntity, entry))
                         {
                             CountDeath(ref west, entry);

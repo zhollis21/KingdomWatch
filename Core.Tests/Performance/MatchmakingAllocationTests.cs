@@ -30,7 +30,7 @@ namespace KingdomWatch.Core.Tests.Performance
                 MaxLifespanYears = 2_000L,
             };
             var w = new DemographicWorld(settings, 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             // Siblings only: every pair is considered and the kinship ban
             // refuses each, so the whole scan runs and nothing is formed.

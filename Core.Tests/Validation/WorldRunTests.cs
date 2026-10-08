@@ -465,6 +465,28 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_world_whose_founder_has_died_can_still_be_run()
+        {
+            // The run counts what happens once it starts; what the journal
+            // already holds is history, read for its milestones and not
+            // tallied (the #156 review).
+            var world = World.M1(1UL);
+            var communities = new List<ICommunity>();
+            world.Nomads.CopyTrackedTo(communities);
+            world.Deaths.Die(communities[0].Members[0], new Reasons(ReasonCode.Froze));
+
+            var run = new WorldRun(world);
+            run.RunYears(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.IsClean, Is.True);
+                Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "history's milestones are still read");
+                Assert.That(run.Years[0].Tally.Froze, Is.Zero, "the death before the run is not this year's");
+            });
+        }
+
+        [Test]
         public void Deaths_are_tallied_for_the_homeland_they_happened_in()
         {
             // A village's catastrophe must not hide behind the other homeland's
