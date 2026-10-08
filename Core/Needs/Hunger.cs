@@ -48,7 +48,8 @@ namespace KingdomWatch.Core.Needs
     ///
     /// **A winter store is rationed to the spring** (#149). Nothing grows in
     /// winter, so each winter meal serves only as many as the store can feed
-    /// every day until the last <see cref="HardshipDays"/> before spring, in
+    /// every day until the last <see cref="HardshipDays"/> before spring
+    /// (<see cref="SharedHardshipDays"/> while the woodpile is short too), in
     /// the same sittings; the rest go without even while food is left.
     /// Served until it ran out instead, a store that covered half a winter
     /// fed everyone for half of it and nobody after, and a village starved
@@ -137,12 +138,29 @@ namespace KingdomWatch.Core.Needs
 
         /// <summary>
         /// Days unfed at the end of a winter that a winter store is not
-        /// rationed against: the grace period and half a full-health person's
+        /// rationed against, while the woodpile will keep every hearth lit
+        /// until spring: the grace period and half a full-health person's
         /// damage, a gap anyone fed until then lives through. A store that
         /// covers the winter but these feeds everyone; one that does not is
         /// rationed to them (#149).
         /// </summary>
         public const long HardshipDays = (StarvationGrace / SimulationTime.TicksPerDay) + (FullHealth / StarvationDamagePerMeal / 2);
+
+        /// <summary>
+        /// <see cref="HardshipDays"/> while the woodpile is short too: the
+        /// grace period and a quarter of a full-health person's damage.
+        /// </summary>
+        /// <remarks>
+        /// The cold's gap (<see cref="Warmth.HardshipNights"/>) takes from the
+        /// same health, so a winter short of both food and wood spends both
+        /// gaps at once: half each killed a full-health person on the last
+        /// night of such a winter (the #156 review), and a quarter each leaves
+        /// half of it. Only then, though: a quarter whenever food alone was
+        /// short rationed a band a few days short of spring, and the people it
+        /// left out all winter died where going hungry at the end would have
+        /// cost nobody.
+        /// </remarks>
+        public const long SharedHardshipDays = (StarvationGrace / SimulationTime.TicksPerDay) + (FullHealth / StarvationDamagePerMeal / 4);
 
         /// <summary>
         /// Meals are resource changes, so they run in the physical phase and
@@ -158,6 +176,10 @@ namespace KingdomWatch.Core.Needs
         // A list, scanned by id. There are six holders at launch and one
         // lookup per holder per day; a dictionary would be solving nothing.
         private readonly List<Tracked> _tracked = new List<Tracked>();
+
+        // The households at a winter meal's fires, reused: whether the
+        // woodpile will last decides how hard the meal is rationed.
+        private readonly List<EntityId> _hearthScratch = new List<EntityId>();
 
         /// <param name="bus">
         /// Where famines are announced, and where the clock comes from: meals
@@ -396,7 +418,7 @@ namespace KingdomWatch.Core.Needs
         {
             var fed = 0;
             var unfed = 0;
-            var servings = Servings(tracked.Group.SharedSupplies, now);
+            var servings = Servings(tracked.Group, now);
 
             // Three sittings, each a pass over the members in group order:
             // dependents, then adults, then elders. Three passes rather than a
@@ -431,19 +453,23 @@ namespace KingdomWatch.Core.Needs
 
         // How many this meal serves: everyone, except in winter, when it is
         // what the store can feed every day until the last HardshipDays
-        // before spring, and at least one while there is a meal, so a store
-        // too small for even one person to the spring still feeds someone
-        // today. Those last days are a gap the fed can live through, so a
-        // store that covers all but them feeds everyone. Nothing grows in
-        // winter, so nothing coming in is counted.
-        private static long Servings(ResourceLedger stores, SimulationTime now)
+        // before spring - SharedHardshipDays while the woodpile is short too -
+        // and at least one while there is a meal, so a store too small for
+        // even one person to the spring still feeds someone today. Those last
+        // days are a gap the fed can live through, so a store that covers all
+        // but them feeds everyone. Nothing grows in winter, so nothing coming
+        // in is counted.
+        private long Servings(ICommunity group, SimulationTime now)
         {
             if (now.Season != Season.Winter)
             {
                 return long.MaxValue;
             }
 
-            var days = Math.Max(1L, now.DaysUntilSpring - HardshipDays);
+            var stores = group.SharedSupplies;
+            var hearths = Warmth.CountHearths(group.Members, _people, _hearthScratch);
+            var warmToSpring = stores.Available(ResourceKind.Wood) >= (long)hearths * Warmth.FuelPerFire * now.DaysUntilSpring;
+            var days = Math.Max(1L, now.DaysUntilSpring - (warmToSpring ? HardshipDays : SharedHardshipDays));
             var meals = MealsInStore(stores) / DailyRation;
             return meals > 0L ? Math.Max(1L, meals / days) : 0L;
         }

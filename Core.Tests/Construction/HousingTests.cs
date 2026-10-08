@@ -147,10 +147,37 @@ namespace KingdomWatch.Core.Tests.Construction
             EmptyOneHouse(w);
             w.Buildings.Claim(w.Settlement.Id);
 
-            Assert.That(
-                () => w.Buildings.Claim(w.Settlement.Id),
-                Throws.InvalidOperationException,
-                "the first claim's household has not moved in");
+            Assert.Multiple(() =>
+            {
+                // A second house stands empty, but a vacancy is a promise that
+                // Claim succeeds, and it would not (the #156 review).
+                Assert.That(w.Buildings.HasVacancy(w.Settlement.Id), Is.False, "no vacancy while a claim waits");
+                Assert.That(
+                    () => w.Buildings.Claim(w.Settlement.Id),
+                    Throws.InvalidOperationException,
+                    "the first claim's household has not moved in");
+            });
+        }
+
+        [Test]
+        public void The_store_readings_hash_the_same_whatever_order_the_settlements_were_first_read_in()
+        {
+            // WorldHash folds nothing in storage order (the #156 review): two
+            // settlements read in opposite orders are the same world.
+            static ulong ReadIn(bool westFirst)
+            {
+                var world = new World(1UL, new TerrainGrid(BuildingsWorld.Size, BuildingsWorld.Size, TerrainKind.Plains), DemographicSettings.Default);
+                world.Nomads.Settles = false;
+                var west = world.Founding.Found(world.AddBand(6, new WorldPosition(8, 20)), new Reasons(ReasonCode.PopulationPressure));
+                var east = world.Founding.Found(world.AddBand(6, new WorldPosition(30, 20)), new Reasons(ReasonCode.PopulationPressure));
+                var first = westFirst ? west : east;
+                var second = westFirst ? east : west;
+                world.Buildings.AtDawn(first, 0, first.Members.Count);
+                world.Buildings.AtDawn(second, 0, second.Members.Count);
+                return new KingdomWatch.Core.Validation.WorldHash().AddBuildings(world.Buildings).Value;
+            }
+
+            Assert.That(ReadIn(westFirst: false), Is.EqualTo(ReadIn(westFirst: true)));
         }
 
         [Test]

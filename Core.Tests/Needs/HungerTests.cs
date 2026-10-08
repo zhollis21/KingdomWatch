@@ -14,6 +14,8 @@ namespace KingdomWatch.Core.Tests.Needs
     {
         private const short StartingHealth = 100;
 
+        private const int PlentifulWood = 1_000_000;
+
         private static readonly long Day = SimulationTime.TicksPerDay;
 
         // Stands in for Mortality: remembers each starvation crossing Hunger
@@ -77,6 +79,11 @@ namespace KingdomWatch.Core.Tests.Needs
                 {
                     band.SharedSupplies.Gather(ResourceKind.Food, food);
                 }
+
+                // Wood for every winter night, so the only shortage a test
+                // here has is the food it sets: a woodpile short too would
+                // ration meals harder (Hunger.SharedHardshipDays).
+                band.SharedSupplies.Gather(ResourceKind.Wood, PlentifulWood);
 
                 return band;
             }

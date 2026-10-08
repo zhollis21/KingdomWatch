@@ -168,9 +168,13 @@ namespace KingdomWatch.Core.Lifecycle
             // A home of their own if there is one; otherwise the one of them
             // whose household had no couple in it takes the other in -
             // found before the partnership made them one.
+            // The one already there stays where they stand, and their own
+            // dependents in no household join them, as they would a new
+            // home (the #156 review).
             if (shared is object)
             {
                 MoveIn(incomer, shared);
+                BringDependents(incomer == a ? b : a, shared, shared.Id);
                 return shared;
             }
 
@@ -278,7 +282,20 @@ namespace KingdomWatch.Core.Lifecycle
             }
 
             _households.Join(household, person);
+            BringDependents(person, household, previousId);
 
+            if (previous != null && previous.Members.Count == 0)
+            {
+                _households.Dissolve(previous);
+            }
+        }
+
+        // This person's own dependent children in the household they came
+        // from, or in none, join the one they are in now. One already in it
+        // is left exactly where it stands - so a partner who stays home moves
+        // nobody, and only the unhoused join (the #156 review).
+        private void BringDependents(PersonHandle person, Household household, EntityId cameFrom)
+        {
             var children = _genealogy.Children(_people.GetId(person));
 
             for (var i = 0; i < children.Length; i++)
@@ -291,7 +308,7 @@ namespace KingdomWatch.Core.Lifecycle
 
                 var childsHousehold = _people.GetHousehold(child);
 
-                if (!childsHousehold.IsNone && childsHousehold != previousId)
+                if (childsHousehold == household.Id || (!childsHousehold.IsNone && childsHousehold != cameFrom))
                 {
                     continue;
                 }
@@ -302,11 +319,6 @@ namespace KingdomWatch.Core.Lifecycle
                 }
 
                 _households.Join(household, child);
-            }
-
-            if (previous != null && previous.Members.Count == 0)
-            {
-                _households.Dissolve(previous);
             }
         }
     }

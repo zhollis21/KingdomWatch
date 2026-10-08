@@ -43,7 +43,8 @@ namespace KingdomWatch.Core.Needs
     /// or adolescent) in them, then the rest, each in the order they formed,
     /// and the communal fire last - and only as many as the woodpile can keep
     /// lit every night but the last <see cref="HardshipNights"/> before
-    /// spring (#149). Lighting every hearth until the wood ran out warmed
+    /// spring (<see cref="SharedHardshipNights"/> while food is short too)
+    /// (#149). Lighting every hearth until the wood ran out warmed
     /// everyone for the first half of a short winter and nobody for the rest,
     /// and since nobody lives through a dozen dark nights, a village died
     /// whole; rationed, the same houses stay dark all winter and the rest
@@ -92,11 +93,19 @@ namespace KingdomWatch.Core.Needs
 
         /// <summary>
         /// Dark nights at the end of a winter that a woodpile is not rationed
-        /// against: the grace period and half a full-health person's damage,
-        /// a gap anyone warm until then lives through - <see cref="Hunger.HardshipDays"/>'s
+        /// against, while the stores will feed everyone until spring: the
+        /// grace period and half a full-health person's damage, a gap anyone
+        /// warm until then lives through - <see cref="Hunger.HardshipDays"/>'s
         /// reasoning, at the fire (#149).
         /// </summary>
         public const long HardshipNights = (ExposureGrace / SimulationTime.TicksPerDay) + (Hunger.FullHealth / ExposureDamagePerNight / 2);
+
+        /// <summary>
+        /// <see cref="HardshipNights"/> while food is short too: the grace
+        /// period and a quarter of a full-health person's damage, since hunger
+        /// takes from the same health (<see cref="Hunger.SharedHardshipDays"/>).
+        /// </summary>
+        public const long SharedHardshipNights = (ExposureGrace / SimulationTime.TicksPerDay) + (Hunger.FullHealth / ExposureDamagePerNight / 4);
 
         /// <summary>
         /// Burning is a resource change, so it runs in the physical phase, as
@@ -354,6 +363,21 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
+        private int Living(IReadOnlyList<PersonHandle> members)
+        {
+            var living = 0;
+
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (_people.IsAlive(members[i]))
+                {
+                    living++;
+                }
+            }
+
+            return living;
+        }
+
         // A winter night: gather the hearths, light as many as the wood
         // covers in lighting order, then walk the members - warm by a lit
         // hearth, or one night colder.
@@ -366,10 +390,12 @@ namespace KingdomWatch.Core.Needs
             // Every fire burns the same, so the lit ones are a prefix of the
             // lighting order: rank below this is lit, at or above it is dark.
             // As many as the woodpile can keep lit every night but the last
-            // HardshipNights before spring (#149), and at least one while
-            // there is wood for one, so none is left unburned.
+            // HardshipNights before spring (#149) - SharedHardshipNights while
+            // the food is short too - and at least one while there is wood
+            // for one, so none is left unburned.
             var ledger = group.SharedSupplies;
-            var nights = Math.Max(1L, now.DaysUntilSpring - HardshipNights);
+            var fedToSpring = Hunger.MealsInStore(ledger) >= (long)Living(members) * Hunger.DailyRation * now.DaysUntilSpring;
+            var nights = Math.Max(1L, now.DaysUntilSpring - (fedToSpring ? HardshipNights : SharedHardshipNights));
             var fires = ledger.Available(ResourceKind.Wood) / FuelPerFire;
             var lit = (int)Math.Min(hearths, fires > 0 ? Math.Max(1L, fires / nights) : 0L);
 

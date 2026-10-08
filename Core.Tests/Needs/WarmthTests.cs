@@ -66,6 +66,11 @@ namespace KingdomWatch.Core.Tests.Needs
                     band.SharedSupplies.Gather(ResourceKind.Wood, wood);
                 }
 
+                // Food for every winter day, so the only shortage a test here
+                // has is the wood it sets: stores short too would ration the
+                // fires harder (Warmth.SharedHardshipNights).
+                band.SharedSupplies.Gather(ResourceKind.Food, 1_000_000);
+
                 return band;
             }
 
@@ -287,7 +292,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(secondNight.Mother, Is.EqualTo(FirstWinterNight.Plus(Day)), "the family is lit");
                 Assert.That(secondNight.Couple, Is.LessThan(FirstWinterNight), "the couple is not");
                 Assert.That(motherWarmToTheEnd, Is.EqualTo(lastRationed), "every rationed night");
-                Assert.That(world.People.IsAlive(mother), Is.True, "and lives to the spring");
+                Assert.That(world.People.GetHealth(mother), Is.GreaterThan(0), "and lives to the spring");
             });
         }
 
@@ -311,7 +316,7 @@ namespace KingdomWatch.Core.Tests.Needs
             {
                 Assert.That(world.People.GetLastWarmedAt(coupleWife), Is.EqualTo(lastLit), "lit until the hardship nights");
                 Assert.That(world.People.GetLastWarmedAt(mother), Is.EqualTo(lastLit));
-                Assert.That(world.People.IsAlive(coupleWife), Is.True, "and lived through them");
+                Assert.That(world.People.GetHealth(coupleWife), Is.GreaterThan(0), "and lived through them");
                 Assert.That(world.Wood(band), Is.Zero);
             });
         }

@@ -284,6 +284,29 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void Marrying_into_her_own_home_a_widow_brings_her_unhoused_child_in_too()
+        {
+            // The resident partner's dependents follow her as they do on the
+            // new-house path (A_housed_parent_brings_an_unhoused_dependent_too),
+            // and nobody already at home moves (the #156 review).
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(1));
+            var home = w.NewCouple(out var widow, out var husband);
+            var housed = w.NewChildOf(home, widow, husband, AgeStage.Child);
+            var unhoused = w.NewPerson(AgeStage.Infant, Sex.Male, widow, husband);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+            w.Deaths.Die(husband, Reasons.None);
+
+            var formed = w.Family.Partner(widow, suitor, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home), "no house was free");
+                Assert.That(formed.Members, Is.EqualTo(new[] { widow, housed, suitor, unhoused }));
+                w.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
         public void A_family_home_holds_two_couples_at_most()
         {
             var w = new HouseholdWorld(FamilyFormationSettings.Default, new Rooms(1));

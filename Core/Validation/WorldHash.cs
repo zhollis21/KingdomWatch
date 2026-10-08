@@ -103,6 +103,7 @@ namespace KingdomWatch.Core.Validation
         private readonly List<Household> _households = new List<Household>();
         private readonly List<Settlement> _settlements = new List<Settlement>();
         private readonly List<MobileGroup> _bands = new List<MobileGroup>();
+        private readonly List<StoreTrend> _trends = new List<StoreTrend>();
         private readonly List<EntityId> _holders = new List<EntityId>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
@@ -446,17 +447,20 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.WorkedToday);
             }
 
-            // Then each settlement's yearly store readings (#149), in the
-            // order Buildings first saw them, which is founding order.
-            var trends = buildings.StoreTrends;
-            Mix(trends.Count);
+            // Then each settlement's yearly store readings (#149), sorted by
+            // settlement: Buildings keeps them in the order it first read
+            // them, which is storage, not the world (the #156 review).
+            _trends.Clear();
+            _trends.AddRange(buildings.StoreTrends);
+            _trends.Sort(static (a, b) => a.Settlement.CompareTo(b.Settlement));
+            Mix(_trends.Count);
 
-            for (var i = 0; i < trends.Count; i++)
+            for (var i = 0; i < _trends.Count; i++)
             {
-                Mix(trends[i].Settlement);
-                Mix(trends[i].LastYear);
-                Mix(trends[i].ThisYear);
-                Mix(trends[i].ReadOn);
+                Mix(_trends[i].Settlement);
+                Mix(_trends[i].LastYear);
+                Mix(_trends[i].ThisYear);
+                Mix(_trends[i].ReadOn);
             }
 
             return this;

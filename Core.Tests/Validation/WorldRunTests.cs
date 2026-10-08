@@ -100,24 +100,39 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void No_year_s_hunger_and_cold_take_a_quarter_of_the_world()
+        public void No_year_s_hunger_and_cold_take_a_quarter_of_a_homeland()
         {
             // A village that runs short shrinks; before #149 one winter took
-            // nearly everyone in it.
+            // nearly everyone in it. Each homeland against its own size, so a
+            // big one cannot hide a small one's winter (the #156 review). A
+            // homeland of fewer than ten is too small for a share to mean
+            // anything: one death is a tenth of it.
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
-                    var before = run.FoundingWest + run.FoundingEast;
+                    var west = run.FoundingWest;
+                    var east = run.FoundingEast;
 
                     foreach (var year in run.Years)
                     {
-                        var lost = year.Tally.Starved + year.Tally.Froze;
-                        Assert.That(lost * 4, Is.LessThan(before), "seed " + run.World.Seed + ", year " + year.Year + ": " + lost + " of " + before);
-                        before = year.West + year.East;
+                        Check(run, year, "west", west, year.WestTally);
+                        Check(run, year, "east", east, year.EastTally);
+                        west = year.West;
+                        east = year.East;
                     }
                 }
             });
+
+            static void Check(WorldRun run, YearSummary year, string side, int before, YearTally tally)
+            {
+                var lost = tally.Starved + tally.Froze;
+
+                if (before >= 10)
+                {
+                    Assert.That(lost * 4, Is.LessThan(before), "seed " + run.World.Seed + " " + side + ", year " + year.Year + ": " + lost + " of " + before);
+                }
+            }
         }
 
         [Test]
@@ -446,6 +461,35 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(run.World.Now, Is.EqualTo(start), "refused before the first year, not part-way");
                 Assert.That(run.Years, Is.Empty);
                 Assert.That(run.RunYears(0L).Years, Is.Empty, "zero is a valid, empty run");
+            });
+        }
+
+        [Test]
+        public void Deaths_are_tallied_for_the_homeland_they_happened_in()
+        {
+            // A village's catastrophe must not hide behind the other homeland's
+            // numbers (the #156 review): the west's dead are the west's.
+            var run = new WorldRun(1UL);
+            var communities = new List<ICommunity>();
+            run.World.Nomads.CopyTrackedTo(communities);
+            var west = (MobileGroup)communities[0];
+            var dead = west.Members.Count / 2;
+
+            foreach (var member in new List<PersonHandle>(west.Members).GetRange(0, dead))
+            {
+                run.World.Deaths.Die(member, new Reasons(ReasonCode.Froze));
+            }
+
+            run.RunYears(1L);
+            var year = run.Years[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(year.WestTally.Froze, Is.EqualTo(dead));
+                Assert.That(year.EastTally.Froze, Is.Zero);
+                Assert.That(year.Tally.Froze, Is.EqualTo(year.WestTally.Froze + year.EastTally.Froze), "the whole is the sum");
+                Assert.That(year.Tally.Deaths, Is.EqualTo(year.WestTally.Deaths + year.EastTally.Deaths));
+                Assert.That(year.Tally.Births, Is.EqualTo(year.WestTally.Births + year.EastTally.Births));
             });
         }
 

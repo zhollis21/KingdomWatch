@@ -482,10 +482,13 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether a settlement has a home for a new household: a finished
         /// house nobody lives in, and no household of its own still in a
-        /// tent - those are housed first, oldest first (#69).
+        /// tent - those are housed first, oldest first (#69). None while a
+        /// claim waits for its household, since <see cref="Claim"/> would
+        /// refuse then however many houses stand empty (the #156 review).
         /// For <see cref="SettlementHousing"/>.
         /// </summary>
-        public bool HasVacancy(EntityId settlement) => !(FreeHouse(settlement) is null) && !TryFirstUnhoused(CampOf(settlement), out _);
+        public bool HasVacancy(EntityId settlement) =>
+            _claimed is null && !(FreeHouse(settlement) is null) && !TryFirstUnhoused(CampOf(settlement), out _);
 
         /// <summary>
         /// Takes the settlement's first free house for the household about to

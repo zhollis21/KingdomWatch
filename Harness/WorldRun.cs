@@ -45,6 +45,10 @@ namespace KingdomWatch.Harness
         private readonly WorldValidator _validator = new WorldValidator();
         private int _journalRead;
 
+        // Which side of the river each living person's homeland is: looked
+        // up, never iterated.
+        private readonly Dictionary<EntityId, bool> _westOf = new Dictionary<EntityId, bool>();
+
         public WorldRun(ulong seed)
             : this(World.M1(seed))
         {
@@ -56,7 +60,8 @@ namespace KingdomWatch.Harness
             _yearsView = _years.AsReadOnly();
             FoundingWest = CountSide(true);
             FoundingEast = CountSide(false);
-            ReadJournal(out _);
+            RememberFoundersSides();
+            ReadJournal(out _, out _);
         }
 
         public World World { get; }
@@ -117,8 +122,8 @@ namespace KingdomWatch.Harness
             for (var i = 0L; i < years && IsClean; i++)
             {
                 World.Advance(SimulationTime.TicksPerYear);
-                ReadJournal(out var tally);
-                var summary = new YearSummary(World.Now.YearNumber, CountSide(true), CountSide(false), tally);
+                ReadJournal(out var west, out var east);
+                var summary = new YearSummary(World.Now.YearNumber, CountSide(true), CountSide(false), west, east);
                 _years.Add(summary);
 
                 if (summary.West == 0 && WestDiedOut is null)
@@ -194,11 +199,33 @@ namespace KingdomWatch.Harness
             _validator.CheckTracked(_tracked, World.People, World.Clock);
         }
 
-        // New journal entries since the last read: births and deaths counted,
-        // milestone firsts noted.
-        private void ReadJournal(out YearTally tally)
+        // Everyone alive at the start, on the side of the river their
+        // community stands on. Each newborn takes their mother's side as the
+        // journal reports the birth, so every death is counted for the
+        // homeland it happened in (the #156 review): nobody changes side.
+        private void RememberFoundersSides()
         {
-            tally = default;
+            _communities.Clear();
+            World.CopyCommunitiesTo(_communities);
+
+            for (var i = 0; i < _communities.Count; i++)
+            {
+                var west = IsWest(_communities[i].Position);
+                var members = _communities[i].Members;
+
+                for (var m = 0; m < members.Count; m++)
+                {
+                    _westOf[World.People.GetId(members[m])] = west;
+                }
+            }
+        }
+
+        // New journal entries since the last read: births and deaths counted
+        // for the homeland they happened in, milestone firsts noted.
+        private void ReadJournal(out YearTally west, out YearTally east)
+        {
+            west = default;
+            east = default;
             var journal = World.Journal;
 
             for (; _journalRead < journal.Count; _journalRead++)
@@ -208,22 +235,30 @@ namespace KingdomWatch.Harness
                 switch (entry.Kind)
                 {
                     case DomainEventKind.PersonBorn when entry.Time.Ticks > 0L:
-                        tally.Births++;
-                        break;
-                    case DomainEventKind.PersonDied when entry.Reasons.Contains(ReasonCode.Starved):
-                        tally.Starved++;
-                        break;
-                    case DomainEventKind.PersonDied when entry.Reasons.Contains(ReasonCode.Froze):
-                        tally.Froze++;
-                        break;
-                    case DomainEventKind.PersonDied when entry.Reasons.Contains(ReasonCode.OldAge):
-                        tally.OldAge++;
-                        break;
-                    case DomainEventKind.PersonDied when entry.Reasons.Contains(ReasonCode.Illness):
-                        tally.Illness++;
+                        var westBorn = SideOf(entry.SecondaryEntity, entry);
+                        _westOf[entry.PrimaryEntity] = westBorn;
+
+                        if (westBorn)
+                        {
+                            west.Births++;
+                        }
+                        else
+                        {
+                            east.Births++;
+                        }
+
                         break;
                     case DomainEventKind.PersonDied:
-                        tally.OtherDeaths++;
+                        if (SideOf(entry.PrimaryEntity, entry))
+                        {
+                            CountDeath(ref west, entry);
+                        }
+                        else
+                        {
+                            CountDeath(ref east, entry);
+                        }
+
+                        _westOf.Remove(entry.PrimaryEntity);
                         break;
                     case DomainEventKind.CampPitched when FirstCamp is null:
                         FirstCamp = entry.Time;
@@ -234,6 +269,38 @@ namespace KingdomWatch.Harness
                 }
             }
         }
+
+        private static void CountDeath(ref YearTally tally, in DomainEvent died)
+        {
+            if (died.Reasons.Contains(ReasonCode.Starved))
+            {
+                tally.Starved++;
+            }
+            else if (died.Reasons.Contains(ReasonCode.Froze))
+            {
+                tally.Froze++;
+            }
+            else if (died.Reasons.Contains(ReasonCode.OldAge))
+            {
+                tally.OldAge++;
+            }
+            else if (died.Reasons.Contains(ReasonCode.Illness))
+            {
+                tally.Illness++;
+            }
+            else
+            {
+                tally.OtherDeaths++;
+            }
+        }
+
+        // A person's side, which every person the journal names has: founders
+        // from the start, everyone after from their mother. One without is a
+        // tally that would quietly go missing, so it throws.
+        private bool SideOf(EntityId person, in DomainEvent entry) =>
+            _westOf.TryGetValue(person, out var west)
+                ? west
+                : throw new InvalidOperationException(entry + " names " + person + ", whose homeland is unknown.");
 
         private int CountSide(bool west)
         {
@@ -283,12 +350,13 @@ namespace KingdomWatch.Harness
 
     public readonly struct YearSummary
     {
-        public YearSummary(long year, int west, int east, YearTally tally)
+        public YearSummary(long year, int west, int east, YearTally westTally, YearTally eastTally)
         {
             Year = year;
             West = west;
             East = east;
-            Tally = tally;
+            WestTally = westTally;
+            EastTally = eastTally;
         }
 
         public long Year { get; }
@@ -297,6 +365,21 @@ namespace KingdomWatch.Harness
 
         public int East { get; }
 
-        public YearTally Tally { get; }
+        /// <summary>The west homeland's births and deaths this year.</summary>
+        public YearTally WestTally { get; }
+
+        /// <summary>The east homeland's births and deaths this year.</summary>
+        public YearTally EastTally { get; }
+
+        /// <summary>Both homelands' births and deaths this year.</summary>
+        public YearTally Tally => new YearTally
+        {
+            Births = WestTally.Births + EastTally.Births,
+            Starved = WestTally.Starved + EastTally.Starved,
+            Froze = WestTally.Froze + EastTally.Froze,
+            OldAge = WestTally.OldAge + EastTally.OldAge,
+            Illness = WestTally.Illness + EastTally.Illness,
+            OtherDeaths = WestTally.OtherDeaths + EastTally.OtherDeaths,
+        };
     }
-}
+}
