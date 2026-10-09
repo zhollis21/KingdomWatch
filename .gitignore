@@ -140,3 +140,6 @@ docs/roadmap/
 
 # Editor/IDE settings are per-contributor, not a repo convention here.
 .vscode/
+
+# Claude Code build-on-stop hook state
+.claude/hooks/.last-build
