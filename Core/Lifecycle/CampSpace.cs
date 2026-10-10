@@ -11,15 +11,15 @@ namespace KingdomWatch.Core.Lifecycle
     /// <remarks>
     /// Homes here have no identity, so <see cref="Claim"/> hands out
     /// <see cref="EntityId.None"/> and <see cref="Release"/> accepts nothing
-    /// else. A settled band needs the real stock (#69); until then a fresh
-    /// settlement keeps these semantics, and its population is bounded by
-    /// food alone.
+    /// else. Every community gets the same answer: a settlement's houses are
+    /// <see cref="Construction.SettlementHousing"/>'s (#69), which hands
+    /// everyone else here.
     /// </remarks>
     public sealed class CampSpace : IHousing
     {
-        public bool HasVacancy => true;
+        public bool HasVacancy(EntityId community) => true;
 
-        public EntityId Claim() => EntityId.None;
+        public EntityId Claim(EntityId community) => EntityId.None;
 
         public void Release(EntityId home)
         {

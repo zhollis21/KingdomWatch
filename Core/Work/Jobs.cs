@@ -191,6 +191,12 @@ namespace KingdomWatch.Core.Work
         public const int MaxSiteRadius = 16;
 
         /// <summary>
+        /// How far out a settlement's woodcutters look, in cells, when no tree
+        /// stands within <see cref="MaxSiteRadius"/> (#149).
+        /// </summary>
+        public const int EmergencyWoodRadius = 2 * MaxSiteRadius;
+
+        /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
         /// "foragers and hunters working out from a settlement" among the
         /// things that reveal, and this is how far they reveal.
@@ -577,7 +583,7 @@ namespace KingdomWatch.Core.Work
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                FindSite(from, known, job, SiteOf(tracked, job));
+                FindSite(tracked, from, known, job, SiteOf(tracked, job));
             }
 
             tracked.SitesFrom = from;
@@ -896,7 +902,7 @@ namespace KingdomWatch.Core.Work
                         || (_buildings is object && _buildings.IsReserved(site.Destination))))
                     || (!site.Reachable && site.LandReturns != _land.Returns))
                 {
-                    FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
+                    FindSite(tracked, tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
                 }
 
                 if (!site.Reachable)
@@ -1108,11 +1114,24 @@ namespace KingdomWatch.Core.Work
         // stops at the first the job accepts. The way home is the same cells
         // in the other order, and costs what they cost entered from that
         // side - the camp cell instead of the site cell, at the least.
-        private void FindSite(WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
+        //
+        // A settlement's woodcutters with no tree in that reach look out to
+        // EmergencyWoodRadius (#149): a village that cleared its first stand
+        // has nothing near it to fell for the five years the stumps take to
+        // stand again, and a winter begun on an empty woodpile killed it
+        // whole. Only then, so the wider search is paid only by a village
+        // already short, and a band - which moves on instead - never pays it.
+        private void FindSite(Tracked tracked, WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
         {
             site.LandReturns = _land.Returns;
             site.Reachable = _pathfinder.TryFindNearest(
                 from, Mover, JobTable.Terrain(job), known, _workable, MaxSiteRadius, site.Route, out var cost);
+
+            if (!site.Reachable && job == JobKind.Woodcutter && tracked.Group.Id.Kind == EntityKind.Settlement)
+            {
+                site.Reachable = _pathfinder.TryFindNearest(
+                    from, Mover, JobTable.Terrain(job), known, _workable, EmergencyWoodRadius, site.Route, out cost);
+            }
 
             if (!site.Reachable)
             {

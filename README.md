@@ -26,7 +26,7 @@ The simulation is plain C# with no Unity in it. From the repo root:
 
 ```powershell
 dotnet build KingdomWatch.sln
-dotnet test KingdomWatch.sln
+dotnet test KingdomWatch.sln -c Release
 dotnet run --project Harness -c Release
 ```
 

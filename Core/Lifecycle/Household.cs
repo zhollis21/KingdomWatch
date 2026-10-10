@@ -53,10 +53,11 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>
         /// The home this household occupies, or <see cref="EntityId.None"/>
         /// while it is housed by camp space - section 15: temporary dwellings
-        /// satisfy the housing requirement in nomadic mode. A real home
-        /// arrives with the housing stock (#69).
+        /// satisfy the housing requirement in nomadic mode. A settlement's
+        /// household has a house (#69): the one claimed when it formed, or
+        /// the one it moved into from a tent (<see cref="Households.MoveIn"/>).
         /// </summary>
-        public EntityId Home { get; }
+        public EntityId Home { get; internal set; }
 
         public SimulationTime FormedAt { get; }
 

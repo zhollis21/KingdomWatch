@@ -233,6 +233,139 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void With_no_home_free_an_heir_brings_a_spouse_into_the_family_home()
+        {
+            // #69's stem family: a child marries into the household they grew
+            // up in while the parents live, so a family home passes down
+            // rather than standing full of the unmarried until all in it die.
+            var rooms = new Rooms(1);
+            var w = new HouseholdWorld(FamilyFormationSettings.Default, rooms);
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+
+            var refusal = w.Family.Evaluate(daughter, suitor);
+            var formed = w.Family.Partner(daughter, suitor, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(rooms.Left, Is.Zero, "no home was free");
+                Assert.That(refusal, Is.EqualTo(PartnerRefusal.None));
+                Assert.That(formed, Is.SameAs(home), "the family home, not a new one");
+                Assert.That(home.Members, Is.EqualTo(new[] { mother, father, daughter, suitor }));
+                Assert.That(w.Partnerships.ActivePartnerOf(w.IdOf(daughter)), Is.EqualTo(w.IdOf(suitor)));
+                Assert.That(w.Households.Count, Is.EqualTo(1));
+                w.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
+        public void A_widower_marrying_into_a_family_home_leaves_his_own_to_dissolve()
+        {
+            // The inherited home's crossing with the move-in: he leaves the
+            // household he was alone in, and it goes, as it does when a
+            // couple takes a new house.
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(2));
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var his = w.NewCouple(out var late, out var widower);
+            w.Deaths.Die(late, Reasons.None);
+
+            var formed = w.Family.Partner(daughter, widower, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home));
+                Assert.That(home.Members, Does.Contain(widower));
+                Assert.That(w.Households.TryGet(his.Id, out _), Is.False, "his old household is gone");
+                Assert.That(w.Households.Count, Is.EqualTo(1));
+                w.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
+        public void Marrying_into_her_own_home_a_widow_brings_her_unhoused_child_in_too()
+        {
+            // The resident partner's dependents follow her as they do on the
+            // new-house path (A_housed_parent_brings_an_unhoused_dependent_too),
+            // and nobody already at home moves (the #156 review).
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(1));
+            var home = w.NewCouple(out var widow, out var husband);
+            var housed = w.NewChildOf(home, widow, husband, AgeStage.Child);
+            var unhoused = w.NewPerson(AgeStage.Infant, Sex.Male, widow, husband);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+            w.Deaths.Die(husband, Reasons.None);
+
+            var formed = w.Family.Partner(widow, suitor, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home), "no house was free");
+                Assert.That(formed.Members, Is.EqualTo(new[] { widow, housed, suitor, unhoused }));
+                w.AssertHouseholdsConsistent();
+            });
+        }
+
+        [Test]
+        public void A_family_home_holds_two_couples_at_most()
+        {
+            var w = new HouseholdWorld(FamilyFormationSettings.Default, new Rooms(1));
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var son = w.NewPerson(AgeStage.Adult, Sex.Male, mother, father);
+            w.Households.Join(home, son);
+            w.Family.Partner(daughter, w.NewPerson(AgeStage.Adult, Sex.Male), Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(FamilyFormation.MaxCouplesPerHousehold, Is.EqualTo(2));
+                Assert.That(w.Family.Evaluate(son, w.NewPerson(AgeStage.Adult, Sex.Female)), Is.EqualTo(PartnerRefusal.NoHomeAvailable));
+            });
+        }
+
+        [Test]
+        public void Either_partner_s_family_home_will_do()
+        {
+            // The first of the two whose household has room takes the other
+            // in: here only the second's does.
+            var w = new HouseholdWorld(FamilyFormationSettings.Default, new Rooms(1));
+            var home = w.NewCouple(out var mother, out var father);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            var suitor = w.NewPerson(AgeStage.Adult, Sex.Male);
+
+            var formed = w.Family.Partner(suitor, daughter, Reasons.None);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(formed, Is.SameAs(home));
+                Assert.That(home.Members, Does.Contain(suitor));
+            });
+        }
+
+        [Test]
+        public void A_widowed_parent_s_household_counts_no_couple()
+        {
+            var w = new HouseholdWorld(new FamilyFormationSettings(0L, false), new Rooms(2));
+            var home = w.NewCouple(out var mother, out var father);
+            var son = w.NewPerson(AgeStage.Adult, Sex.Male, mother, father);
+            w.Households.Join(home, son);
+            var daughter = w.NewChildOf(home, mother, father, AgeStage.Adult);
+            w.NewCouple(out _, out _);
+            w.Deaths.Die(father, Reasons.None);
+            var bride = w.NewPerson(AgeStage.Adult, Sex.Female);
+            w.Family.Partner(son, bride, Reasons.None);
+
+            // The son's couple is the household's only one, so a second
+            // heir could still marry in.
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(home.Members, Does.Contain(bride));
+                Assert.That(w.Family.Evaluate(daughter, w.NewPerson(AgeStage.Adult, Sex.Male)), Is.EqualTo(PartnerRefusal.None));
+            });
+        }
+
+        [Test]
         public void Someone_outside_the_genealogy_cannot_be_evaluated_whatever_else_would_refuse_them()
         {
             var w = new HouseholdWorld();
@@ -426,11 +559,31 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             });
         }
 
+        // Housing with a fixed number of homes, none of them given back.
+        private sealed class Rooms : IHousing
+        {
+            public Rooms(int count) => Left = count;
+
+            public int Left { get; private set; }
+
+            public bool HasVacancy(EntityId community) => Left > 0;
+
+            public EntityId Claim(EntityId community)
+            {
+                Left--;
+                return EntityId.None;
+            }
+
+            public void Release(EntityId home)
+            {
+            }
+        }
+
         private sealed class NoRoom : IHousing
         {
-            public bool HasVacancy => false;
+            public bool HasVacancy(EntityId community) => false;
 
-            public EntityId Claim() => throw new InvalidOperationException("full");
+            public EntityId Claim(EntityId community) => throw new InvalidOperationException("full");
 
             public void Release(EntityId home)
             {

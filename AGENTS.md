@@ -29,9 +29,11 @@ See `docs/design/kingdom-watch-plan-v7.1.md` §5 for the architectural reasoning
 
 ```powershell
 dotnet build KingdomWatch.sln
-dotnet test KingdomWatch.sln
+dotnet test KingdomWatch.sln -c Release
 dotnet run --project Harness
 ```
+
+Run the tests in Release, as CI does: the world-run fixtures simulate decades of the full map, and the suite takes about two minutes in Release against nearly twenty in Debug. Fixtures run in parallel (`Core.Tests/Parallelism.cs`); the tests inside one run one at a time. A fixture that shares mutable state with another fixture, or one with a tight wall-time bound, must be marked `[NonParallelizable]`.
 
 The SDK is pinned in `global.json`. Shared compiler settings live in the root `Directory.Build.props`; `Game/Directory.Build.props` is intentionally empty and stops those settings reaching the `.csproj` files Unity regenerates on import — don't delete it.
 

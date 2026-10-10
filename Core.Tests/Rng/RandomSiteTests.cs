@@ -222,7 +222,7 @@ namespace KingdomWatch.Core.Tests.Rng
                 meddler.World = world;
             }
 
-            var band = world.NewBand();
+            var band = world.NewVillage();
             var generated = world.Generator.Generate(size, new WorldPosition(4, 4));
 
             foreach (var member in generated.Members)

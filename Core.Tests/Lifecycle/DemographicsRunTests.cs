@@ -20,8 +20,10 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         [Test]
         public void A_band_of_six_couples_carries_on_for_a_century()
         {
+            // A village: since #69 a band on the move neither marries nor
+            // has children.
             var w = new DemographicWorld(DemographicSettings.Default, 42UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             for (var i = 0; i < 6; i++)
             {
@@ -84,13 +86,17 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         [Test]
         public void A_generated_band_of_thirty_keeps_finding_partners_for_two_centuries()
         {
+            // Generated as a band and settled at once: since #69 a band on
+            // the move neither marries nor has children.
             var w = new DemographicWorld(DemographicSettings.Default, 11UL);
-            var band = w.Generator.Generate(30, default);
-            w.Deaths.Track(band);
-            w.Fertility.Track(band);
-            w.Hunger.Track(band);
+            var band = w.NewVillage();
+
+            foreach (var member in w.Generator.Generate(30, default).Members)
+            {
+                band.AddMember(member);
+            }
+
             w.Matchmaking.Track(band);
-            band.SharedSupplies.Gather(ResourceKind.Food, DemographicWorld.PlentifulFood);
 
             const int Years = 200;
             const int Generation = 25;

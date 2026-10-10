@@ -3,6 +3,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Settlements;
 using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Lifecycle
@@ -65,7 +66,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void Tracking_books_a_courtship_a_year_out_and_refuses_a_second_stream()
         {
             var w = new DemographicWorld();
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var pending = w.Clock.ScheduledCount;
 
             w.Matchmaking.Track(band);
@@ -99,7 +100,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // across seeds some year-one pools stay partly single. What is
             // certain: nobody marries a sibling, a child, or twice.
             var w = new DemographicWorld(Immortal, 3UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var women = new List<PersonHandle>();
             var men = new List<PersonHandle>();
 
@@ -135,6 +136,56 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
+        public void A_band_on_the_move_courts_nobody()
+        {
+            // Since #69 only a settled people marries: a band arrives at its
+            // village with the households it set out with.
+            var w = new DemographicWorld(Immortal, 3UL);
+            var band = w.NewBand();
+
+            for (var i = 0; i < 10; i++)
+            {
+                band.AddMember(w.NewPerson(25L, Sex.Female));
+                band.AddMember(w.NewPerson(25L, Sex.Male));
+            }
+
+            w.Matchmaking.Track(band);
+            w.Advance(5L * Year);
+
+            Assert.That(w.Published(DomainEventKind.MarriageFormed), Is.Empty);
+        }
+
+        [Test]
+        public void A_village_short_of_food_courts_nobody_until_it_is_not()
+        {
+            // A village at its food ceiling stops forming couples, in a new
+            // house or an inherited one (#69).
+            var w = new DemographicWorld(Immortal, 3UL);
+            var band = w.NewVillage();
+            var outlook = new ShortOf(band.Id);
+            w.Matchmaking.Food = outlook;
+
+            for (var i = 0; i < 10; i++)
+            {
+                Join(w, band, 25L, Sex.Female);
+                Join(w, band, 25L, Sex.Male);
+            }
+
+            w.Matchmaking.Track(band);
+            w.Advance(3L * Year);
+            var whileShort = w.Published(DomainEventKind.MarriageFormed).Count;
+            outlook.Short = false;
+            w.Advance(3L * Year);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(whileShort, Is.Zero);
+                Assert.That(w.Published(DomainEventKind.MarriageFormed), Is.Not.Empty);
+                Assert.That(() => w.Matchmaking.Food = null!, Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
         public void A_pair_the_rules_refuse_never_marries_however_long_they_wait()
         {
             // A brother and sister with nobody else to consider: the draw
@@ -142,7 +193,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // every time. If the matchmaker ever skipped the rulebook,
             // Partner would throw here rather than marry them.
             var w = new DemographicWorld(Immortal, 4UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var mother = w.NewPerson(60L, Sex.Female);
             var father = w.NewPerson(60L, Sex.Male);
             band.AddMember(w.NewChild(25L, Sex.Female, mother, father));
@@ -164,7 +215,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             for (var seed = 1UL; seed <= 12UL; seed++)
             {
                 var w = new DemographicWorld(Immortal, seed);
-                var band = w.NewBand();
+                var band = w.NewVillage();
                 Join(w, band, 25L, Sex.Female);
                 Join(w, band, 25L, Sex.Male);
                 w.Matchmaking.Track(band);
@@ -214,7 +265,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void Only_the_courtship_the_community_booked_runs()
         {
             var w = new DemographicWorld();
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.Matchmaking.Track(band);
             w.Clock.Schedule(
                 w.Clock.Now.Plus(1L), Matchmaking.Phase, ScheduledEventKind.CourtshipDue, band.Id, EntityId.None);
@@ -258,7 +309,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Assert.That(w.Clock.ScheduledCount, Is.Zero);
         }
 
-        private static PersonHandle Join(DemographicWorld w, MobileGroup band, long ageYears, Sex sex)
+        private static PersonHandle Join(DemographicWorld w, Settlement band, long ageYears, Sex sex)
         {
             var person = w.NewPerson(ageYears, sex);
             band.AddMember(person);
@@ -279,7 +330,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             for (var seed = 1UL; seed <= Seeds; seed++)
             {
                 var w = new DemographicWorld(Immortal, seed);
-                var band = w.NewBand();
+                var band = w.NewVillage();
                 Join(w, band, herAge, Sex.Female);
                 Join(w, band, hisAge, Sex.Male);
                 w.Matchmaking.Track(band);
@@ -300,7 +351,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         private static List<(EntityId, EntityId)> WeddingsFor(ulong seed)
         {
             var w = new DemographicWorld(Immortal, seed);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             for (var i = 0; i < 6; i++)
             {

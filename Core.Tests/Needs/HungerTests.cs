@@ -14,6 +14,8 @@ namespace KingdomWatch.Core.Tests.Needs
     {
         private const short StartingHealth = 100;
 
+        private const int PlentifulWood = 1_000_000;
+
         private static readonly long Day = SimulationTime.TicksPerDay;
 
         // Stands in for Mortality: remembers each starvation crossing Hunger
@@ -77,6 +79,11 @@ namespace KingdomWatch.Core.Tests.Needs
                 {
                     band.SharedSupplies.Gather(ResourceKind.Food, food);
                 }
+
+                // Wood for every winter night, so the only shortage a test
+                // here has is the food it sets: a woodpile short too would
+                // ration meals harder (Hunger.SharedHardshipDays).
+                band.SharedSupplies.Gather(ResourceKind.Wood, PlentifulWood);
 
                 return band;
             }
@@ -290,6 +297,77 @@ namespace KingdomWatch.Core.Tests.Needs
                     Is.EqualTo(Hunger.DailyRation - 1),
                     "a partial ration is not a meal: the remainder stays in the ledger");
                 Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
+            });
+        }
+
+        [Test]
+        public void A_winter_store_short_of_the_spring_feeds_only_whom_it_can_to_the_end()
+        {
+            // #149: served until it ran out, a store for half the winter fed
+            // everyone for half of it and nobody after. Rationed to the days
+            // before the last HardshipDays, a winter's food for one feeds the
+            // child every day and the elder not at all, though food is left.
+            var world = new World();
+            var rationed = SimulationTime.DaysPerSeason - Hunger.HardshipDays;
+            var band = world.NewBand(0, (int)SimulationTime.DaysPerSeason * Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var child = world.NewMember(band, AgeStage.Child);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+            var firstWinterMeal = world.Clock.Now;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstWinterMeal.Season, Is.EqualTo(Season.Winter));
+                Assert.That(world.People.GetLastFedAt(child), Is.EqualTo(firstWinterMeal), "the child eats");
+                Assert.That(world.People.GetLastFedAt(elder), Is.LessThan(firstWinterMeal), "the elder goes without");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.GreaterThan(rationed / 2), "while food is left");
+            });
+        }
+
+        [Test]
+        public void A_winter_store_too_small_for_anyone_to_the_spring_still_feeds_one()
+        {
+            // Rationed, a single meal would feed nobody: it is not a winter's
+            // eating for anyone. It is never left uneaten.
+            var world = new World();
+            var band = world.NewBand(0, Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var child = world.NewMember(band, AgeStage.Child);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(child), Is.EqualTo(world.Clock.Now));
+                Assert.That(world.People.GetLastFedAt(elder), Is.LessThan(world.Clock.Now));
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.Zero);
+            });
+        }
+
+        [Test]
+        public void A_winter_store_a_few_days_short_feeds_everyone()
+        {
+            // The last HardshipDays are a gap anyone fed until then lives
+            // through, so a store that covers all but them is not rationed.
+            var world = new World();
+            var rationed = (int)(SimulationTime.DaysPerSeason - Hunger.HardshipDays);
+            var band = world.NewBand(0, 2 * rationed * Hunger.DailyRation);
+            var elder = world.NewMember(band, AgeStage.Elder);
+            var child = world.NewMember(band, AgeStage.Child);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Hunger.Track(band);
+
+            world.RunDays(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(child), Is.EqualTo(world.Clock.Now));
+                Assert.That(world.People.GetLastFedAt(elder), Is.EqualTo(world.Clock.Now));
             });
         }
 

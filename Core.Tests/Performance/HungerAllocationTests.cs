@@ -73,6 +73,42 @@ namespace KingdomWatch.Core.Tests.Performance
             });
         }
 
+        [Test]
+        public void Rationed_winter_meals_at_steady_state_allocate_nothing()
+        {
+            // Winter meals ration, and to know how hard they count the band's
+            // hearths (#149, the #156 review): a path the meals above, all
+            // outside winter, never take. A store too small for the winter, a
+            // woodpile too small too, so the shared gap is the one counted.
+            var ids = new IdAllocator();
+            var clock = new SimulationClock(ids);
+            var bus = new DomainEventBus(clock);
+            var journal = new EventJournal(64);
+            bus.Subscribe(journal);
+            var people = new PersonStore();
+            var router = new ScheduledEventRouter();
+            var hunger = new Hunger(bus, people);
+            router.Register(ScheduledEventKind.MealDue, hunger);
+            router.Register(ScheduledEventKind.StarvationCritical, new Ignore());
+
+            var band = NewBand(ids, people, WellFed, food: WellFed * Hunger.DailyRation * 20);
+            band.SharedSupplies.Gather(ResourceKind.Wood, 10);
+            clock.AdvanceTo(SimulationTime.FromDays((3L * SimulationTime.DaysPerSeason) - 1L), router);
+            hunger.Track(band);
+
+            // Fifteen winter days of warm-up - long enough that those the
+            // rations leave out have reached zero and raised their crossings,
+            // as the test above lets its starving band - then ten measured.
+            RunDays(clock, router, 15L);
+            var allocated = Allocations.Measure(() => RunDays(clock, router, 10L));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(clock.Now.Season, Is.EqualTo(Season.Winter));
+                Assert.That(allocated, Is.Zero, "bytes allocated on the test thread across ten rationed winter days");
+            });
+        }
+
         private static MobileGroup NewBand(IdAllocator ids, PersonStore people, int members, int food)
         {
             var band = new MobileGroup(

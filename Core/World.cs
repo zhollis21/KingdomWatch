@@ -76,13 +76,15 @@ namespace KingdomWatch.Core
             Genealogy = new Genealogy();
             Partnerships = new Partnerships();
             Memories = new Memories(MemoryDefaults);
-            Households = new Households(Bus, People, new CampSpace());
+            var housing = new SettlementHousing();
+            Households = new Households(Bus, People, housing);
             Family = new FamilyFormation(Bus, People, Genealogy, Partnerships, Households, FamilyFormationSettings.Default);
 
             Pathfinder = new Pathfinder(Grid, TerrainRules.Default);
             KnownMaps = new KnownMaps(Grid);
             Land = new LandCover(Grid, Clock);
-            Buildings = new Buildings(Bus, People, Households, Pathfinder, KnownMaps, Land, new NoviceSkills());
+            Buildings = new Buildings(Bus, People, Households, Partnerships, Pathfinder, KnownMaps, Land, new NoviceSkills());
+            housing.Stock = Buildings;
             Jobs = new Jobs(Clock, People, Pathfinder, KnownMaps, Land, Buildings);
             Deaths = new Deaths(Bus, People, Genealogy, Partnerships, Memories, Households, Jobs);
 
@@ -96,6 +98,8 @@ namespace KingdomWatch.Core
             Founding = new Founding(Bus, Deaths, Fertility, Hunger, Warmth, Jobs, Matchmaking, KnownMaps);
             Nomads = new NomadicBands(Bus, People, Pathfinder, Founding, Rng, KnownMaps, Land, Buildings);
             Buildings.Camps = Founding.All;
+            Matchmaking.Food = Buildings;
+            Fertility.Food = Buildings;
 
             Bus.Subscribe(Buildings);
             Bus.Subscribe(Aging);

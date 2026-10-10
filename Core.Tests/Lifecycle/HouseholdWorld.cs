@@ -7,6 +7,7 @@ using KingdomWatch.Core.Knowledge;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Relationships;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 using NUnit.Framework;
@@ -124,6 +125,15 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             var band = new MobileGroup(Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, default);
             Deaths.Track(band);
             return band;
+        }
+
+        // A settlement the cascade strikes the dead from: since #69 only a
+        // settled people courts and has children.
+        internal Settlement NewVillage()
+        {
+            var village = new Settlement(Ids.Next(EntityKind.Settlement), default);
+            Deaths.Track(village);
+            return village;
         }
 
         internal void Advance(long ticks) => Clock.AdvanceTo(Clock.Now.Plus(ticks), new ScheduledEventRouter());

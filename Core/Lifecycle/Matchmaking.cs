@@ -40,6 +40,12 @@ namespace KingdomWatch.Core.Lifecycle
     /// the draw accepts is the one; the rest of the year's candidates are
     /// not consulted. A woman refused by everyone tries again next year.
     ///
+    /// **Only a settled people that can feed itself courts** (#69). A band on
+    /// the move marries nobody, and a settlement whose food is short
+    /// (<see cref="Food"/>) waits until it is not - a couple that married
+    /// into a family home needed no new house, so housing alone did not stop
+    /// them.
+    ///
     /// The numbers are placeholders: plausible, not tuned.
     ///
     /// Allocation-free after <see cref="Track"/>: the scan is by index over
@@ -66,6 +72,7 @@ namespace KingdomWatch.Core.Lifecycle
 
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
+        private IFoodOutlook _food = FoodOutlook.Never;
         private readonly FamilyFormation _family;
         private readonly Partnerships _partnerships;
         private readonly DeterministicRng _rng;
@@ -94,6 +101,17 @@ namespace KingdomWatch.Core.Lifecycle
 
         /// <summary>How many communities pair off.</summary>
         public int TrackedCount => _tracked.Count;
+
+        /// <summary>
+        /// Which communities are outgrowing their food, and so court nobody
+        /// (#69). <see cref="World"/> sets it to its buildings;
+        /// <see cref="FoodOutlook.Never"/> until then.
+        /// </summary>
+        public IFoodOutlook Food
+        {
+            get => _food;
+            set => _food = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Fills <paramref name="into"/> with every community that pairs off, in the order they were
@@ -270,8 +288,20 @@ namespace KingdomWatch.Core.Lifecycle
             }
         }
 
+        // Only a settled people courts (#69): a band marries nobody on the
+        // road, so it arrives at its village with the households it set out
+        // with, and every one after is formed into a house the land can fuel.
         private void Court(ICommunity community, SimulationTime now)
         {
+            // Nor does a village that cannot feed the mouths it has: a couple
+            // that married into a family home needed no new house, and so no
+            // new field, and such marriages carried villages past their food
+            // until a famine took a third of them (#69).
+            if (community.Id.Kind != EntityKind.Settlement || Food.IsFoodShort(community.Id))
+            {
+                return;
+            }
+
             var members = community.Members;
             var year = now.Ticks / SimulationTime.TicksPerYear;
 
@@ -288,7 +318,7 @@ namespace KingdomWatch.Core.Lifecycle
                 {
                     var man = members[j];
 
-                    if (!IsSingleAdult(man, Sex.Male) || _family.Evaluate(woman, man) != PartnerRefusal.None)
+                    if (!IsSingleAdult(man, Sex.Male) || _family.Evaluate(woman, man, community.Id) != PartnerRefusal.None)
                     {
                         continue;
                     }
@@ -300,7 +330,7 @@ namespace KingdomWatch.Core.Lifecycle
                     if (_rng.Key(RandomDomain.Courtship, RandomSite.MarriageRoll).Mix(womanId).Mix(manId).Mix(year)
                         .Chance(ChancePerMille(gap), PerMille))
                     {
-                        _family.Partner(woman, man, Reasons.None);
+                        _family.Partner(woman, man, Reasons.None, community.Id);
                         break;
                     }
                 }

@@ -54,7 +54,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             Assert.Multiple(() =>
             {
-                Assert.That(world.Households.HasVacancy, Is.False);
+                Assert.That(world.Households.HasVacancy(), Is.False);
                 Assert.That(() => world.Households.Form(), Throws.InvalidOperationException);
                 Assert.That(world.Households.Count, Is.Zero);
                 Assert.That(world.Journal.Count, Is.Zero, "nothing was announced");
@@ -306,8 +306,8 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             Assert.Multiple(() =>
             {
-                Assert.That(camp.HasVacancy, Is.True);
-                Assert.That(camp.Claim(), Is.EqualTo(EntityId.None));
+                Assert.That(camp.HasVacancy(EntityId.None), Is.True);
+                Assert.That(camp.Claim(EntityId.None), Is.EqualTo(EntityId.None));
                 Assert.That(() => camp.Release(EntityId.None), Throws.Nothing);
                 Assert.That(() => camp.Release(ids.Next(EntityKind.Settlement)), Throws.ArgumentException);
             });
@@ -337,9 +337,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         // its worst.
         private sealed class FullHousing : IHousing
         {
-            public bool HasVacancy => false;
+            public bool HasVacancy(EntityId community) => false;
 
-            public EntityId Claim() => throw new InvalidOperationException("full");
+            public EntityId Claim(EntityId community) => throw new InvalidOperationException("full");
 
             public void Release(EntityId home)
             {
@@ -353,9 +353,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             public List<EntityId> Released { get; } = new List<EntityId>();
 
-            public bool HasVacancy => true;
+            public bool HasVacancy(EntityId community) => true;
 
-            public EntityId Claim() => _ids.Next(EntityKind.Settlement);
+            public EntityId Claim(EntityId community) => _ids.Next(EntityKind.Settlement);
 
             public void Release(EntityId home) => Released.Add(home);
         }

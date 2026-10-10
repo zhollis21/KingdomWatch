@@ -19,6 +19,10 @@ namespace KingdomWatch.Core.Tests.Needs
         private static readonly SimulationTime FirstWinterDay = SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason);
         private static readonly SimulationTime FirstWinterNight = FirstWinterDay.Plus(Warmth.Nightfall);
 
+        // The winter nights a woodpile is rationed over from the first: all
+        // but the last HardshipNights (#149).
+        private static readonly int RationedNights = (int)(SimulationTime.DaysPerSeason - Warmth.HardshipNights);
+
         // Stands in for Mortality, as HungerTests' does.
         private sealed class Crossings : IScheduledEventHandler
         {
@@ -61,6 +65,11 @@ namespace KingdomWatch.Core.Tests.Needs
                 {
                     band.SharedSupplies.Gather(ResourceKind.Wood, wood);
                 }
+
+                // Food for every winter day, so the only shortage a test here
+                // has is the wood it sets: stores short too would ration the
+                // fires harder (Warmth.SharedHardshipNights).
+                band.SharedSupplies.Gather(ResourceKind.Food, 1_000_000);
 
                 return band;
             }
@@ -191,8 +200,9 @@ namespace KingdomWatch.Core.Tests.Needs
         [Test]
         public void A_winter_night_burns_one_fire_per_household_and_one_for_those_in_none()
         {
+            // Wood for the whole winter, so nothing is rationed (#149).
             var world = new World();
-            var band = world.NewBand(50);
+            var band = world.NewBand(100);
             world.NewFamily(band, withChild: true, out _, out _);
             world.NewFamily(band, withChild: false, out _, out _);
             world.NewLoner(band);
@@ -205,8 +215,8 @@ namespace KingdomWatch.Core.Tests.Needs
 
             Assert.Multiple(() =>
             {
-                Assert.That(before, Is.EqualTo(50));
-                Assert.That(world.Wood(band), Is.EqualTo(50 - (3 * Warmth.FuelPerFire)), "two hearths and one communal fire");
+                Assert.That(before, Is.EqualTo(100));
+                Assert.That(world.Wood(band), Is.EqualTo(100 - (3 * Warmth.FuelPerFire)), "two hearths and one communal fire");
                 Assert.That(band.SharedSupplies.Flows(ResourceKind.Wood).Consumed, Is.EqualTo(3L * Warmth.FuelPerFire));
                 Assert.That(
                     Warmth.CountHearths(band.Members, world.People, new List<EntityId>()), Is.EqualTo(3));
@@ -228,8 +238,10 @@ namespace KingdomWatch.Core.Tests.Needs
             var loner = world.NewLoner(band);
             world.Warmth.Track(band);
 
+            // Wood is rationed to the nights before the last HardshipNights
+            // (#149), so one fire is a fire for each of those nights.
             world.AdvanceTo(FirstWinterNight.Plus(-1L));
-            band.SharedSupplies.Gather(ResourceKind.Wood, Warmth.FuelPerFire);
+            band.SharedSupplies.Gather(ResourceKind.Wood, RationedNights * Warmth.FuelPerFire);
             world.AdvanceTo(FirstWinterNight);
 
             var oneFire = (
@@ -237,7 +249,9 @@ namespace KingdomWatch.Core.Tests.Needs
                 Couple: world.People.GetLastWarmedAt(elderWife),
                 Loner: world.People.GetLastWarmedAt(loner));
 
-            band.SharedSupplies.Gather(ResourceKind.Wood, 2 * Warmth.FuelPerFire);
+            // Two fires for each night left: the night burned took one.
+            var nightsLeft = RationedNights - 1;
+            band.SharedSupplies.Gather(ResourceKind.Wood, nightsLeft * Warmth.FuelPerFire);
             world.AdvanceTo(FirstWinterNight.Plus(Day));
 
             Assert.Multiple(() =>
@@ -247,6 +261,62 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(oneFire.Loner, Is.LessThan(FirstWinterNight));
                 Assert.That(world.People.GetLastWarmedAt(elderWife), Is.EqualTo(FirstWinterNight.Plus(Day)), "two fires reach the couple");
                 Assert.That(world.People.GetLastWarmedAt(loner), Is.LessThan(FirstWinterNight), "the communal fire last");
+                Assert.That(world.Wood(band), Is.EqualTo((2 * nightsLeft - 2) * Warmth.FuelPerFire), "two fires burned");
+            });
+        }
+
+        [Test]
+        public void A_woodpile_short_of_the_winter_keeps_the_same_hearths_lit_all_winter()
+        {
+            // #149: lit until it ran out, a woodpile for half the winter
+            // warmed everyone for half of it and nobody after, and nobody
+            // lives through a dozen dark nights. Rationed, the family's hearth
+            // stays lit and the couple's dark, and the family lives.
+            var world = new World();
+            var band = world.NewBand(0);
+            world.NewFamily(band, withChild: false, out var coupleWife, out _);
+            world.NewFamily(band, withChild: true, out var mother, out _);
+            world.Warmth.Track(band);
+
+            world.AdvanceTo(FirstWinterNight.Plus(-1L));
+            band.SharedSupplies.Gather(ResourceKind.Wood, (int)SimulationTime.DaysPerSeason * Warmth.FuelPerFire);
+            world.AdvanceTo(FirstWinterNight.Plus(Day));
+            var secondNight = (Mother: world.People.GetLastWarmedAt(mother), Couple: world.People.GetLastWarmedAt(coupleWife));
+            var lastRationed = FirstWinterNight.Plus((RationedNights - 1L) * Day);
+            world.AdvanceTo(lastRationed);
+            var motherWarmToTheEnd = world.People.GetLastWarmedAt(mother);
+            world.AdvanceTo(FirstWinterNight.Plus((SimulationTime.DaysPerSeason - 1L) * Day));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(secondNight.Mother, Is.EqualTo(FirstWinterNight.Plus(Day)), "the family is lit");
+                Assert.That(secondNight.Couple, Is.LessThan(FirstWinterNight), "the couple is not");
+                Assert.That(motherWarmToTheEnd, Is.EqualTo(lastRationed), "every rationed night");
+                Assert.That(world.People.GetHealth(mother), Is.GreaterThan(0), "and lives to the spring");
+            });
+        }
+
+        [Test]
+        public void A_woodpile_a_few_nights_short_lights_every_hearth()
+        {
+            // The last HardshipNights are a gap anyone warm until then lives
+            // through, so a woodpile that covers all but them is not rationed.
+            var world = new World();
+            var band = world.NewBand(0);
+            world.NewFamily(band, withChild: false, out var coupleWife, out _);
+            world.NewFamily(band, withChild: true, out var mother, out _);
+            world.Warmth.Track(band);
+
+            world.AdvanceTo(FirstWinterNight.Plus(-1L));
+            band.SharedSupplies.Gather(ResourceKind.Wood, 2 * RationedNights * Warmth.FuelPerFire);
+            var lastLit = FirstWinterNight.Plus((RationedNights - 1L) * Day);
+            world.AdvanceTo(FirstWinterNight.Plus((SimulationTime.DaysPerSeason - 1L) * Day));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastWarmedAt(coupleWife), Is.EqualTo(lastLit), "lit until the hardship nights");
+                Assert.That(world.People.GetLastWarmedAt(mother), Is.EqualTo(lastLit));
+                Assert.That(world.People.GetHealth(coupleWife), Is.GreaterThan(0), "and lived through them");
                 Assert.That(world.Wood(band), Is.Zero);
             });
         }
@@ -302,7 +372,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var hearths = Warmth.CountHearths(band.Members, world.People, scratch);
 
             world.AdvanceTo(FirstWinterNight.Plus(-1L));
-            band.SharedSupplies.Gather(ResourceKind.Wood, 3 * Warmth.FuelPerFire);
+            band.SharedSupplies.Gather(ResourceKind.Wood, 3 * RationedNights * Warmth.FuelPerFire);
             world.AdvanceTo(FirstWinterNight);
 
             Assert.Multiple(() =>

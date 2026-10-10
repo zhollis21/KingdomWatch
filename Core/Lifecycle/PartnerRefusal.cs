@@ -40,7 +40,10 @@ namespace KingdomWatch.Core.Lifecycle
         /// <summary>First cousins, and the settings do not permit it.</summary>
         CousinTaboo = 7,
 
-        /// <summary>No home for the household they would form.</summary>
+        /// <summary>
+        /// No home for the household they would form, and neither one's
+        /// household has room for another couple (#69).
+        /// </summary>
         NoHomeAvailable = 8,
     }
 }
