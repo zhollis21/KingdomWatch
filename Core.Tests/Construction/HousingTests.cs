@@ -238,6 +238,106 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_settlements_houses_are_handed_to_housing_once()
+        {
+            var w = new BuildingsWorld();
+            var housing = new SettlementHousing { Stock = w.Buildings };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => housing.Stock = w.Buildings, Throws.InvalidOperationException, "the same stock again");
+                Assert.That(() => housing.Stock = new BuildingsWorld().Buildings, Throws.InvalidOperationException, "another stock");
+                Assert.That(housing.Stock, Is.SameAs(w.Buildings));
+            });
+        }
+
+        [Test]
+        public void Housing_is_asked_only_about_a_band_a_settlement_or_no_community()
+        {
+            var housing = new SettlementHousing { Stock = new BuildingsWorld().Buildings };
+            var strangers = new[]
+            {
+                new EntityId(EntityKind.Person, 7UL),
+                new EntityId(EntityKind.Household, 7UL),
+                new EntityId(EntityKind.Building, 7UL),
+            };
+
+            Assert.Multiple(() =>
+            {
+                foreach (var stranger in strangers)
+                {
+                    Assert.That(() => housing.HasVacancy(stranger), Throws.ArgumentException, "asking about " + stranger);
+                    Assert.That(() => housing.Claim(stranger), Throws.ArgumentException, "claiming in " + stranger);
+                }
+            });
+        }
+
+        [Test]
+        public void A_household_given_a_house_at_dawn_names_it_as_its_home()
+        {
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            var housed = w.World.Households.All.Where(h => !(w.Buildings.HomeOf(h.Id) is null)).ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(housed, Is.Not.Empty);
+
+                foreach (var household in housed)
+                {
+                    Assert.That(w.Buildings.HomeOf(household.Id)?.Id, Is.EqualTo(household.Home), household.ToString());
+                }
+            });
+
+            // Its house is given back when it dissolves, as a house claimed
+            // at forming is.
+            var emptied = EmptyOneHouse(w);
+            Assert.That(w.Buildings.HasVacancy(w.Settlement.Id), Is.True);
+            Assert.That(emptied.Occupant.IsNone, Is.True);
+        }
+
+        [Test]
+        public void Only_a_household_in_camp_moves_into_a_home()
+        {
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            var housed = w.World.Households.All.First(h => !h.Home.IsNone);
+            var tent = w.World.Households.Form();
+            var house = new EntityId(EntityKind.Building, 999_999UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => w.World.Households.MoveIn(housed, house), Throws.InvalidOperationException, "already housed");
+                Assert.That(() => w.World.Households.MoveIn(tent, EntityId.None), Throws.ArgumentException, "into no home");
+                Assert.That(() => w.World.Households.MoveIn(null!, house), Throws.ArgumentNullException);
+            });
+
+            w.World.Households.Dissolve(tent);
+            Assert.That(() => w.World.Households.MoveIn(tent, house), Throws.InvalidOperationException, "dissolved");
+        }
+
+        [Test]
+        public void The_validator_names_a_household_living_in_a_house_it_does_not_name()
+        {
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            var house = EmptyOneHouse(w);
+            var tent = w.World.Households.Form();
+            w.World.Households.Join(tent, Newcomer(w, Sex.Female));
+
+            // Buildings moves the tent family in; its household never hears.
+            w.World.Bus.Publish(DomainEventKind.HouseholdFormed, tent.Id, house.Id);
+            var validator = new KingdomWatch.Harness.WorldValidator();
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { KingdomWatch.Harness.ValidationRule.BuildingReference }));
+                Assert.That(validator.Findings.Single().Subject, Is.EqualTo(tent.Id));
+            });
+        }
+
+        [Test]
         public void A_spare_house_waits_for_single_adults_and_for_forest_to_fuel_it()
         {
             // Every household housed: the next house is a spare for the next

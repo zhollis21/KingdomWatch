@@ -890,7 +890,9 @@ namespace KingdomWatch.Core.Construction
         }
 
         // Empty finished houses go to the settlement's households without
-        // one, in the order their members stand in the settlement.
+        // one, in the order their members stand in the settlement. The
+        // household is told, so its Home names the house as one claimed at
+        // forming does, and dissolving it gives the house back.
         private void AssignHomes(ICommunity settlement)
         {
             for (var i = 0; i < _all.Count; i++)
@@ -908,8 +910,9 @@ namespace KingdomWatch.Core.Construction
                     return;
                 }
 
-                house.Occupant = household;
-                _homeOf.Add(household, house);
+                house.Occupant = household.Id;
+                _homeOf.Add(household.Id, house);
+                _households.MoveIn(household, house.Id);
             }
         }
 
@@ -1212,7 +1215,7 @@ namespace KingdomWatch.Core.Construction
             return found;
         }
 
-        private bool TryFirstUnhoused(ICommunity settlement, out EntityId household)
+        private bool TryFirstUnhoused(ICommunity settlement, [NotNullWhen(true)] out Household? household)
         {
             var members = settlement.Members;
 
@@ -1227,12 +1230,12 @@ namespace KingdomWatch.Core.Construction
 
                 if (!_homeOf.ContainsKey(home.Id))
                 {
-                    household = home.Id;
+                    household = home;
                     return true;
                 }
             }
 
-            household = EntityId.None;
+            household = null;
             return false;
         }
 

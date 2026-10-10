@@ -129,6 +129,31 @@ namespace KingdomWatch.Core.Lifecycle
         }
 
         /// <summary>
+        /// Records that a household in camp space has moved into a home with
+        /// an id - a settlement's tent family given a house at dawn
+        /// (<see cref="Construction.Buildings"/>, #69) - so that its
+        /// <see cref="Household.Home"/> says where it lives, and dissolving it
+        /// gives that home back. Refuses one already housed: moving house is
+        /// not something anyone does yet.
+        /// </summary>
+        public void MoveIn(Household household, EntityId home)
+        {
+            RequireKnown(household);
+
+            if (home.IsNone)
+            {
+                throw new ArgumentException("A household moves into a home with an id; camp space is where it already is.", nameof(home));
+            }
+
+            if (!household.Home.IsNone)
+            {
+                throw new InvalidOperationException(household + " already lives in " + household.Home + ".");
+            }
+
+            household.Home = home;
+        }
+
+        /// <summary>
         /// Adds a person to a household. Refuses someone already in one -
         /// <see cref="Leave"/> first - so that a person is in at most one, and
         /// membership never has to be reconciled.

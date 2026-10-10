@@ -27,18 +27,34 @@ namespace KingdomWatch.Core.Construction
         private readonly CampSpace _camp = new CampSpace();
         private Buildings? _stock;
 
-        /// <summary>The settlements' houses. Set once, by <see cref="World"/>.</summary>
+        /// <summary>
+        /// The settlements' houses. Set once, by <see cref="World"/>: a
+        /// second stock would strand every house the first handed out.
+        /// </summary>
         public Buildings Stock
         {
             get => _stock ?? throw new InvalidOperationException("No buildings have been given to the settlements' housing.");
-            set => _stock = value ?? throw new ArgumentNullException(nameof(value));
+            set
+            {
+                if (value is null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                if (!(_stock is null))
+                {
+                    throw new InvalidOperationException("The settlements' housing already has its buildings.");
+                }
+
+                _stock = value;
+            }
         }
 
         public bool HasVacancy(EntityId community) =>
-            community.Kind == EntityKind.Settlement ? Stock.HasVacancy(community) : _camp.HasVacancy(community);
+            IsSettlement(community) ? Stock.HasVacancy(community) : _camp.HasVacancy(community);
 
         public EntityId Claim(EntityId community) =>
-            community.Kind == EntityKind.Settlement ? Stock.Claim(community) : _camp.Claim(community);
+            IsSettlement(community) ? Stock.Claim(community) : _camp.Claim(community);
 
         public void Release(EntityId home)
         {
@@ -49,6 +65,28 @@ namespace KingdomWatch.Core.Construction
             else
             {
                 Stock.Release(home);
+            }
+        }
+
+        // A settlement asks its houses; a band, or no community, camp space.
+        // Anything else - a person, a household - is not a community at all,
+        // and sending it to camp space would hand it a tent instead of
+        // failing (the #156 review).
+        private static bool IsSettlement(EntityId community)
+        {
+            switch (community.Kind)
+            {
+                case EntityKind.Settlement:
+                    return true;
+                case EntityKind.MobileGroup:
+                    return false;
+                default:
+                    if (community.IsNone)
+                    {
+                        return false;
+                    }
+
+                    throw new ArgumentException(community + " is not a community, so it has no housing.", nameof(community));
             }
         }
     }
