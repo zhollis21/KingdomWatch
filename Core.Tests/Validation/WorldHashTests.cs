@@ -525,6 +525,25 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Roads_are_folded_in_cell_by_cell_and_a_reused_hash_sees_one_laid()
+        {
+            // The town planner lays roads over the ground (#23), and the
+            // pathfinder prices them: a world that disagrees on one has diverged.
+            var grid = WorkWorld.DefaultMap();
+            var reused = new WorldHash();
+            var before = reused.Reset().AddTerrain(grid).Value;
+
+            grid.SetRoad(new WorldPosition(0, 0), RoadGrade.Track);
+            var laid = reused.Reset().AddTerrain(grid).Value;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(laid, Is.Not.EqualTo(before));
+                Assert.That(laid, Is.EqualTo(new WorldHash().AddTerrain(grid).Value), "as a fresh hash does");
+            });
+        }
+
+        [Test]
         public void A_reused_hash_folds_unchanged_terrain_to_the_value_a_fresh_one_does()
         {
             // The terrain of a 1080-cell map is most of what a yearly hash

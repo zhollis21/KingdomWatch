@@ -146,6 +146,38 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_road_dearer_than_its_ground_costs_what_the_ground_does()
+        {
+            // A cell costs whichever of its ground and road admits the mover
+            // more cheaply: a slow grade never slows plains down.
+            var grid = new TerrainGrid(3, 1, TerrainKind.Plains);
+            grid.SetRoad(new WorldPosition(1, 0), RoadGrade.Track);
+            grid.SetRoad(new WorldPosition(2, 0), RoadGrade.Track);
+            var rules = new TerrainRules(Ground(), new[] { (RoadGrade.Track, new TerrainRule(30, Transport.Foot)) });
+            var route = new List<WorldPosition>();
+
+            Assert.That(new Pathfinder(grid, rules).TryFindRoute(new WorldPosition(0, 0), new WorldPosition(2, 0), Transport.Foot, route, out var cost), Is.True);
+            Assert.That(cost, Is.EqualTo(200L));
+        }
+
+        [Test]
+        public void A_road_admitting_only_feet_leaves_water_as_it_was_for_boats()
+        {
+            var grid = new TerrainGrid(3, 1, TerrainKind.DeepWater);
+            grid.SetRoad(new WorldPosition(1, 0), RoadGrade.Track);
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.TryFindRoute(new WorldPosition(0, 0), new WorldPosition(2, 0), Transport.Boat, route, out var cost), Is.True);
+                Assert.That(cost, Is.EqualTo(200L), "a boat pays the water, not the road");
+                Assert.That(finder.IsPassable(new WorldPosition(1, 0), Transport.Foot), Is.True, "feet may stand on the road over the water");
+                Assert.That(finder.IsPassable(new WorldPosition(0, 0), Transport.Foot), Is.False);
+            });
+        }
+
+        [Test]
         public void With_roads_the_route_is_still_the_cheapest_there_is()
         {
             // The heuristic must not overestimate now that a step can cost

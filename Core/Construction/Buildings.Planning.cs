@@ -352,9 +352,10 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
-        // The yard's scrub, forest and rocks, into _square: what the building being
-        // approved clears with its own. One building goes up at a time, so
-        // none is still waiting on them.
+        // The yard's scrub, forest and rocks, into _square: what the building
+        // being approved clears with its own. Not a cell some building already
+        // waits to clear: one goes up at a time in a settlement, but a band can
+        // settle with its yard over another village's lane (#154).
         private void CollectSquare(WorldPosition centre)
         {
             _square.Clear();
@@ -366,7 +367,8 @@ namespace KingdomWatch.Core.Construction
                     var at = new WorldPosition(x, y);
                     var kind = _grid[at];
 
-                    if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest || kind == TerrainKind.Rocks)
+                    if ((kind == TerrainKind.Scrub || kind == TerrainKind.Forest || kind == TerrainKind.Rocks)
+                        && !_laneOf.ContainsKey(_grid.IndexOf(at)))
                     {
                         _square.Add(at);
                     }

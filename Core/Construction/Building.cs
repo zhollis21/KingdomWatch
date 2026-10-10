@@ -90,9 +90,10 @@ namespace KingdomWatch.Core.Construction
         public WorldPosition Anchor { get; }
 
         /// <summary>
-        /// The cells of the lane the town planner joined its door to the
-        /// roads by, door first, laid as road when its ground is cleared
-        /// (#23). Empty for a field, and for a door already on the network.
+        /// The cells of the lane the town planner joined it to the roads by,
+        /// laid as road when its ground is cleared (#23): from its door, or
+        /// for a field from beside the middle of one of its sides. Empty when
+        /// the door, or one of a field's edges, is already on the network.
         /// </summary>
         public IReadOnlyList<WorldPosition> Lane { get; }
 

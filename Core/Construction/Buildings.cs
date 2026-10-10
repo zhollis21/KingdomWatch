@@ -46,7 +46,8 @@ namespace KingdomWatch.Core.Construction
     /// **Placement is the town planner's** (#23, Buildings.Planning.cs): a
     /// house or barn goes where it scores best around the settlement with a
     /// lane from its door to the roads, a field where it scores best within
-    /// <see cref="FieldRadius"/> of its barn, each among the footprints the
+    /// <see cref="FieldRadius"/> of its barn with a road along one of its
+    /// edges, each among the footprints the
     /// same bounded search a work site is found by reaches, so it is
     /// reachable and known. A footprint of open plains is taken if there is
     /// one; otherwise one of plains, scrub or forest, which Builders clear
@@ -54,7 +55,9 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="TicksPerCut"/> for each cut a standing tree has left, what
     /// woodcutting takes for one, and the wood those cuts would have given
     /// goes into stock; <see cref="ClearTicksPerCell"/> for a bush or a
-    /// stump. The lane is laid as road when the clearing is done. Approved
+    /// stump, and <see cref="TicksPerRock"/> for each rock in the square,
+    /// which pays <see cref="StonePerRock"/>. The lane is laid as road when
+    /// the clearing is done. Approved
     /// ground and lanes are reserved: nobody gathers there until they are
     /// cleared (<see cref="IsReserved(WorldPosition)"/>), so they are cleared
     /// as they were priced. Nothing regrows on cleared ground. Buildings

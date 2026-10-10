@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Traversal;
 using NUnit.Framework;
 
@@ -357,6 +358,52 @@ namespace KingdomWatch.Core.Tests.Construction
                     Assert.That(w.Buildings.IsReserved(at), Is.False, at.ToString());
                 }
             });
+        }
+
+        [Test]
+        public void A_village_settled_over_another_s_waiting_lane_leaves_that_lane_to_it()
+        {
+            // A belt of forest round the first camp, so its house's lane waits
+            // to be cleared; then a second village founded with its yard over
+            // that lane (#154: nothing keeps camps or lanes apart).
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var ring = Chebyshev(new WorldPosition(x, y), BuildingsWorld.Centre);
+
+                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                        }
+                    }
+                }
+            });
+            w.Wood(1000);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var waiting = house.Lane.First(at => w.World.Grid[at] == TerrainKind.Forest);
+            var neighbour = w.World.Founding.Found(
+                w.World.AddBand(4, waiting),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+
+            neighbour.SharedSupplies.Gather(ResourceKind.Wood, 100);
+
+            Assert.DoesNotThrow(() => w.Buildings.AtDawn(neighbour, 1, 4));
+
+            var theirs = w.Buildings.All.Where(b => b.Settlement == neighbour.Id).ToList();
+            Assert.That(theirs, Is.Not.Empty, "the newcomers built");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(theirs.SelectMany(b => b.Square), Has.No.Member(waiting), "the first village's lane is still its own to clear");
+                Assert.That(w.Buildings.IsReserved(waiting), Is.True);
+            });
+
+            w.Finish(house);
+            Assert.That(w.World.Grid.RoadAt(waiting), Is.EqualTo(RoadGrade.Track));
         }
 
         [Test]
