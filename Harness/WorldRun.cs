@@ -98,7 +98,15 @@ namespace KingdomWatch.Harness
         /// year that breaks an invariant: a world past its first break is not
         /// worth reading.
         /// </summary>
-        public WorldRun RunYears(long years)
+        public WorldRun RunYears(long years) => RunYears(years, null);
+
+        /// <summary>
+        /// <see cref="RunYears(long)"/>, advancing a day at a time and
+        /// calling <paramref name="eachDay"/> after each when it is given:
+        /// what the town planner's fed-growth picture tops up stores by
+        /// (#23). Null advances a year at a time, as the plain overload does.
+        /// </summary>
+        public WorldRun RunYears(long years, Action<World>? eachDay)
         {
             if (years < 0L)
             {
@@ -116,7 +124,19 @@ namespace KingdomWatch.Harness
 
             for (var i = 0L; i < years && IsClean; i++)
             {
-                World.Advance(SimulationTime.TicksPerYear);
+                if (eachDay is null)
+                {
+                    World.Advance(SimulationTime.TicksPerYear);
+                }
+                else
+                {
+                    for (var day = 0; day < SimulationTime.DaysPerYear; day++)
+                    {
+                        World.Advance(SimulationTime.TicksPerDay);
+                        eachDay(World);
+                    }
+                }
+
                 ReadJournal(out var tally);
                 var summary = new YearSummary(World.Now.YearNumber, CountSide(true), CountSide(false), tally);
                 _years.Add(summary);

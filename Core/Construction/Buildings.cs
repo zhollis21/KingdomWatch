@@ -43,19 +43,22 @@ namespace KingdomWatch.Core.Construction
     /// target. Builder and Farmer trips claim <see cref="ShareTicks"/> at a
     /// time, so two Farmers split a field's day between them.
     ///
-    /// **Placement is a stand-in for #23.** A house or barn goes on the
-    /// nearest footprint to the settlement, a field on the nearest within
-    /// <see cref="FieldRadius"/> of its barn, each found by the same bounded
-    /// search a work site is, so it is reachable and known. A footprint of
-    /// open plains is taken if there is one; otherwise one of plains, scrub
-    /// or forest, not under another building, which Builders clear before
-    /// building starts - <see cref="TicksPerCut"/> for each cut a standing tree has left,
-    /// what woodcutting takes for one, and the wood those cuts would have given goes
-    /// into stock; <see cref="ClearTicksPerCell"/> for a bush or a stump.
-    /// Approved ground is reserved: nobody gathers there until it is cleared
-    /// (<see cref="IsReserved(WorldPosition)"/>), so it is cleared as it was
-    /// priced. Nothing regrows on cleared ground. Buildings block nobody's path
-    /// until #23 lays out roads.
+    /// **Placement is the town planner's** (#23, Buildings.Planning.cs): a
+    /// house or barn goes where it scores best around the settlement with a
+    /// lane from its door to the roads, a field where it scores best within
+    /// <see cref="FieldRadius"/> of its barn, each among the footprints the
+    /// same bounded search a work site is found by reaches, so it is
+    /// reachable and known. A footprint of open plains is taken if there is
+    /// one; otherwise one of plains, scrub or forest, which Builders clear
+    /// before building starts, along with any scrub or trees on its lane -
+    /// <see cref="TicksPerCut"/> for each cut a standing tree has left, what
+    /// woodcutting takes for one, and the wood those cuts would have given
+    /// goes into stock; <see cref="ClearTicksPerCell"/> for a bush or a
+    /// stump. The lane is laid as road when the clearing is done. Approved
+    /// ground and lanes are reserved: nobody gathers there until they are
+    /// cleared (<see cref="IsReserved(WorldPosition)"/>), so they are cleared
+    /// as they were priced. Nothing regrows on cleared ground. Buildings
+    /// still block nobody's path; that is #25's.
     ///
     /// **Fields.** A field needs <see cref="TendingDays"/> days of
     /// <see cref="FieldDayTicks"/> worker-ticks, then
@@ -77,7 +80,7 @@ namespace KingdomWatch.Core.Construction
     ///
     /// The numbers are placeholders, set by the harness.
     /// </remarks>
-    public sealed class Buildings : IDomainEventSubscriber
+    public sealed partial class Buildings : IDomainEventSubscriber
     {
         private const long Hour = SimulationTime.TicksPerHour;
 
@@ -173,7 +176,6 @@ namespace KingdomWatch.Core.Construction
 
         private readonly bool[] _scrub;
         private readonly bool[] _ground;
-        private readonly FootprintFilter _footprint;
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
         private readonly List<EntityId> _scratchHearths = new List<EntityId>();
 
@@ -203,7 +205,16 @@ namespace KingdomWatch.Core.Construction
             _ground[(int)TerrainKind.Plains] = true;
             _ground[(int)TerrainKind.Scrub] = true;
             _ground[(int)TerrainKind.Forest] = true;
-            _footprint = new FootprintFilter(this);
+            _anyKind = new bool[DefinedTerrainKinds];
+
+            for (var kind = (int)TerrainKind.None + 1; kind < DefinedTerrainKinds; kind++)
+            {
+                _anyKind[kind] = true;
+            }
+
+            _scorer = new SiteScorer(this);
+            _laneGate = new LaneGate(this);
+            _networkTarget = new NetworkTarget(_grid);
         }
 
         /// <summary>Every building, oldest first. The order to iterate in.</summary>
@@ -250,10 +261,10 @@ namespace KingdomWatch.Core.Construction
             _onCell.TryGetValue(_grid.IndexOf(at), out var building) ? building : null;
 
         /// <summary>
-        /// Whether a cell is ground approved for a building and not cleared
-        /// yet: nobody gathers there (the #148 review), so the clearing it was
-        /// priced at is the clearing it gets. Trips already out when it was
-        /// approved still come home with what they claimed.
+        /// Whether a cell is ground approved for a building, or for its lane,
+        /// and not cleared yet: nobody gathers there (the #148 review), so the
+        /// clearing it was priced at is the clearing it gets. Trips already
+        /// out when it was approved still come home with what they claimed.
         /// </summary>
         public bool IsReserved(WorldPosition at) => IsReserved(_grid.IndexOf(at));
 
@@ -268,7 +279,7 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentOutOfRangeException(nameof(cell), cell, "Not a cell of the grid.");
             }
 
-            return _onCell.TryGetValue(cell, out var building) && !building.Cleared;
+            return (_onCell.TryGetValue(cell, out var building) && !building.Cleared) || _laneOf.ContainsKey(cell);
         }
 
         /// <summary>The house a household lives in, or null.</summary>
@@ -319,7 +330,7 @@ namespace KingdomWatch.Core.Construction
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
                 && YardIsClear(at)
-                && TryPlace(BuildingKind.Barn, at, at, mapHolder, out _);
+                && TryPlace(BuildingKind.Barn, at, at, mapHolder, EntityId.None, out _);
         }
 
         /// <summary>
@@ -674,6 +685,7 @@ namespace KingdomWatch.Core.Construction
             }
 
             building.Cleared = true;
+            LayLane(building);
 
             // The Wood of the cuts the clearing was priced at: a claim out at
             // approval and given back since leaves a tree with a cut more than
@@ -793,18 +805,29 @@ namespace KingdomWatch.Core.Construction
 
             if (_skills.BestIn(settlement, spec.Skill) < spec.MinimumTier
                 || stores.Available(ResourceKind.Wood) - winterFuel < spec.Wood
-                || !TryPlace(kind, from, settlement.Position, settlement.Id, out var anchor, barn))
+                || !TryPlace(kind, from, settlement.Position, settlement.Id, settlement.Id, out var anchor, barn))
             {
                 return;
             }
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
-            var clearTicks = ClearTicksOf(kind, anchor, out var clearCuts);
+            var clearTicks = ClearTicksOf(kind, anchor, _lane, out var clearCuts);
             var building = new Building(
                 _clock.Ids.Next(EntityKind.Building), kind, settlement.Id, barn?.Id ?? EntityId.None,
-                anchor, clearTicks, clearCuts, clearTicks + spec.BuildTicks);
+                anchor, _lane.ToArray(), clearTicks, clearCuts, clearTicks + spec.BuildTicks);
 
             _all.Add(building);
+
+            for (var i = 0; i < building.Lane.Count; i++)
+            {
+                _laneOf.Add(_grid.IndexOf(building.Lane[i]), building);
+            }
+
+            // Nothing to clear: the lane is laid at once.
+            if (building.Cleared)
+            {
+                LayLane(building);
+            }
 
             for (var dy = 0; dy < building.Height; dy++)
             {
@@ -843,12 +866,13 @@ namespace KingdomWatch.Core.Construction
             return fields;
         }
 
-        // The clearing a footprint needs, priced as it stands when approved:
-        // a standing tree as long as woodcutting takes for the cuts it has
-        // left, a bush or a stump an hour. Nobody gathers on approved ground
-        // (IsReserved), and a claim already out that comes back changes
-        // nothing: clearing pays the timber priced here (ClearCuts).
-        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, out int timber)
+        // The clearing a footprint and its lane need, priced as they stand
+        // when approved: a standing tree as long as woodcutting takes for the
+        // cuts it has left, a bush or a stump an hour. Nobody gathers on
+        // approved ground (IsReserved), and a claim already out that comes
+        // back changes nothing: clearing pays the timber priced here
+        // (ClearCuts).
+        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, List<WorldPosition> lane, out int timber)
         {
             var spec = BuildingTable.Of(kind);
             var ticks = 0L;
@@ -858,49 +882,30 @@ namespace KingdomWatch.Core.Construction
             {
                 for (var dx = 0; dx < spec.Width; dx++)
                 {
-                    var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
-                    var terrain = _grid[at];
-                    var cuts = terrain == TerrainKind.Forest ? _land.CutsLeft(at) : 0;
-
-                    if (cuts > 0)
-                    {
-                        ticks += cuts * TicksPerCut;
-                        timber += cuts;
-                    }
-                    else if (terrain == TerrainKind.Scrub || terrain == TerrainKind.Forest)
-                    {
-                        ticks += ClearTicksPerCell;
-                    }
+                    ticks += ClearTicksAt(new WorldPosition(anchor.X + dx, anchor.Y + dy), ref timber);
                 }
+            }
+
+            for (var i = 0; i < lane.Count; i++)
+            {
+                ticks += ClearTicksAt(lane[i], ref timber);
             }
 
             return ticks;
         }
 
-        // The nearest footprint by walking: the same bounded search a work
-        // site is found by, landing on an anchor whose whole rectangle is
-        // free ground. A house or barn looks around the settlement, a field
-        // around its barn. Open plains first - the bushes and trees a village
-        // lives on are cleared only when no plains will do.
-        private bool TryPlace(
-            BuildingKind kind, WorldPosition from, WorldPosition settlement, EntityId mapHolder, out WorldPosition anchor, Building? barn = null)
+        private long ClearTicksAt(WorldPosition at, ref int timber)
         {
-            _footprint.Spec = BuildingTable.Of(kind);
-            _footprint.Keep = settlement;
-            var radius = barn is null ? Jobs.MaxSiteRadius : FieldRadius;
-            var known = _knownMaps.For(mapHolder);
+            var terrain = _grid[at];
+            var cuts = terrain == TerrainKind.Forest ? _land.CutsLeft(at) : 0;
 
-            _footprint.PlainsOnly = true;
-            var found = _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _footprint, radius, _scratchRoute, out _);
-
-            if (!found)
+            if (cuts > 0)
             {
-                _footprint.PlainsOnly = false;
-                found = _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _footprint, radius, _scratchRoute, out _);
+                timber += cuts;
+                return cuts * TicksPerCut;
             }
 
-            anchor = found ? _scratchRoute[_scratchRoute.Count - 1] : default;
-            return found;
+            return terrain == TerrainKind.Scrub || terrain == TerrainKind.Forest ? ClearTicksPerCell : 0L;
         }
 
         private bool TryFirstUnhoused(ICommunity settlement, out EntityId household)
@@ -929,93 +934,6 @@ namespace KingdomWatch.Core.Construction
 
         private Building RequireAt(WorldPosition at) =>
             At(at) ?? throw new InvalidOperationException("No building stands at " + at + ".");
-
-        // A footprint anchored at a cell: every cell of it on the map, plains,
-        // scrub or forest, under no other building or roof, and out of every
-        // settlement's camp yard (CampYardRadius); and its own roof's rows
-        // over neither (#150, the #153 review).
-        private sealed class FootprintFilter : ISiteFilter
-        {
-            private readonly Buildings _owner;
-
-            public FootprintFilter(Buildings owner) => _owner = owner;
-
-            public BuildingSpec Spec { get; set; }
-
-            public WorldPosition Keep { get; set; }
-
-            // Whether every cell must already be plains, rather than plains,
-            // scrub or forest to be cleared.
-            public bool PlainsOnly { get; set; }
-
-            public bool Accepts(int cell)
-            {
-                var grid = _owner._grid;
-                var anchor = grid.PositionAt(cell);
-
-                for (var dy = 0; dy < Spec.Height; dy++)
-                {
-                    for (var dx = 0; dx < Spec.Width; dx++)
-                    {
-                        var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
-
-                        if (!grid.Contains(at) || InYard(at))
-                        {
-                            return false;
-                        }
-
-                        var index = grid.IndexOf(at);
-
-                        var kind = grid.KindAt(index);
-
-                        if (!_owner._ground[(int)kind] || (PlainsOnly && kind != TerrainKind.Plains) || _owner._onCell.ContainsKey(index)
-                            || _owner._underRoof.Contains(index))
-                        {
-                            return false;
-                        }
-                    }
-                }
-
-                // Its own roof, over nothing built and not over the yard; off
-                // the map, over nothing at all.
-                for (var dy = 1; dy <= Spec.Clearance; dy++)
-                {
-                    for (var dx = 0; dx < Spec.Width; dx++)
-                    {
-                        var under = new WorldPosition(anchor.X + dx, anchor.Y - dy);
-
-                        if (grid.Contains(under) && (InYard(under) || _owner._onCell.ContainsKey(grid.IndexOf(under))))
-                        {
-                            return false;
-                        }
-                    }
-                }
-
-                return true;
-            }
-
-            // Within CampYardRadius of the camp, each way.
-            // In the builder's own camp yard or any other settlement's.
-            private bool InYard(WorldPosition at)
-            {
-                if (WithinYard(at, Keep))
-                {
-                    return true;
-                }
-
-                var camps = _owner._camps;
-
-                for (var i = 0; i < camps.Count; i++)
-                {
-                    if (WithinYard(at, camps[i].Position))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-        }
 
         // Within CampYardRadius of a camp, each way.
         private static bool WithinYard(WorldPosition at, WorldPosition camp) =>

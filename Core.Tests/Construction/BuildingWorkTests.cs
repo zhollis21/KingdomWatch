@@ -132,6 +132,58 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_validator_names_a_road_under_a_building()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var validator = new WorldValidator();
+
+            w.World.Grid.SetRoad(house.Anchor, RoadGrade.Track);
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane }));
+        }
+
+        [Test]
+        public void The_validator_names_a_cleared_lane_that_is_not_road_over_cleared_ground()
+        {
+            // Forest round the camp, so the house's lane runs out through it.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var ring = System.Math.Max(System.Math.Abs(x - BuildingsWorld.Centre.X), System.Math.Abs(y - BuildingsWorld.Centre.Y));
+
+                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                        }
+                    }
+                }
+            });
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.Lane, Has.Count.GreaterThanOrEqualTo(2), "a lane to break");
+            w.Finish(house);
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a laid lane is sound");
+
+            // One cell lifted, another planted over.
+            w.World.Grid.SetRoad(house.Lane[0], RoadGrade.None);
+            w.World.Grid.Set(house.Lane[1], TerrainKind.Forest);
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane, ValidationRule.BuildingLane }));
+        }
+
+        [Test]
         public void The_validator_names_cleared_ground_that_is_not_clear()
         {
             var w = new BuildingsWorld();
@@ -190,6 +242,15 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
+
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                }
+
+                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
@@ -235,6 +296,15 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
+
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                }
+
+                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);

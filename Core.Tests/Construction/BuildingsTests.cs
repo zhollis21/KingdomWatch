@@ -631,7 +631,27 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Wood(100);
             w.Dawn();
 
-            Assert.That(w.Buildings.All.Single().ClearTicks, Is.Zero);
+            // The footprint is open plains; its lane to the yard may still
+            // cross the scrub, and that clearing is priced in (#23).
+            var house = w.Buildings.All.Single();
+
+            for (var dy = 0; dy < house.Height; dy++)
+            {
+                for (var dx = 0; dx < house.Width; dx++)
+                {
+                    var at = new WorldPosition(house.Anchor.X + dx, house.Anchor.Y + dy);
+                    Assert.That(w.World.Grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
+                }
+            }
+
+            var laneScrub = house.Lane.Count(at => w.World.Grid[at] == TerrainKind.Scrub);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(laneScrub, Is.GreaterThan(0), "the lane crosses the scrub, which waits to be cleared");
+                Assert.That(house.Cleared, Is.False);
+                Assert.That(house.ClearTicks, Is.EqualTo(laneScrub * Buildings.ClearTicksPerCell));
+            });
         }
 
         [Test]

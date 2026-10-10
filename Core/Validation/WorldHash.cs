@@ -431,6 +431,13 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.Settlement);
                 Mix(building.Barn);
                 Mix(building.Anchor);
+                Mix(building.Lane.Count);
+
+                for (var j = 0; j < building.Lane.Count; j++)
+                {
+                    Mix(building.Lane[j]);
+                }
+
                 Mix(building.ClearTicks);
                 Mix(building.ClearCuts);
                 Mix(building.LabourTicks);
@@ -449,8 +456,8 @@ namespace KingdomWatch.Core.Validation
         }
 
         /// <summary>
-        /// Folds in the map: its size and every cell's terrain, in cell-index
-        /// order.
+        /// Folds in the map: its size and every cell's terrain and road, in
+        /// cell-index order.
         /// </summary>
         /// <remarks>
         /// Worldgen draws it from the seed, the pathfinder and every site
@@ -479,9 +486,13 @@ namespace KingdomWatch.Core.Validation
             Mix(grid.Width);
             Mix(grid.Height);
 
+            // Ground and road in one value a cell (#23): the road in the byte
+            // above the ground's, so a cell with no road folds as it always
+            // did and the fold costs no more.
             for (var i = 0; i < grid.CellCount; i++)
             {
-                Mix((long)grid[grid.PositionAt(i)]);
+                var at = grid.PositionAt(i);
+                Mix((long)grid[at] | ((long)grid.RoadAt(at) << 8));
             }
 
             _terrainGrid = grid;

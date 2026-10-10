@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Core.Construction
@@ -45,6 +46,7 @@ namespace KingdomWatch.Core.Construction
             EntityId settlement,
             EntityId barn,
             WorldPosition anchor,
+            WorldPosition[] lane,
             long clearTicks,
             int clearCuts,
             long labourTicks)
@@ -55,6 +57,7 @@ namespace KingdomWatch.Core.Construction
             Settlement = settlement;
             Barn = barn;
             Anchor = anchor;
+            Lane = lane;
             ClearTicks = clearTicks;
             ClearCuts = clearCuts;
             LabourTicks = labourTicks;
@@ -82,13 +85,20 @@ namespace KingdomWatch.Core.Construction
         /// <summary>The footprint's corner with the least x and y.</summary>
         public WorldPosition Anchor { get; }
 
+        /// <summary>
+        /// The cells of the lane the town planner joined its door to the
+        /// roads by, door first, laid as road when its ground is cleared
+        /// (#23). Empty for a field, and for a door already on the network.
+        /// </summary>
+        public IReadOnlyList<WorldPosition> Lane { get; }
+
         /// <summary>Cells across, from <see cref="BuildingTable"/>.</summary>
         public int Width => BuildingTable.Of(Kind).Width;
 
         /// <summary>Cells down, from <see cref="BuildingTable"/>.</summary>
         public int Height => BuildingTable.Of(Kind).Height;
 
-        /// <summary>Worker-ticks of clearing scrub and forest off the footprint before building starts.</summary>
+        /// <summary>Worker-ticks of clearing scrub and forest off the footprint and its lane before building starts.</summary>
         public long ClearTicks { get; }
 
         /// <summary>

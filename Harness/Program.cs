@@ -10,7 +10,8 @@ namespace KingdomWatch.Harness
     /// <summary>
     /// The headless entry point. By default it runs the M1 world (#17) for
     /// one seed and prints its chronicle; with <c>--seeds</c> it sweeps that
-    /// many seeds and prints one line each; with <c>--soak</c> it runs the
+    /// many seeds and prints one line each; with <c>--layout</c> it draws
+    /// the town planner's villages (<see cref="TownLayouts"/>); with <c>--soak</c> it runs the
     /// <see cref="SchedulerSoak"/> the harness ran before there was a world,
     /// the throughput figure #58 asks for.
     /// </summary>
@@ -31,6 +32,7 @@ namespace KingdomWatch.Harness
             var seeds = 0;
             var soakEntities = 0;
             var bushPicks = LandCover.DefaultBushPicks;
+            string? layout = null;
 
             // Options come in pairs; an odd count means a flag without its value.
             if (args.Length % 2 != 0)
@@ -42,6 +44,12 @@ namespace KingdomWatch.Harness
             // a number.
             for (var i = 0; i < args.Length; i += 2)
             {
+                if (args[i] == "--layout")
+                {
+                    layout = args[i + 1];
+                    continue;
+                }
+
                 var parsed = int.TryParse(
                     args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value);
 
@@ -74,6 +82,11 @@ namespace KingdomWatch.Harness
             if (soakEntities > 0)
             {
                 return Soak(soakEntities, years);
+            }
+
+            if (layout != null)
+            {
+                return TownLayouts.Write(layout, unchecked((ulong)seed), years, bushPicks);
             }
 
             return seeds > 0 ? Sweep(seeds, years, bushPicks) : RunChronicle(unchecked((ulong)seed), years, bushPicks);
@@ -176,6 +189,7 @@ namespace KingdomWatch.Harness
         {
             Console.Error.WriteLine("Usage: KingdomWatch.Harness [--seed N | --seeds N] [--years N] [--bush-picks N]");
             Console.Error.WriteLine("       KingdomWatch.Harness --soak ENTITIES [--years N]");
+            Console.Error.WriteLine("       KingdomWatch.Harness --layout DIR [--seed N] [--years N] [--bush-picks N]");
             return 2;
         }
 

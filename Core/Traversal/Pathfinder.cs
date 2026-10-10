@@ -21,7 +21,8 @@ namespace KingdomWatch.Core.Traversal
     /// <see cref="CostOfRoute"/> rather than assumed equal (#52).
     ///
     /// **Eight-way, 10 straight and 14 diagonal**, times the entered cell's
-    /// <see cref="TerrainRule.Cost"/>. A diagonal step is allowed only when
+    /// <see cref="TerrainRule.Cost"/> - its ground's, or its road's where
+    /// that is cheaper (<see cref="TerrainRules"/>, #23). A diagonal step is allowed only when
     /// both cells it cuts between are passable to the mover - otherwise a
     /// river one cell wide, drawn diagonally, could be stepped across at its
     /// corners, and section 12 says small rivers are walls.
@@ -40,8 +41,9 @@ namespace KingdomWatch.Core.Traversal
     /// and the heap never outgrows the grid.
     ///
     /// Section 12 also names a region graph and a per-tick request cap. Both
-    /// are deferred to the issues with a caller for them (#23, #25), and
-    /// they sit on top of this rather than replacing it.
+    /// are deferred to the issues with a caller for them (#25), and they sit
+    /// on top of this rather than replacing it. Roads (#23) are not a graph:
+    /// they are a cost per cell, read in the same loop.
     /// </remarks>
     public sealed class Pathfinder
     {
@@ -172,7 +174,7 @@ namespace KingdomWatch.Core.Traversal
                     throw new ArgumentException(previous + " to " + next + " cuts a corner the mover cannot pass.", nameof(route));
                 }
 
-                cost += (long)(diagonal ? DiagonalCost : StraightCost) * _rules[_grid.KindAt(nextIndex)].Cost;
+                cost += (long)(diagonal ? DiagonalCost : StraightCost) * EntryCost(nextIndex, mover);
                 previous = next;
             }
 
@@ -183,7 +185,7 @@ namespace KingdomWatch.Core.Traversal
         public bool IsPassable(WorldPosition position, Transport mover)
         {
             TransportGuard.RequireMover(mover);
-            return _rules.IsPassable(_grid[position], mover);
+            return Passable(_grid.IndexOf(position), mover);
         }
 
         /// <summary>
@@ -256,7 +258,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, to, from, radius);
+                Expand(current, mover, to, from, radius, null);
             }
 
             return false;
@@ -340,6 +342,26 @@ namespace KingdomWatch.Core.Traversal
             ISiteFilter? filter,
             int radius,
             List<WorldPosition> route,
+            out long cost) =>
+            TryFindNearest(from, mover, acceptable, known, filter, null, radius, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, ISiteFilter, int, List{WorldPosition}, out long)"/>,
+        /// with a say over the way there as well: a route may enter a cell
+        /// only when <paramref name="through"/> accepts it, as well as the
+        /// mover being able to - what the town planner lays a lane by, round
+        /// buildings that the people walking it would otherwise cross (#23).
+        /// The origin is never asked. Null accepts every cell.
+        /// </summary>
+        public bool TryFindNearest(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            ISiteFilter? filter,
+            ISiteFilter? through,
+            int radius,
+            List<WorldPosition> route,
             out long cost)
         {
             if (route is null)
@@ -393,7 +415,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, null, from, radius);
+                Expand(current, mover, null, from, radius, through);
             }
 
             return false;
@@ -462,7 +484,7 @@ namespace KingdomWatch.Core.Traversal
                     found++;
                 }
 
-                Expand(current, mover, null, from, radius);
+                Expand(current, mover, null, from, radius, null);
             }
 
             return found;
@@ -471,8 +493,9 @@ namespace KingdomWatch.Core.Traversal
         // Closes a cell and opens its neighbours: eight-way, no cutting
         // corners, each priced by the cell it enters, with the heuristic
         // toward the goal when there is one - without, the search is
-        // Dijkstra - and nothing opened outside the box.
-        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius)
+        // Dijkstra - nothing opened outside the box, and nothing the gate
+        // refuses.
+        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius, ISiteFilter? through)
         {
             _closed[current] = true;
             var position = _grid.PositionAt(current);
@@ -491,7 +514,7 @@ namespace KingdomWatch.Core.Traversal
 
                 var nextIndex = _grid.IndexOf(next);
 
-                if (_closed[nextIndex] || !Passable(nextIndex, mover))
+                if (_closed[nextIndex] || !Passable(nextIndex, mover) || (through is object && !through.Accepts(nextIndex)))
                 {
                     continue;
                 }
@@ -507,7 +530,7 @@ namespace KingdomWatch.Core.Traversal
 
                 // Long, not int: a step is at most 14 * MaxCost and a route at
                 // most CellCount steps, which an int cannot promise to hold.
-                var tentative = _gScore[current] + ((long)stepCost * _rules[_grid.KindAt(nextIndex)].Cost);
+                var tentative = _gScore[current] + ((long)stepCost * EntryCost(nextIndex, mover));
 
                 if (_seen[nextIndex] && tentative >= _gScore[nextIndex])
                 {
@@ -519,14 +542,20 @@ namespace KingdomWatch.Core.Traversal
         }
 
 
-        // The mask directly rather than TerrainRule.Admits: the mover was
+        // The masks directly rather than TerrainRule.Admits: the mover was
         // validated once at entry, and this runs for every neighbour of every
-        // cell a query expands.
-        private bool Passable(int index, Transport mover) => (_rules[_grid.KindAt(index)].Allowed & mover) != 0;
+        // cell a query expands. A cell the mover may enter by its ground or
+        // its road.
+        private bool Passable(int index, Transport mover) => EntryCost(index, mover) != 0;
+
+        // What entering a cell costs this mover: ground or road, whichever
+        // admits it more cheaply. Zero when neither admits it.
+        private int EntryCost(int index, Transport mover) =>
+            _rules.EntryCost(_grid.KindAt(index), _grid.RoadAt(index), mover);
 
         /// <summary>
-        /// Octile distance scaled by the cheapest cell in the table: the
-        /// least any route could cost, so A* never overestimates.
+        /// Octile distance scaled by the cheapest cell or road in the table:
+        /// the least any route could cost, so A* never overestimates.
         /// </summary>
         private long Heuristic(WorldPosition a, WorldPosition b)
         {

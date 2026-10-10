@@ -649,7 +649,12 @@ namespace KingdomWatch.Harness
         /// <summary>
         /// The building rules (#100): every footprint on the map and over
         /// nobody else's, cleared ground really cleared, every reference
-        /// resolving, and every count of hours inside the work there is.
+        /// resolving, and every count of hours inside the work there is; and
+        /// the town planner's (#23): every lane laid as road over cleared
+        /// ground once its building's ground is cleared, and no road under a
+        /// footprint. That a lane is a walk on the map under no building is
+        /// the pathfinder's to guarantee, and nothing outside Core can
+        /// build one that is not.
         /// </summary>
         public WorldValidator CheckBuildings(
             Buildings buildings, Founding settlements, Households households, TerrainGrid grid, SimulationClock clock)
@@ -740,6 +745,27 @@ namespace KingdomWatch.Harness
                         if (building.Cleared && (grid[at] == TerrainKind.Scrub || grid[at] == TerrainKind.Forest))
                         {
                             Add(ValidationRule.BuildingFootprint, now, building.Id, "is cleared, but " + at + " is " + grid[at] + ".");
+                        }
+
+                        if (grid.RoadAt(at) != RoadGrade.None)
+                        {
+                            Add(ValidationRule.BuildingLane, now, building.Id, "covers " + at + ", which has a road on it.");
+                        }
+                    }
+                }
+
+                // The terrain and roads are anyone's to rewrite: a cleared
+                // lane is road over cleared ground.
+                if (building.Cleared)
+                {
+                    for (var j = 0; j < building.Lane.Count; j++)
+                    {
+                        var at = building.Lane[j];
+
+                        if (grid.RoadAt(at) == RoadGrade.None || grid[at] == TerrainKind.Scrub || grid[at] == TerrainKind.Forest)
+                        {
+                            Add(ValidationRule.BuildingLane, now, building.Id,
+                                "is cleared, but lane cell " + at + " is " + grid[at] + " with " + grid.RoadAt(at) + " road.");
                         }
                     }
                 }
