@@ -745,6 +745,27 @@ namespace KingdomWatch.Harness
                 }
             }
 
+            // A household in a house (#69) names it as its home, and the house
+            // names the household: the same fact kept from both ends, by
+            // Households and by Buildings, checked from each.
+            var formed = households.All;
+
+            for (var i = 0; i < formed.Count; i++)
+            {
+                var home = formed[i].Home;
+
+                if (!home.IsNone
+                    && (!_buildingsById.TryGetValue(home, out var house)
+                        || house.Kind != BuildingKind.House || house.Occupant != formed[i].Id))
+                {
+                    Add(ValidationRule.BuildingReference, now, formed[i].Id, "names " + home + " as its home, which it does not live in.");
+                }
+                else if (buildings.HomeOf(formed[i].Id) is Building livesIn && livesIn.Id != home)
+                {
+                    Add(ValidationRule.BuildingReference, now, formed[i].Id, "lives in " + livesIn.Id + " but names " + home + " as its home.");
+                }
+            }
+
             return this;
         }
 

@@ -103,6 +103,7 @@ namespace KingdomWatch.Core.Validation
         private readonly List<Household> _households = new List<Household>();
         private readonly List<Settlement> _settlements = new List<Settlement>();
         private readonly List<MobileGroup> _bands = new List<MobileGroup>();
+        private readonly List<StoreTrend> _trends = new List<StoreTrend>();
         private readonly List<EntityId> _holders = new List<EntityId>();
         private readonly List<ScheduledEvent> _pending = new List<ScheduledEvent>();
         private readonly List<PendingBooking> _bookings = new List<PendingBooking>();
@@ -409,7 +410,8 @@ namespace KingdomWatch.Core.Validation
         /// Folds in every building (#100), in creation order - which is id
         /// order - with all its state: where it stands, the work claimed and
         /// done, whether its ground is cleared, who lives in it, and a
-        /// field's stage and today's counts.
+        /// field's stage and today's counts; then the settlements' store
+        /// readings (<see cref="Buildings.StoreTrends"/>).
         /// </summary>
         public WorldHash AddBuildings(Buildings buildings)
         {
@@ -443,6 +445,22 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.CountsDay);
                 Mix(building.ClaimedToday);
                 Mix(building.WorkedToday);
+            }
+
+            // Then each settlement's yearly store readings (#149), sorted by
+            // settlement: Buildings keeps them in the order it first read
+            // them, which is storage, not the world (the #156 review).
+            _trends.Clear();
+            _trends.AddRange(buildings.StoreTrends);
+            _trends.Sort(static (a, b) => a.Settlement.CompareTo(b.Settlement));
+            Mix(_trends.Count);
+
+            for (var i = 0; i < _trends.Count; i++)
+            {
+                Mix(_trends[i].Settlement);
+                Mix(_trends[i].LastYear);
+                Mix(_trends[i].ThisYear);
+                Mix(_trends[i].ReadOn);
             }
 
             return this;

@@ -23,13 +23,14 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(() => new Buildings(null!, w.People, w.Households, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, null!, w.Households, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, w.People, null!, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, null!, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Pathfinder, null!, w.Land, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Pathfinder, w.KnownMaps, null!, skills), Throws.ArgumentNullException);
-                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Pathfinder, w.KnownMaps, w.Land, null!), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(null!, w.People, w.Households, w.Partnerships, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, null!, w.Households, w.Partnerships, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, null!, w.Partnerships, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, null!, w.Pathfinder, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Partnerships, null!, w.KnownMaps, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Partnerships, w.Pathfinder, null!, w.Land, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Partnerships, w.Pathfinder, w.KnownMaps, null!, skills), Throws.ArgumentNullException);
+                Assert.That(() => new Buildings(w.Bus, w.People, w.Households, w.Partnerships, w.Pathfinder, w.KnownMaps, w.Land, null!), Throws.ArgumentNullException);
             });
         }
 
@@ -84,7 +85,7 @@ namespace KingdomWatch.Core.Tests.Construction
         {
             var w = new BuildingsWorld();
             var unskilled = new Buildings(
-                w.World.Bus, w.World.People, w.World.Households, w.World.Pathfinder, w.World.KnownMaps, w.World.Land, new NoSkills());
+                w.World.Bus, w.World.People, w.World.Households, w.World.Partnerships, w.World.Pathfinder, w.World.KnownMaps, w.World.Land, new NoSkills());
             w.Wood(100);
 
             unskilled.AtDawn(w.Settlement, 1, w.Living);

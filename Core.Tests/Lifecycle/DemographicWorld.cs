@@ -7,6 +7,7 @@ using KingdomWatch.Core.Lifecycle;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Relationships;
 using KingdomWatch.Core.Rng;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.WorldGen;
 
@@ -170,6 +171,25 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             Fertility.Track(band);
             Hunger.Track(band);
             return band;
+        }
+
+        // A village the cascade strikes the dead from and newborns join, fed
+        // as NewBand's band is: since #69 the only kind of community whose
+        // couples have children.
+        internal Settlement NewVillage()
+        {
+            var village = NewStarvingVillage();
+            village.SharedSupplies.Gather(ResourceKind.Food, PlentifulFood);
+            return village;
+        }
+
+        // The same, with nothing to eat.
+        internal Settlement NewStarvingVillage()
+        {
+            var village = Base.NewVillage();
+            Fertility.Track(village);
+            Hunger.Track(village);
+            return village;
         }
 
         internal void Advance(long ticks) => Clock.AdvanceTo(Clock.Now.Plus(ticks), Router);

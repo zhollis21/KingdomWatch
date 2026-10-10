@@ -20,15 +20,15 @@ namespace KingdomWatch.Core.Tests.Validation
     /// that holds its invariants across seeds.
     /// </summary>
     /// <remarks>
-    /// A century rather than the harness's two: the second hundred years is
-    /// minutes of CI that finds nothing the first did not. The full run is
-    /// <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
+    /// Three seeds for sixty years rather than the harness's eight for two
+    /// hundred: settling, the first decades of building and farming, and
+    /// the winters that test them all fall inside it. Villages that live
+    /// (#69) made the century of eight worlds too slow to run on every test
+    /// pass. The full run is <c>KingdomWatch.Harness --seeds 8 --years 200</c>.
     ///
-    /// Survival is not asserted. Since #26 berries run out and bands can
-    /// starve on the move, and since #100 villages farm but cut the trees in
-    /// their reach faster than they regrow, and freeze once those are gone (#147);
-    /// the harness reports each die-out rather than failing on it. Nor is a
-    /// population ceiling, though land now gives one.
+    /// Since #69, #147 and #149 a village's growth is held by its houses, its
+    /// forest and its food, and a short winter shrinks it rather than
+    /// killing it whole, so survival and a ceiling are asserted.
     ///
     /// This replaced the 30-year fixture sweeps: the validator checks every
     /// rule they checked, after every year, on the world the harness runs.
@@ -36,11 +36,15 @@ namespace KingdomWatch.Core.Tests.Validation
     [TestFixture]
     public sealed class WorldRunTests
     {
-        private const int Seeds = 8;
-        private const long Years = 100L;
+        private const int Seeds = 3;
+        private const long Years = 60L;
+
+        // No homeland on any seed in the 200-year sweep passes this; most
+        // level off at 40 to 120 (#69).
+        private const int PopulationCeiling = 250;
 
         // Each seed run once for the fixture: the tests over them read the
-        // same runs, and a century of eight worlds is the costly part.
+        // same runs, and the worlds' decades are the costly part.
         private static readonly List<WorldRun> Runs = new List<WorldRun>();
 
         [OneTimeSetUp]
@@ -71,6 +75,64 @@ namespace KingdomWatch.Core.Tests.Validation
             }
 
             Assert.That(report.ToString(), Is.Empty);
+        }
+
+        [Test]
+        public void Every_homeland_lives_and_levels_off()
+        {
+            // Housing, forest and food hold a village's growth, and a short
+            // winter is rationed rather than eaten through (#69, #147, #149).
+            Assert.Multiple(() =>
+            {
+                foreach (var run in Runs)
+                {
+                    var seed = "seed " + run.World.Seed;
+                    Assert.That(run.WestDiedOut, Is.Null, seed + ": west died out");
+                    Assert.That(run.EastDiedOut, Is.Null, seed + ": east died out");
+
+                    foreach (var year in run.Years)
+                    {
+                        Assert.That(year.West, Is.LessThanOrEqualTo(PopulationCeiling), seed + " west, year " + year.Year);
+                        Assert.That(year.East, Is.LessThanOrEqualTo(PopulationCeiling), seed + " east, year " + year.Year);
+                    }
+                }
+            });
+        }
+
+        [Test]
+        public void No_year_s_hunger_and_cold_take_a_quarter_of_a_homeland()
+        {
+            // A village that runs short shrinks; before #149 one winter took
+            // nearly everyone in it. Each homeland against its own size, so a
+            // big one cannot hide a small one's winter (the #156 review). A
+            // homeland of fewer than ten is too small for a share to mean
+            // anything: one death is a tenth of it.
+            Assert.Multiple(() =>
+            {
+                foreach (var run in Runs)
+                {
+                    var west = run.FoundingWest;
+                    var east = run.FoundingEast;
+
+                    foreach (var year in run.Years)
+                    {
+                        Check(run, year, "west", west, year.WestTally);
+                        Check(run, year, "east", east, year.EastTally);
+                        west = year.West;
+                        east = year.East;
+                    }
+                }
+            });
+
+            static void Check(WorldRun run, YearSummary year, string side, int before, YearTally tally)
+            {
+                var lost = tally.Starved + tally.Froze;
+
+                if (before >= 10)
+                {
+                    Assert.That(lost * 4, Is.LessThan(before), "seed " + run.World.Seed + " " + side + ", year " + year.Year + ": " + lost + " of " + before);
+                }
+            }
         }
 
         [Test]
@@ -402,6 +464,57 @@ namespace KingdomWatch.Core.Tests.Validation
             });
         }
 
+        [Test]
+        public void A_world_whose_founder_has_died_can_still_be_run()
+        {
+            // The run counts what happens once it starts; what the journal
+            // already holds is history, read for its milestones and not
+            // tallied (the #156 review).
+            var world = World.M1(1UL);
+            var communities = new List<ICommunity>();
+            world.Nomads.CopyTrackedTo(communities);
+            world.Deaths.Die(communities[0].Members[0], new Reasons(ReasonCode.Froze));
+
+            var run = new WorldRun(world);
+            run.RunYears(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.IsClean, Is.True);
+                Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "history's milestones are still read");
+                Assert.That(run.Years[0].Tally.Froze, Is.Zero, "the death before the run is not this year's");
+            });
+        }
+
+        [Test]
+        public void Deaths_are_tallied_for_the_homeland_they_happened_in()
+        {
+            // A village's catastrophe must not hide behind the other homeland's
+            // numbers (the #156 review): the west's dead are the west's.
+            var run = new WorldRun(1UL);
+            var communities = new List<ICommunity>();
+            run.World.Nomads.CopyTrackedTo(communities);
+            var west = (MobileGroup)communities[0];
+            var dead = west.Members.Count / 2;
+
+            foreach (var member in new List<PersonHandle>(west.Members).GetRange(0, dead))
+            {
+                run.World.Deaths.Die(member, new Reasons(ReasonCode.Froze));
+            }
+
+            run.RunYears(1L);
+            var year = run.Years[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(year.WestTally.Froze, Is.EqualTo(dead));
+                Assert.That(year.EastTally.Froze, Is.Zero);
+                Assert.That(year.Tally.Froze, Is.EqualTo(year.WestTally.Froze + year.EastTally.Froze), "the whole is the sum");
+                Assert.That(year.Tally.Deaths, Is.EqualTo(year.WestTally.Deaths + year.EastTally.Deaths));
+                Assert.That(year.Tally.Births, Is.EqualTo(year.WestTally.Births + year.EastTally.Births));
+            });
+        }
+
         [TestCase(0, TestName = "A west that dies out is reported, not failed")]
         [TestCase(1, TestName = "An east that dies out is reported, not failed")]
         public void A_homeland_that_dies_out_is_reported_not_failed(int side)
@@ -475,8 +588,10 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void The_chronicle_prints_each_village_s_first_house_and_first_harvest_once()
         {
-            // Seed 1 settles in year 3 and farms that summer (#100).
-            var run = new WorldRun(1UL).RunYears(5L);
+            // Seed 1 settles in year 5 - since #69 a band on the road has no
+            // children, so its settling pressure builds more slowly - and
+            // farms that summer (#100).
+            var run = new WorldRun(1UL).RunYears(7L);
             var text = new StringWriter();
             Chronicle.Write(run, text);
             var written = text.ToString();

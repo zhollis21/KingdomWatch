@@ -57,7 +57,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void Tracking_refuses_null_and_a_group_already_tracked()
         {
             var w = new DemographicWorld();
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             Assert.Multiple(() =>
             {
@@ -71,13 +71,16 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void An_untracked_band_receives_no_newborns_and_refuses_a_second_untrack()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
 
+            // Conceived while tracked: since #69 nobody conceives in a
+            // community Fertility does not track.
+            w.Advance(Check);
             w.Fertility.Untrack(band);
-            w.Advance(Check + Gestation);
+            w.Advance(Gestation);
 
             Assert.Multiple(() =>
             {
@@ -115,7 +118,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_couple_conceives_at_the_first_check_and_the_child_arrives_at_term()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -162,7 +165,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void The_child_is_announced_last_so_ageing_and_mortality_book_against_a_person_who_exists()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -179,7 +182,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_pregnant_woman_does_not_conceive_again_until_delivered_and_recovered()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -227,7 +230,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
 
             for (var i = 0; i < worlds.Length; i++)
             {
-                var band = worlds[i].NewBand();
+                var band = worlds[i].NewVillage();
                 worlds[i].NewCouple(out wives[i], out var husband);
                 band.AddMember(wives[i]);
                 band.AddMember(husband);
@@ -247,7 +250,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void The_postpartum_period_is_read_off_the_youngest_living_child()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -267,7 +270,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // five-year-old was recorded after her newborn is still a
             // mother of a newborn.
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -287,7 +290,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_partner_housed_elsewhere_or_of_the_same_sex_does_not_count()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             // Married, then he moves out to another household.
             w.NewCouple(out var apart, out var husband);
@@ -325,7 +328,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_mother_in_no_household_at_term_bears_a_child_in_none()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -355,7 +358,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // jumps, so nothing has to be dispatched across the whole of time.
             var w = new DemographicWorld(Certain(), 1UL);
             w.Clock.AdvanceTo(new SimulationTime(long.MaxValue - Gestation + 1L - Check), w.Router);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -371,7 +374,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void Nobody_conceives_without_a_living_partner_in_the_same_household()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
 
             // A woman alone in a household; a couple whose husband dies
             // before the first check; a widow's household after that.
@@ -398,7 +401,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void Nobody_conceives_outside_the_fertile_window_or_while_frail_or_unfed()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var s = w.Settings;
 
             var tooYoung = w.NewPerson(s.FertileFromYears - 1L, Sex.Female, AgeStage.Adult);
@@ -418,7 +421,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // same day, so an unfed woman has to be in a band with nothing to
             // eat - and with health enough to be well above the floor after
             // eight missed meals, so that hunger is the only gate she fails.
-            var starving = w.NewStarvingBand();
+            var starving = w.NewStarvingVillage();
             var unfed = w.NewPerson(30L, Sex.Female);
             var unfedMan = w.NewPerson(30L, Sex.Male);
             w.Family.Partner(unfed, unfedMan, Reasons.None);
@@ -461,7 +464,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 ConceptionPerMille = 0,
             };
             var w = new DemographicWorld(settings, 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -479,7 +482,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void The_mothers_death_cancels_the_pregnancy()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -515,7 +518,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // produce a child, whether the mother is pregnant with another
             // or not pregnant at all.
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -553,7 +556,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 GestationTicks = 110L * SimulationTime.TicksPerDay,
             };
             var w = new DemographicWorld(settings, 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -581,7 +584,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // belt-and-braces path, for a queue rebuilt from a save that
             // disagrees with the store.
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -602,7 +605,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_widow_still_gives_birth_and_the_child_has_a_father()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -639,7 +642,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void A_dissolved_household_ends_its_stream_of_checks()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -685,7 +688,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // formation builds, but the household model allows it, and the
             // choice has to be stable.
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var firstWife, out var firstHusband);
             w.NewCouple(out var secondWife, out var secondHusband);
             w.Households.Leave(secondWife);
@@ -710,7 +713,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         public void An_ineligible_first_wife_does_not_stop_a_second_from_conceiving()
         {
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var firstWife, out var firstHusband);
             w.NewCouple(out var secondWife, out var secondHusband);
             w.Households.Leave(secondWife);
@@ -743,7 +746,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             // not newly delivered.
             var w = new DemographicWorld(Certain(), 1UL);
             w.Clock.AdvanceTo(new SimulationTime(long.MaxValue - Gestation - Check - 1L), w.Router);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             var household = w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);
@@ -757,25 +760,82 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
-        public void A_mother_in_no_tracked_band_bears_a_child_in_no_band()
+        public void A_mother_in_no_tracked_community_conceives_nothing()
         {
-            // A band that feeds the couple but that Fertility was never told
-            // about: the child has a household and no band.
+            // A village that feeds the couple but that Fertility was never
+            // told about: with nowhere to place a child, none is conceived
+            // (#69).
             var w = new DemographicWorld(Certain(), 1UL);
-            var band = w.Base.NewBand();
-            band.SharedSupplies.Gather(ResourceKind.Food, DemographicWorld.PlentifulFood);
-            w.Hunger.Track(band);
+            var village = w.Base.NewVillage();
+            village.SharedSupplies.Gather(ResourceKind.Food, DemographicWorld.PlentifulFood);
+            w.Hunger.Track(village);
             var household = w.NewCouple(out var wife, out var husband);
-            band.AddMember(wife);
-            band.AddMember(husband);
+            village.AddMember(wife);
+            village.AddMember(husband);
 
             w.Advance(Check + Gestation);
 
             Assert.Multiple(() =>
             {
-                Assert.That(household.Members, Has.Count.EqualTo(3));
-                Assert.That(band.Members, Has.Count.EqualTo(2));
+                Assert.That(w.Fertility.IsPregnant(wife), Is.False);
+                Assert.That(household.Members, Has.Count.EqualTo(2));
                 Assert.That(w.Fertility.TrackedCount, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void A_couple_in_a_band_conceives_nothing_and_one_already_expecting_still_gives_birth()
+        {
+            // Since #69 a band on the move has no children; a pregnancy begun
+            // in a village comes to term wherever the mother is by then.
+            var w = new DemographicWorld(Certain(), 1UL);
+            var band = w.NewBand();
+            var village = w.NewVillage();
+            var wanderers = w.NewCouple(out var wanderer, out var hers);
+            band.AddMember(wanderer);
+            band.AddMember(hers);
+            var settled = w.NewCouple(out var mother, out var father);
+            village.AddMember(mother);
+            village.AddMember(father);
+
+            w.Advance(Check);
+            var expecting = w.Fertility.IsPregnant(mother);
+            village.RemoveMember(mother);
+            band.AddMember(mother);
+            w.Advance(Gestation);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Fertility.IsPregnant(wanderer), Is.False, "the band's couple");
+                Assert.That(wanderers.Members, Has.Count.EqualTo(2));
+                Assert.That(expecting, Is.True, "the village's couple conceived");
+                Assert.That(settled.Members, Has.Count.EqualTo(3), "and the child was born in the band");
+            });
+        }
+
+        [Test]
+        public void A_village_short_of_food_conceives_nothing_until_it_is_not()
+        {
+            // Section 6's food availability as a regulator (#69): a village
+            // whose food is short has no children.
+            var w = new DemographicWorld(Certain(), 1UL);
+            var village = w.NewVillage();
+            var outlook = new ShortOf(village.Id);
+            w.Fertility.Food = outlook;
+            w.NewCouple(out var wife, out var husband);
+            village.AddMember(wife);
+            village.AddMember(husband);
+
+            w.Advance(Check);
+            var whileShort = w.Fertility.IsPregnant(wife);
+            outlook.Short = false;
+            w.Advance(Check);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(whileShort, Is.False);
+                Assert.That(w.Fertility.IsPregnant(wife), Is.True);
+                Assert.That(() => w.Fertility.Food = null!, Throws.ArgumentNullException);
             });
         }
 
@@ -843,7 +903,7 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 MaxLifespanYears = 2_000L,
             };
             var w = new DemographicWorld(settings, seed);
-            var band = w.NewBand();
+            var band = w.NewVillage();
             w.NewCouple(out var wife, out var husband);
             band.AddMember(wife);
             band.AddMember(husband);

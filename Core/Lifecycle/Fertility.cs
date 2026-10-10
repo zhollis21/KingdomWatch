@@ -26,6 +26,14 @@ namespace KingdomWatch.Core.Lifecycle
     /// means something. The check itself is not a domain event; the birth
     /// is. A failed check is nothing in the chronicle.
     ///
+    /// **Only in a settlement that can feed them** (#69). A household whose
+    /// mother is in a band, or in no community this class tracks, conceives
+    /// nothing: wandering people do not raise children on the road, and a
+    /// band growing on camp space that never runs short was the population
+    /// housing could not limit. Nor does one in a settlement whose food is
+    /// short (<see cref="Food"/>), section 6's food availability as a
+    /// regulator. A pregnancy already begun still comes to term.
+    ///
     /// **Who conceives.** The first woman in the household, in the stable
     /// order the household lists its members, who is of fertile age and
     /// whose active partner is a living man in the same household. She
@@ -88,6 +96,7 @@ namespace KingdomWatch.Core.Lifecycle
         private readonly DomainEventBus _bus;
         private readonly SimulationClock _clock;
         private readonly PersonStore _people;
+        private IFoodOutlook _food = FoodOutlook.Never;
         private readonly Genealogy _genealogy;
         private readonly Partnerships _partnerships;
         private readonly Households _households;
@@ -206,6 +215,17 @@ namespace KingdomWatch.Core.Lifecycle
         /// never reused, so nothing would ever collide with it.
         /// </summary>
         public int PendingCheckCount => _pendingChecks.Count;
+
+        /// <summary>
+        /// Which communities are outgrowing their food, and so conceive
+        /// nothing (#69). <see cref="World"/> sets it to its buildings;
+        /// <see cref="FoodOutlook.Never"/> until then.
+        /// </summary>
+        public IFoodOutlook Food
+        {
+            get => _food;
+            set => _food = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>Whether this community is tracked here.</summary>
         public bool IsTracked(ICommunity community) =>
@@ -356,7 +376,13 @@ namespace KingdomWatch.Core.Lifecycle
 
             _pendingChecks.Remove(householdId);
 
-            if (TryFindCouple(household, out var mother, out var father))
+            // Only a settled people has children: a band on the move does not,
+            // nor a village that cannot feed the mouths it has (#69). A
+            // pregnancy begun before either still comes to term.
+            if (TryFindCouple(household, out var mother, out var father)
+                && GroupOf(mother) is ICommunity home
+                && home.Id.Kind == EntityKind.Settlement
+                && !_food.IsFoodShort(home.Id))
             {
                 Conceive(household.Id, mother, father);
             }
