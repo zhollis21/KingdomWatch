@@ -438,6 +438,57 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_building_s_lane_and_square_cannot_be_changed_through_what_it_hands_out()
+        {
+            // Both are fixed at approval: reservations, clearing and the hash
+            // all read them, so a downcast must not reach the cells.
+            // A belt of forest round the camp, so the house's lane runs out
+            // through it, and a bush in the yard for its share of the square.
+            var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var ring = Chebyshev(new WorldPosition(x, y), BuildingsWorld.Centre);
+
+                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                        }
+                    }
+                }
+
+                grid.Set(bush, TerrainKind.Scrub);
+            });
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.Lane, Is.Not.Empty);
+            Assert.That(house.Square, Is.Not.Empty);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(house.Lane, Is.Not.InstanceOf<WorldPosition[]>());
+                Assert.That(house.Square, Is.Not.InstanceOf<WorldPosition[]>());
+                Assert.That(((IList<WorldPosition>)house.Lane).IsReadOnly, Is.True);
+                Assert.That(((IList<WorldPosition>)house.Square).IsReadOnly, Is.True);
+            });
+        }
+
+        [Test]
+        public void Whether_a_kind_has_a_door_refuses_what_is_not_a_kind()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => Buildings.HasDoor(BuildingKind.None), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Buildings.HasDoor((BuildingKind)200), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(Buildings.HasDoor(BuildingKind.House), Is.True);
+            });
+        }
+
+        [Test]
         public void A_door_is_the_middle_of_the_row_south_and_a_field_has_none()
         {
             var house = BuildingTable.Of(BuildingKind.House);

@@ -136,9 +136,14 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// Whether a kind has a door its lane starts at: everything but a
-        /// field, which is joined to the roads along an edge instead.
+        /// field, which is joined to the roads along an edge instead. Throws
+        /// for <see cref="BuildingKind.None"/> and for a value that is not a kind.
         /// </summary>
-        public static bool HasDoor(BuildingKind kind) => kind != BuildingKind.Field;
+        public static bool HasDoor(BuildingKind kind)
+        {
+            BuildingTable.Of(kind);
+            return kind != BuildingKind.Field;
+        }
 
         // Where a building of this kind goes, and its lane into _lane: the
         // best-scoring footprint the search reaches, trying plains alone

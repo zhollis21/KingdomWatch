@@ -764,9 +764,10 @@ namespace KingdomWatch.Harness
                     CheckPaved(building, building.Square, "square", grid, now);
                 }
 
-                // A cleared field has its way in: a road, or its settlement's
-                // yard, along one of its edges.
-                if (building.Kind == BuildingKind.Field && building.Cleared && !TouchesWay(building, settlements, grid))
+                // A cleared field has its way in: a road along one of its edges.
+                // The yard counts only as the road it is paved with, so a
+                // square that has lost its paving is not taken for one.
+                if (building.Kind == BuildingKind.Field && building.Cleared && !TouchesRoad(building, grid))
                 {
                     Add(ValidationRule.BuildingLane, now, building.Id, "has no road along any of its edges.");
                 }
@@ -775,29 +776,17 @@ namespace KingdomWatch.Harness
             return this;
         }
 
-        private static bool TouchesWay(Building field, Founding settlements, TerrainGrid grid)
+        private static bool TouchesRoad(Building field, TerrainGrid grid)
         {
-            WorldPosition? camp = null;
-
-            for (var i = 0; i < settlements.All.Count; i++)
-            {
-                if (settlements.All[i].Id == field.Settlement)
-                {
-                    camp = settlements.All[i].Position;
-                }
-            }
-
-            bool Way(int x, int y)
+            bool Road(int x, int y)
             {
                 var at = new WorldPosition(x, y);
-                return grid.Contains(at)
-                    && (grid.RoadAt(at) != RoadGrade.None
-                        || (camp is WorldPosition c && Math.Abs(x - c.X) <= Buildings.CampYardRadius && Math.Abs(y - c.Y) <= Buildings.CampYardRadius));
+                return grid.Contains(at) && grid.RoadAt(at) != RoadGrade.None;
             }
 
             for (var dx = 0; dx < field.Width; dx++)
             {
-                if (Way(field.Anchor.X + dx, field.Anchor.Y - 1) || Way(field.Anchor.X + dx, field.Anchor.Y + field.Height))
+                if (Road(field.Anchor.X + dx, field.Anchor.Y - 1) || Road(field.Anchor.X + dx, field.Anchor.Y + field.Height))
                 {
                     return true;
                 }
@@ -805,7 +794,7 @@ namespace KingdomWatch.Harness
 
             for (var dy = 0; dy < field.Height; dy++)
             {
-                if (Way(field.Anchor.X - 1, field.Anchor.Y + dy) || Way(field.Anchor.X + field.Width, field.Anchor.Y + dy))
+                if (Road(field.Anchor.X - 1, field.Anchor.Y + dy) || Road(field.Anchor.X + field.Width, field.Anchor.Y + dy))
                 {
                     return true;
                 }

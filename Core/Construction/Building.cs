@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 
@@ -59,8 +60,10 @@ namespace KingdomWatch.Core.Construction
             Settlement = settlement;
             Barn = barn;
             Anchor = anchor;
-            Lane = lane;
-            Square = square;
+            // Wrapped once: a bare array behind IReadOnlyList can be downcast
+            // and rewritten, and reservations, clearing and the hash read these.
+            Lane = Array.AsReadOnly(lane);
+            Square = Array.AsReadOnly(square);
             ClearTicks = clearTicks;
             ClearCuts = clearCuts;
             ClearRocks = clearRocks;
@@ -138,7 +141,11 @@ namespace KingdomWatch.Core.Construction
         /// <summary>Worker-ticks done.</summary>
         public long Worked { get; internal set; }
 
-        /// <summary>Whether the footprint has been cleared to plains.</summary>
+        /// <summary>
+        /// Whether its clearing is done: the footprint cleared to plains, and
+        /// its <see cref="Lane"/> and <see cref="Square"/> cleared and laid as
+        /// road (#23).
+        /// </summary>
         public bool Cleared { get; internal set; }
 
         /// <summary>Whether all its work is done.</summary>
