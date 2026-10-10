@@ -134,7 +134,7 @@ namespace KingdomWatch.Core.Lifecycle
         /// forms a household in a new home in the community, and moves both in along with
         /// any dependent children of theirs from wherever they were - the
         /// household they leave, or none. With no home free, one of them whose
-        /// household has no couple in it takes the other in instead, and that
+        /// household has room for another couple takes the other in instead, and that
         /// household is the one returned: a family home inherited (#69).
         /// A household left empty is dissolved. Throws when
         /// <see cref="Evaluate"/> would refuse.
@@ -166,7 +166,7 @@ namespace KingdomWatch.Core.Lifecycle
             _partnerships.Form(idA, idB, formedBy, _bus.Clock.Now);
 
             // A home of their own if there is one; otherwise the one of them
-            // whose household had no couple in it takes the other in -
+            // whose household had room for another couple takes the other in -
             // found before the partnership made them one.
             // The one already there stays where they stand, and their own
             // dependents in no household join them, as they would a new
