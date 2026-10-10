@@ -297,6 +297,30 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_oldest_tent_family_is_housed_first_whoever_stands_first_in_the_settlement()
+        {
+            var w = Fed(new BuildingsWorld());
+            HouseEveryone(w);
+            var house = EmptyOneHouse(w);
+
+            // The newer family's member stands first in the settlement.
+            var first = Newcomer(w, Sex.Female);
+            var second = Newcomer(w, Sex.Female);
+            var older = w.World.Households.Form();
+            w.World.Households.Join(older, second);
+            var newer = w.World.Households.Form();
+            w.World.Households.Join(newer, first);
+
+            w.Buildings.AtDawn(w.Settlement, 0, w.Living);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(older.Home, Is.EqualTo(house.Id));
+                Assert.That(newer.Home.IsNone, Is.True, "waits for the next house");
+            });
+        }
+
+        [Test]
         public void Only_a_household_in_camp_moves_into_a_home()
         {
             var w = Fed(new BuildingsWorld());

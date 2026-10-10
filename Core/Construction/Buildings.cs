@@ -890,7 +890,7 @@ namespace KingdomWatch.Core.Construction
         }
 
         // Empty finished houses go to the settlement's households without
-        // one, in the order their members stand in the settlement. The
+        // one, oldest first. The
         // household is told, so its Home names the house as one claimed at
         // forming does, and dissolving it gives the house back.
         private void AssignHomes(ICommunity settlement)
@@ -1215,9 +1215,14 @@ namespace KingdomWatch.Core.Construction
             return found;
         }
 
+        // The oldest household of the settlement's with no house: the one
+        // with the smallest id, since ids are handed out in order (as Warmth
+        // ranks hearths). Not the first one met among the members, whose
+        // order drifts as people die and arrive (the #156 review).
         private bool TryFirstUnhoused(ICommunity settlement, [NotNullWhen(true)] out Household? household)
         {
             var members = settlement.Members;
+            household = null;
 
             for (var i = 0; i < members.Count; i++)
             {
@@ -1228,15 +1233,13 @@ namespace KingdomWatch.Core.Construction
                     continue;
                 }
 
-                if (!_homeOf.ContainsKey(home.Id))
+                if (!_homeOf.ContainsKey(home.Id) && (household is null || home.Id < household.Id))
                 {
                     household = home;
-                    return true;
                 }
             }
 
-            household = null;
-            return false;
+            return !(household is null);
         }
 
         private Building RequireAt(WorldPosition at) =>
