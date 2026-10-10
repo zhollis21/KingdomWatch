@@ -197,12 +197,43 @@ namespace KingdomWatch.Core.Tests.Traversal
             var target = grid.IndexOf(new WorldPosition(4, 0));
             var wall = new Wall(grid);
 
-            Assert.That(finder.TryFindNearest(new WorldPosition(0, 0), Transport.Foot, mask, default, new Only(target), wall, 10, route, out _), Is.True);
+            Assert.That(finder.TryFindNearest(new WorldPosition(0, 0), Transport.Foot, mask, default, new Only(target), wall, false, 10, route, out _), Is.True);
 
             Assert.Multiple(() =>
             {
                 Assert.That(route.Exists(at => at.X == 2 && at.Y < 4), Is.False, "never through the wall");
                 Assert.That(route, Has.Member(new WorldPosition(2, 4)));
+            });
+        }
+
+        [Test]
+        public void A_search_along_edges_steps_only_north_south_east_and_west()
+        {
+            // Open plains, the target three across and three down: eight-way
+            // it is three diagonal steps; along edges, a staircase of six.
+            var grid = new TerrainGrid(6, 6, TerrainKind.Plains);
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var mask = new bool[Enum.GetValues(typeof(TerrainKind)).Length];
+            Array.Fill(mask, true);
+            var target = new Only(grid.IndexOf(new WorldPosition(3, 3)));
+
+            Assert.That(finder.TryFindNearest(new WorldPosition(0, 0), Transport.Foot, mask, default, target, null, false, 10, route, out var diagonal), Is.True);
+            Assert.That(route, Has.Count.EqualTo(4), "eight-way");
+
+            Assert.That(finder.TryFindNearest(new WorldPosition(0, 0), Transport.Foot, mask, default, target, null, true, 10, route, out var edges), Is.True);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(route, Has.Count.EqualTo(7));
+
+                for (var i = 1; i < route.Count; i++)
+                {
+                    Assert.That(Math.Abs(route[i].X - route[i - 1].X) + Math.Abs(route[i].Y - route[i - 1].Y), Is.EqualTo(1), route[i].ToString());
+                }
+
+                Assert.That(edges, Is.EqualTo(600L), "six straight steps of plains");
+                Assert.That(diagonal, Is.EqualTo(420L));
             });
         }
 

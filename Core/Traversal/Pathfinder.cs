@@ -258,7 +258,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, to, from, radius, null);
+                Expand(current, mover, to, from, radius, null, false);
             }
 
             return false;
@@ -343,7 +343,7 @@ namespace KingdomWatch.Core.Traversal
             int radius,
             List<WorldPosition> route,
             out long cost) =>
-            TryFindNearest(from, mover, acceptable, known, filter, null, radius, route, out cost);
+            TryFindNearest(from, mover, acceptable, known, filter, null, false, radius, route, out cost);
 
         /// <summary>
         /// <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, ISiteFilter, int, List{WorldPosition}, out long)"/>,
@@ -351,7 +351,11 @@ namespace KingdomWatch.Core.Traversal
         /// only when <paramref name="through"/> accepts it, as well as the
         /// mover being able to - what the town planner lays a lane by, round
         /// buildings that the people walking it would otherwise cross (#23).
-        /// The origin is never asked. Null accepts every cell.
+        /// The origin is never asked. Null accepts every cell. With
+        /// <paramref name="edgesOnly"/>, the route steps only north, south,
+        /// east and west, so each cell shares an edge with the next: a road
+        /// laid along it is one continuous strip, never a chain of cells
+        /// meeting at their corners. Walking stays eight-way.
         /// </summary>
         public bool TryFindNearest(
             WorldPosition from,
@@ -360,6 +364,7 @@ namespace KingdomWatch.Core.Traversal
             ReadOnlySpan<bool> known,
             ISiteFilter? filter,
             ISiteFilter? through,
+            bool edgesOnly,
             int radius,
             List<WorldPosition> route,
             out long cost)
@@ -415,7 +420,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, null, from, radius, through);
+                Expand(current, mover, null, from, radius, through, edgesOnly);
             }
 
             return false;
@@ -484,7 +489,7 @@ namespace KingdomWatch.Core.Traversal
                     found++;
                 }
 
-                Expand(current, mover, null, from, radius, null);
+                Expand(current, mover, null, from, radius, null, false);
             }
 
             return found;
@@ -494,13 +499,15 @@ namespace KingdomWatch.Core.Traversal
         // corners, each priced by the cell it enters, with the heuristic
         // toward the goal when there is one - without, the search is
         // Dijkstra - nothing opened outside the box, and nothing the gate
-        // refuses.
-        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius, ISiteFilter? through)
+        // refuses. The first four neighbours are the orthogonal ones, all a
+        // search along edges takes.
+        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius, ISiteFilter? through, bool edgesOnly)
         {
             _closed[current] = true;
             var position = _grid.PositionAt(current);
+            var neighbours = edgesOnly ? 4 : Neighbours.Length;
 
-            for (var i = 0; i < Neighbours.Length; i++)
+            for (var i = 0; i < neighbours; i++)
             {
                 var (dx, dy, stepCost) = Neighbours[i];
                 var next = new WorldPosition(position.X + dx, position.Y + dy);

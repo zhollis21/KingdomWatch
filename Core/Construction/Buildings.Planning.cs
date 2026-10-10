@@ -23,8 +23,10 @@ namespace KingdomWatch.Core.Construction
     /// or barn has a door, the middle cell of the row south of its
     /// footprint, and is placed only where a lane can join that door to the
     /// network without crossing a footprint, a roof, someone's pending lane
-    /// or another settlement's yard. The lane is the cheapest walk from the
-    /// door to the network, so it prefers open ground and existing road; it
+    /// or another settlement's yard. The lane is the cheapest way from the
+    /// door to the network stepping along edges only, so it is one strip
+    /// rather than cells meeting at their corners, and it prefers open
+    /// ground and existing road; it
     /// is laid as <see cref="RoadGrade.Track"/> when the building's ground is
     /// cleared, and its scrub and trees are cleared with the footprint's and
     /// priced into the same work. Fields have no door: Farmers walk out over
@@ -193,7 +195,7 @@ namespace KingdomWatch.Core.Construction
             _laneGate.Begin(BuildingTable.Of(kind), anchor, centre);
             _networkTarget.Centre = centre;
 
-            if (!_pathfinder.TryFindNearest(door, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, LaneRadius, _laneRoute, out _))
+            if (!_pathfinder.TryFindNearest(door, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out _))
             {
                 return false;
             }

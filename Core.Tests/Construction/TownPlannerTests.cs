@@ -53,7 +53,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
                     if (i > 0)
                     {
-                        Assert.That(Chebyshev(lane[i], lane[i - 1]), Is.EqualTo(1), building + "'s lane steps at " + lane[i]);
+                        Assert.That(Manhattan(lane[i], lane[i - 1]), Is.EqualTo(1), building + "'s lane shares an edge with its last cell at " + lane[i]);
                     }
                 }
             }
@@ -357,7 +357,8 @@ namespace KingdomWatch.Core.Tests.Construction
             return w;
         }
 
-        // Whether road cells lead from a door to the camp yard.
+        // Whether road cells lead from a door to the camp yard, each sharing
+        // an edge with the next: a strip, not cells meeting at corners.
         private static bool ReachesYard(TerrainGrid grid, WorldPosition door)
         {
             var seen = new HashSet<WorldPosition> { door };
@@ -373,24 +374,23 @@ namespace KingdomWatch.Core.Tests.Construction
                     return true;
                 }
 
-                for (var dy = -1; dy <= 1; dy++)
+                foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
                 {
-                    for (var dx = -1; dx <= 1; dx++)
-                    {
-                        var next = new WorldPosition(at.X + dx, at.Y + dy);
+                    var next = new WorldPosition(at.X + dx, at.Y + dy);
 
-                        if (grid.Contains(next) && !seen.Contains(next)
-                            && (grid.RoadAt(next) != RoadGrade.None || Chebyshev(next, BuildingsWorld.Centre) <= Buildings.CampYardRadius))
-                        {
-                            seen.Add(next);
-                            open.Enqueue(next);
-                        }
+                    if (grid.Contains(next) && !seen.Contains(next)
+                        && (grid.RoadAt(next) != RoadGrade.None || Chebyshev(next, BuildingsWorld.Centre) <= Buildings.CampYardRadius))
+                    {
+                        seen.Add(next);
+                        open.Enqueue(next);
                     }
                 }
             }
 
             return false;
         }
+
+        private static int Manhattan(WorldPosition a, WorldPosition b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
 
         private static int Chebyshev(WorldPosition a, WorldPosition b) => Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
     }
