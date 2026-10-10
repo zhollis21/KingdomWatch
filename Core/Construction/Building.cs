@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Data;
 
 namespace KingdomWatch.Core.Construction
@@ -45,8 +47,11 @@ namespace KingdomWatch.Core.Construction
             EntityId settlement,
             EntityId barn,
             WorldPosition anchor,
+            WorldPosition[] lane,
+            WorldPosition[] square,
             long clearTicks,
             int clearCuts,
+            int clearRocks,
             long labourTicks)
         {
             Id = id;
@@ -55,8 +60,13 @@ namespace KingdomWatch.Core.Construction
             Settlement = settlement;
             Barn = barn;
             Anchor = anchor;
+            // Wrapped once: a bare array behind IReadOnlyList can be downcast
+            // and rewritten, and reservations, clearing and the hash read these.
+            Lane = Array.AsReadOnly(lane);
+            Square = Array.AsReadOnly(square);
             ClearTicks = clearTicks;
             ClearCuts = clearCuts;
+            ClearRocks = clearRocks;
             LabourTicks = labourTicks;
             Cleared = clearTicks == 0L;
             Stage = kind == BuildingKind.Field ? FieldStage.Tending : FieldStage.None;
@@ -82,13 +92,29 @@ namespace KingdomWatch.Core.Construction
         /// <summary>The footprint's corner with the least x and y.</summary>
         public WorldPosition Anchor { get; }
 
+        /// <summary>
+        /// The cells of the lane the town planner joined it to the roads by,
+        /// laid as road when its ground is cleared (#23): from its door, or
+        /// for a field from beside the middle of one of its sides. Empty when
+        /// the door, or one of a field's edges, is already on the network.
+        /// </summary>
+        public IReadOnlyList<WorldPosition> Lane { get; }
+
+        /// <summary>
+        /// Scrub, forest and rocks in the settlement's camp yard that this building
+        /// clears with its own ground, and paves as the square once cleared
+        /// (#23): whatever was still uncleared and unclaimed there when it
+        /// was approved. Usually the village's first building takes them all.
+        /// </summary>
+        public IReadOnlyList<WorldPosition> Square { get; }
+
         /// <summary>Cells across, from <see cref="BuildingTable"/>.</summary>
         public int Width => BuildingTable.Of(Kind).Width;
 
         /// <summary>Cells down, from <see cref="BuildingTable"/>.</summary>
         public int Height => BuildingTable.Of(Kind).Height;
 
-        /// <summary>Worker-ticks of clearing scrub and forest off the footprint before building starts.</summary>
+        /// <summary>Worker-ticks of clearing scrub and forest off the footprint, its lane and its share of the square before building starts.</summary>
         public long ClearTicks { get; }
 
         /// <summary>
@@ -99,6 +125,13 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public int ClearCuts { get; }
 
+        /// <summary>
+        /// The rock cells of <see cref="Square"/> its clearing quarries away,
+        /// as priced at approval: each pays <see cref="Buildings.StonePerRock"/>
+        /// Stone when the ground is cleared (#23).
+        /// </summary>
+        public int ClearRocks { get; }
+
         /// <summary>Worker-ticks in all, clearing included.</summary>
         public long LabourTicks { get; }
 
@@ -108,7 +141,11 @@ namespace KingdomWatch.Core.Construction
         /// <summary>Worker-ticks done.</summary>
         public long Worked { get; internal set; }
 
-        /// <summary>Whether the footprint has been cleared to plains.</summary>
+        /// <summary>
+        /// Whether its clearing is done: the footprint cleared to plains, and
+        /// its <see cref="Lane"/> and <see cref="Square"/> cleared and laid as
+        /// road (#23).
+        /// </summary>
         public bool Cleared { get; internal set; }
 
         /// <summary>Whether all its work is done.</summary>

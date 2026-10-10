@@ -41,7 +41,11 @@ namespace KingdomWatch.Core.Tests.Validation
     {
         private const long Years = 10L;
 
-        private static readonly ulong[] Seeds = { 1UL, 2UL };
+        // Seeds whose homelands are still peopled at the end of the run: a
+        // world everyone has left agrees with itself however it is chunked.
+        // Seed 1 empties before year 10 since roads (#23) changed every
+        // trip's timing, and villages die young on today's tuning (#147, #149).
+        private static readonly ulong[] Seeds = { 2UL, 4UL };
 
         [TestCaseSource(nameof(Seeds))]
         public void However_a_run_is_chunked_it_reaches_the_same_world(ulong seed)
@@ -78,8 +82,8 @@ namespace KingdomWatch.Core.Tests.Validation
             // driver does each time it gets control back. It writes to a
             // counter the simulation never reads, so what is caught is the
             // write itself rather than a cascade it set off.
-            var jump = Run(1UL, OneJump);
-            var meddled = Run(1UL, run => EveryDay(run, () => run.World.Ids.Next(EntityKind.Animal)));
+            var jump = Run(4UL, OneJump);
+            var meddled = Run(4UL, run => EveryDay(run, () => run.World.Ids.Next(EntityKind.Animal)));
 
             Assert.That(meddled.Hash(), Is.Not.EqualTo(jump.Hash()));
         }
@@ -90,13 +94,13 @@ namespace KingdomWatch.Core.Tests.Validation
             // The same, for the journal comparison: it is the diagnostic that
             // names the first event two runs disagree on, so it has to be seen
             // to fail on its own rather than only alongside the hash.
-            var first = Run(1UL, OneJump);
+            var first = Run(4UL, OneJump);
             var second = Run(2UL, OneJump);
 
             // A run that goes on a year further has the shorter one's history
             // as its opening: every shared event agrees, and only the length
             // tells them apart.
-            var longer = Run(1UL, run => run.World.Advance((Years + 1L) * SimulationTime.TicksPerYear));
+            var longer = Run(4UL, run => run.World.Advance((Years + 1L) * SimulationTime.TicksPerYear));
 
             Assert.Multiple(() =>
             {
