@@ -293,7 +293,8 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
 
-                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+                // The yard open, so the house's clearing is its own (#23).
+                PaintYard(grid, TerrainKind.Plains);
             });
             w.Wood(100);
             w.Dawn();
@@ -352,7 +353,8 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
 
-                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+                // The yard open, so the house's clearing is its own (#23).
+                PaintYard(grid, TerrainKind.Plains);
             });
             var land = w.World.Land;
 
@@ -399,7 +401,8 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
 
-                grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+                // The yard open, so the house's clearing is its own (#23).
+                PaintYard(grid, TerrainKind.Plains);
             });
             var land = w.World.Land;
             var claimed = new System.Collections.Generic.List<WorldPosition>();
@@ -528,6 +531,20 @@ namespace KingdomWatch.Core.Tests.Construction
             });
         }
 
+        // Every cell of the camp yard at the fixture's centre, set to one kind.
+        private static void PaintYard(TerrainGrid grid, TerrainKind kind)
+        {
+            var radius = Buildings.CampYardRadius;
+
+            for (var y = BuildingsWorld.Centre.Y - radius; y <= BuildingsWorld.Centre.Y + radius; y++)
+            {
+                for (var x = BuildingsWorld.Centre.X - radius; x <= BuildingsWorld.Centre.X + radius; x++)
+                {
+                    grid.Set(new WorldPosition(x, y), kind);
+                }
+            }
+        }
+
         [Test]
         public void The_camps_to_keep_clear_refuse_null()
         {
@@ -631,7 +648,29 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Wood(100);
             w.Dawn();
 
-            Assert.That(w.Buildings.All.Single().ClearTicks, Is.Zero);
+            // The footprint is open plains; its lane to the yard may still
+            // cross the scrub, and that clearing is priced in (#23).
+            var house = w.Buildings.All.Single();
+
+            for (var dy = 0; dy < house.Height; dy++)
+            {
+                for (var dx = 0; dx < house.Width; dx++)
+                {
+                    var at = new WorldPosition(house.Anchor.X + dx, house.Anchor.Y + dy);
+                    Assert.That(w.World.Grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
+                }
+            }
+
+            // Its lane, and the scrub in the yard it clears as the square
+            // (#23), are scrub still waiting to be cleared.
+            var scrub = house.Lane.Concat(house.Square).Count(at => w.World.Grid[at] == TerrainKind.Scrub);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(house.Square, Is.Not.Empty);
+                Assert.That(house.Cleared, Is.False);
+                Assert.That(house.ClearTicks, Is.EqualTo(scrub * Buildings.ClearTicksPerCell));
+            });
         }
 
         [Test]

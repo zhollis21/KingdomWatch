@@ -90,6 +90,22 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_run_a_day_at_a_time_calls_back_each_day_and_still_validates()
+        {
+            var days = 0;
+            var run = new WorldRun(1UL).RunYears(1L, world => days++);
+            var plain = new WorldRun(1UL).RunYears(1L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(days, Is.EqualTo(SimulationTime.DaysPerYear));
+                Assert.That(run.Years, Has.Count.EqualTo(1));
+                Assert.That(run.IsClean, Is.True);
+                Assert.That(run.Hash(), Is.EqualTo(plain.Hash()), "a callback that changes nothing changes nothing");
+            });
+        }
+
+        [Test]
         public void The_same_seed_reaches_the_same_hash_and_another_does_not()
         {
             var first = new WorldRun(3UL).RunYears(10L).Hash();

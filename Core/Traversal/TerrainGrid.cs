@@ -13,7 +13,10 @@ namespace KingdomWatch.Core.Traversal
     /// grid A* locally, and because the things that will sit on the world
     /// later - trees, buildings, roads - are cell-shaped. One byte-sized enum per
     /// cell is the whole representation; the meaning of a kind lives in
-    /// <see cref="TerrainRules"/>.
+    /// <see cref="TerrainRules"/>. A second byte per cell holds the
+    /// <see cref="RoadGrade"/> laid over it (#23): a road sits on its ground
+    /// rather than replacing it, so the ground is still there when the road
+    /// goes, and a grade is one rule whatever it crosses.
     ///
     /// Mutable, because section 12 needs edges to appear and disappear at run
     /// time - a bridge rewrites a river cell, the shape-terrain power rewrites
@@ -28,8 +31,10 @@ namespace KingdomWatch.Core.Traversal
     public sealed class TerrainGrid
     {
         private static readonly bool[] DefinedKinds = EnumGuard.BuildMask(typeof(TerrainKind));
+        private static readonly bool[] DefinedGrades = EnumGuard.BuildMask(typeof(RoadGrade));
 
         private readonly TerrainKind[] _cells;
+        private readonly RoadGrade[] _roads;
 
         // The index of each recent rewrite, at its number modulo the capacity.
         private int[]? _changes;
@@ -55,6 +60,7 @@ namespace KingdomWatch.Core.Traversal
             // size the array wrong rather than fail.
             _cells = new TerrainKind[checked(width * height)];
             Array.Fill(_cells, fill);
+            _roads = new RoadGrade[_cells.Length];
         }
 
         public int Width { get; }
@@ -66,6 +72,9 @@ namespace KingdomWatch.Core.Traversal
 
         /// <summary>The kind at a position. Throws when the position is off the map.</summary>
         public TerrainKind this[WorldPosition position] => _cells[IndexOf(position)];
+
+        /// <summary>The road over a position. Throws when the position is off the map.</summary>
+        public RoadGrade RoadAt(WorldPosition position) => _roads[IndexOf(position)];
 
         public bool Contains(WorldPosition position) =>
             position.X >= 0 && position.X < Width && position.Y >= 0 && position.Y < Height;
@@ -82,6 +91,29 @@ namespace KingdomWatch.Core.Traversal
             RequireKind(kind, nameof(kind));
             var index = IndexOf(position);
             _cells[index] = kind;
+            Log(index);
+        }
+
+        /// <summary>
+        /// Lays a road over a cell, or lifts it with <see cref="RoadGrade.None"/>.
+        /// The ground under it is unchanged. A rewrite like <see cref="Set"/>:
+        /// counted in <see cref="Rewrites"/> and kept in the change log.
+        /// Throws when off the map or the grade is undefined.
+        /// </summary>
+        public void SetRoad(WorldPosition position, RoadGrade grade)
+        {
+            if (!EnumGuard.IsDefined(DefinedGrades, (int)grade))
+            {
+                throw new ArgumentOutOfRangeException(nameof(grade), grade, "Not a defined RoadGrade.");
+            }
+
+            var index = IndexOf(position);
+            _roads[index] = grade;
+            Log(index);
+        }
+
+        private void Log(int index)
+        {
             // Allocated on the first rewrite: most grids, every test's
             // included, are never rewritten.
             _changes ??= new int[ChangeLogCapacity];
@@ -139,7 +171,7 @@ namespace KingdomWatch.Core.Traversal
         }
 
         /// <summary>
-        /// How many times a cell has been rewritten: unchanged means the map
+        /// How many times a cell has been rewritten, its ground or its road: unchanged means the map
         /// is too, so what was worked out from it still holds (the world hash
         /// keeps its terrain fold this way, #130).
         /// </summary>
@@ -174,6 +206,9 @@ namespace KingdomWatch.Core.Traversal
 
         /// <summary>The kind at a row-major index, for the pathfinder's inner loop.</summary>
         internal TerrainKind KindAt(int index) => _cells[index];
+
+        /// <summary>The road at a row-major index, for the pathfinder's inner loop.</summary>
+        internal RoadGrade RoadAt(int index) => _roads[index];
 
         private static void RequireKind(TerrainKind kind, string parameterName)
         {

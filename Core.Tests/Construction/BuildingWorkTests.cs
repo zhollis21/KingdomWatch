@@ -132,6 +132,172 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_validator_names_a_road_under_a_building()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            var validator = new WorldValidator();
+
+            w.World.Grid.SetRoad(house.Anchor, RoadGrade.Track);
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane }));
+        }
+
+        [Test]
+        public void The_validator_names_a_cleared_lane_that_is_not_road_over_cleared_ground()
+        {
+            // Forest round the camp, so the house's lane runs out through it.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var ring = System.Math.Max(System.Math.Abs(x - BuildingsWorld.Centre.X), System.Math.Abs(y - BuildingsWorld.Centre.Y));
+
+                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                        }
+                    }
+                }
+            });
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.Lane, Has.Count.GreaterThanOrEqualTo(2), "a lane to break");
+            w.Finish(house);
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a laid lane is sound");
+
+            // One cell lifted, another planted over.
+            w.World.Grid.SetRoad(house.Lane[0], RoadGrade.None);
+            w.World.Grid.Set(house.Lane[1], TerrainKind.Forest);
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane, ValidationRule.BuildingLane }));
+        }
+
+        [Test]
+        public void The_validator_names_a_cleared_square_that_is_not_road_over_cleared_ground()
+        {
+            var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
+            var rock = new WorldPosition(BuildingsWorld.Centre.X - 1, BuildingsWorld.Centre.Y);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                grid.Set(bush, TerrainKind.Scrub);
+                grid.Set(rock, TerrainKind.Rocks);
+            });
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.Square, Is.EquivalentTo(new[] { bush, rock }));
+            w.Finish(house);
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a paved square is sound");
+
+            // A bush grown back and an outcrop risen again, under the road.
+            w.World.Grid.Set(bush, TerrainKind.Scrub);
+            w.World.Grid.Set(rock, TerrainKind.Rocks);
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane, ValidationRule.BuildingLane }));
+        }
+
+        [Test]
+        public void The_validator_names_a_field_with_no_road_along_its_edges()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a field on a road is sound");
+
+            // Every road round it lifted.
+            for (var y = field.Anchor.Y - 1; y <= field.Anchor.Y + field.Height; y++)
+            {
+                for (var x = field.Anchor.X - 1; x <= field.Anchor.X + field.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (w.World.Grid.Contains(at) && w.World.Grid.RoadAt(at) != RoadGrade.None)
+                    {
+                        w.World.Grid.SetRoad(at, RoadGrade.None);
+                    }
+                }
+            }
+
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Where(f => f.Subject == field.Id).Select(f => f.Rule), Has.Member(ValidationRule.BuildingLane));
+        }
+
+        [Test]
+        public void The_validator_counts_only_road_as_a_field_s_way_in_not_the_yard_it_stands_on()
+        {
+            // A field against the square has its way in by the square's road.
+            // Lift that road and the yard is still the yard, but the field has
+            // lost its way in, and the validator must say so (the #159 review).
+            // Rocks everywhere but a strip round and below the camp: the barn
+            // goes below the yard, and its field has no room but against it.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var open = x >= 10 && x <= 26 && y >= 14 && y <= 28;
+                        grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
+                    }
+                }
+            });
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            var grid = w.World.Grid;
+            var radius = Buildings.CampYardRadius;
+            bool InYard(int x, int y) => System.Math.Abs(x - BuildingsWorld.Centre.X) <= radius && System.Math.Abs(y - BuildingsWorld.Centre.Y) <= radius;
+
+            Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+            Assert.That(
+                Enumerable.Range(field.Anchor.X, field.Width).Any(x => InYard(x, field.Anchor.Y - 1)),
+                Is.True,
+                "the field stands against the yard, so the yard alone would have passed it");
+
+            // Every road cell round the field lifted, the square's among them.
+            for (var y = field.Anchor.Y - 1; y <= field.Anchor.Y + field.Height; y++)
+            {
+                for (var x = field.Anchor.X - 1; x <= field.Anchor.X + field.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (grid.Contains(at) && grid.RoadAt(at) != RoadGrade.None)
+                    {
+                        grid.SetRoad(at, RoadGrade.None);
+                    }
+                }
+            }
+
+            var validator = new WorldValidator();
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Where(f => f.Subject == field.Id).Select(f => f.Rule), Has.Member(ValidationRule.BuildingLane));
+        }
+
+        [Test]
         public void The_validator_names_cleared_ground_that_is_not_clear()
         {
             var w = new BuildingsWorld();
@@ -190,6 +356,15 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
+
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                }
+
+                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
@@ -235,6 +410,15 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
+
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                }
+
+                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
