@@ -1,5 +1,31 @@
 {
   "permissions": {
     "allow": ["WebFetch"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-unity-search.ps1\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/build-on-stop.ps1\"",
+            "timeout": 300,
+            "statusMessage": "Building the solution before handing back..."
+          }
+        ]
+      }
+    ]
   }
 }
