@@ -763,9 +763,55 @@ namespace KingdomWatch.Harness
                     CheckPaved(building, building.Lane, "lane", grid, now);
                     CheckPaved(building, building.Square, "square", grid, now);
                 }
+
+                // A cleared field has its way in: a road, or its settlement's
+                // yard, along one of its edges.
+                if (building.Kind == BuildingKind.Field && building.Cleared && !TouchesWay(building, settlements, grid))
+                {
+                    Add(ValidationRule.BuildingLane, now, building.Id, "has no road along any of its edges.");
+                }
             }
 
             return this;
+        }
+
+        private static bool TouchesWay(Building field, Founding settlements, TerrainGrid grid)
+        {
+            WorldPosition? camp = null;
+
+            for (var i = 0; i < settlements.All.Count; i++)
+            {
+                if (settlements.All[i].Id == field.Settlement)
+                {
+                    camp = settlements.All[i].Position;
+                }
+            }
+
+            bool Way(int x, int y)
+            {
+                var at = new WorldPosition(x, y);
+                return grid.Contains(at)
+                    && (grid.RoadAt(at) != RoadGrade.None
+                        || (camp is WorldPosition c && Math.Abs(x - c.X) <= Buildings.CampYardRadius && Math.Abs(y - c.Y) <= Buildings.CampYardRadius));
+            }
+
+            for (var dx = 0; dx < field.Width; dx++)
+            {
+                if (Way(field.Anchor.X + dx, field.Anchor.Y - 1) || Way(field.Anchor.X + dx, field.Anchor.Y + field.Height))
+                {
+                    return true;
+                }
+            }
+
+            for (var dy = 0; dy < field.Height; dy++)
+            {
+                if (Way(field.Anchor.X - 1, field.Anchor.Y + dy) || Way(field.Anchor.X + field.Width, field.Anchor.Y + dy))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void CheckPaved(Building building, IReadOnlyList<WorldPosition> cells, string what, TerrainGrid grid, SimulationTime now)

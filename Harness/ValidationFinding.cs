@@ -104,7 +104,8 @@ namespace KingdomWatch.Harness
 
         /// <summary>
         /// A building's lane or share of the square, once its ground is cleared, is not road over
-        /// cleared ground; or a road lies under a footprint (#23).
+        /// cleared ground; a road lies under a footprint; or a cleared field
+        /// has no road along any of its edges (#23).
         /// </summary>
         BuildingLane = 25,
     }

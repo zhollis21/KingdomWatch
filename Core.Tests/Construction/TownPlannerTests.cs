@@ -36,15 +36,13 @@ namespace KingdomWatch.Core.Tests.Construction
             {
                 var lane = building.Lane;
 
-                if (!Buildings.HasDoor(building.Kind))
-                {
-                    Assert.That(lane, Is.Empty, building + " has no door");
-                    continue;
-                }
-
-                if (lane.Count > 0)
+                if (lane.Count > 0 && Buildings.HasDoor(building.Kind))
                 {
                     Assert.That(lane[0], Is.EqualTo(Buildings.DoorOf(building.Kind, building.Anchor)), building + "'s lane starts at its door");
+                }
+                else if (lane.Count > 0)
+                {
+                    Assert.That(Beside(building, lane[0]), Is.True, building + "'s lane starts beside one of its edges");
                 }
 
                 for (var i = 0; i < lane.Count; i++)
@@ -58,6 +56,92 @@ namespace KingdomWatch.Core.Tests.Construction
                 }
             }
         }
+
+        [Test]
+        public void Every_field_touches_a_road_along_an_edge()
+        {
+            var w = BuildVillage();
+            var grid = w.World.Grid;
+            var fields = w.Buildings.All.Where(b => b.Kind == BuildingKind.Field).ToList();
+            Assert.That(fields, Has.Count.GreaterThanOrEqualTo(2), "fields to check");
+
+            foreach (var field in fields)
+            {
+                var touching = Around(field).Where(at => grid.Contains(at) && grid.RoadAt(at) != RoadGrade.None).ToList();
+                Assert.That(touching, Is.Not.Empty, field + " has a road along an edge");
+                Assert.That(touching.Any(at => ReachesYard(grid, at)), Is.True, field + "'s road leads to the square");
+            }
+        }
+
+        [Test]
+        public void Fields_line_up_along_the_roads_already_there()
+        {
+            // Fields take the spots beside a road while there are any, and lay
+            // a lane only once those near their barn are used up: a few of a
+            // village's fields, not most. Without the pull toward roads half
+            // of this village's fields lay lanes; with it, a fifth.
+            var w = BuildVillage();
+            var fields = w.Buildings.All.Where(b => b.Kind == BuildingKind.Field).ToList();
+            Assert.That(fields, Has.Count.GreaterThanOrEqualTo(8), "fields to check");
+
+            Assert.That(fields.Count(f => f.Lane.Count > 0) * 4, Is.LessThanOrEqualTo(fields.Count), "at most a quarter lay lanes");
+        }
+
+        [Test]
+        public void A_field_with_no_road_beside_it_gets_a_lane_from_one_side()
+        {
+            // A house and a barn on open plains; then a strip of forest along
+            // every road and the yard, so no plains spot for a field touches
+            // a road and the first pass, plains only, has to lay a lane.
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            Assert.That(barn.Kind, Is.EqualTo(BuildingKind.Barn));
+            var grid = w.World.Grid;
+            var strip = new List<WorldPosition>();
+
+            for (var y = 0; y < BuildingsWorld.Size; y++)
+            {
+                for (var x = 0; x < BuildingsWorld.Size; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (grid[at] == TerrainKind.Plains && grid.RoadAt(at) == RoadGrade.None && w.Buildings.At(at) is null
+                        && new[] { (1, 0), (-1, 0), (0, 1), (0, -1) }.Any(d => IsNetwork(grid, new WorldPosition(x + d.Item1, y + d.Item2))))
+                    {
+                        strip.Add(at);
+                    }
+                }
+            }
+
+            foreach (var at in strip)
+            {
+                grid.Set(at, TerrainKind.Forest);
+            }
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Lane, Is.Not.Empty, "a lane, since nothing it could touch is road");
+                Assert.That(Beside(field, field.Lane[0]), Is.True, "starting beside one of its edges");
+                Assert.That(field.ClearTicks, Is.GreaterThan(0L), "through the trees, priced in");
+            });
+
+            w.Finish(field);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Around(field).Any(at => grid.Contains(at) && grid.RoadAt(at) != RoadGrade.None), Is.True, "a road along an edge now");
+                Assert.That(ReachesYard(grid, field.Lane[0]), Is.True);
+            });
+        }
+
+        private static bool IsNetwork(TerrainGrid grid, WorldPosition at) =>
+            grid.Contains(at) && (grid.RoadAt(at) != RoadGrade.None || Chebyshev(at, BuildingsWorld.Centre) <= Buildings.CampYardRadius);
 
         [Test]
         public void Barns_stand_further_out_than_the_houses_before_them()
@@ -389,6 +473,25 @@ namespace KingdomWatch.Core.Tests.Construction
 
             return false;
         }
+
+        // The cells along a footprint's edges, outside it: north, south,
+        // east and west of it, not its corners.
+        private static IEnumerable<WorldPosition> Around(Building building)
+        {
+            for (var dx = 0; dx < building.Width; dx++)
+            {
+                yield return new WorldPosition(building.Anchor.X + dx, building.Anchor.Y - 1);
+                yield return new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + building.Height);
+            }
+
+            for (var dy = 0; dy < building.Height; dy++)
+            {
+                yield return new WorldPosition(building.Anchor.X - 1, building.Anchor.Y + dy);
+                yield return new WorldPosition(building.Anchor.X + building.Width, building.Anchor.Y + dy);
+            }
+        }
+
+        private static bool Beside(Building building, WorldPosition at) => Around(building).Contains(at);
 
         private static int Manhattan(WorldPosition a, WorldPosition b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
 

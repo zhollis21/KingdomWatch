@@ -29,8 +29,11 @@ namespace KingdomWatch.Core.Construction
     /// ground and existing road; it
     /// is laid as <see cref="RoadGrade.Track"/> when the building's ground is
     /// cleared, and its scrub and trees are cleared with the footprint's and
-    /// priced into the same work. Fields have no door: Farmers walk out over
-    /// them from the barn.
+    /// priced into the same work. A field has no door, but it must touch a
+    /// road along one of its edges: one already there, or a lane laid from
+    /// the middle of one of its sides, the cheapest of the four. Roads are
+    /// never built on, so a field keeps its way in however the village
+    /// grows round it, buildings that block movement (#25) included.
     ///
     /// **Where, by score.** Every footprint the bounded search reaches from
     /// the centre (or, for a field, from its barn) that the old rules allow
@@ -79,6 +82,14 @@ namespace KingdomWatch.Core.Construction
         /// <summary>Score taken off per cell a field stands from the centre: fields go to the outskirts.</summary>
         public const int FieldCentreWeight = 2;
 
+        /// <summary>
+        /// Score per cell a field's nearest side stands from a road: more
+        /// than a step's worth of <see cref="FieldBarnWeight"/> and
+        /// <see cref="FieldCentreWeight"/> together, so a field takes a spot
+        /// along a road already there whenever one is free, and needs no lane.
+        /// </summary>
+        public const int FieldRoadWeight = 8;
+
         /// <summary>Score per footprint cell of scrub or forest, once plains have failed.</summary>
         public const int ClearingWeight = 2;
 
@@ -123,7 +134,10 @@ namespace KingdomWatch.Core.Construction
             return new WorldPosition(anchor.X + (spec.Width / 2), anchor.Y + spec.Height);
         }
 
-        /// <summary>Whether a kind has a door, and so a lane: everything but a field.</summary>
+        /// <summary>
+        /// Whether a kind has a door its lane starts at: everything but a
+        /// field, which is joined to the roads along an edge instead.
+        /// </summary>
         public static bool HasDoor(BuildingKind kind) => kind != BuildingKind.Field;
 
         // Where a building of this kind goes, and its lane into _lane: the
@@ -153,7 +167,7 @@ namespace KingdomWatch.Core.Construction
                     return false;
                 }
 
-                if (!HasDoor(kind) || TryLane(kind, anchor, centre))
+                if (TryJoin(kind, anchor, centre))
                 {
                     return true;
                 }
@@ -186,16 +200,125 @@ namespace KingdomWatch.Core.Construction
             return false;
         }
 
-        // The cheapest walk from the door to the network, round everything a
-        // lane may not cross, into _lane without the network cell it ends on.
-        private bool TryLane(BuildingKind kind, WorldPosition anchor, WorldPosition centre)
+        // Joins a footprint to the network, its lane into _lane: a house or
+        // barn from its door; a field not already touching a road from the
+        // middle of one of its sides, nearest the network first.
+        private bool TryJoin(BuildingKind kind, WorldPosition anchor, WorldPosition centre)
         {
             _lane.Clear();
-            var door = DoorOf(kind, anchor);
-            _laneGate.Begin(BuildingTable.Of(kind), anchor, centre);
+            var spec = BuildingTable.Of(kind);
+
+            if (HasDoor(kind))
+            {
+                return TryLane(spec, anchor, DoorOf(kind, anchor), centre);
+            }
+
+            if (TouchesNetwork(spec, anchor, centre))
+            {
+                return true;
+            }
+
+            // The four sides in order of their distance to the network, ties
+            // in side order; each tried once.
+            var tried = 0;
+
+            for (var attempt = 0; attempt < Sides; attempt++)
+            {
+                var best = -1;
+                var bestDistance = int.MaxValue;
+
+                for (var side = 0; side < Sides; side++)
+                {
+                    var gate = SideOf(spec, anchor, side);
+
+                    if ((tried & (1 << side)) != 0 || !_scorer.IsOpenGate(gate))
+                    {
+                        continue;
+                    }
+
+                    var distance = _scorer.ToNetwork(gate);
+
+                    if (distance < bestDistance)
+                    {
+                        best = side;
+                        bestDistance = distance;
+                    }
+                }
+
+                if (best < 0)
+                {
+                    return false;
+                }
+
+                tried |= 1 << best;
+
+                if (TryLane(spec, anchor, SideOf(spec, anchor, best), centre))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Sides a field can be joined from.
+        private const int Sides = 4;
+
+        // The cell outside the middle of a footprint's side: south, east,
+        // west, north.
+        private static WorldPosition SideOf(BuildingSpec spec, WorldPosition anchor, int side)
+        {
+            switch (side)
+            {
+                case 0:
+                    return new WorldPosition(anchor.X + (spec.Width / 2), anchor.Y + spec.Height);
+                case 1:
+                    return new WorldPosition(anchor.X + spec.Width, anchor.Y + (spec.Height / 2));
+                case 2:
+                    return new WorldPosition(anchor.X - 1, anchor.Y + (spec.Height / 2));
+                default:
+                    return new WorldPosition(anchor.X + (spec.Width / 2), anchor.Y - 1);
+            }
+        }
+
+        // Whether a road, or the settlement's yard, lies along one of the
+        // footprint's edges: a cell beside it, north, south, east or west.
+        private bool TouchesNetwork(BuildingSpec spec, WorldPosition anchor, WorldPosition centre)
+        {
+            for (var dx = 0; dx < spec.Width; dx++)
+            {
+                if (IsNetwork(new WorldPosition(anchor.X + dx, anchor.Y - 1), centre)
+                    || IsNetwork(new WorldPosition(anchor.X + dx, anchor.Y + spec.Height), centre))
+                {
+                    return true;
+                }
+            }
+
+            for (var dy = 0; dy < spec.Height; dy++)
+            {
+                if (IsNetwork(new WorldPosition(anchor.X - 1, anchor.Y + dy), centre)
+                    || IsNetwork(new WorldPosition(anchor.X + spec.Width, anchor.Y + dy), centre))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsNetwork(WorldPosition at, WorldPosition centre) =>
+            _grid.Contains(at) && (_grid.RoadAt(at) != RoadGrade.None || WithinYard(at, centre));
+
+        // The cheapest way from a footprint's gate to the network along
+        // edges, round everything a lane may not cross, into _lane without
+        // the network cell it ends on.
+        private bool TryLane(BuildingSpec spec, WorldPosition anchor, WorldPosition gate, WorldPosition centre)
+        {
+            _lane.Clear();
+            _laneGate.Begin(spec, anchor, centre);
             _networkTarget.Centre = centre;
 
-            if (!_pathfinder.TryFindNearest(door, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out _))
+            if (!_pathfinder.TryFindNearest(gate, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out _))
             {
                 return false;
             }
@@ -476,7 +599,8 @@ namespace KingdomWatch.Core.Construction
                 else
                 {
                     var middle = MiddleOf(_spec, anchor);
-                    score = (FieldBarnWeight * (long)Chebyshev(middle, _barnMiddle)) - (FieldCentreWeight * (long)Chebyshev(middle, _centre));
+                    score = (FieldBarnWeight * (long)Chebyshev(middle, _barnMiddle)) - (FieldCentreWeight * (long)Chebyshev(middle, _centre))
+                        + (FieldRoadWeight * (long)ToRoad(anchor));
                 }
 
                 if (!_plainsOnly)
@@ -496,6 +620,34 @@ namespace KingdomWatch.Core.Construction
             // A door a lane can start from: on the map, ground a lane may run
             // on or road already, and under no building, roof or pending lane
             // of another, nor in another settlement's yard.
+            // How far a field anchored here is from a road: none when one
+            // lies along an edge, else from its nearest open side; a field
+            // with no open side cannot be joined at all.
+            private long ToRoad(WorldPosition anchor)
+            {
+                if (_owner.TouchesNetwork(_spec, anchor, _centre))
+                {
+                    return 0L;
+                }
+
+                var nearest = int.MaxValue;
+
+                for (var side = 0; side < Sides; side++)
+                {
+                    var gate = SideOf(_spec, anchor, side);
+
+                    if (IsOpenGate(gate))
+                    {
+                        nearest = Math.Min(nearest, ToNetwork(gate));
+                    }
+                }
+
+                return nearest == int.MaxValue ? LaneRadius : nearest;
+            }
+
+            /// <summary>Whether a lane can start at this cell: <see cref="DoorIsOpen"/>.</summary>
+            public bool IsOpenGate(WorldPosition gate) => DoorIsOpen(gate);
+
             private bool DoorIsOpen(WorldPosition door)
             {
                 var grid = _owner._grid;
@@ -516,7 +668,7 @@ namespace KingdomWatch.Core.Construction
 
             // Cells from the door to the nearest of the network: a lane's
             // length, as the crow flies.
-            private int ToNetwork(WorldPosition door)
+            public int ToNetwork(WorldPosition door)
             {
                 var network = _owner._network;
                 var nearest = int.MaxValue;

@@ -1043,7 +1043,7 @@ Building placement preferences:
 
 - a house: near the centre, with its door near a road;
 - a barn: on a ring four cells beyond the furthest house and never nearer than twelve, so a farmstead takes a longer track out;
-- a field: near its barn and away from the centre.
+- a field: near its barn, away from the centre, and above all beside a road. Every field touches a road along one of its edges: one already there, or a lane laid from the middle of one of its sides. Roads are never built on, so a field keeps its way in however the village grows, and once buildings block movement (#25) too.
 
 Open plains are still taken before any ground that needs clearing (#100). Each later kind (#142, #144, #145, #98, #99, #45) adds its own preferences when it is built. Soil fertility does not exist yet, so "fertile" is not scored. Buildings still block nobody's path; that is #25. Unity does not draw roads yet. Until it does, `dotnet run --project Harness -c Release -- --layout DIR` draws each settlement as an SVG: as run, and fed (wood and a month's food topped up daily, so the village grows).
 

@@ -212,6 +212,39 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_validator_names_a_field_with_no_road_along_its_edges()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            w.BuildNext();
+            var field = w.BuildNext();
+            Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a field on a road is sound");
+
+            // Every road round it lifted.
+            for (var y = field.Anchor.Y - 1; y <= field.Anchor.Y + field.Height; y++)
+            {
+                for (var x = field.Anchor.X - 1; x <= field.Anchor.X + field.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (w.World.Grid.Contains(at) && w.World.Grid.RoadAt(at) != RoadGrade.None)
+                    {
+                        w.World.Grid.SetRoad(at, RoadGrade.None);
+                    }
+                }
+            }
+
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Where(f => f.Subject == field.Id).Select(f => f.Rule), Has.Member(ValidationRule.BuildingLane));
+        }
+
+        [Test]
         public void The_validator_names_cleared_ground_that_is_not_clear()
         {
             var w = new BuildingsWorld();
