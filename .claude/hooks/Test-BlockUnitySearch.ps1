@@ -44,6 +44,24 @@ $cases = @(
     @(0, 'Bash', @{ command = 'git commit -m "Block shell grep or find over Library/"' }, 'commit message mentioning grep and Library/'),
     @(0, 'Bash', @{ command = "git commit -F - <<EOF`n- recursive shell grep or find over Game/ that skips Library,`n- searches into Library/, Temp/`nEOF" }, 'heredoc mentioning grep and Library/'),
 
+    # Each search judged on its own (the #157 review).
+    @(2, 'Bash', @{ command = 'grep -rn foo . --exclude-dir=Library; grep -rn bar Game/obj' }, 'second search not covered by the first one''s exclusion'),
+    @(2, 'Bash', @{ command = 'grep -rn foo Core && grep -rn bar .' }, 'second search over . after a safe one'),
+    @(2, 'Bash', @{ command = 'grep foo -r' }, 'recursive flag after the pattern, no path'),
+    @(2, 'Bash', @{ command = 'grep foo . -r' }, 'recursive flag after the path'),
+    @(2, 'Bash', @{ command = 'grep -e foo -r .' }, 'pattern given with -e'),
+    @(0, 'Bash', @{ command = 'grep -n Library Core/World.cs' }, 'searching for the word Library in a file'),
+    @(0, 'Bash', @{ command = 'grep -rn -e Library Core' }, 'searching for Library with -e'),
+    @(0, 'Bash', @{ command = 'grep -rn "Temp/" Harness' }, 'searching for the text Temp/'),
+    @(0, 'Bash', @{ command = 'find Core -name Library' }, 'find naming Library as a name pattern'),
+    @(2, 'Bash', @{ command = 'find Game/Library -name "*.asset"' }, 'find starting in Library'),
+    @(0, 'Bash', @{ command = 'rg Library Core' }, 'rg searching for the word Library'),
+    @(2, 'Bash', @{ command = 'rg foo Game/Library' }, 'rg into Library'),
+    @(0, 'Bash', @{ command = 'rg foo' }, 'rg over the root, which obeys .gitignore'),
+    @(2, 'Bash', @{ command = 'rg --no-ignore foo .' }, 'rg over the root ignoring .gitignore'),
+    @(0, 'Bash', @{ command = 'rg --no-ignore foo . -g "!**/Library/**"' }, 'rg ignoring .gitignore but excluding Library'),
+    @(0, 'Bash', @{ command = "grep -rn foo `"$root/Core`"" }, 'recursive grep over an absolute source folder'),
+
     @(0, 'Read', @{ file_path = 'Game/Library/x' }, 'a tool the hook does not judge')
 )
 
