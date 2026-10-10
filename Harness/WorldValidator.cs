@@ -718,7 +718,8 @@ namespace KingdomWatch.Harness
                 // cannot wrap a sum past the check (the #148 review).
                 if (!WithinLimit(building.Worked, building.Claimed, building.LabourTicks)
                     || !WithinLimit(building.WorkedToday, building.ClaimedToday, Buildings.FieldDayTicks)
-                    || building.ClearCuts < 0)
+                    || building.ClearCuts < 0
+                    || building.ClearRocks < 0)
                 {
                     Add(ValidationRule.BuildingLabour, now, building.Id,
                         "has " + building.Claimed + " claimed and " + building.Worked + " worked of " + building.LabourTicks
@@ -755,23 +756,30 @@ namespace KingdomWatch.Harness
                 }
 
                 // The terrain and roads are anyone's to rewrite: a cleared
-                // lane is road over cleared ground.
+                // lane, and its share of the square, are road over cleared
+                // ground.
                 if (building.Cleared)
                 {
-                    for (var j = 0; j < building.Lane.Count; j++)
-                    {
-                        var at = building.Lane[j];
-
-                        if (grid.RoadAt(at) == RoadGrade.None || grid[at] == TerrainKind.Scrub || grid[at] == TerrainKind.Forest)
-                        {
-                            Add(ValidationRule.BuildingLane, now, building.Id,
-                                "is cleared, but lane cell " + at + " is " + grid[at] + " with " + grid.RoadAt(at) + " road.");
-                        }
-                    }
+                    CheckPaved(building, building.Lane, "lane", grid, now);
+                    CheckPaved(building, building.Square, "square", grid, now);
                 }
             }
 
             return this;
+        }
+
+        private void CheckPaved(Building building, IReadOnlyList<WorldPosition> cells, string what, TerrainGrid grid, SimulationTime now)
+        {
+            for (var j = 0; j < cells.Count; j++)
+            {
+                var at = cells[j];
+
+                if (grid.RoadAt(at) == RoadGrade.None || grid[at] != TerrainKind.Plains)
+                {
+                    Add(ValidationRule.BuildingLane, now, building.Id,
+                        "is cleared, but " + what + " cell " + at + " is " + grid[at] + " with " + grid.RoadAt(at) + " road.");
+                }
+            }
         }
 
         // Whether work done and work claimed both fit inside a limit together,

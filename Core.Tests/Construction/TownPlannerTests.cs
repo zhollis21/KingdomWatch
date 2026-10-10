@@ -181,7 +181,7 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void The_yard_s_plains_are_paved_as_the_square_at_the_settlement_s_dawn()
         {
-            // A bush and a tree in the yard, which nothing clears for free.
+            // A bush and a tree in the yard, which only a building's work clears.
             var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
             var tree = new WorldPosition(BuildingsWorld.Centre.X, BuildingsWorld.Centre.Y + 2);
             var w = new BuildingsWorld(paint: grid =>
@@ -214,6 +214,64 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(grid[tree], Is.EqualTo(TerrainKind.Forest));
                 Assert.That(grid.RoadAt(new WorldPosition(BuildingsWorld.Centre.X + radius + 1, BuildingsWorld.Centre.Y)), Is.EqualTo(RoadGrade.None), "the yard ends");
                 Assert.That(grid.Rewrites, Is.EqualTo(rewrites), "a paved square is paved once");
+            });
+        }
+
+        [Test]
+        public void The_next_building_clears_the_square_and_paves_it_when_cleared()
+        {
+            // A bush, a tree and an outcrop in the yard.
+            var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
+            var tree = new WorldPosition(BuildingsWorld.Centre.X, BuildingsWorld.Centre.Y + 2);
+            var rock = new WorldPosition(BuildingsWorld.Centre.X - 2, BuildingsWorld.Centre.Y - 1);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                grid.Set(bush, TerrainKind.Scrub);
+                grid.Set(tree, TerrainKind.Forest);
+                grid.Set(rock, TerrainKind.Rocks);
+            });
+            var grid = w.World.Grid;
+            var cuts = w.World.Land.CutsLeft(tree);
+            w.Wood(100);
+            w.Dawn();
+
+            var house = w.Buildings.All.Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(house.Square, Is.EquivalentTo(new[] { bush, tree, rock }));
+                Assert.That(
+                    house.ClearTicks,
+                    Is.EqualTo(Buildings.ClearTicksPerCell + (cuts * Buildings.TicksPerCut) + Buildings.TicksPerRock),
+                    "on top of a plains footprint and lane");
+                Assert.That(Buildings.TicksPerRock, Is.EqualTo(3 * PrimitiveTier.GatherStone.Duration), "three quarrying trips");
+                Assert.That(house.ClearCuts, Is.EqualTo(cuts));
+                Assert.That(house.ClearRocks, Is.EqualTo(1));
+                Assert.That(new[] { bush, tree, rock }.All(w.Buildings.IsReserved), Is.True, "nobody picks, fells or quarries them meanwhile");
+                Assert.That(grid.RoadAt(bush), Is.EqualTo(RoadGrade.None), "not paved before it is cleared");
+                Assert.That(grid.RoadAt(rock), Is.EqualTo(RoadGrade.None), "nor the outcrop");
+            });
+
+            var stone = w.Stores.Available(ResourceKind.Stone);
+            var wood = w.Stores.Available(ResourceKind.Wood);
+            w.Finish(house);
+            var stoneGained = w.Stores.Available(ResourceKind.Stone) - stone;
+            var woodGained = w.Stores.Available(ResourceKind.Wood) - wood;
+            w.Dawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stoneGained, Is.EqualTo(Buildings.StonePerRock));
+                Assert.That(Buildings.StonePerRock, Is.EqualTo(3 * PrimitiveTier.GatherStone.Outputs[0].Quantity), "what three trips bring");
+                Assert.That(woodGained, Is.EqualTo(cuts * Buildings.WoodPerCut));
+                Assert.That(w.Buildings.All.Skip(1).All(b => b.Square.Count == 0), Is.True, "the square is taken on once");
+
+                foreach (var at in new[] { bush, tree, rock })
+                {
+                    Assert.That(grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
+                    Assert.That(grid.RoadAt(at), Is.EqualTo(RoadGrade.Track), at.ToString());
+                    Assert.That(w.Buildings.IsReserved(at), Is.False, at.ToString());
+                }
             });
         }
 

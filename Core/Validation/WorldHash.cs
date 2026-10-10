@@ -438,8 +438,16 @@ namespace KingdomWatch.Core.Validation
                     Mix(building.Lane[j]);
                 }
 
+                Mix(building.Square.Count);
+
+                for (var j = 0; j < building.Square.Count; j++)
+                {
+                    Mix(building.Square[j]);
+                }
+
                 Mix(building.ClearTicks);
                 Mix(building.ClearCuts);
+                Mix(building.ClearRocks);
                 Mix(building.LabourTicks);
                 Mix(building.Claimed);
                 Mix(building.Worked);

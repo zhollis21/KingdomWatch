@@ -103,7 +103,7 @@ namespace KingdomWatch.Harness
         BuildingLabour = 24,
 
         /// <summary>
-        /// A building's lane, once its ground is cleared, is not road over
+        /// A building's lane or share of the square, once its ground is cleared, is not road over
         /// cleared ground; or a road lies under a footprint (#23).
         /// </summary>
         BuildingLane = 25,

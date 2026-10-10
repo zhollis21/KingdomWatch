@@ -124,6 +124,15 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public static readonly long TicksPerCut = PrimitiveTier.GatherWood.Duration;
 
+        /// <summary>Quarrying trips a rock in the square takes to clear (#23).</summary>
+        public const int TripsPerRock = 3;
+
+        /// <summary>Worker-ticks to quarry away a rock in the square: <see cref="TripsPerRock"/> stone-gathering trips.</summary>
+        public static readonly long TicksPerRock = TripsPerRock * PrimitiveTier.GatherStone.Duration;
+
+        /// <summary>Stone a cleared rock gives the clearer: what its <see cref="TripsPerRock"/> trips would have.</summary>
+        public static readonly int StonePerRock = TripsPerRock * PrimitiveTier.GatherStone.Outputs[0].Quantity;
+
         /// <summary>Wood each cut a tree had left gives the clearer: what woodcutting gets for one.</summary>
         public static readonly int WoodPerCut = PrimitiveTier.GatherWood.Outputs[0].Quantity;
 
@@ -695,6 +704,11 @@ namespace KingdomWatch.Core.Construction
             {
                 stores.Gather(ResourceKind.Wood, building.ClearCuts * WoodPerCut);
             }
+
+            if (building.ClearRocks > 0)
+            {
+                stores.Gather(ResourceKind.Stone, building.ClearRocks * StonePerRock);
+            }
         }
 
         // Winter kills what stands in the settlement's fields: a growing crop,
@@ -812,16 +826,22 @@ namespace KingdomWatch.Core.Construction
             }
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
-            var clearTicks = ClearTicksOf(kind, anchor, _lane, out var clearCuts);
+            CollectSquare(settlement.Position);
+            var clearTicks = ClearTicksOf(kind, anchor, _lane, out var clearCuts, out var clearRocks);
             var building = new Building(
                 _clock.Ids.Next(EntityKind.Building), kind, settlement.Id, barn?.Id ?? EntityId.None,
-                anchor, _lane.ToArray(), clearTicks, clearCuts, clearTicks + spec.BuildTicks);
+                anchor, _lane.ToArray(), _square.ToArray(), clearTicks, clearCuts, clearRocks, clearTicks + spec.BuildTicks);
 
             _all.Add(building);
 
             for (var i = 0; i < building.Lane.Count; i++)
             {
                 _laneOf.Add(_grid.IndexOf(building.Lane[i]), building);
+            }
+
+            for (var i = 0; i < building.Square.Count; i++)
+            {
+                _laneOf.Add(_grid.IndexOf(building.Square[i]), building);
             }
 
             // Nothing to clear: the lane is laid at once.
@@ -867,17 +887,19 @@ namespace KingdomWatch.Core.Construction
             return fields;
         }
 
-        // The clearing a footprint and its lane need, priced as they stand
+        // The clearing a footprint, its lane and its share of the square need,
+        // priced as they stand
         // when approved: a standing tree as long as woodcutting takes for the
         // cuts it has left, a bush or a stump an hour. Nobody gathers on
         // approved ground (IsReserved), and a claim already out that comes
         // back changes nothing: clearing pays the timber priced here
         // (ClearCuts).
-        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, List<WorldPosition> lane, out int timber)
+        private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, List<WorldPosition> lane, out int timber, out int rocks)
         {
             var spec = BuildingTable.Of(kind);
             var ticks = 0L;
             timber = 0;
+            rocks = 0;
 
             for (var dy = 0; dy < spec.Height; dy++)
             {
@@ -890,6 +912,21 @@ namespace KingdomWatch.Core.Construction
             for (var i = 0; i < lane.Count; i++)
             {
                 ticks += ClearTicksAt(lane[i], ref timber);
+            }
+
+            // The square's rocks are quarried away; footprints and lanes
+            // never stand on rock.
+            for (var i = 0; i < _square.Count; i++)
+            {
+                if (_grid[_square[i]] == TerrainKind.Rocks)
+                {
+                    ticks += TicksPerRock;
+                    rocks++;
+                }
+                else
+                {
+                    ticks += ClearTicksAt(_square[i], ref timber);
+                }
             }
 
             return ticks;

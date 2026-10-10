@@ -14,10 +14,12 @@ namespace KingdomWatch.Core.Construction
     /// **A village grows its roads.** A settlement's centre is its camp
     /// yard, paved as its square: every plains cell of it is laid as
     /// <see cref="RoadGrade.Track"/> at each of its dawns, so the first
-    /// building's lane already meets road, and ground cleared there later
-    /// is paved in turn. Scrub, trees and rocks in the yard are left as
-    /// they are; nothing clears them for free. Its road network is that
-    /// yard and every road cell. A house
+    /// building's lane already meets road. The yard's scrub, trees and rocks
+    /// are cleared by the next building approved, priced into its clearing
+    /// and reserved from gatherers until then - a rock as
+    /// <see cref="TripsPerRock"/> quarrying trips, paying their Stone - and
+    /// paved when that clearing is done (<see cref="Building.Square"/>). Its
+    /// road network is that yard and every road cell. A house
     /// or barn has a door, the middle cell of the row south of its
     /// footprint, and is placed only where a lane can join that door to the
     /// network without crossing a footprint, a roof, someone's pending lane
@@ -99,6 +101,7 @@ namespace KingdomWatch.Core.Construction
         // lane found.
         private readonly List<WorldPosition> _network = new List<WorldPosition>();
         private readonly List<WorldPosition> _lane = new List<WorldPosition>();
+        private readonly List<WorldPosition> _square = new List<WorldPosition>();
         private readonly List<WorldPosition> _laneRoute = new List<WorldPosition>();
 
         /// <summary>
@@ -224,6 +227,28 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
+        // The yard's scrub, forest and rocks, into _square: what the building being
+        // approved clears with its own. One building goes up at a time, so
+        // none is still waiting on them.
+        private void CollectSquare(WorldPosition centre)
+        {
+            _square.Clear();
+
+            for (var y = Math.Max(0, centre.Y - CampYardRadius); y <= Math.Min(_grid.Height - 1, centre.Y + CampYardRadius); y++)
+            {
+                for (var x = Math.Max(0, centre.X - CampYardRadius); x <= Math.Min(_grid.Width - 1, centre.X + CampYardRadius); x++)
+                {
+                    var at = new WorldPosition(x, y);
+                    var kind = _grid[at];
+
+                    if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest || kind == TerrainKind.Rocks)
+                    {
+                        _square.Add(at);
+                    }
+                }
+            }
+        }
+
         // Paves the plains of a settlement's yard that are not road yet: its
         // square. At every dawn, so it needs no state of its own and ground
         // cleared in the yard later is paved too.
@@ -243,20 +268,30 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
-        // Lays a building's lane as road, clearing what grows on it. When its
+        // Lays a building's lane and its share of the square as road, clearing
+        // what grows on them. When its
         // ground is cleared, or at approval if there was nothing to clear.
         private void LayLane(Building building)
         {
-            var lane = building.Lane;
+            Lay(building.Lane);
+            Lay(building.Square);
+        }
 
-            for (var i = 0; i < lane.Count; i++)
+        private void Lay(IReadOnlyList<WorldPosition> cells)
+        {
+            for (var i = 0; i < cells.Count; i++)
             {
-                var at = lane[i];
+                var at = cells[i];
                 var kind = _grid[at];
 
                 if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest)
                 {
                     _land.Clear(at);
+                }
+                else if (kind == TerrainKind.Rocks)
+                {
+                    // Quarried away; rocks hold no claims to forget.
+                    _grid.Set(at, TerrainKind.Plains);
                 }
 
                 _grid.SetRoad(at, RoadGrade.Track);

@@ -184,6 +184,34 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_validator_names_a_cleared_square_that_is_not_road_over_cleared_ground()
+        {
+            var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
+            var rock = new WorldPosition(BuildingsWorld.Centre.X - 1, BuildingsWorld.Centre.Y);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                grid.Set(bush, TerrainKind.Scrub);
+                grid.Set(rock, TerrainKind.Rocks);
+            });
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assert.That(house.Square, Is.EquivalentTo(new[] { bush, rock }));
+            w.Finish(house);
+            var validator = new WorldValidator();
+
+            validator.CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+            Assert.That(validator.Findings, Is.Empty, "a paved square is sound");
+
+            // A bush grown back and an outcrop risen again, under the road.
+            w.World.Grid.Set(bush, TerrainKind.Scrub);
+            w.World.Grid.Set(rock, TerrainKind.Rocks);
+            validator.Reset().CheckBuildings(w.Buildings, w.World.Founding, w.World.Households, w.World.Grid, w.World.Clock);
+
+            Assert.That(validator.Findings.Select(f => f.Rule), Is.EqualTo(new[] { ValidationRule.BuildingLane, ValidationRule.BuildingLane }));
+        }
+
+        [Test]
         public void The_validator_names_cleared_ground_that_is_not_clear()
         {
             var w = new BuildingsWorld();
