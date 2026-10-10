@@ -12,7 +12,12 @@ namespace KingdomWatch.Core.Construction
     /// </summary>
     /// <remarks>
     /// **A village grows its roads.** A settlement's centre is its camp
-    /// yard, and its road network is that yard and every road cell. A house
+    /// yard, paved as its square: every plains cell of it is laid as
+    /// <see cref="RoadGrade.Track"/> at each of its dawns, so the first
+    /// building's lane already meets road, and ground cleared there later
+    /// is paved in turn. Scrub, trees and rocks in the yard are left as
+    /// they are; nothing clears them for free. Its road network is that
+    /// yard and every road cell. A house
     /// or barn has a door, the middle cell of the row south of its
     /// footprint, and is placed only where a lane can join that door to the
     /// network without crossing a footprint, a roof, someone's pending lane
@@ -214,6 +219,25 @@ namespace KingdomWatch.Core.Construction
                     if (WithinYard(at, centre) || _grid.RoadAt(at) != RoadGrade.None)
                     {
                         _network.Add(at);
+                    }
+                }
+            }
+        }
+
+        // Paves the plains of a settlement's yard that are not road yet: its
+        // square. At every dawn, so it needs no state of its own and ground
+        // cleared in the yard later is paved too.
+        private void PaveSquare(WorldPosition centre)
+        {
+            for (var y = Math.Max(0, centre.Y - CampYardRadius); y <= Math.Min(_grid.Height - 1, centre.Y + CampYardRadius); y++)
+            {
+                for (var x = Math.Max(0, centre.X - CampYardRadius); x <= Math.Min(_grid.Width - 1, centre.X + CampYardRadius); x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (_grid[at] == TerrainKind.Plains && _grid.RoadAt(at) == RoadGrade.None)
+                    {
+                        _grid.SetRoad(at, RoadGrade.Track);
                     }
                 }
             }

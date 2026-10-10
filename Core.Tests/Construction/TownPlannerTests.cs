@@ -179,6 +179,45 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_yard_s_plains_are_paved_as_the_square_at_the_settlement_s_dawn()
+        {
+            // A bush and a tree in the yard, which nothing clears for free.
+            var bush = new WorldPosition(BuildingsWorld.Centre.X + 1, BuildingsWorld.Centre.Y);
+            var tree = new WorldPosition(BuildingsWorld.Centre.X, BuildingsWorld.Centre.Y + 2);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                grid.Set(bush, TerrainKind.Scrub);
+                grid.Set(tree, TerrainKind.Forest);
+            });
+            var grid = w.World.Grid;
+            var radius = Buildings.CampYardRadius;
+
+            Assert.That(grid.RoadAt(BuildingsWorld.Centre), Is.EqualTo(RoadGrade.None), "not before its first dawn");
+
+            w.Dawn();
+            var rewrites = grid.Rewrites;
+            w.Dawn();
+
+            Assert.Multiple(() =>
+            {
+                for (var y = BuildingsWorld.Centre.Y - radius; y <= BuildingsWorld.Centre.Y + radius; y++)
+                {
+                    for (var x = BuildingsWorld.Centre.X - radius; x <= BuildingsWorld.Centre.X + radius; x++)
+                    {
+                        var at = new WorldPosition(x, y);
+                        var expected = at.Equals(bush) || at.Equals(tree) ? RoadGrade.None : RoadGrade.Track;
+                        Assert.That(grid.RoadAt(at), Is.EqualTo(expected), at.ToString());
+                    }
+                }
+
+                Assert.That(grid[bush], Is.EqualTo(TerrainKind.Scrub));
+                Assert.That(grid[tree], Is.EqualTo(TerrainKind.Forest));
+                Assert.That(grid.RoadAt(new WorldPosition(BuildingsWorld.Centre.X + radius + 1, BuildingsWorld.Centre.Y)), Is.EqualTo(RoadGrade.None), "the yard ends");
+                Assert.That(grid.Rewrites, Is.EqualTo(rewrites), "a paved square is paved once");
+            });
+        }
+
+        [Test]
         public void No_lane_to_the_roads_no_building()
         {
             // Rocks everywhere but the camp, a way from it to one patch of

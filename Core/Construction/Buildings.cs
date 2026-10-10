@@ -404,6 +404,7 @@ namespace KingdomWatch.Core.Construction
                 Frost(settlement);
             }
 
+            PaveSquare(settlement.Position);
             AssignHomes(settlement);
 
             if (idle > 0)
