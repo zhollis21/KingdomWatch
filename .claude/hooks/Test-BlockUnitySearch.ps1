@@ -76,6 +76,9 @@ $cases = @(
     @(2, 'Bash', @{ command = 'grep -rn foo .' }, 'recursive grep over . from Game', @{ cwd = "$root/Game" }),
     @(0, 'Bash', @{ command = 'grep -rn foo .' }, 'recursive grep over . from Core', @{ cwd = "$root/Core" }),
     @(2, 'Grep', @{ pattern = 'x'; path = 'Library' }, 'Grep into Library from Game', @{ cwd = "$root/Game" }),
+    @(2, 'Bash', @{ command = 'grep -rn foo Game/*' }, 'recursive grep over a wildcard that expands to Game/Library'),
+    @(2, 'Bash', @{ command = 'grep -rn foo G*' }, 'recursive grep over a wildcard that expands to Game'),
+    @(0, 'Bash', @{ command = 'grep -rn foo Core/*.cs' }, 'recursive grep over a wildcard in a source folder'),
 
     # Heredocs and here-strings.
     @(2, 'Bash', @{ command = "cat <<EOF`nx`nEOF`ngrep -rn foo ." }, 'search on the line after a heredoc ends'),
