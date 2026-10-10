@@ -23,7 +23,7 @@ $cases = @(
     @(2, 'Bash', @{ command = 'grep -rn foo Game/' }, 'recursive grep over Game/'),
     @(2, 'Bash', @{ command = 'grep -r foo' }, 'recursive grep with no path'),
     @(2, 'Bash', @{ command = 'find . -name "*.cs"' }, 'find over .'),
-    @(2, 'Bash', @{ command = 'cd x && grep -rn foo .' }, 'recursive grep after &&'),
+    @(2, 'Bash', @{ command = 'cd Game && grep -rn foo .' }, 'recursive grep after cd Game &&'),
     @(2, 'Bash', @{ command = 'ls; find . -name "*.cs"' }, 'find after ;'),
     @(2, 'Bash', @{ command = 'echo $(grep -rn foo Game/)' }, 'recursive grep in command substitution'),
     @(2, 'Bash', @{ command = "cd Game`ngrep -rn foo Library/x" }, 'grep on a new line naming Library/'),
@@ -59,8 +59,41 @@ $cases = @(
     @(2, 'Bash', @{ command = 'rg foo Game/Library' }, 'rg into Library'),
     @(0, 'Bash', @{ command = 'rg foo' }, 'rg over the root, which obeys .gitignore'),
     @(2, 'Bash', @{ command = 'rg --no-ignore foo .' }, 'rg over the root ignoring .gitignore'),
-    @(0, 'Bash', @{ command = 'rg --no-ignore foo . -g "!**/Library/**"' }, 'rg ignoring .gitignore but excluding Library'),
+    @(0, 'Bash', @{ command = 'rg --no-ignore foo . -g "!Library"' }, 'rg ignoring .gitignore but skipping Library'),
     @(0, 'Bash', @{ command = "grep -rn foo `"$root/Core`"" }, 'recursive grep over an absolute source folder'),
+
+    # Paths resolved the way the shell would (the second #157 review).
+    @(2, 'Bash', @{ command = 'grep -rn foo $CLAUDE_PROJECT_DIR' }, 'recursive grep over $CLAUDE_PROJECT_DIR'),
+    @(2, 'Bash', @{ command = 'grep -rn foo "${CLAUDE_PROJECT_DIR}/Game"' }, 'recursive grep over ${CLAUDE_PROJECT_DIR}/Game'),
+    @(2, 'Bash', @{ command = 'grep -rn foo Core/../Game' }, 'recursive grep over Core/../Game'),
+    @(2, 'Bash', @{ command = 'grep -rn foo ~/Game' }, 'recursive grep over ~/Game when home is the repo', @{ home = $root }),
+    @(0, 'Bash', @{ command = "grep -rn foo `"$root-old`"" }, 'recursive grep over a sibling folder sharing the repo''s name'),
+    @(2, 'Bash', @{ command = 'grep -rn foo /home/me/KingdomWatch' }, 'recursive grep over a POSIX repo root', @{ project = '/home/me/KingdomWatch' }),
+    @(0, 'Bash', @{ command = 'grep -rn foo /home/me/KingdomWatch/Core' }, 'recursive grep over a POSIX source folder', @{ project = '/home/me/KingdomWatch' }),
+    @(0, 'Bash', @{ command = 'grep -rn foo /home/me/KingdomWatchOld' }, 'recursive grep over a POSIX sibling folder', @{ project = '/home/me/KingdomWatch' }),
+    @(2, 'Bash', @{ command = 'cd Core && grep -rn foo ../Game' }, 'cd, then a relative path back into Game'),
+    @(0, 'Bash', @{ command = 'cd Core && grep -rn foo .' }, 'cd into a source folder, then over .'),
+    @(2, 'Bash', @{ command = 'grep -rn foo .' }, 'recursive grep over . from Game', @{ cwd = "$root/Game" }),
+    @(0, 'Bash', @{ command = 'grep -rn foo .' }, 'recursive grep over . from Core', @{ cwd = "$root/Core" }),
+    @(2, 'Grep', @{ pattern = 'x'; path = 'Library' }, 'Grep into Library from Game', @{ cwd = "$root/Game" }),
+
+    # Heredocs and here-strings.
+    @(2, 'Bash', @{ command = "cat <<EOF`nx`nEOF`ngrep -rn foo ." }, 'search on the line after a heredoc ends'),
+    @(2, 'Bash', @{ command = "cat <<EOF`nx`nEOF`nls`ngrep -rn foo ." }, 'search two lines after a heredoc ends'),
+    @(2, 'Bash', @{ command = "cat <<< word`ngrep -rn foo ." }, 'search after a here-string'),
+    @(2, 'Bash', @{ command = "git commit -m `"a <<EOF b`"`ngrep -rn foo ." }, 'search after << inside quotes'),
+
+    # Only an exclusion that skips the folder counts.
+    @(2, 'Bash', @{ command = 'grep -rn foo . --exclude=Library' }, 'grep --exclude, which filters files, not folders'),
+    @(2, 'Bash', @{ command = 'grep -rn foo . --exclude-dir=NotLibrary' }, 'grep excluding a folder that is not Library'),
+    @(0, 'Bash', @{ command = 'grep -rn foo . --exclude-dir Lib*' }, 'grep excluding Library by a glob'),
+    @(0, 'Bash', @{ command = 'grep -rn foo . --exclude-dir={Library,obj}' }, 'grep excluding Library in a brace list'),
+    @(2, 'Bash', @{ command = 'find . -path ./Temp -prune -o -name Library -print' }, 'find pruning another folder and naming Library'),
+    @(2, 'Bash', @{ command = 'find . -not -path "*/Library/*" -name "*.cs"' }, 'find hiding Library, which still walks it'),
+    @(0, 'Bash', @{ command = 'find . -name Library -prune -o -name "*.cs" -print' }, 'find pruning Library by name'),
+    @(2, 'Bash', @{ command = 'rg --no-ignore foo . -g "!NotLibrary"' }, 'rg excluding a folder that is not Library'),
+    @(2, 'Bash', @{ command = 'rg --no-ignore foo . -g "!**/Library/**"' }, 'rg hiding Library''s files, which still walks it'),
+    @(0, 'Bash', @{ command = 'rg --no-ignore foo . --glob=!**/Library' }, 'rg skipping Library at any depth'),
 
     @(0, 'Read', @{ file_path = 'Game/Library/x' }, 'a tool the hook does not judge')
 )
@@ -68,8 +101,12 @@ $cases = @(
 $failed = 0
 
 foreach ($case in $cases) {
-    $want, $tool, $toolInput, $what = $case
-    $json = @{ tool_name = $tool; tool_input = $toolInput } | ConvertTo-Json -Compress
+    $want, $tool, $toolInput, $what, $options = $case
+    if ($null -eq $options) { $options = @{} }
+    $env:CLAUDE_PROJECT_DIR = if ($options.project) { $options.project } else { $root }
+    $env:HOME = if ($options.home) { $options.home } else { $home }
+    $cwd = if ($options.cwd) { $options.cwd } else { $env:CLAUDE_PROJECT_DIR }
+    $json = @{ tool_name = $tool; tool_input = $toolInput; cwd = $cwd } | ConvertTo-Json -Compress
     $json | pwsh -NoProfile -File $hook 2>$null | Out-Null
     $got = $LASTEXITCODE
 
