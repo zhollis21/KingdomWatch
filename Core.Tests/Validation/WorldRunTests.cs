@@ -6,6 +6,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Validation;
 using KingdomWatch.Core.Work;
@@ -138,15 +139,15 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void The_milestones_M1_can_reach_fire_on_every_seed()
         {
-            // Economy ladder section 9's first milestone, and a settlement:
-            // with farming (#100) settling is back on, and every seed's
-            // stronger band settles in its first few springs.
+            // Economy ladder section 9's first milestone: since #146 the
+            // world starts with its villages standing, and none of them was
+            // ever a wandering camp.
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
-                    Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "seed " + run.World.Seed + ": camp at world start");
-                    Assert.That(run.FirstSettlement, Is.Not.Null, "seed " + run.World.Seed + ": never settled");
+                    Assert.That(run.FirstSettlement, Is.EqualTo(SimulationTime.Zero), "seed " + run.World.Seed + ": villages at world start");
+                    Assert.That(run.FirstCamp, Is.Null, "seed " + run.World.Seed + ": a starting village never camped");
                 }
             });
         }
@@ -184,12 +185,12 @@ namespace KingdomWatch.Core.Tests.Validation
         [Test]
         public void The_run_s_hash_sees_a_wandering_band_s_stores_and_its_map()
         {
-            // Before either band settles, a band's own state is most of the
-            // world. Copilot's review of #103: the run's hash left it out.
-            var run = new WorldRun(1UL);
-            var bands = new List<ICommunity>();
-            run.World.Nomads.CopyTrackedTo(bands);
-            var band = (MobileGroup)bands[0];
+            // A band that splits off is its own state until it settles.
+            // Copilot's review of #103: the run's hash left it out. The world
+            // starts with villages only (#146), so the band is added.
+            var world = World.M1(1UL);
+            var band = world.AddBand(12, world.Founding.All[0].Position);
+            var run = new WorldRun(world);
             var before = run.Hash();
 
             band.SharedSupplies.Gather(ResourceKind.Wood, 1);
@@ -263,12 +264,15 @@ namespace KingdomWatch.Core.Tests.Validation
             // on a day its system acted. A section missing from the run's
             // hash is caught by The_run_s_hash_is_every_section_in_order.
             //
-            // The run is left to itself except for its first month, when the
-            // bands' food is taken each morning: a well-fed run need never
-            // starve (seed 1 does not in ten years), and the famine flag has
-            // to be seen to flip both ways through Hunger's own meal.
-            var run = new WorldRun(1UL);
-            var world = run.World;
+            // The run is left to itself except for its first month, when
+            // every community's food is taken each morning: a well-fed run
+            // need never starve (seed 1 does not in ten years), and the famine
+            // flag has to be seen to flip both ways through Hunger's own meal.
+            // The world starts with villages only (#146), so a band is added
+            // for the councils to be seen.
+            var world = World.M1(1UL);
+            world.AddBand(12, world.Founding.All[0].Position);
+            var run = new WorldRun(world);
             var workMoved = false;
             var councilMoved = false;
             var famineStarted = 0;
@@ -280,7 +284,8 @@ namespace KingdomWatch.Core.Tests.Validation
             {
                 if (day < 30)
                 {
-                    world.Nomads.CopyTrackedTo(communities);
+                    communities.Clear();
+                    world.CopyCommunitiesTo(communities);
 
                     foreach (var band in communities)
                     {
@@ -338,10 +343,8 @@ namespace KingdomWatch.Core.Tests.Validation
             {
                 var run = new WorldRun(1UL);
                 var world = run.World;
-                var bands = new List<ICommunity>();
-                world.Nomads.CopyTrackedTo(bands);
                 var stray = new MobileGroup(
-                    new EntityId(EntityKind.MobileGroup, 1_000_000UL), MobileGroupPurpose.NomadicBand, bands[0].Position);
+                    new EntityId(EntityKind.MobileGroup, 1_000_000UL), MobileGroupPurpose.NomadicBand, world.Founding.All[0].Position);
                 stray.AddMember(new PersonHandle(1_000_000, 1));
                 track(world, stray);
                 run.RunYears(1L);
@@ -400,24 +403,27 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void The_bands_start_one_each_side_of_the_river_where_they_can_stand()
+        public void The_world_starts_with_its_villages_standing_two_each_side_of_the_river()
         {
-            var world = World.TwoBands(5UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
-            var bands = new List<ICommunity>();
-            world.CopyCommunitiesTo(bands);
+            var world = World.M1(5UL);
+            var communities = new List<ICommunity>();
+            world.CopyCommunitiesTo(communities);
 
-            Assert.That(bands, Has.Count.EqualTo(2));
-            var river = RiverColumn(world.Grid, bands[0].Position.Y);
+            Assert.That(communities, Has.Count.EqualTo(2 * World.M1VillagesPerSide));
 
             Assert.Multiple(() =>
             {
-                Assert.That(bands[0].Position.Y, Is.EqualTo(bands[1].Position.Y), "both on the middle row");
-                Assert.That(bands[0].Position.X, Is.LessThan(river));
-                Assert.That(bands[1].Position.X, Is.GreaterThan(river));
-                Assert.That(bands[0].Members, Has.Count.EqualTo(WorldRun.WestSize));
-                Assert.That(bands[1].Members, Has.Count.EqualTo(WorldRun.EastSize));
-                Assert.That(world.Pathfinder.IsPassable(bands[0].Position, Jobs.Mover), Is.True);
-                Assert.That(world.Pathfinder.IsPassable(bands[1].Position, Jobs.Mover), Is.True);
+                Assert.That(world.Nomads.TrackedCount, Is.Zero, "nobody wanders at world start");
+
+                for (var i = 0; i < communities.Count; i++)
+                {
+                    var village = communities[i];
+                    var river = RiverColumn(world.Grid, village.Position.Y);
+                    Assert.That(village, Is.InstanceOf<Settlement>());
+                    Assert.That(village.Members, Has.Count.EqualTo(World.M1VillageSize));
+                    Assert.That(village.Position.X < river, Is.EqualTo(i < World.M1VillagesPerSide), "west first, then east");
+                    Assert.That(world.Pathfinder.IsPassable(village.Position, Jobs.Mover), Is.True);
+                }
             });
         }
 
@@ -426,9 +432,10 @@ namespace KingdomWatch.Core.Tests.Validation
         {
             // The #97 review note on #17: the hash folds in whichever bookings
             // its caller gathers, so the world's gathering must reach every
-            // stream. A day in, both bands are wandering and every stream has
-            // booked something.
-            var world = World.TwoBands(1UL, WorldRun.Width, WorldRun.Height, WorldRun.WestSize, WorldRun.EastSize);
+            // stream. A day in, with a band wandering beside the starting
+            // villages, every stream has booked something.
+            var world = World.M1(1UL);
+            world.AddBand(12, world.Founding.All[0].Position);
             world.Advance(SimulationTime.TicksPerDay);
             var bookings = new List<PendingBooking>();
             world.CopyBookingsTo(bookings);
@@ -487,9 +494,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // already holds is history, read for its milestones and not
             // tallied (the #156 review).
             var world = World.M1(1UL);
-            var communities = new List<ICommunity>();
-            world.Nomads.CopyTrackedTo(communities);
-            world.Deaths.Die(communities[0].Members[0], new Reasons(ReasonCode.Froze));
+            world.Deaths.Die(world.Founding.All[0].Members[0], new Reasons(ReasonCode.Froze));
 
             var run = new WorldRun(world);
             run.RunYears(1L);
@@ -497,7 +502,7 @@ namespace KingdomWatch.Core.Tests.Validation
             Assert.Multiple(() =>
             {
                 Assert.That(run.IsClean, Is.True);
-                Assert.That(run.FirstCamp, Is.EqualTo(SimulationTime.Zero), "history's milestones are still read");
+                Assert.That(run.FirstSettlement, Is.EqualTo(SimulationTime.Zero), "history's milestones are still read");
                 Assert.That(run.Years[0].Tally.Froze, Is.Zero, "the death before the run is not this year's");
             });
         }
@@ -508,9 +513,7 @@ namespace KingdomWatch.Core.Tests.Validation
             // A village's catastrophe must not hide behind the other homeland's
             // numbers (the #156 review): the west's dead are the west's.
             var run = new WorldRun(1UL);
-            var communities = new List<ICommunity>();
-            run.World.Nomads.CopyTrackedTo(communities);
-            var west = (MobileGroup)communities[0];
+            var west = run.World.Founding.All[0];
             var dead = west.Members.Count / 2;
 
             foreach (var member in new List<PersonHandle>(west.Members).GetRange(0, dead))
@@ -538,15 +541,18 @@ namespace KingdomWatch.Core.Tests.Validation
             // The #103 review made a die-out fail the run; #26 made it a
             // report, since berries run out and homelands can starve until
             // farms. It must still be seen: the year, and the chronicle line.
-            // Everyone on one side of the river dies before the first year.
+            // Everyone on one side of the river dies before the first year:
+            // the west's villages are founded first, then the east's.
             var run = new WorldRun(1UL);
-            var communities = new List<ICommunity>();
-            run.World.Nomads.CopyTrackedTo(communities);
-            var band = (MobileGroup)communities[side];
 
-            foreach (var member in new List<PersonHandle>(band.Members))
+            for (var i = 0; i < World.M1VillagesPerSide; i++)
             {
-                run.World.Deaths.Die(member, new Reasons(ReasonCode.Illness));
+                var village = run.World.Founding.All[side * World.M1VillagesPerSide + i];
+
+                foreach (var member in new List<PersonHandle>(village.Members))
+                {
+                    run.World.Deaths.Die(member, new Reasons(ReasonCode.Illness));
+                }
             }
 
             run.RunYears(2L);
@@ -581,7 +587,7 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void The_chronicle_prints_each_year_and_each_band_s_first_camp_once()
+        public void The_chronicle_prints_each_year_and_each_village_s_founding_once()
         {
             var run = new WorldRun(1UL).RunYears(3L);
             var text = new StringWriter();
@@ -593,7 +599,7 @@ namespace KingdomWatch.Core.Tests.Validation
             {
                 Assert.That(written, Does.StartWith("Year 0: west " + WorldRun.WestSize + ", east " + WorldRun.EastSize));
                 Assert.That(written, Does.Contain("Year 1: ").And.Contain("Year 2: ").And.Contain("Year 3: "));
-                Assert.That(Occurrences(written, "pitched its first camp"), Is.EqualTo(2), "one per band, not one per move");
+                Assert.That(Occurrences(written, " was founded"), Is.EqualTo(2 * World.M1VillagesPerSide), "one per starting village");
                 Assert.That(written, Does.Not.Contain("PersonBorn").And.Not.Contain("PersonDied"), "folded into the year lines");
                 Assert.That(written, Does.Not.Contain(" other"), "every death this world publishes has a named cause");
                 Assert.That(() => Chronicle.Write(null!, text), Throws.ArgumentNullException);

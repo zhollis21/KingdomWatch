@@ -46,7 +46,7 @@ namespace KingdomWatch.Harness
             var harvested = new HashSet<EntityId>();
 
             output.WriteLine(
-                "Year 0: west " + run.FoundingWest + ", east " + run.FoundingEast + " (the founding bands)");
+                "Year 0: west " + run.FoundingWest + ", east " + run.FoundingEast + " (the founding villages)");
 
             for (var y = 0; y < run.Years.Count; y++)
             {

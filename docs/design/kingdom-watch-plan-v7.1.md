@@ -10,7 +10,7 @@
 
 ## 1. The game
 
-Six wandering bands — three per race — arrive in an empty land. Over centuries they settle, farm, build, learn trades, form households, split into rival polities, feud, trade, march, starve, and remember. Around 1,650 individuals at equilibrium, every one of them a real person with a name, traits, skills, relationships, grudges, and ambitions.
+A few small villages stand in an otherwise empty land, each on ground rich in wood. Over centuries they grow, farm, build, learn trades, form households, split into rival polities, feud, trade, march, starve, and remember. Around 1,650 individuals at equilibrium, every one of them a real person with a name, traits, skills, relationships, grudges, and ambitions.
 
 There is no magic in the world except you. The people know it — they argue over what your interventions meant, and stories of what you did spread along trade routes and distort as they travel.
 
@@ -28,7 +28,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 
 | Question | Decision |
 |---|---|
-| World start | **From scratch** — 3 bands per race (60/45/30), ~270 people, no settlements |
+| World start | **Small villages** — four of about 20 people, spread apart on the ground with the most wood that can feed them (#146) |
 | Starting polities | **One dispersed polity per race**; texture comes from later fragmentation |
 | Equilibrium scale | ~15 settlements, ~1,650 people |
 | Individual depth | **Persistent CK-like people** — everyone has traits, relationships, memories, ambitions. Behavioural depth expands over development (§7) |
@@ -88,7 +88,7 @@ Race        — biology. Fixed at birth.
 
 ### MobileGroup
 
-The game opens with six wandering bands carrying people, food, tools, leaders, movement state, a destination, and temporary camps — and nothing in the entity model represented them.
+The game was first planned to open with six wandering bands carrying people, food, tools, leaders, movement state, a destination, and temporary camps — and nothing in the entity model represented them. It now opens with villages (§15, #146), but bands still split off from them and wander, and founding parties and armies move the same way.
 
 ```
 MobileGroup
@@ -869,7 +869,7 @@ This is also **the capability-graph pacing lever.** If a smithy needs a journeym
 
 So a smithy is not `Year > 50`, it is *permanent population + charcoal production + accessible ore + a sufficiently skilled craftsperson + spare labour*. Most of that is implied by systems already in the plan — but recognize that this constitutes a **capability graph**, which is a soft technology system even though nobody researches anything. Name it, and tune its pacing deliberately.
 
-The payoff is still the game's progression arc — stone age band to castle town — and better milestones than population thresholds: first camp, first permanent structure, first farm, first smithy, first stone building, first wall.
+The payoff is still the game's progression arc — stone age village to castle town — and better milestones than population thresholds: first settlement, first permanent structure, first farm, first smithy, first stone building, first wall.
 
 An explicit tech ladder is a v2 consideration at earliest.
 
@@ -1228,15 +1228,15 @@ Armies of ~25 (roughly an 8% levy from a 300-person town) make this watchable: t
 
 ### Start
 
-**Three wandering bands per race, sized 60 / 45 / 30. Two races, ~270 people total, no settlements.**
+**Four small villages, already founded.** Changed at #146 from three wandering bands per race (60 / 45 / 30, ~270 people, no settlements). Harness runs showed the wandering years were where homelands died, and that nothing worth watching happened before the first settlement in year 3–5.
 
-**Each race is one dispersed polity from the start** — three roving groups under a single ruler, who lives with the largest band. That gives you a capital band and two peripheral ones from minute one, and the peripheral bands are natural secession candidates once distance and cultural drift set in.
+On the M1 map, two villages stand on each side of the river, 20 people each (eight unrelated couples and their children, the generator's lineage floor). `StartingSites` chooses where. A site ranks by the wood in its reach, since wood caps how many hearths, and so how many households, a village can keep. To be taken, a site's bushes must feed the village for a whole year and it must pass the founding check (§12): a clear yard and ground for a barn. Villages stand at least 100 cells apart, about half a day's walk. Stone is not scored, because nothing uses it yet. Races and their homelands are still #34's and #33's: those issues decide how villages are split between races, and they replace this placeholder placement.
 
-Unequal band sizes create immediate asymmetry: the 60-strong band will likely settle first and dominate; the 30-strong band may struggle, merge, or break away.
+Villages start the same size, so any asymmetry between them comes from their land.
 
-Bands need a **nomadic mode**: movement, foraging and hunting for food, temporary camps, and a settling trigger (band size, land quality, seasonal pressure). Site selection reuses the founding system.
+Bands that split off later need a **nomadic mode**: movement, foraging and hunting for food, temporary camps, and a settling trigger (band size, land quality, seasonal pressure). Site selection reuses the founding system.
 
-**Built at #54, as `NomadicBands`.** Each tracked band holds a *council* at first light — 05:00, an hour before `Jobs`' dawn pass, when nobody is out on a task — and does one of three things. It **settles** where it stands when its pressure has crossed a threshold and the camp passes the land check; pressure is member-days, each council adding the living headcount, so the 60-band reaches it about twice as fast as the 30-band (the asymmetry above, made mechanical), and the land check is whether a forager and a woodcutter would each find a site from here, using `Jobs`' own search so a camp that passes has sites the next dawn. Settling is `Founding.Found` (§3) with the reasons `PopulationPressure` and `LandSuitable`. Otherwise, after twenty days at one camp, or at once if no food is in reach of it (#137), it **moves**: the candidates are a 13×13 lattice spread evenly over the box within 54 cells of the camp (about a quarter of a day's walk, #123), each kept if it is standable, reachable, and the route fits between dawn and dusk; each is ranked first by whether food and wood are both in reach (a band starves or freezes without them), then by the walk to its nearest food site, then by how many of the three jobs would find a site from it, then by the walks to work altogether, since on a map of patches the walk is what a forager's day goes on (#137); the best wins, equals tried in an order drawn from one key, and only candidates that could win are routed (#130) (`RandomDomain.Wandering`). The band sets its destination there and then, `Jobs` starts nobody that dawn, and one `BandArrival` event lands the band at `dawn + route cost × ticks-per-cost-unit`, where it embodies up to five wood as the new camp and publishes `CampPitched` — the "first camp" milestone is the first of those. Nothing reachable, it stays. Otherwise it **stays**. The hop machinery — a route costed into a travel time, one arrival — is what #35's founding parties and M4's armies reuse.
+**Built at #54, as `NomadicBands`.** Each tracked band holds a *council* at first light — 05:00, an hour before `Jobs`' dawn pass, when nobody is out on a task — and does one of three things. It **settles** where it stands when its pressure has crossed a threshold and the camp passes the land check; pressure is member-days, each council adding the living headcount, so a band of 60 reaches it about twice as fast as a band of 30, and the land check is whether a forager and a woodcutter would each find a site from here, using `Jobs`' own search so a camp that passes has sites the next dawn. Settling is `Founding.Found` (§3) with the reasons `PopulationPressure` and `LandSuitable`. Otherwise, after twenty days at one camp, or at once if no food is in reach of it (#137), it **moves**: the candidates are a 13×13 lattice spread evenly over the box within 54 cells of the camp (about a quarter of a day's walk, #123), each kept if it is standable, reachable, and the route fits between dawn and dusk; each is ranked first by whether food and wood are both in reach (a band starves or freezes without them), then by the walk to its nearest food site, then by how many of the three jobs would find a site from it, then by the walks to work altogether, since on a map of patches the walk is what a forager's day goes on (#137); the best wins, equals tried in an order drawn from one key, and only candidates that could win are routed (#130) (`RandomDomain.Wandering`). The band sets its destination there and then, `Jobs` starts nobody that dawn, and one `BandArrival` event lands the band at `dawn + route cost × ticks-per-cost-unit`, where it embodies up to five wood as the new camp and publishes `CampPitched`. Before #146, the first of these events was the "first camp" milestone. Nothing reachable, it stays. Otherwise it **stays**. The hop machinery — a route costed into a travel time, one arrival — is what #35's founding parties and M4's armies reuse.
 
 Three things this is *not*. It is only partly movement with a cause: a band moves because nomads move, toward the best land in reach, and the twenty days is a placeholder cadence. The cause it has is a camp with no food in reach, which it leaves at the next council (#137) — and since #26 that includes a camp it has picked clean, because a stripped bush is not food until the next season. In winter every bush counts, since none has fruit and all will in spring, so a band waits out the cold on its stores. **Settling was off between #26 and #100**, while a settlement that could not move lived off berries and starved within about a year; since #100 it is on again, and the land check also asks for early spring, bushes in reach whose year of fruit would cover half as much again as a season's eating, and ground for a barn (§9 "As of #100"). The season enters only as that gate: settling pressure itself still ignores the time of year, which is #96's. And it is not bounded map knowledge (§12): the council reads the whole hop box off the grid, as `Jobs` finds the nearest forest without anyone looking, until #81 gives a band a known-cells map and makes the settling pick choose among what it has seen. Seasonal pressure joining the trigger, beyond #100's spring gate, is #96; site selection with scoring, and a party that walks to the site, are #35's.
 
@@ -1283,11 +1283,11 @@ Check for **brokenness only**:
 ```
 Every starting race has water, food potential, building space,
 and reachable expansion area.
-Every starting band has forest in reach, for winter fuel.
+Every starting village has forest in reach, for winter fuel.
 No unavoidable extinction. No runaway pathological growth.
 ```
 
-**Rivers are now the main threat to this check.** Small rivers are impassable until bridged, and nomadic bands cannot bridge, so a band spawning in a river-bounded pocket with no room to grow is a dead world at generation time. Worldgen must classify rivers as **small (bridgeable) or large (boats only)** and verify each band has adequate contiguous land before settling.
+**Rivers are now the main threat to this check.** Small rivers are impassable until bridged, and nomadic bands cannot bridge, so a band spawning in a river-bounded pocket with no room to grow is a dead world at generation time. Worldgen must classify rivers as **small (bridgeable) or large (boats only)** and verify each starting village has adequate contiguous land.
 
 **Each band needs a minimum count of unrelated founding lineages** — a band seeded as two extended families deadlocks its mating pool within two generations (§6). Target 8–12 lineages per band; the exact figure comes from harness testing, and elves are the constraining case.
 
@@ -1339,7 +1339,7 @@ Power 5 unlocks when ANY of:
     OR first war occurs
 ```
 
-Early milestones must fire within minutes, since the ladder repeats every world. The from-scratch start gives better ones than population thresholds: first camp, first permanent structure, first farm, first smithy, first stone building, first wall.
+Early milestones must fire within minutes, since the ladder repeats every world. The from-scratch start gives better ones than population thresholds: first settlement, first permanent structure, first farm, first smithy, first stone building, first wall.
 
 Order powers from observational (bless, heal, nudge) to world-shaping (plague, earthquake, dinosaur). Keep unlocks diegetic — powers *awaken*, they are not purchased.
 
@@ -1583,7 +1583,7 @@ If twenty villagers overlap at a market, "which one did I tap?" needs an answer 
 
 Then choose perspective.
 
-**M1 — headless sim.** Console only. **Two prototype bands, one per race** (the shipping world start is six — three per race, §15). Nomadic mode, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
+**M1 — headless sim.** Console only. **Four prototype villages, two each side of the river** (#146; races are #34). Nomadic mode for bands that split off, settling, births, deaths, jobs, food, seasons, 3–4 resources, households. Run 200 years, print a chronicle. NUnit tests for population stability and milestone firing. *Is the world interesting as text?*
 
 **M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7).
 

@@ -153,7 +153,7 @@ namespace KingdomWatch.Core.Construction
             BuildingKind kind,
             WorldPosition from,
             WorldPosition centre,
-            EntityId mapHolder,
+            ReadOnlySpan<bool> known,
             EntityId settlement,
             out WorldPosition anchor,
             Building? barn = null)
@@ -167,7 +167,7 @@ namespace KingdomWatch.Core.Construction
 
             for (var attempt = 0; attempt < PlacementAttempts; attempt++)
             {
-                if (!TryBest(from, radius, mapHolder, out anchor))
+                if (!TryBest(from, radius, known, out anchor))
                 {
                     return false;
                 }
@@ -185,10 +185,8 @@ namespace KingdomWatch.Core.Construction
         }
 
         // The best footprint the search reaches: plains first, then any ground.
-        private bool TryBest(WorldPosition from, int radius, EntityId mapHolder, out WorldPosition anchor)
+        private bool TryBest(WorldPosition from, int radius, ReadOnlySpan<bool> known, out WorldPosition anchor)
         {
-            var known = _knownMaps.For(mapHolder);
-
             for (var pass = 0; pass < 2; pass++)
             {
                 _scorer.StartPass(plainsOnly: pass == 0);

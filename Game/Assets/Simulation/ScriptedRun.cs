@@ -46,7 +46,7 @@ namespace KingdomWatch.Game
         private readonly CameraRig rig;
         private readonly WorldView2D view;
         private readonly World world;
-        private readonly Vector2 middle;
+        private readonly Vector2 centre;
         private readonly string folder, stamp;
         private readonly List<Stop> stops = new List<Stop>();
         // Sized for the longest stop up front, so they never grow, and so
@@ -66,7 +66,7 @@ namespace KingdomWatch.Game
             this.rig = rig;
             this.view = view;
             this.world = world;
-            middle = new Vector2(world.Grid.Width / 2f, world.Grid.Height / 2f);
+            centre = CentreOf(world);
             this.folder = folder;
             stamp = "Run_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
 
@@ -205,13 +205,24 @@ namespace KingdomWatch.Game
             if (stop.PixelsPerCell <= 0f) rig.WholeMap();
             else if (!stop.Pan)
             {
-                rig.CentreOn(middle);
+                rig.CentreOn(centre);
                 rig.ZoomTo(stop.PixelsPerCell);
             }
             fillSeconds = 0f;
             moveMs.Clear();
             holdMs.Clear();
             Enter(Stage.Moving);
+        }
+
+        // The first village, where there is something to see from the first
+        // day (#146); the middle of the map, which on M1 is the river, when
+        // there is none. Cell centres, with rows counted down from the top as
+        // the view draws them.
+        private static Vector2 CentreOf(World world)
+        {
+            if (world.Founding.All.Count == 0) return new Vector2(world.Grid.Width / 2f, world.Grid.Height / 2f);
+            var at = world.Founding.All[0].Position;
+            return new Vector2(at.X + 0.5f, world.Grid.Height - (at.Y + 0.5f));
         }
 
         private static void StopCapture()
