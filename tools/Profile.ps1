@@ -134,7 +134,7 @@ New-Item -ItemType Directory -Force $captures | Out-Null
 # worktree made without the submodule produced exactly that, unnoticed.
 # -Flat says a run without the art is meant.
 $art = Join-Path $game 'Assets/Art'
-if (-not $Flat -and -not ((Test-Path $art) -and (Get-ChildItem $art -Force | Select-Object -First 1))) {
+if (-not $Flat -and -not ((Test-Path $art) -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1))) {
     throw "The art submodule ($art) is empty. Run: git submodule update --init Game/Assets/Art (see docs/unity.md), or pass -Flat for a run without it."
 }
 

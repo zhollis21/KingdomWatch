@@ -14,7 +14,9 @@ $ErrorActionPreference = 'Stop'
 $root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
 $art = Join-Path $root 'Game/Assets/Art'
 
-if (-not (Test-Path $art) -or (Get-ChildItem $art -Force | Select-Object -First 1)) {
+# Empty but for git's own pointer counts as empty: a checkout that failed
+# partway can leave just that.
+if (-not (Test-Path $art) -or (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1)) {
     exit 0
 }
 
@@ -35,8 +37,13 @@ try {
     $env:GIT_TERMINAL_PROMPT = '0'
     $output = & git -C $root submodule update --init --reference $source 'Game/Assets/Art' 2>&1 | Out-String
 
-    if ($LASTEXITCODE -eq 0) {
+    # Git can call a submodule whose files went missing up to date, so the
+    # files are what say it worked.
+    if ($LASTEXITCODE -eq 0 -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1)) {
         Report 'Checked out the art submodule (Game/Assets/Art) in this worktree.'
+    }
+    elseif ($LASTEXITCODE -eq 0) {
+        Report "The art submodule (Game/Assets/Art) is registered but has no files; Unity builds here will draw plain markers. Run: git -C Game/Assets/Art checkout -f"
     }
     else {
         Report "The art submodule (Game/Assets/Art) is empty and could not be checked out; Unity builds here will draw plain markers.`n$($output.Trim())"

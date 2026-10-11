@@ -585,9 +585,11 @@ namespace KingdomWatch.Core.Construction
         /// Never falls as the count rises, so a bound on the trees is a bound
         /// on the wood (#146).
         /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The count is negative.</exception>
+        /// <exception cref="OverflowException">The wood would not fit a long: refused rather than wrapped.</exception>
         public long WoodFromTrees(long trees) =>
             trees >= 0
-                ? trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays
+                ? checked(trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear) / LandCover.RegrowDays
                 : throw new ArgumentOutOfRangeException(nameof(trees), trees, "No fewer trees than none.");
 
         // A tree in reach weighs Whole out to WoodFullReach and one out to

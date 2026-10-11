@@ -663,9 +663,24 @@ namespace KingdomWatch.Core.Tests.Traversal
             });
         }
 
+        [Test]
+        public void Weights_that_overflow_their_sum_are_refused_not_wrapped()
+        {
+            var finder = new Pathfinder(Map(".."), TerrainRules.Default);
+
+            Assert.That(
+                () => finder.WeighReachable(Origin, Transport.Foot, Wanting(TerrainKind.Plains), default, int.MaxValue, long.MaxValue, new HugeWeight()),
+                Throws.TypeOf<OverflowException>());
+        }
+
         private sealed class CostIsWeight : ICostWeight
         {
             public long WeightOf(long cost) => cost;
+        }
+
+        private sealed class HugeWeight : ICostWeight
+        {
+            public long WeightOf(long cost) => long.MaxValue;
         }
 
         [Test]

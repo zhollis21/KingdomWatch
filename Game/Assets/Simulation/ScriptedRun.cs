@@ -148,7 +148,7 @@ namespace KingdomWatch.Game
 
             Profiler.maxUsedMemory = 512 * 1024 * 1024;
 
-            Line("Scripted run " + stamp + ", " + Screen.width + "x" + Screen.height + ", " + SystemInfo.graphicsDeviceName);
+            Line("Scripted run " + stamp + ", seed " + world.Seed + ", " + Screen.width + "x" + Screen.height + ", " + SystemInfo.graphicsDeviceName);
             Line("Move: the pan, or the frames after a zoom until filled. Hold: held still once filled.");
             Line("stop               pixels/cell  fill frames  fill s  move median ms  move p95 ms  hold median ms  hold p95 ms  filled  sim day");
             Next();

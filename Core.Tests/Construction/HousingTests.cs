@@ -451,7 +451,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(() => w.Buildings.WoodEstimate(-1, trees), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => w.Buildings.WoodEstimate(trees + 1, trees), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(w.Buildings.WoodFromTrees(0), Is.Zero);
-                Assert.That(w.Buildings.WoodFromTrees(int.MaxValue), Is.GreaterThan(w.Buildings.WoodFromTrees(int.MaxValue - 1)), "no overflow at the top");
+                Assert.That(w.Buildings.WoodFromTrees(int.MaxValue), Is.GreaterThan(w.Buildings.WoodFromTrees(int.MaxValue - 1)), "no overflow at the top of an int");
+                Assert.That(() => w.Buildings.WoodFromTrees(long.MaxValue), Throws.TypeOf<System.OverflowException>(), "nor a wrapped amount at the top of a long");
                 Assert.That(() => w.Buildings.WoodFromTrees(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
         }

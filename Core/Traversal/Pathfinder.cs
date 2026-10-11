@@ -529,6 +529,7 @@ namespace KingdomWatch.Core.Traversal
         /// The origin is off the map, the radius or the cost is negative, or
         /// the mover has no defined transport.
         /// </exception>
+        /// <exception cref="OverflowException">The weights sum past a long: refused rather than wrapped.</exception>
         public long WeighReachable(
             WorldPosition from,
             Transport mover,
@@ -571,7 +572,7 @@ namespace KingdomWatch.Core.Traversal
 
                 if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
                 {
-                    found += weight is null ? 1L : weight.WeightOf(_gScore[current]);
+                    found = checked(found + (weight is null ? 1L : weight.WeightOf(_gScore[current])));
                 }
 
                 Expand(current, mover, null, from, radius, maxCost, null, false);

@@ -1179,7 +1179,9 @@ namespace KingdomWatch.Core.Work
             // dawn, which a world run spent a fifth of its searching on.
             if (job == JobKind.Forager && !LandCover.BushesFruitIn(season))
             {
+                // As a search that found nothing leaves it: no route.
                 site.Reachable = false;
+                site.Route.Clear();
                 return;
             }
 

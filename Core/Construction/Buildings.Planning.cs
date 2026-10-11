@@ -546,13 +546,16 @@ namespace KingdomWatch.Core.Construction
                 }
             }
 
-            return !NearOthers(anchor, spec.Width, spec.Height);
+            // Its roof too: the rows it stands over are the house's as much as
+            // its footprint is.
+            return !NearOthers(new WorldPosition(anchor.X, anchor.Y - spec.Clearance), spec.Width, spec.Height + spec.Clearance);
         }
 
-        // Every other settlement's buildings and camp yards, each widened by
-        // VillageGap: what nothing of this one may overlap. Gathered once per
-        // placement, for Fits to test each footprint against. EntityId.None
-        // for a camp not yet founded, to which every settlement is another.
+        // Every other settlement's buildings, roofs included, and camp yards,
+        // each widened by VillageGap: what nothing of this one may overlap.
+        // Gathered once per placement, for Fits to test each footprint and
+        // roof against. EntityId.None for a camp not yet founded, to which
+        // every settlement is another.
         private void CollectOthers(EntityId settlement)
         {
             _others.Clear();
@@ -563,7 +566,8 @@ namespace KingdomWatch.Core.Construction
 
                 if (building.Settlement != settlement)
                 {
-                    _others.Add(Widened(building.Anchor.X, building.Anchor.Y, building.Width, building.Height));
+                    var clearance = BuildingTable.Of(building.Kind).Clearance;
+                    _others.Add(Widened(building.Anchor.X, building.Anchor.Y - clearance, building.Width, building.Height + clearance));
                 }
             }
 

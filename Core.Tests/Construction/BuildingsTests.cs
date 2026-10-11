@@ -564,6 +564,70 @@ namespace KingdomWatch.Core.Tests.Construction
             });
         }
 
+        [Test]
+        public void The_gap_is_kept_from_a_roof_as_from_its_house()
+        {
+            // A roof stands Clearance rows over the ground north of its house,
+            // and counts as the house does. The camp south on a tall map, so
+            // its first house goes up north of it with room north of that.
+            var camp = new WorldPosition(20, 60);
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            var w = new BuildingsWorld(size: 100, camp: camp, paint: grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(12 + (i % 15), 10 + (i / 15)), TerrainKind.Scrub);
+                }
+            });
+            w.Wood(100);
+            var house = w.BuildNext();
+            var roofTop = house.Anchor.Y - BuildingTable.Of(BuildingKind.House).Clearance;
+            var radius = Buildings.CampYardRadius;
+            var map = w.Settlement.Id;
+            var furthest = roofTop - Buildings.VillageGap - radius - 1;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(furthest + 1 + radius, Is.LessThan(camp.Y - radius - Buildings.VillageGap), "the camp's own yard is not what binds here");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, furthest + 1), map, 12), Is.False, "the yard's edge is within the gap of the roof");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, furthest), map, 12), Is.True, "one row further, clear of it");
+            });
+        }
+
+        [Test]
+        public void No_roof_is_built_within_the_gap_of_a_neighbouring_settlement()
+        {
+            // A neighbour forty cells north: the gap reaches down to just
+            // north of this village's own yard, where a roof over a house
+            // beside the yard would overhang into it.
+            var camp = new WorldPosition(30, 64);
+            var w = new BuildingsWorld(people: 40, size: 100, camp: camp);
+            var neighbour = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(camp.X, camp.Y - 40)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            var gapEnds = neighbour.Position.Y + Buildings.CampYardRadius + Buildings.VillageGap;
+            Assert.That(w.Buildings.All.Where(b => b.Settlement == w.Settlement.Id).Count(), Is.GreaterThan(8), "the village grew");
+
+            foreach (var building in w.Buildings.All.Where(b => b.Settlement == w.Settlement.Id))
+            {
+                var roofTop = building.Anchor.Y - BuildingTable.Of(building.Kind).Clearance;
+                Assert.That(roofTop, Is.GreaterThan(gapEnds), building + "'s roof is within the gap of " + neighbour.Id);
+            }
+        }
+
         // Every cell of the camp yard at the fixture's centre, set to one kind.
         private static void PaintYard(TerrainGrid grid, TerrainKind kind)
         {

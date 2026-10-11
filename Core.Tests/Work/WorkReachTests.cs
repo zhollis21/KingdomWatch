@@ -125,6 +125,8 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.World.Jobs.HasSite(w.Settlement, JobKind.Forager), Is.False);
                 Assert.That(KingdomWatch.Core.Land.LandCover.BushesFruitIn(Season.Winter), Is.False);
                 Assert.That(KingdomWatch.Core.Land.LandCover.BushesFruitIn(Season.Autumn), Is.True);
+                Assert.That(w.World.Jobs.SiteRouteOf(w.Settlement, JobKind.Forager), Is.Empty, "and no route left over from autumn");
+                Assert.That(() => KingdomWatch.Core.Land.LandCover.BushesFruitIn((Season)99), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
         }
 

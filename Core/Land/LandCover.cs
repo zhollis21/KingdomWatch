@@ -266,7 +266,13 @@ namespace KingdomWatch.Core.Land
         /// Whether any bush can have fruit in a season: none does in winter
         /// (#26), however long it has rested.
         /// </summary>
-        public static bool BushesFruitIn(Season season) => season != Season.Winter;
+        /// <exception cref="ArgumentOutOfRangeException">Not a defined season.</exception>
+        public static bool BushesFruitIn(Season season) =>
+            EnumGuard.IsDefined(DefinedSeasons, (int)season)
+                ? season != Season.Winter
+                : throw new ArgumentOutOfRangeException(nameof(season), season, "Not a defined Season.");
+
+        private static readonly bool[] DefinedSeasons = EnumGuard.BuildMask(typeof(Season));
 
         /// <summary>Cells in the cover: the grid's.</summary>
         public int CellCount => _cells.Length;
