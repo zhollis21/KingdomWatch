@@ -3,6 +3,18 @@
     "allow": ["WebFetch"]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/init-art.ps1\"",
+            "timeout": 120,
+            "statusMessage": "Checking out the art submodule..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Grep|Glob|Bash",

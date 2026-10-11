@@ -12,6 +12,14 @@ git submodule update --init
 
 Some of the pack's paths are long; on Windows, if the checkout fails with "Filename too long", run `git config --global core.longpaths true` and try again.
 
+A git worktree starts with the submodule registered but empty. Fill it from the main checkout's copy, which clones locally rather than downloading:
+
+```
+git submodule update --init --reference <main checkout>/Game/Assets/Art Game/Assets/Art
+```
+
+Claude Code sessions do this themselves: a `SessionStart` hook (`.claude/hooks/init-art.ps1`) runs it whenever a session opens on a worktree whose `Game/Assets/Art` is empty and the main checkout's is not; it never reaches for the remote. `tools/Profile.ps1` refuses to run without the art unless `-Flat` says that is meant, since a run over plain markers measures nothing about the game as it is drawn.
+
 Without the submodule (a public clone, or no access) the game still runs: the view logs that the art is missing and draws coloured cells and plain markers instead. `Game/Assets/Editor/PixelArtImport.cs` sets the import settings for everything under `Assets/Art`: point filtering, no compression, no mipmaps. If the art looks blurry or villagers are missing, reimport `Assets/Art`.
 
 ## Getting Core into Unity
@@ -94,7 +102,7 @@ The shared Android profile enables Development Build and Autoconnect Profiler. D
 - `Run_<stamp>_NN_<stop>.png`: a screenshot at that stop.
 - `Run_<stamp>_NN_<stop>.markers.txt`: the analysis of that stop's capture.
 
-Close the Editor first, because Unity locks an open project. `-SkipBuild` reruns the last build. The route only runs when the player is launched with `-scripted-run <folder>`, and only in development builds. The timings are desktop timings, useful for finding spikes and comparing before with after, not for phone performance. The screenshots show the licensed art, so they stay local like the captures. `/profile` (`.claude/skills/profile/`) runs all of this and compares a run with the one before it. `-HudDemo` launches the player with someone selected and the debug card open, so the screenshots show those parts of the panel; leave it off when comparing frame times. `-Flat` draws the panel as a build without the art submodule would, flat frames in Unity's own font. `-Notch` insets the panel as a phone's camera cutout and rounded corners would, to look at the layout on a screen that has neither. The panel sits inside `Screen.safeArea`; the map still draws edge to edge.
+Close the Editor first, because Unity locks an open project. `-SkipBuild` reruns the last build. The route only runs when the player is launched with `-scripted-run <folder>`, and only in development builds. The timings are desktop timings, useful for finding spikes and comparing before with after, not for phone performance. The screenshots show the licensed art, so they stay local like the captures. `/profile` (`.claude/skills/profile/`) runs all of this and compares a run with the one before it. `-HudDemo` launches the player with someone selected and the debug card open, so the screenshots show those parts of the panel; leave it off when comparing frame times. `-Flat` draws the panel as a build without the art submodule would, flat frames in Unity's own font. `-Notch` insets the panel as a phone's camera cutout and rounded corners would, to look at the layout on a screen that has neither. For a look rather than a measurement, `-Seed N` runs another world from the same build (the player reads `-seed N`), and `-Stops whole-map,full` flies only the stops named and skips the analysis: `pwsh tools/Profile.ps1 -SkipBuild -Seed 30 -Stops whole-map` is a screenshot of seed 30's whole map in about the time the game takes to start. The panel sits inside `Screen.safeArea`; the map still draws edge to edge.
 
 ## History: the M0 3D prototype
 

@@ -72,6 +72,17 @@ namespace KingdomWatch.Game
 
         private void Start()
         {
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
+            // -seed N runs another world from the same build, so a look at
+            // one (tools/Profile.ps1 -Seed) needs no rebuild.
+            var args = System.Environment.GetCommandLineArgs();
+            var seedAt = System.Array.IndexOf(args, "-seed");
+            if (seedAt >= 0)
+            {
+                if (seedAt + 1 < args.Length && int.TryParse(args[seedAt + 1], out var chosen) && chosen > 0) seed = chosen;
+                else Debug.LogError("SimulationDriver: -seed wants a whole number above zero; running seed " + seed + ".", this);
+            }
+#endif
             world = World.M1(unchecked((ulong)seed));
             SnapshotYear();
             // A scene missing a reference runs the simulation with no view,
