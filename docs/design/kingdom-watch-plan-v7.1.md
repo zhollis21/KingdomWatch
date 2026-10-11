@@ -309,7 +309,7 @@ At ~8 real minutes per game-day, one game-year is ~16 real hours at 1×. So:
 
 Plus **run-until** modes: next season, next year, next major event.
 
-This matters most for the 300-year race — without deep compression their longevity exists only on a character sheet. It also matters for the from-scratch start, where ~270 people must grow to ~1,650 over centuries.
+This matters most for the 300-year race — without deep compression their longevity exists only on a character sheet. It also matters for the from-scratch start, where a few small villages must grow to ~1,650 people over centuries.
 
 Extreme modes need not animate normally. Speed is a primary system input.
 
@@ -1244,7 +1244,7 @@ Three things this is *not*. It is only partly movement with a cause: a band move
 
 ### Starting population composition
 
-The world does not begin with 270 unattached strangers who discover romance after the loading screen. Each band is generated with:
+The world does not begin with a crowd of unattached strangers who discover romance after the loading screen. Each starting village's people are generated as a band, with:
 
 ```
 Believable age distribution across all five age stages
@@ -1262,9 +1262,9 @@ It also front-loads the race asymmetry: an elf novice has three centuries to rea
 
 **Temporary dwellings satisfy the housing requirement in nomadic mode.** Household formation requires a home (§6), and nomads have no permanent buildings — so camp space counts as housing until settlement.
 
-**The growth curve is load-bearing**, and starting with more bands rather than inflating birth rates is how it's addressed — demography stays realistic, the climb just starts higher.
+**The growth curve is load-bearing**, and starting with more people rather than inflating birth rates is how it's addressed — demography stays realistic, the climb just starts higher.
 
-From ~270 to ~1,650 is roughly a 6× expansion, about 360 game-years at realistic rates. At 10,000× that's under two hours of watching, and the follow-a-villager fantasy arrives as soon as the first bands settle rather than centuries later.
+The six-band start's ~270 people made ~1,650 roughly a 6× expansion, about 360 game-years at realistic rates; at 10,000× that is under two hours of watching. The village start (#146) puts the follow-a-villager fantasy on screen from the first day, but M1's four villages of 20 are ~80 people, a 20× climb. How many villages each race starts with, and how big, is still open for #34, and this curve is the number to set it by.
 
 ### Generation
 

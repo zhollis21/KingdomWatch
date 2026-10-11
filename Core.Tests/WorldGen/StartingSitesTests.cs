@@ -159,6 +159,37 @@ namespace KingdomWatch.Core.Tests.WorldGen
         }
 
         [Test]
+        public void A_site_with_no_forest_in_reach_is_never_picked()
+        {
+            // Bushes enough for a year, room for a barn, and not a tree: the
+            // village would freeze its first winter, so it is no site.
+            var grid = new TerrainGrid(80, 40, TerrainKind.Plains);
+
+            for (var y = 0; y < grid.Height; y++)
+            {
+                grid.Set(new WorldPosition(40, y), TerrainKind.SmallRiver);
+
+                for (var x = 0; x < grid.Width; x++)
+                {
+                    if (x != 40 && (x + y) % 3 == 0 && Math.Abs(y - 20) > 4)
+                    {
+                        grid.Set(new WorldPosition(x, y), TerrainKind.Scrub);
+                    }
+                }
+            }
+
+            var world = new World(1UL, grid, DemographicSettings.Default);
+            var west = new WorldPosition(20, 20);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.Buildings.ForageInReach(west, ReadOnlySpan<bool>.Empty), Is.GreaterThanOrEqualTo(Buildings.YearlyNeed(20)), "bushes enough");
+                Assert.That(world.Buildings.CanSettle(west, ReadOnlySpan<bool>.Empty, 20), Is.True, "passes the founding check");
+                Assert.That(() => StartingSites.Pick(world, 1, 20, 0), Throws.InvalidOperationException.With.Message.Contains("room for 0"));
+            });
+        }
+
+        [Test]
         public void Pick_refuses_arguments_that_describe_no_villages()
         {
             var world = new World(1UL, new TerrainGrid(8, 8, TerrainKind.Plains), DemographicSettings.Default);

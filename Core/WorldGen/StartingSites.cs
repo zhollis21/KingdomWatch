@@ -21,7 +21,8 @@ namespace KingdomWatch.Core.WorldGen
     /// <see cref="Buildings.WoodInReach(WorldPosition, ReadOnlySpan{bool})"/>.
     /// Stone is not scored: nothing spends it yet.
     ///
-    /// Bushes gate instead. A site's bushes have to cover a whole year of
+    /// Bushes gate instead, and so does having any forest in reach at all.
+    /// A site's bushes have to cover a whole year of
     /// the village's eating (<see cref="Buildings.YearlyNeed"/>), and the site
     /// has to pass the founding check
     /// (<see cref="Buildings.CanSettle(WorldPosition, ReadOnlySpan{bool}, int)"/>)
@@ -157,7 +158,10 @@ namespace KingdomWatch.Core.WorldGen
                 var side = candidate.West ? west : east;
 
                 // The cheap tests first: the founding check places a barn.
+                // No forest in reach is no winter fuel, which the section 15
+                // sanity check promises every starting village.
                 if (side.Count >= perSide
+                    || candidate.Wood == 0
                     || IsCrowded(candidate.At, west, spacingSquared)
                     || IsCrowded(candidate.At, east, spacingSquared)
                     || world.Buildings.ForageInReach(candidate.At, known) < need
