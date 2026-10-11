@@ -14,9 +14,12 @@ $ErrorActionPreference = 'Stop'
 $root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
 $art = Join-Path $root 'Game/Assets/Art'
 
-# Empty but for git's own pointer counts as empty: a checkout that failed
-# partway can leave just that.
-if (-not (Test-Path $art) -or (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1)) {
+# Art there already: nothing to do. A missing folder counts as empty - the
+# checkout recreates it - and so does one holding only git's own pointer,
+# which a checkout that failed partway can leave.
+function Test-Art { (Test-Path $art) -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1) }
+
+if (Test-Art) {
     exit 0
 }
 
@@ -39,7 +42,7 @@ try {
 
     # Git can call a submodule whose files went missing up to date, so the
     # files are what say it worked.
-    if ($LASTEXITCODE -eq 0 -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1)) {
+    if ($LASTEXITCODE -eq 0 -and (Test-Art)) {
         Report 'Checked out the art submodule (Game/Assets/Art) in this worktree.'
     }
     elseif ($LASTEXITCODE -eq 0) {
