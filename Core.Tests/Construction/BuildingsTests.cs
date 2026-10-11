@@ -944,6 +944,45 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, map, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => w.Buildings.CanSettle(new WorldPosition(-1, 0), map, 1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, new EntityId(EntityKind.MobileGroup, 999UL), 1), Throws.InvalidOperationException);
+                Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, new bool[1], 1), Throws.ArgumentException, "a known mask short of the grid");
+                Assert.That(() => w.Buildings.CanSettle(BuildingsWorld.Centre, System.ReadOnlySpan<bool>.Empty, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.CanSettle(new WorldPosition(-1, 0), System.ReadOnlySpan<bool>.Empty, 1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.ForageInReach(BuildingsWorld.Centre, new bool[1]), Throws.ArgumentException);
+                Assert.That(() => w.Buildings.WoodInReach(BuildingsWorld.Centre, new bool[1]), Throws.ArgumentException);
+            });
+        }
+
+        [Test]
+        public void A_map_nobody_holds_reads_an_empty_mask_as_the_whole_map()
+        {
+            // What a world picks its starting villages with (#146): no holder
+            // exists yet, so the land is read as if all of it were known.
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(5 + (i % 30), 5 + (i / 30)), TerrainKind.Scrub);
+                }
+
+                for (var x = 30; x < 36; x++)
+                {
+                    grid.Set(new WorldPosition(x, 30), TerrainKind.Forest);
+                }
+            });
+            var at = BuildingsWorld.Centre;
+            var all = new bool[w.World.Grid.CellCount];
+            System.Array.Fill(all, true);
+            var none = new bool[w.World.Grid.CellCount];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.ForageInReach(at, System.ReadOnlySpan<bool>.Empty), Is.EqualTo(w.Buildings.ForageInReach(at, all)).And.GreaterThan(0));
+                Assert.That(w.Buildings.WoodInReach(at, System.ReadOnlySpan<bool>.Empty), Is.EqualTo(w.Buildings.WoodInReach(at, all)).And.GreaterThan(0));
+                Assert.That(w.Buildings.CanSettle(at, System.ReadOnlySpan<bool>.Empty, 12), Is.True);
+                Assert.That(w.Buildings.ForageInReach(at, none), Is.Zero, "a mask that knows nothing finds nothing");
+                Assert.That(w.Buildings.WoodInReach(at, none), Is.Zero);
+                Assert.That(w.Buildings.CanSettle(at, none, 12), Is.False);
             });
         }
 

@@ -174,7 +174,10 @@ namespace KingdomWatch.Game
             if (demoSelect && Time.frameCount > 5)
             {
                 demoSelect = false;
-                world.Nomads.CopyTrackedTo(bands);
+                // Bands and villages alike: since #146 the world starts with
+                // villages only.
+                bands.Clear();
+                world.CopyCommunitiesTo(bands);
                 if (bands.Count > 0 && bands[0].Members.Count > 0) view.Selected = world.People.GetId(bands[0].Members[0]);
             }
 #endif

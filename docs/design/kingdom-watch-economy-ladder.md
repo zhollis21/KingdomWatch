@@ -121,7 +121,7 @@ survival-critical:
 than in the recipe graph.** Winter fuel is survival-critical — going without
 it past a grace period kills (§2) — and whether it is burnt raw or as
 Charcoal, it all comes from forest. No recipe can give it a second origin,
-so the plan's §15 sanity check guarantees that origin instead: every starting band
+so the plan's §15 sanity check guarantees that origin instead: every starting village
 has forest in reach, alongside the water and arable land it already checks.
 After the start, #54's settling land check already refuses a site with no
 woodcutting in reach, so a band only ever settles where fuel is.
@@ -505,7 +505,7 @@ could softlock a world.
 
 | # | Milestone | Fires when |
 |---|---|---|
-| 1 | First camp | A band pitches its first camp — the first `CampPitched`, published when tracking starts (#54) |
+| 1 | First settlement | The first `SettlementFounded`, at world start, since the world opens with its villages standing (#146; before that, the first `CampPitched`, #54) |
 | 2 | First permanent structure | A house completes |
 | 3 | First farm | A field brings in its first harvest (#100) |
 | 4 | First smithy | A smithy completes, OR a Journeyman metalworker exists |
@@ -544,7 +544,7 @@ on #100's building model, and the skill milestones on #22.
 
 | Milestone | Target | Confirmed by |
 |---|---|---|
-| First camp | year 0 | Fires at world start (#54); tested on every seed by #17 |
+| First settlement | year 0 | Fires at world start (#146); tested on every seed by #17 |
 | First permanent structure | year 3–5 | #100 (buildings), #23 |
 | First farm | year 8–15 | #100, #22; seasons (#53) gate sowing once farms exist |
 | **First journeyman, any craft** | **year 20–30** | #22, the number the plan's §15 names |
@@ -632,7 +632,7 @@ flowchart LR
   QuarryB --> Wall["Wall<br/><i>stone tier</i>"]:::bld
   Smithy --> Wall
 
-  Camp --> M1["1 · first camp"]:::ms
+  Camp --> M1["1 · first settlement"]:::ms
   House --> M2["2 · first permanent structure"]:::ms
   Plot --> M3["3 · first farm"]:::ms
   Smithy --> M4["4 · first smithy"]:::ms

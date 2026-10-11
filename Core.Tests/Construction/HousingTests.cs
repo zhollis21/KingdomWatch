@@ -417,6 +417,10 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(bare.Buildings.WoodInReach(bare.Settlement), Is.Zero);
                 Assert.That(() => w.Buildings.WoodInReach(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Buildings.CanFuelAnotherHearth(null!), Throws.ArgumentNullException);
+                Assert.That(w.Buildings.WoodFromTrees(trees), Is.EqualTo(expected), "the same sum, from the count");
+                Assert.That(w.Buildings.WoodFromTrees(0), Is.Zero);
+                Assert.That(w.Buildings.WoodFromTrees(int.MaxValue), Is.GreaterThan(w.Buildings.WoodFromTrees(int.MaxValue - 1)), "no overflow at the top");
+                Assert.That(() => w.Buildings.WoodFromTrees(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
         }
 

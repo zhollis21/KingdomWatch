@@ -30,20 +30,24 @@ namespace KingdomWatch.Core
     /// <c>DemographicWorld</c>, <c>WorkWorld</c>), made from parts rather
     /// than stacked, because nothing here needs a fixture's shortcuts.
     ///
-    /// One race: a second needs a race model first (#102), so both bands are
+    /// One race: a second needs a race model first (#102), so every village is
     /// built from the one <see cref="DemographicSettings"/>.
     /// </remarks>
     public sealed class World
     {
         // About five days' walk across at Jobs.TicksPerCostUnit - a region
-        // rather than a town, which is some 50 cells - so two bands wander
-        // for years without meeting the edge (#123).
+        // rather than a town, which is some 50 cells - with room for villages
+        // half a day apart and for the bands that split from them (#123).
         public const int M1Width = 1080;
         public const int M1Height = 1080;
 
-        // Section 15's largest two starting bands.
-        public const int M1WestSize = 60;
-        public const int M1EastSize = 45;
+        // Four small villages, two each side of the river (#146). Placeholder
+        // numbers: twenty is BandGenerator.MinLineages' eight unrelated
+        // couples and four children, and a hundred cells is about half a
+        // day's walk, so the villages read as separate places.
+        public const int M1VillagesPerSide = 2;
+        public const int M1VillageSize = 20;
+        public const int M1VillageSpacing = 100;
 
         // Placeholders, like every other tuning number: memories are not yet
         // written by anything in M1, so these only have to be valid.
@@ -127,23 +131,28 @@ namespace KingdomWatch.Core
         /// Unity driver runs (#72), defined once so the two cannot drift apart
         /// and the hashes they print stay comparable.
         /// </summary>
-        public static World M1(ulong seed) => TwoBands(seed, M1Width, M1Height, M1WestSize, M1EastSize);
+        public static World M1(ulong seed) =>
+            Villages(seed, M1Width, M1Height, M1VillagesPerSide, M1VillageSize, M1VillageSpacing);
 
         /// <summary>
-        /// The M1 world (section 19): a <see cref="PlaceholderMap"/> with one
-        /// band on each side of its river. Both are the one race there is.
+        /// The M1 world (section 19): a <see cref="PlaceholderMap"/> with
+        /// villages already standing on each side of its river, on the sites
+        /// <see cref="StartingSites"/> picks (#146). All are the one race
+        /// there is. Throws when the map has no room for them.
         /// </summary>
-        public static World TwoBands(ulong seed, int width, int height, int westSize, int eastSize)
+        public static World Villages(ulong seed, int width, int height, int perSide, int size, int spacing)
         {
             // The map draws from its own keys, so building it from the world's
             // rng would give the same terrain; a separate rng only keeps the
             // map a function of the seed that does not need a world to exist.
             var world = new World(seed, PlaceholderMap.Generate(width, height, new DeterministicRng(seed)), DemographicSettings.Default);
-            var row = height / 2;
-            var river = world.RiverColumn(row);
+            var sites = StartingSites.Pick(world, perSide, size, spacing);
 
-            world.AddBand(westSize, world.NearestStandable(new WorldPosition(river / 2, row), 0, river - 1));
-            world.AddBand(eastSize, world.NearestStandable(new WorldPosition((river + width) / 2, row), river + 1, width - 1));
+            for (var i = 0; i < sites.Count; i++)
+            {
+                world.AddVillage(size, sites[i]);
+            }
+
             return world;
         }
 
@@ -238,6 +247,42 @@ namespace KingdomWatch.Core
             Matchmaking.Track(band);
             Nomads.Track(band);
             return band;
+        }
+
+        /// <summary>
+        /// A generated band of this size founded as a village where it
+        /// stands (#146): put on every system a settlement takes over from,
+        /// shown the land around it as a band's first camp is, and settled
+        /// through <see cref="Founding.Found"/> - so a starting village is
+        /// handed over exactly as a band that settled is. It never wanders:
+        /// <see cref="Nomads"/> never tracks it, and it pitches no camp.
+        /// Refuses a cell off the map or one nobody can stand on before
+        /// anything is made. Whether the land can feed it is the caller's
+        /// to have checked (<see cref="StartingSites"/>).
+        /// </summary>
+        public Settlement AddVillage(int size, WorldPosition at)
+        {
+            if (!Grid.Contains(at) || !Pathfinder.IsPassable(at, Jobs.Mover))
+            {
+                throw new ArgumentOutOfRangeException(nameof(at), at, "A village has to be placed where its feet can stand.");
+            }
+
+            var band = Generator.Generate(size, at);
+
+            for (var i = 0; i < band.Members.Count; i++)
+            {
+                People.SetPosition(band.Members[i], at);
+            }
+
+            Deaths.Track(band);
+            Fertility.Track(band);
+            Hunger.Track(band);
+            Warmth.Track(band);
+            Jobs.Track(band);
+            Matchmaking.Track(band);
+            KnownMaps.Track(band.Id);
+            KnownMaps.Reveal(band.Id, at, NomadicBands.RevealRadius);
+            return Founding.Found(band, new Reasons(ReasonCode.LandSuitable));
         }
 
         public void AdvanceTo(SimulationTime time) => Clock.AdvanceTo(time, Router);
@@ -339,42 +384,6 @@ namespace KingdomWatch.Core
         {
             copy(_scratch);
             into.AddRange(_scratch);
-        }
-
-        private int RiverColumn(int row)
-        {
-            for (var x = 0; x < Grid.Width; x++)
-            {
-                if (Grid[new WorldPosition(x, row)] == TerrainKind.SmallRiver)
-                {
-                    return x;
-                }
-            }
-
-            throw new InvalidOperationException("Row " + row + " has no river; this is not a placeholder map.");
-        }
-
-        // The standable cell nearest a target along its own row, between two
-        // columns. Only along the row: the river drifts from row to row, so
-        // the columns that are one side of it here may be the other side a
-        // row away. A band has to be tracked where its feet can stand.
-        private WorldPosition NearestStandable(WorldPosition target, int minX, int maxX)
-        {
-            for (var offset = 0; offset <= maxX - minX; offset++)
-            {
-                for (var sign = -1; sign <= 1; sign += 2)
-                {
-                    var at = new WorldPosition(target.X + sign * offset, target.Y);
-
-                    if (at.X >= minX && at.X <= maxX && Pathfinder.IsPassable(at, Jobs.Mover))
-                    {
-                        return at;
-                    }
-                }
-            }
-
-            throw new InvalidOperationException(
-                "No standable cell in row " + target.Y + " between columns " + minX + " and " + maxX + ".");
         }
     }
 }

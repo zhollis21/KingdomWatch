@@ -7,9 +7,10 @@ namespace KingdomWatch.Core.WorldGen
 {
     /// <summary>
     /// A stand-in world: plains with patches of forest, rock outcrops and
-    /// berry scrub, split top to bottom by one small river. Enough for two
-    /// bands to walk around on, for work to be a walk away, and for one camp
-    /// to be better placed than another (#137).
+    /// berry scrub, split top to bottom by one small river. Enough for
+    /// villages to stand on and bands to walk around on, for work to be a
+    /// walk away, and for one site to be better placed than another (#137,
+    /// #146).
     /// </summary>
     /// <remarks>
     /// This is not world generation. Section 15's archetypes, homelands,
@@ -37,8 +38,9 @@ namespace KingdomWatch.Core.WorldGen
         // sets how big a patch is and how far apart; the threshold sets how
         // much of the map it covers. Placeholder numbers, in the
         // TerrainRules.Default sense: tuned so patches leave gaps wider than
-        // a worker's reach (Jobs.MaxSiteRadius) and both homelands still
-        // live and settle (WorldRunTests).
+        // a worker's reach (Jobs.MaxSiteRadius), both sides of the river
+        // have room for their starting villages (StartingSites), and both
+        // homelands still live (WorldRunTests).
         private const int ForestSpacing = 40;
         private const int ForestThreshold = 670;
         private const int RockSpacing = 24;

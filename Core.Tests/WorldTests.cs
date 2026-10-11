@@ -138,7 +138,7 @@ namespace KingdomWatch.Core.Tests
             {
                 Assert.That(world.Grid.Width, Is.EqualTo(World.M1Width));
                 Assert.That(world.Grid.Height, Is.EqualTo(World.M1Height));
-                Assert.That(world.People.Count, Is.EqualTo(World.M1WestSize + World.M1EastSize));
+                Assert.That(world.People.Count, Is.EqualTo(2 * World.M1VillagesPerSide * World.M1VillageSize));
                 Assert.That(world.Hash(), Is.EqualTo(run.Hash()));
             });
         }

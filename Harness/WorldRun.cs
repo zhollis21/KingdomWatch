@@ -18,15 +18,16 @@ namespace KingdomWatch.Harness
     /// validation break if there is one.
     /// </summary>
     /// <remarks>
-    /// Homelands, not bands: a band that settles becomes a settlement with a
-    /// new id, so what is counted is everyone living in communities on each
-    /// side of the river. The river is a wall until bridges (section 12), so
-    /// nobody changes side.
+    /// Homelands, not villages: the world starts with villages on both sides
+    /// of the river (#146), and what is counted is everyone living in
+    /// communities on each side - so a band that splits off later and
+    /// settles again is still counted where it lives. The river is a wall
+    /// until bridges (section 12), so nobody changes side.
     ///
     /// Milestones 1 to 3 of the economy ladder's section 9 can fire: the
-    /// first camp, and since #100 a village's first house and first harvest,
-    /// which the chronicle reports. The rest wait on skills (#22) and the
-    /// buildings that need them.
+    /// first settlement, founded at world start since #146, and since #100 a
+    /// village's first house and first harvest, which the chronicle reports.
+    /// The rest wait on skills (#22) and the buildings that need them.
     /// </remarks>
     public sealed class WorldRun
     {
@@ -34,8 +35,8 @@ namespace KingdomWatch.Harness
         // Unity driver reads it too; these names are kept for the harness.
         public const int Width = World.M1Width;
         public const int Height = World.M1Height;
-        public const int WestSize = World.M1WestSize;
-        public const int EastSize = World.M1EastSize;
+        public const int WestSize = World.M1VillagesPerSide * World.M1VillageSize;
+        public const int EastSize = World.M1VillagesPerSide * World.M1VillageSize;
 
         private readonly List<ICommunity> _communities = new List<ICommunity>();
         private readonly List<ICommunity> _tracked = new List<ICommunity>();
@@ -405,4 +406,4 @@ namespace KingdomWatch.Harness
             OtherDeaths = WestTally.OtherDeaths + EastTally.OtherDeaths,
         };
     }
-}
+}

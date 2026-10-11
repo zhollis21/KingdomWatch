@@ -341,7 +341,16 @@ namespace KingdomWatch.Core.Construction
         /// knowing what <paramref name="mapHolder"/> knows, could forage.
         /// </summary>
         public long ForageInReach(WorldPosition at, EntityId mapHolder) =>
-            _pathfinder.CountReachable(at, Jobs.Mover, _scrub, _knownMaps.For(mapHolder), Jobs.MaxSiteRadius) * BushYearlyFood;
+            ForageInReach(at, _knownMaps.For(mapHolder));
+
+        /// <summary>
+        /// <see cref="ForageInReach(WorldPosition, EntityId)"/> for a map
+        /// nobody holds: one flag per grid cell, as <see cref="KnownMaps.For"/>
+        /// gives, or empty for the whole map, as the <see cref="Pathfinder"/>
+        /// reads it - what a world picks its starting villages from (#146).
+        /// </summary>
+        public long ForageInReach(WorldPosition at, ReadOnlySpan<bool> known) =>
+            _pathfinder.CountReachable(at, Jobs.Mover, _scrub, known, Jobs.MaxSiteRadius) * BushYearlyFood;
 
         /// <summary>
         /// Whether a band of this many could settle here: a whole year's
@@ -366,21 +375,35 @@ namespace KingdomWatch.Core.Construction
         /// on a map that is mostly plains, and placement is #23's to replace,
         /// so this checks the barn alone.
         /// </remarks>
-        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living)
+        public bool CanSettle(WorldPosition at, EntityId mapHolder, int living) =>
+            CanSettle(at, _knownMaps.For(mapHolder), living);
+
+        /// <summary>
+        /// <see cref="CanSettle(WorldPosition, EntityId, int)"/> for a map
+        /// nobody holds, read as <see cref="ForageInReach(WorldPosition, ReadOnlySpan{bool})"/>
+        /// reads it: what a world checks its starting villages' sites against
+        /// before anyone exists to know them (#146).
+        /// </summary>
+        public bool CanSettle(WorldPosition at, ReadOnlySpan<bool> known, int living)
         {
             // Inputs first, in every season: checked after the season, they
             // were refused in early spring and silently accepted the rest of
             // the year.
             var need = YearlyNeed(living);
             _grid.IndexOf(at);
-            _knownMaps.For(mapHolder);
+            if (!known.IsEmpty && known.Length < _grid.CellCount)
+            {
+                throw new ArgumentException(
+                    "The known mask covers " + known.Length + " cells; the grid has " + _grid.CellCount + ".", nameof(known));
+            }
+
             var now = _clock.Now;
 
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
-                && ForageInReach(at, mapHolder) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
+                && ForageInReach(at, known) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
                 && YardIsClear(at)
-                && TryPlace(BuildingKind.Barn, at, at, mapHolder, EntityId.None, out _);
+                && TryPlace(BuildingKind.Barn, at, at, known, EntityId.None, out _);
         }
 
         /// <summary>
@@ -471,10 +494,32 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(settlement));
             }
 
-            var trees = _pathfinder.CountReachable(
-                settlement.Position, Jobs.Mover, _forest, _knownMaps.For(settlement.Id), Jobs.MaxSiteRadius);
-            return (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
+            return WoodInReach(settlement.Position, _knownMaps.For(settlement.Id));
         }
+
+        /// <summary>
+        /// <see cref="WoodInReach(ICommunity)"/> from a place, knowing a map
+        /// nobody holds, read as <see cref="ForageInReach(WorldPosition, ReadOnlySpan{bool})"/>
+        /// reads it: what a world ranks its starting villages' sites by, since
+        /// it is the wood that bounds how many hearths a village can keep
+        /// (#146).
+        /// </summary>
+        public long WoodInReach(WorldPosition at, ReadOnlySpan<bool> known)
+        {
+            return WoodFromTrees(_pathfinder.CountReachable(at, Jobs.Mover, _forest, known, Jobs.MaxSiteRadius));
+        }
+
+        /// <summary>
+        /// Wood a year this many forest cells give back, each felled and
+        /// grown again every <see cref="LandCover.RegrowDays"/>: what
+        /// <see cref="WoodInReach(ICommunity)"/> makes of the trees it counts.
+        /// Never falls as the count rises, so a bound on the trees is a bound
+        /// on the wood (#146).
+        /// </summary>
+        public long WoodFromTrees(int trees) =>
+            trees >= 0
+                ? (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays
+                : throw new ArgumentOutOfRangeException(nameof(trees), trees, "No fewer trees than none.");
 
         /// <summary>
         /// Whether the forest in reach (<see cref="WoodInReach"/>) would keep
@@ -1135,7 +1180,7 @@ namespace KingdomWatch.Core.Construction
 
             if (_skills.BestIn(settlement, spec.Skill) < spec.MinimumTier
                 || stores.Available(ResourceKind.Wood) - winterFuel < spec.Wood
-                || !TryPlace(kind, from, settlement.Position, settlement.Id, settlement.Id, out var anchor, barn))
+                || !TryPlace(kind, from, settlement.Position, _knownMaps.For(settlement.Id), settlement.Id, out var anchor, barn))
             {
                 return;
             }
