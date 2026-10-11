@@ -20,10 +20,11 @@ namespace KingdomWatch.Core.Tests.Construction
         internal static readonly WorldPosition Centre = new WorldPosition(20, 20);
 
         // `camp` moves the settlement off the middle, for the fixtures that
-        // need it by an edge.
-        internal BuildingsWorld(int people = 12, System.Action<TerrainGrid>? paint = null, WorldPosition? camp = null)
+        // need it by an edge; `size` widens the map east and south, for the
+        // ones that need room beyond Buildings.VillageGap.
+        internal BuildingsWorld(int people = 12, System.Action<TerrainGrid>? paint = null, WorldPosition? camp = null, int size = Size)
         {
-            var grid = new TerrainGrid(Size, Size, TerrainKind.Plains);
+            var grid = new TerrainGrid(size, size, TerrainKind.Plains);
             paint?.Invoke(grid);
             World = new World(1UL, grid, DemographicSettings.Default);
             World.Bus.Subscribe(this);

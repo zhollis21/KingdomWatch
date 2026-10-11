@@ -44,6 +44,12 @@ issue, or pasted anywhere public.
   capture**.
 - **`/profile compare`:** use the two newest `Run_*` sets, with no new run.
 
+Runs made with `-Stops` are looks, not measurements: they fly only some
+stops and have no `.markers.txt`. Skip them when picking the newest run or
+the two to compare, and say so if that is why an older run was used. A run's
+`.log` names its seed on its first line (`-Seed` picks another): compare two
+runs only on the same seed, since another seed is another map.
+
 ## 2. Read it
 
 A scripted run gives three things. Read all three before saying anything:

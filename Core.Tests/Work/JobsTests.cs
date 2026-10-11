@@ -1120,21 +1120,27 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_site_is_looked_for_out_to_the_radius_and_no_further()
+        public void A_site_is_looked_for_out_to_a_walk_that_leaves_the_work_before_dusk_and_no_further()
         {
-            var grid = new TerrainGrid(40, 40, TerrainKind.Plains);
-            var camp = new WorldPosition(20, 20);
-            var atTheEdge = new WorldPosition(20 + Jobs.MaxSiteRadius, 20);
-            var pastIt = new WorldPosition(20 - Jobs.MaxSiteRadius - 1, 20);
+            // Across plains, a step of 100 and the last onto the site at its
+            // own cost: a forest cell at the very edge of a woodcutter's
+            // four hours out, and rocks one cell past a stone gatherer's
+            // three.
+            var forestEdge = (int)((Jobs.ReachCost(JobKind.Woodcutter, Season.Spring) - 200L) / 100L) + 1;
+            var rocksPast = (int)((Jobs.ReachCost(JobKind.StoneGatherer, Season.Spring) - 300L) / 100L) + 2;
+            var grid = new TerrainGrid(forestEdge + rocksPast + 3, 3, TerrainKind.Plains);
+            var camp = new WorldPosition(rocksPast + 1, 1);
+            var atTheEdge = new WorldPosition(camp.X + forestEdge, 1);
+            var pastIt = new WorldPosition(camp.X - rocksPast, 1);
             grid.Set(atTheEdge, TerrainKind.Forest);
             grid.Set(pastIt, TerrainKind.Rocks);
             var w = new WorkWorld(1UL, grid);
             var band = w.NewBand(camp, WorkWorld.PlentifulFood(1));
             w.Join(band, 30L);
 
-            // Both cells known, so the search radius is the only thing that
-            // can rule either out; the fog is the next fixture's subject.
-            w.KnownMaps.Reveal(band.Id, camp, Jobs.MaxSiteRadius + 1);
+            // Both cells known, so the walk is the only thing that can rule
+            // either out; the fog is the next fixture's subject.
+            w.KnownMaps.Reveal(band.Id, camp, grid.Width);
 
             w.AdvanceToDawn();
 
@@ -1477,7 +1483,7 @@ namespace KingdomWatch.Core.Tests.Work
             // the road and of neither end of it, so only a reveal that
             // follows the route can bring it into view.
             var besideTheRoad = new WorldPosition(
-                FogCamp.X + (Jobs.MaxSiteRadius / 2), FogCamp.Y + Jobs.RevealRadius);
+                FogCamp.X + (FogDistance / 2), FogCamp.Y + Jobs.RevealRadius);
             Assert.That(w.KnownMaps.Knows(band.Id, besideTheRoad), Is.False);
 
             w.AdvanceToDawn();
@@ -1487,7 +1493,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "the trip is what does the revealing");
                 Assert.That(w.KnownMaps.Knows(band.Id, besideTheRoad), Is.True);
                 Assert.That(
-                    w.KnownMaps.Knows(band.Id, new WorldPosition(FogCamp.X + (Jobs.MaxSiteRadius / 2), FogCamp.Y)),
+                    w.KnownMaps.Knows(band.Id, new WorldPosition(FogCamp.X + (FogDistance / 2), FogCamp.Y)),
                     Is.True,
                     "and the ground it walked over itself");
             });
@@ -1530,16 +1536,17 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
-        public void A_settlements_work_stays_inside_what_its_band_saw()
+        public void A_settlements_work_near_home_shows_nothing_its_band_had_not_seen()
         {
             // Section 12 wants a settled community's map to keep growing, or
             // the exploration motive stops the moment bands stop wandering.
-            // Work cannot do it: a band sees NomadicBands.RevealRadius around
-            // its camp, well past Jobs.MaxSiteRadius and the RevealRadius a
-            // trip adds, so every site a settlement can work, and every cell
-            // walking to it shows, is one it already knew at founding (#123).
-            // A deliberate Scouting purpose (#85) is what widens the map; expect
-            // this test to change when it lands.
+            // Work near home cannot do it: a band sees NomadicBands.RevealRadius
+            // around its camp, past a site this close and the RevealRadius a
+            // trip adds, so walking to it shows nothing the settlement did not
+            // know at founding (#123). Only a trip to the edge of what it knows,
+            // once nothing nearer is left, shows a little more. A deliberate
+            // Scouting purpose (#85) is what widens the map; expect this test
+            // to change when it lands.
             var w = new WorkWorld(1UL, FogMap());
             var band = w.NewWanderingBand(FogCamp, WorkWorld.PlentifulFood(4));
             var adults = w.JoinAdults(band, 4);
@@ -1554,9 +1561,9 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(
                     NomadicBands.RevealRadius,
-                    Is.GreaterThanOrEqualTo(Jobs.MaxSiteRadius + Jobs.RevealRadius),
-                    "what a band sees covers every trip its work can take");
-                Assert.That(w.Jobs.SiteFor(settlement, JobKind.Woodcutter), Is.EqualTo(FogForest), "the forest at the edge of reach, seen from the camp");
+                    Is.GreaterThanOrEqualTo(FogDistance + Jobs.RevealRadius),
+                    "what a band sees covers this trip");
+                Assert.That(w.Jobs.SiteFor(settlement, JobKind.Woodcutter), Is.EqualTo(FogForest), "the forest, seen from the camp");
                 Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Woodcutter), "and walked to");
                 Assert.That(KnownCells(w, settlement.Id), Is.EqualTo(before), "yet the walk showed nothing new");
             });
@@ -1578,12 +1585,13 @@ namespace KingdomWatch.Core.Tests.Work
             return count;
         }
 
-        // Forty by forty of plains with one forest cell at the far edge of
-        // the search radius: reachable, well outside what standing still
-        // reveals, and far enough that the camp's reveal square and the
-        // site's leave a band of fog in between for the road to lift.
+        // Forty by forty of plains with one forest cell sixteen cells east:
+        // reachable, well outside what standing still reveals, and far
+        // enough that the camp's reveal square and the site's leave a band
+        // of fog in between for the road to lift.
+        private const int FogDistance = 16;
         private static readonly WorldPosition FogCamp = new WorldPosition(20, 20);
-        private static readonly WorldPosition FogForest = new WorldPosition(20 + Jobs.MaxSiteRadius, 20);
+        private static readonly WorldPosition FogForest = new WorldPosition(20 + FogDistance, 20);
 
         private static TerrainGrid FogMap()
         {

@@ -95,9 +95,9 @@ namespace KingdomWatch.Core.Nomadic
     /// knowledge the band does not have. The test that pins this invariant is
     /// what will say so.
     ///
-    /// <see cref="Jobs"/> works only sites the community has seen (#84), and
-    /// with <see cref="RevealRadius"/> past every work trip, a band's sight
-    /// is all the map a settlement it founds will have until #85 (#123).
+    /// <see cref="Jobs"/> works only sites the community has seen (#84), so a
+    /// band's sight is nearly all the map a settlement it founds will have
+    /// until #85 (#123): a work trip shows only a little beyond its site.
     ///
     /// **Camps embody wood.** Making camp takes up to <see cref="CampWood"/>
     /// from the band's stock and embodies it - section 9's temporary camp,
@@ -151,10 +151,10 @@ namespace KingdomWatch.Core.Nomadic
         /// Matched to <see cref="HopRadius"/> so a band always knows the ground
         /// it could hop to next. It cannot go much tighter while reveal stays
         /// passive: a band only settles once it knows a forager's site and a
-        /// woodcutter's, each within <see cref="Jobs.MaxSiteRadius"/> of the
-        /// camp, so a smaller radius trades directly against whether a band
-        /// ever settles at all. #85 - something that goes looking on purpose -
-        /// is what would buy a tighter one.
+        /// woodcutter's in reach of the camp (<see cref="Jobs.ReachCost(long)"/>),
+        /// so a smaller radius trades directly against whether a band ever
+        /// settles at all. #85 - something that goes looking on purpose - is
+        /// what would buy a tighter one.
         /// </remarks>
         public const int RevealRadius = HopRadius;
 
@@ -827,7 +827,7 @@ namespace KingdomWatch.Core.Nomadic
 
         private bool HasFoodInReach(MobileGroup band) =>
             _pathfinder.TryFindNearest(
-                band.Position, Jobs.Mover, JobTable.Terrain(JobKind.Forager), _knownMaps.For(band.Id), _land.Promising, Jobs.MaxSiteRadius, _scratchRoute, out _);
+                band.Position, Jobs.Mover, JobTable.Terrain(JobKind.Forager), _knownMaps.For(band.Id), _land.Promising, null, false, int.MaxValue, Jobs.ReachCost(JobKind.Forager, _clock.Now.Season), _scratchRoute, out _);
 
         // How many jobs would find a site from here; the path cost out to the
         // food site (long.MaxValue with none) and summed over every site
@@ -845,7 +845,7 @@ namespace KingdomWatch.Core.Nomadic
             {
                 var job = Jobs.Priority[i];
 
-                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, _land.Promising, Jobs.MaxSiteRadius, _scratchRoute, out var cost))
+                if (!_pathfinder.TryFindNearest(at, Jobs.Mover, JobTable.Terrain(job), known, _land.Promising, null, false, int.MaxValue, Jobs.ReachCost(job, _clock.Now.Season), _scratchRoute, out var cost))
                 {
                     continue;
                 }

@@ -427,7 +427,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
 
             // The land did not change; what the band knows of it did. Scoring
             // is a reading of the band's map, not a property of the ground.
-            w.KnownMaps.Reveal(band.Id, across, Jobs.MaxSiteRadius);
+            w.KnownMaps.Reveal(band.Id, across, 16);
 
             Assert.That(w.Nomads.LandScore(band, across), Is.EqualTo(1), "across the river: scrub only");
             Assert.That(w.Nomads.CanSettleAt(band, across), Is.False, "no wood");
@@ -546,9 +546,15 @@ namespace KingdomWatch.Core.Tests.Nomadic
             Assert.That(w.Jobs.TaskOf(adults[0]).Origin, Is.EqualTo(destination));
         }
 
+        // A woodcutter's reach across scrub, in cells: straight steps of 150
+        // up to the last, onto the forest itself at 200, within the job's
+        // ReachCost. Forty-seven at four hours out.
+        private static readonly int ScrubWoodReach =
+            (int)((Jobs.ReachCost(JobKind.Woodcutter, Season.Spring) - 200L) / 150L) + 1;
+
         // Wide enough for the far-forest fixtures below: a camp two columns
         // in, a hop, a woodcutter's reach, and the forest cell itself.
-        private const int FarForestWidth = 2 + NomadicBands.HopRadius + Jobs.MaxSiteRadius + 1;
+        private static readonly int FarForestWidth = 2 + NomadicBands.HopRadius + ScrubWoodReach + 1;
 
         [Test]
         [TestCase(1UL)]
@@ -558,20 +564,17 @@ namespace KingdomWatch.Core.Tests.Nomadic
         {
             // Scrub, with one forest cell a hop and a woodcutter's reach east
             // of the camp: out of reach from the camp and from every candidate
-            // but the lattice's far column, which is exactly MaxSiteRadius
-            // from it. Only candidates in that column score two; the band
-            // goes to one of them, whatever the seed.
+            // but the lattice's far column, which is just within a
+            // woodcutter's walk of it. Only candidates in that column score
+            // two; the band goes to one of them, whatever the seed.
             //
             // The forest is revealed to the band up front (#81): it lies
             // outside RevealRadius, and a band cannot prefer land whose merit
             // it has never seen - which is what the fixture below this one
-            // asserts. Scoring differences inside one hop box can only come
-            // from knowledge or from reachability now, never from distance,
-            // because MaxSiteRadius reaches well past anything a band has
-            // walked close enough to see.
+            // asserts.
             var grid = new TerrainGrid(FarForestWidth, 32, TerrainKind.Scrub);
             var camp = new WorldPosition(2, 8);
-            var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
+            var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + ScrubWoodReach, camp.Y);
             grid.Set(forest, TerrainKind.Forest);
             var w = new WorkWorld(seed, grid);
             var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
@@ -600,7 +603,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // has no way to have heard of.
             var grid = new TerrainGrid(FarForestWidth, 32, TerrainKind.Scrub);
             var camp = new WorldPosition(2, 8);
-            var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + Jobs.MaxSiteRadius, camp.Y);
+            var forest = new WorldPosition(camp.X + NomadicBands.HopRadius + ScrubWoodReach, camp.Y);
             grid.Set(forest, TerrainKind.Forest);
             var w = new WorkWorld(seed, grid);
             var band = w.NewWanderingBand(camp, WorkWorld.PlentifulFood(1));
@@ -610,7 +613,7 @@ namespace KingdomWatch.Core.Tests.Nomadic
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.KnownMaps.Knows(band.Id, forest), Is.False, "twenty cells east of anywhere it has stood");
+                Assert.That(w.KnownMaps.Knows(band.Id, forest), Is.False, "beyond its sight of anywhere it has stood");
                 Assert.That(band.Destination, Is.Not.Null, "it still moves; nomads move");
                 Assert.That(
                     w.Nomads.LandScore(band, band.Destination!.Value),
@@ -655,17 +658,30 @@ namespace KingdomWatch.Core.Tests.Nomadic
         private const int RankingHeight = 32;
         private static readonly WorldPosition RankingCamp = new WorldPosition(2, 8);
 
+        // A forager's reach across plains, in cells, and one past it: a step
+        // of 100 a cell up to the last, onto the scrub at 150.
+        private static readonly int PastForage =
+            (int)((Jobs.ReachCost(JobKind.Forager, Season.Spring) - 150L) / 100L) + 2;
+
+        // The ranking map widened east so that something can lie past a
+        // worker's reach from the camp yet within it from the lattice's far
+        // columns: a hop box and a reach beyond the camp.
+        private static readonly int FarRankingWidth = RankingCamp.X + PastForage + 4;
+
         [Test]
         public void A_camp_with_no_food_in_reach_is_left_at_the_next_council()
         {
             // #137: on a map of patches a band can stand where nothing grows.
             // It does not sit out CampDays eating its stores; the first
-            // council looks for land with food.
-            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
-            grid.Set(new WorldPosition(28, 15), TerrainKind.Scrub);
+            // council looks for land with food. The scrub is past a
+            // forager's walk from the camp, and the band has heard of it.
+            var grid = new TerrainGrid(FarRankingWidth, RankingHeight, TerrainKind.Plains);
+            var scrub = new WorldPosition(RankingCamp.X + PastForage, RankingCamp.Y);
+            grid.Set(scrub, TerrainKind.Scrub);
             var w = new WorkWorld(1UL, grid);
             var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            w.KnownMaps.Reveal(band.Id, scrub, 0);
 
             AdvanceToCouncil(w, 1);
 
@@ -679,12 +695,14 @@ namespace KingdomWatch.Core.Tests.Nomadic
             // #26: a stripped bush is still scrub but not food, so a band that
             // has picked its camp bare moves on to the bush it can see,
             // rather than sitting out CampDays on its stores.
-            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
+            var grid = new TerrainGrid(FarRankingWidth, RankingHeight, TerrainKind.Plains);
+            var farBush = new WorldPosition(RankingCamp.X + PastForage, RankingCamp.Y);
             grid.Set(RankingCamp, TerrainKind.Scrub);
-            grid.Set(new WorldPosition(28, 15), TerrainKind.Scrub);
+            grid.Set(farBush, TerrainKind.Scrub);
             var w = new WorkWorld(1UL, grid);
             var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            w.KnownMaps.Reveal(band.Id, farBush, 0);
 
             for (var i = 0; stripped && i < w.Land.BushPicks; i++)
             {
@@ -723,27 +741,27 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [TestCase(3UL)]
         public void A_hop_goes_to_food_before_it_goes_to_more_work(ulong seed)
         {
-            // Scrub at (28, 15), a lattice cell, with forest two cells south;
-            // rocks at column 47, out of a worker's reach from it, with more
-            // forest. From (37, 15) and (42, 15) all three jobs find a site,
-            // so they outscore the scrub cell - but the scrub cell is the
-            // shorter walk to food, and food is what a band starves without.
-            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
-            var berries = new WorldPosition(28, 15);
+            // Scrub at (4, 15), a lattice cell, with forest two cells south;
+            // rocks past a stone gatherer's walk from it, at column 60. From
+            // (56, 15) all three jobs find a site, so it outscores the scrub
+            // cell - but the scrub cell is the shorter walk to food, and food
+            // is what a band starves without.
+            var grid = new TerrainGrid(FarRankingWidth, RankingHeight, TerrainKind.Plains);
+            var berries = new WorldPosition(4, 15);
             grid.Set(berries, TerrainKind.Scrub);
-            grid.Set(new WorldPosition(28, 17), TerrainKind.Forest);
-            grid.Set(new WorldPosition(47, 15), TerrainKind.Forest);
-            grid.Set(new WorldPosition(47, 16), TerrainKind.Rocks);
+            grid.Set(new WorldPosition(4, 17), TerrainKind.Forest);
+            grid.Set(new WorldPosition(60, 16), TerrainKind.Rocks);
             var w = new WorkWorld(seed, grid);
             var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            w.KnownMaps.Reveal(band.Id, new WorldPosition(60, 16), 0);
             Assert.Multiple(() =>
             {
                 Assert.That(w.Nomads.LandScore(band, berries), Is.EqualTo(2));
-                Assert.That(w.Nomads.LandScore(band, new WorldPosition(42, 15)), Is.EqualTo(3));
+                Assert.That(w.Nomads.LandScore(band, new WorldPosition(56, 15)), Is.EqualTo(3));
             });
 
-            AdvanceToCouncil(w, 1);
+            AdvanceToCouncil(w, NomadicBands.CampDays);
 
             Assert.That(band.Destination, Is.EqualTo(berries));
         }
@@ -753,22 +771,24 @@ namespace KingdomWatch.Core.Tests.Nomadic
         [TestCase(3UL)]
         public void A_hop_goes_where_there_is_firewood_before_it_goes_nearer_food(ulong seed)
         {
-            // Scrub alone at (28, 15), a lattice cell with no forest in reach;
-            // scrub and forest together off the lattice at (48, 15) and
-            // (49, 15). The lone berries are the shorter walk to food, but a
-            // band with no wood freezes in its first winter, so it goes where
-            // it could cut some (#137 review).
-            var grid = new TerrainGrid(RankingWidth, RankingHeight, TerrainKind.Plains);
-            var loneBerries = new WorldPosition(28, 15);
+            // Scrub alone at (4, 15), a lattice cell with no forest in reach;
+            // scrub and forest together off the lattice, past a woodcutter's
+            // walk from it. The lone berries are the shorter walk to food,
+            // but a band with no wood freezes in its first winter, so it goes
+            // where it could cut some (#137 review).
+            var grid = new TerrainGrid(FarRankingWidth, RankingHeight, TerrainKind.Plains);
+            var loneBerries = new WorldPosition(4, 15);
+            var forest = new WorldPosition(loneBerries.X + PastForage + 1, 15);
             grid.Set(loneBerries, TerrainKind.Scrub);
-            grid.Set(new WorldPosition(48, 15), TerrainKind.Scrub);
-            grid.Set(new WorldPosition(49, 15), TerrainKind.Forest);
+            grid.Set(new WorldPosition(forest.X - 1, 15), TerrainKind.Scrub);
+            grid.Set(forest, TerrainKind.Forest);
             var w = new WorkWorld(seed, grid);
             var band = w.NewWanderingBand(RankingCamp, WorkWorld.PlentifulFood(1));
             w.JoinAdults(band, 1);
+            w.KnownMaps.Reveal(band.Id, forest, 1);
             Assert.That(w.Nomads.CanSettleAt(band, loneBerries), Is.False, "no wood from the lone berries");
 
-            AdvanceToCouncil(w, 1);
+            AdvanceToCouncil(w, NomadicBands.CampDays);
 
             Assert.That(band.Destination, Is.Not.Null);
             Assert.That(w.Nomads.CanSettleAt(band, band.Destination ?? default), Is.True, "food and wood in reach");
@@ -1197,8 +1217,8 @@ namespace KingdomWatch.Core.Tests.Nomadic
         {
             // The risk the fog introduces: a band settles only once it knows a
             // forager's site and a woodcutter's, and it now has to have walked
-            // near them. If RevealRadius were too tight against
-            // Jobs.MaxSiteRadius this would never come true and bands would
+            // near them. If RevealRadius were too tight against where its
+            // workers find sites this would never come true and bands would
             // wander forever, so the guarantee is worth a test rather than an
             // argument.
             var w = new WorkWorld();

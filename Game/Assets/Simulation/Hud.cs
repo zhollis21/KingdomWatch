@@ -616,10 +616,10 @@ namespace KingdomWatch.Game
                 // plate slides in and its tail keeps pointing at the marker.
                 var plateWidth = plateRect.sizeDelta.x;
                 var left = Mathf.Clamp(markerX - plateWidth / 2f, 2f, Mathf.Max(2f, canvasRect.rect.width - plateWidth - 2f));
-                // With no room above a marker near the top of the screen, the plate
-                // goes below it and its tail points up.
+                // With no room above a marker below the top bar, the plate goes
+                // below it and its tail points up: the bar covers the labels.
                 var above = markerY - PlateHeight - PlateGap;
-                var below = above < 2f;
+                var below = above < TopInset / scale + 2f;
                 var top = below ? (Screen.height - foot.y) / scale + PlateGap : above;
                 plateRect.anchoredPosition = new Vector2(Mathf.Round(left), -Mathf.Round(top));
                 if (art.Tail != null)

@@ -76,7 +76,8 @@ namespace KingdomWatch.Core.Work
     ///
     /// **Sites are per band, per job, found at dawn, and known.** The
     /// cheapest cell the job works on that the community has seen and that a
-    /// route reaches within <see cref="MaxSiteRadius"/> - one bounded search
+    /// route reaches within <see cref="ReachCost(long)"/> - a walk out that
+    /// still leaves the work and the walk home before dusk - one search
     /// per job (<see cref="Pathfinder.TryFindNearest"/>),
     /// however many candidates there are and whether or not any of them
     /// connect - so every worker on a job walks the same route to the same
@@ -94,11 +95,11 @@ namespace KingdomWatch.Core.Work
     /// site must be a cell the community knows; the route to it need not be,
     /// so a band can work something it has only glimpsed the near edge of.
     /// The trip then reveals <see cref="RevealRadius"/> around its whole
-    /// route. For a community founded by a band that adds nothing today: a
-    /// band sees <see cref="Nomadic.NomadicBands.RevealRadius"/> around its
-    /// camp, past every trip <see cref="MaxSiteRadius"/> allows, so a
-    /// settlement's map stays what its band saw (#123). #85's deliberate
-    /// scouting is section 12's answer to a map that must keep growing.
+    /// route. A band sees <see cref="Nomadic.NomadicBands.RevealRadius"/>
+    /// around its camp, which holds every site while anything is near; only
+    /// a trip to the edge of what is known, once nothing nearer is left,
+    /// shows a little more beyond it. #85's deliberate scouting is section
+    /// 12's answer to a map that must keep growing.
     ///
     /// **A task starts and ends where the band stood when it started.** The
     /// worker walks out from the band's position and back to it, and that
@@ -187,15 +188,6 @@ namespace KingdomWatch.Core.Work
         /// <summary>Stone gatherers are needed while the band's stone, counting what is on its way home, is below this.</summary>
         public const int StoneCap = 100;
 
-        /// <summary>How far out from the band a site is looked for, in cells.</summary>
-        public const int MaxSiteRadius = 16;
-
-        /// <summary>
-        /// How far out a settlement's woodcutters look, in cells, when no tree
-        /// stands within <see cref="MaxSiteRadius"/> (#149).
-        /// </summary>
-        public const int EmergencyWoodRadius = 2 * MaxSiteRadius;
-
         /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
         /// "foragers and hunters working out from a settlement" among the
@@ -224,6 +216,67 @@ namespace KingdomWatch.Core.Work
         /// <summary>The order jobs are offered in: food before materials, wood before stone.</summary>
         public static readonly IReadOnlyList<JobKind> Priority =
             new ReadOnlyCollection<JobKind>(new[] { JobKind.Forager, JobKind.Woodcutter, JobKind.StoneGatherer });
+
+        /// <summary>
+        /// The most a walk out to a site may cost, in route cost, for work
+        /// that takes this long: a walk that leaves the work and the walk
+        /// home inside the day, set out at dawn. Nothing nearer than dusk
+        /// bounds how far anyone goes - a site is the nearest there is, so
+        /// nobody walks far while anything is close - and whether a trip
+        /// fits the daylight left is still asked at each pick. A day's work
+        /// or more reaches nowhere but underfoot.
+        /// </summary>
+        /// <remarks>
+        /// About four hours out for a forager or a woodcutter, three for a
+        /// stone gatherer and five for a Builder's or Farmer's share: on
+        /// plains some 72, 54 and 90 cells, half that through forest, more
+        /// along a road.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The work takes negative time.</exception>
+        public static long ReachCost(long workTicks) =>
+            workTicks >= 0L
+                ? Math.Max(0L, (Dusk - Dawn - workTicks) / (2L * TicksPerCostUnit))
+                : throw new ArgumentOutOfRangeException(nameof(workTicks), workTicks, "Work takes no less than no time.");
+
+        /// <summary>
+        /// Trips a day a worker makes to a site this far away, in route cost,
+        /// for work that takes this long: the day's daylight over the walk
+        /// out, the work and the walk home, the walk home priced as the walk
+        /// out. Three for a forager at the camp, two up to an hour out, one
+        /// out to <see cref="ReachCost(long)"/>, none past it.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The walk is negative, or the work takes no time.</exception>
+        public static long TripsPerDay(long walkCost, long workTicks)
+        {
+            if (walkCost < 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(walkCost), walkCost, "A walk costs no less than nothing.");
+            }
+
+            if (workTicks <= 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(workTicks), workTicks, "Work takes some time.");
+            }
+
+            // Past the reach no trip fits, and the sum below could overflow.
+            return walkCost > ReachCost(workTicks) ? 0L : (Dusk - Dawn) / ((2L * walkCost * TicksPerCostUnit) + workTicks);
+        }
+
+        /// <summary>
+        /// The furthest walk out, in route cost, that still leaves a worker
+        /// every trip a day but the one any walk at all costs: an hour for
+        /// four hours' work, some 18 cells over plains - about as far as work
+        /// went before it went to dusk. What a village counts its land by.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The work takes no time.</exception>
+        public static long NearWalk(long workTicks)
+        {
+            var trips = Math.Max(1L, TripsPerDay(0L, workTicks) - 1L);
+            return Math.Max(0L, (((Dusk - Dawn) / trips) - workTicks) / (2L * TicksPerCostUnit));
+        }
+
+        /// <summary><see cref="ReachCost(long)"/> for a gathering job's work in a season.</summary>
+        public static long ReachCost(JobKind job, Season season) => ReachCost(JobTable.Recipe(job, season).Duration);
 
         private static readonly int JobKindCount = EnumGuard.BuildMask(typeof(JobKind)).Length;
 
@@ -583,7 +636,7 @@ namespace KingdomWatch.Core.Work
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                FindSite(tracked, from, known, job, SiteOf(tracked, job));
+                FindSite(from, known, job, SiteOf(tracked, job));
             }
 
             tracked.SitesFrom = from;
@@ -902,7 +955,7 @@ namespace KingdomWatch.Core.Work
                         || (_buildings is object && _buildings.IsReserved(site.Destination))))
                     || (!site.Reachable && site.LandReturns != _land.Returns))
                 {
-                    FindSite(tracked, tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
+                    FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
                 }
 
                 if (!site.Reachable)
@@ -986,7 +1039,7 @@ namespace KingdomWatch.Core.Work
             {
                 site.Rewrites = _grid.Rewrites;
                 site.Reachable = _pathfinder.TryFindRoute(
-                    tracked.SitesFrom, building.Anchor, Mover, 2 * MaxSiteRadius, site.Route, out var cost);
+                    tracked.SitesFrom, building.Anchor, Mover, int.MaxValue, ReachCost(Buildings.ShareTicks), site.Route, out var cost);
 
                 if (!site.Reachable)
                 {
@@ -1108,30 +1161,32 @@ namespace KingdomWatch.Core.Work
             return expected;
         }
 
-        // The cheapest cell the job works on that a route reaches, within
-        // MaxSiteRadius of the band: one bounded search whatever the terrain
-        // looks like, since the pathfinder settles cells in cost order and
-        // stops at the first the job accepts. The way home is the same cells
-        // in the other order, and costs what they cost entered from that
-        // side - the camp cell instead of the site cell, at the least.
-        //
-        // A settlement's woodcutters with no tree in that reach look out to
-        // EmergencyWoodRadius (#149): a village that cleared its first stand
-        // has nothing near it to fell for the five years the stumps take to
-        // stand again, and a winter begun on an empty woodpile killed it
-        // whole. Only then, so the wider search is paid only by a village
-        // already short, and a band - which moves on instead - never pays it.
-        private void FindSite(Tracked tracked, WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
+        // The cheapest cell the job works on that a route reaches within the
+        // job's ReachCost: one search whatever the terrain looks like, since
+        // the pathfinder settles cells in cost order and stops at the first
+        // the job accepts - so it costs no more than a near site does while
+        // there is one, and runs out to dusk only when there is not. The way
+        // home is the same cells in the other order, and costs what they
+        // cost entered from that side - the camp cell instead of the site
+        // cell, at the least.
+        private void FindSite(WorldPosition from, ReadOnlySpan<bool> known, JobKind job, Site site)
         {
             site.LandReturns = _land.Returns;
-            site.Reachable = _pathfinder.TryFindNearest(
-                from, Mover, JobTable.Terrain(job), known, _workable, MaxSiteRadius, site.Route, out var cost);
+            var season = _clock.Now.Season;
 
-            if (!site.Reachable && job == JobKind.Woodcutter && tracked.Group.Id.Kind == EntityKind.Settlement)
+            // Every bush is bare in winter, so a forager has no site anywhere:
+            // said here rather than found by a search out to dusk each winter
+            // dawn, which a world run spent a fifth of its searching on.
+            if (job == JobKind.Forager && !LandCover.BushesFruitIn(season))
             {
-                site.Reachable = _pathfinder.TryFindNearest(
-                    from, Mover, JobTable.Terrain(job), known, _workable, EmergencyWoodRadius, site.Route, out cost);
+                // As a search that found nothing leaves it: no route.
+                site.Reachable = false;
+                site.Route.Clear();
+                return;
             }
+
+            site.Reachable = _pathfinder.TryFindNearest(
+                from, Mover, JobTable.Terrain(job), known, _workable, null, false, int.MaxValue, ReachCost(job, season), site.Route, out var cost);
 
             if (!site.Reachable)
             {

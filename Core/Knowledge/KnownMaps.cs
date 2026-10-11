@@ -85,6 +85,7 @@ namespace KingdomWatch.Core.Knowledge
             }
 
             _maps.Add(holder, new bool[_grid.CellCount]);
+            Changes++;
         }
 
         /// <summary>
@@ -122,7 +123,18 @@ namespace KingdomWatch.Core.Knowledge
             {
                 throw new InvalidOperationException(holder + " has no known map to forget.");
             }
+
+            Changes++;
         }
+
+        /// <summary>
+        /// How many times any map has changed: a cell newly known, or a map
+        /// given, handed over or forgotten. Never falls, so a reader that
+        /// remembers it can tell that no map has changed since - what lets
+        /// <see cref="Construction.Buildings"/> keep a count over a map
+        /// rather than search for it again.
+        /// </summary>
+        public long Changes { get; private set; }
 
         /// <summary>
         /// The holder's map, indexed by grid cell index - the shape
@@ -187,6 +199,7 @@ namespace KingdomWatch.Core.Knowledge
                     if (!map[index])
                     {
                         map[index] = true;
+                        Changes++;
                         revealed++;
                     }
                 }
@@ -275,6 +288,7 @@ namespace KingdomWatch.Core.Knowledge
 
             _maps.Add(to, map);
             _maps.Remove(from);
+            Changes++;
         }
 
         private bool[] RequireMap(EntityId holder)

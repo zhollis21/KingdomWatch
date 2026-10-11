@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Rng;
 using KingdomWatch.Core.Traversal;
@@ -156,11 +157,13 @@ namespace KingdomWatch.Core.Tests.Traversal
         [TestCase(TerrainKind.Forest)]
         [TestCase(TerrainKind.Rocks)]
         [TestCase(TerrainKind.Scrub)]
-        public void Somewhere_on_land_a_resource_is_out_of_a_workers_reach(TerrainKind kind)
+        public void Somewhere_on_land_a_resource_is_out_of_a_workers_easy_reach(TerrainKind kind)
         {
-            // #137: a camp is a choice only if some camps lack something. Out
-            // of reach here is Jobs.MaxSiteRadius in every direction, the box
-            // a work-site search looks within.
+            // #137: a camp is a choice only if some camps lack something.
+            // Work goes as far as dusk allows, but past about an hour's walk
+            // a worker makes one trip a day fewer, and land that far counts
+            // for half (Buildings.ForageInReach): out of easy reach here is
+            // further each way than an hour's walk across plains.
             var grid = GenerateLarge();
             var lacking = 0;
 
@@ -296,7 +299,7 @@ namespace KingdomWatch.Core.Tests.Traversal
 
         private static bool WithinReach(TerrainGrid grid, int x, int y, TerrainKind kind)
         {
-            var reach = Jobs.MaxSiteRadius;
+            var reach = (int)(SimulationTime.TicksPerHour / (100L * Jobs.TicksPerCostUnit));
 
             for (var cy = Math.Max(0, y - reach); cy <= Math.Min(grid.Height - 1, y + reach); cy++)
             {

@@ -88,10 +88,16 @@ namespace KingdomWatch.Game
             stops.Add(Stop.At("quarter-again", 4f, false));
             stops.Add(Stop.Whole("whole-from-quarter"));
             stops.Add(Stop.At("quarter-back", 4f, false));
+
+            // Numbered on the whole route, so a stop flown alone keeps the
+            // number its files have in a full run.
+            for (var i = 0; i < stops.Count; i++) stops[i].Number = i + 1;
         }
 
         // A run when the player was launched with `-scripted-run <folder>`,
-        // else null.
+        // else null. `-stops a,b` flies only the stops named, for a look at
+        // one view rather than a measurement of the route; a name that is
+        // no stop quits the player, saying which ones there are.
         public static ScriptedRun FromCommandLine(CameraRig rig, WorldView2D view, World world)
         {
             var args = System.Environment.GetCommandLineArgs();
@@ -100,8 +106,37 @@ namespace KingdomWatch.Game
             var folder = args[at + 1];
             Directory.CreateDirectory(folder);
             var run = new ScriptedRun(rig, view, world, folder);
+
+            var only = System.Array.IndexOf(args, "-stops");
+            if (only >= 0 && !run.Keep(only + 1 < args.Length ? args[only + 1] : ""))
+            {
+                Application.Quit(1);
+                return null;
+            }
+
             run.Begin();
             return run;
+        }
+
+        // Drops every stop not named in a comma-separated list; false, having
+        // said why, when the list names one there is not.
+        private bool Keep(string names)
+        {
+            var wanted = new HashSet<string>();
+            foreach (var name in names.Split(',')) wanted.Add(name.Trim());
+            var known = new HashSet<string>();
+            foreach (var stop in stops) known.Add(stop.Name);
+            foreach (var name in wanted)
+            {
+                if (!known.Contains(name))
+                {
+                    Debug.LogError("ScriptedRun: no stop named '" + name + "'. The stops are: " + string.Join(", ", known) + ".");
+                    return false;
+                }
+            }
+
+            stops.RemoveAll(stop => !wanted.Contains(stop.Name));
+            return true;
         }
 
         private void Begin()
@@ -113,7 +148,7 @@ namespace KingdomWatch.Game
 
             Profiler.maxUsedMemory = 512 * 1024 * 1024;
 
-            Line("Scripted run " + stamp + ", " + Screen.width + "x" + Screen.height + ", " + SystemInfo.graphicsDeviceName);
+            Line("Scripted run " + stamp + ", seed " + world.Seed + ", " + Screen.width + "x" + Screen.height + ", " + SystemInfo.graphicsDeviceName);
             Line("Move: the pan, or the frames after a zoom until filled. Hold: held still once filled.");
             Line("stop               pixels/cell  fill frames  fill s  move median ms  move p95 ms  hold median ms  hold p95 ms  filled  sim day");
             Next();
@@ -184,7 +219,7 @@ namespace KingdomWatch.Game
         }
 
         // Run_<stamp>_NN_<stop>: the stop's screenshot and capture.
-        private string StopName(int stop) => stamp + "_" + (stop + 1).ToString("00", CultureInfo.InvariantCulture) + "_" + stops[stop].Name;
+        private string StopName(int stop) => stamp + "_" + stops[stop].Number.ToString("00", CultureInfo.InvariantCulture) + "_" + stops[stop].Name;
 
         private void Next()
         {
@@ -201,9 +236,12 @@ namespace KingdomWatch.Game
             Profiler.enableBinaryLog = true;
             Profiler.enabled = true;
 
+            // A pan sets its own size and centre too, which on the full route
+            // is where the stop before it left the camera, so a pan flown
+            // alone with -stops starts where it would have.
             var stop = stops[index];
             if (stop.PixelsPerCell <= 0f) rig.WholeMap();
-            else if (!stop.Pan)
+            else
             {
                 rig.CentreOn(centre);
                 rig.ZoomTo(stop.PixelsPerCell);
@@ -311,6 +349,8 @@ namespace KingdomWatch.Game
         private sealed class Stop
         {
             public string Name;
+            // Its place on the whole route, from one.
+            public int Number;
             // Zero for the whole map.
             public float PixelsPerCell;
             public bool Pan;

@@ -596,6 +596,128 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_cost_bound_reaches_further_over_cheap_ground_than_over_dear()
+        {
+            // The east forest is five cells away over plains (4 * 100, then
+            // 200 onto it: 600); the west one three cells away over rocks
+            // (2 * 300, then 200: 800). A walk of 600 reaches the further
+            // one and not the nearer; with the east one gone, 799 finds
+            // nothing and 800 the west.
+            var grid = Map("fhh.....f");
+            var finder = new Pathfinder(grid, TerrainRules.Default);
+            var from = new WorldPosition(3, 0);
+            var route = new List<WorldPosition>();
+            var forest = Wanting(TerrainKind.Forest);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.TryFindNearest(from, Transport.Foot, forest, default, null, null, false, int.MaxValue, 600L, route, out var cost), Is.True);
+                Assert.That(route[^1], Is.EqualTo(new WorldPosition(8, 0)));
+                Assert.That(cost, Is.EqualTo(600L));
+                Assert.That(finder.TryFindNearest(from, Transport.Foot, forest, default, null, null, false, int.MaxValue, 599L, route, out _), Is.False, "one short of the cheapest");
+            });
+
+            grid.Set(new WorldPosition(8, 0), TerrainKind.Plains);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.TryFindNearest(from, Transport.Foot, forest, default, null, null, false, int.MaxValue, 799L, route, out _), Is.False);
+                Assert.That(finder.TryFindNearest(from, Transport.Foot, forest, default, null, null, false, int.MaxValue, 800L, route, out var west), Is.True);
+                Assert.That(west, Is.EqualTo(800L));
+            });
+        }
+
+        [Test]
+        public void A_cost_bound_counts_and_routes_as_it_searches()
+        {
+            // Plains all along: the cells within 300 of the west end are it
+            // and the three east of it.
+            var finder = new Pathfinder(Map("........"), TerrainRules.Default);
+            var plains = Wanting(TerrainKind.Plains);
+            var route = new List<WorldPosition>();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.CountReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L), Is.EqualTo(4));
+                Assert.That(finder.CountReachable(Origin, Transport.Foot, plains, default, 2, 300L), Is.EqualTo(3), "the box still bounds it");
+                Assert.That(finder.TryFindRoute(Origin, new WorldPosition(3, 0), Transport.Foot, int.MaxValue, 300L, route, out var cost), Is.True);
+                Assert.That(cost, Is.EqualTo(300L));
+                Assert.That(finder.TryFindRoute(Origin, new WorldPosition(4, 0), Transport.Foot, int.MaxValue, 300L, route, out _), Is.False);
+                Assert.That(route, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void Reachable_cells_are_weighed_by_what_their_route_costs()
+        {
+            // Plains all along: each cell weighs its own route's cost, so the
+            // cells 0 to 3 east weigh 0, 100, 200 and 300; no weight counts
+            // each one once.
+            var finder = new Pathfinder(Map("........"), TerrainRules.Default);
+            var plains = Wanting(TerrainKind.Plains);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.WeighReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L, new CostIsWeight()), Is.EqualTo(600L));
+                Assert.That(finder.WeighReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L, null), Is.EqualTo(4L));
+            });
+        }
+
+        [Test]
+        public void Weights_that_overflow_their_sum_are_refused_not_wrapped()
+        {
+            var finder = new Pathfinder(Map(".."), TerrainRules.Default);
+
+            Assert.That(
+                () => finder.WeighReachable(Origin, Transport.Foot, Wanting(TerrainKind.Plains), default, int.MaxValue, long.MaxValue, new HugeWeight()),
+                Throws.TypeOf<OverflowException>());
+        }
+
+        private sealed class CostIsWeight : ICostWeight
+        {
+            public long WeightOf(long cost) => cost;
+        }
+
+        private sealed class HugeWeight : ICostWeight
+        {
+            public long WeightOf(long cost) => long.MaxValue;
+        }
+
+        [Test]
+        public void A_cost_bound_is_never_negative()
+        {
+            var finder = new Pathfinder(Map(".."), TerrainRules.Default);
+            var route = new List<WorldPosition>();
+            var plains = Wanting(TerrainKind.Plains);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => finder.TryFindNearest(Origin, Transport.Foot, plains, default, null, null, false, 1, -1L, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.CountReachable(Origin, Transport.Foot, plains, default, 1, -1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.TryFindRoute(Origin, Origin, Transport.Foot, 1, -1L, route, out _), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.RadiusOf(-1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(finder.TryFindNearest(Origin, Transport.Foot, plains, default, null, null, false, 1, 0L, route, out var cost), Is.True, "underfoot costs nothing");
+                Assert.That(cost, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void The_radius_of_a_cost_holds_every_cell_it_could_reach()
+        {
+            // Default's cheapest is a track at 6: a straight step onto one is
+            // 60, so 600 reaches ten cells out and 599 nine.
+            var finder = new Pathfinder(Map(".."), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.RadiusOf(600L), Is.EqualTo(10));
+                Assert.That(finder.RadiusOf(599L), Is.EqualTo(9));
+                Assert.That(finder.RadiusOf(0L), Is.Zero);
+                Assert.That(finder.RadiusOf(long.MaxValue), Is.EqualTo(int.MaxValue));
+            });
+        }
+
+        [Test]
         public void A_site_nothing_connects_to_is_not_found_and_neither_is_one_from_nowhere()
         {
             var finder = new Pathfinder(Map("..~f", "..~.", "..~."), TerrainRules.Default);

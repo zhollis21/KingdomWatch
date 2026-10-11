@@ -280,6 +280,43 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void Land_a_trip_a_day_away_counts_half_for_wood_and_not_at_all_for_food()
+        {
+            // Due east across plains: ten cells out a worker still makes two
+            // trips a day; forty out, one; eighty, none before dusk. A village
+            // counts on a bush only near, and on a tree forty out at half.
+            var near = new WorldPosition(BuildingsWorld.Centre.X + 10, BuildingsWorld.Centre.Y);
+            var far = new WorldPosition(BuildingsWorld.Centre.X + 40, BuildingsWorld.Centre.Y);
+            var tooFar = new WorldPosition(BuildingsWorld.Centre.X + 80, BuildingsWorld.Centre.Y);
+            var w = new BuildingsWorld(size: 110, paint: grid =>
+            {
+                foreach (var at in new[] { near, far, tooFar })
+                {
+                    grid.Set(at, TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(at.X, at.Y + 2), TerrainKind.Forest);
+                }
+            });
+            w.World.KnownMaps.Reveal(w.Settlement.Id, tooFar, 2);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.ForageInReach(w.Settlement.Position, w.Settlement.Id), Is.EqualTo(w.Buildings.BushYearlyFood), "the near bush alone");
+                Assert.That(w.Buildings.WoodInReach(w.Settlement), Is.EqualTo(w.Buildings.WoodFromTrees(3) / 2), "the near tree whole, the far one half");
+            });
+
+            // Counted again once the ground changes: the near bush cleared.
+            w.World.Grid.Set(near, TerrainKind.Plains);
+            Assert.That(w.Buildings.ForageInReach(w.Settlement.Position, w.Settlement.Id), Is.Zero);
+
+            // And once the map does: a far tree nobody knew of, now seen.
+            var unseen = new WorldPosition(BuildingsWorld.Centre.X, BuildingsWorld.Centre.Y + 60);
+            w.World.Grid.Set(unseen, TerrainKind.Forest);
+            Assert.That(w.Buildings.WoodInReach(w.Settlement), Is.EqualTo(w.Buildings.WoodFromTrees(3) / 2), "not seen yet");
+            w.World.KnownMaps.Reveal(w.Settlement.Id, unseen, 0);
+            Assert.That(w.Buildings.WoodInReach(w.Settlement), Is.EqualTo(w.Buildings.WoodFromTrees(4) / 2));
+        }
+
+        [Test]
         public void Builders_claim_shares_and_clearing_fells_trees_for_their_wood()
         {
             // No plains anywhere a house could go: a checkerboard of forest
@@ -465,12 +502,15 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void Nothing_is_built_in_a_neighbouring_settlements_yard()
+        public void Nothing_is_built_within_the_gap_of_a_neighbouring_settlement()
         {
-            // The #153 review: placement kept only the builder's own yard.
-            var w = new BuildingsWorld(people: 40);
+            // The #153 review kept a neighbour's yard clear; VillageGap keeps
+            // the ground between two villages clear too. The neighbour stands
+            // thirty-eight cells east, so the gap leaves this village barely
+            // room past its own yard to build toward it.
+            var w = new BuildingsWorld(people: 40, size: 100);
             var neighbour = w.World.Founding.Found(
-                w.World.AddBand(4, new WorldPosition(27, 20)),
+                w.World.AddBand(4, new WorldPosition(58, 20)),
                 new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
             w.Wood(5000);
             for (var i = 0; i < 16; i++)
@@ -485,51 +525,107 @@ namespace KingdomWatch.Core.Tests.Construction
                 w.Finish(w.Buildings.All[before]);
             }
 
-            var radius = Buildings.CampYardRadius;
+            Assert.That(w.Buildings.All.Count(b => b.Settlement == w.Settlement.Id), Is.GreaterThan(8), "the village grew");
+
+            var yardEdge = neighbour.Position.X - Buildings.CampYardRadius;
             foreach (var building in w.Buildings.All)
             {
-                var clearance = BuildingTable.Of(building.Kind).Clearance;
-                for (var y = building.Anchor.Y - clearance; y < building.Anchor.Y + building.Height; y++)
-                {
-                    for (var x = building.Anchor.X; x < building.Anchor.X + building.Width; x++)
-                    {
-                        var inYard = System.Math.Abs(x - neighbour.Position.X) <= radius && System.Math.Abs(y - neighbour.Position.Y) <= radius;
-                        Assert.That(inYard, Is.False, building + " or its roof takes (" + x + ", " + y + ") in " + neighbour.Id + "'s yard");
-                    }
-                }
+                Assert.That(yardEdge - (building.Anchor.X + building.Width - 1), Is.GreaterThan(Buildings.VillageGap), building + " stands within the gap of " + neighbour.Id);
             }
         }
 
         [Test]
-        public void A_band_does_not_settle_where_its_yard_is_built_on()
+        public void A_band_does_not_settle_within_the_gap_of_a_settlement()
         {
-            // The #153 review's sibling: a camp founded beside a standing
-            // house would have its yard built on, or roofed over, from the
-            // start. Bushes in a block north and another south, in reach of
-            // the camps asked about.
+            // #154: nothing kept two camps apart, and the #153 review's
+            // sibling - a camp founded over a standing house. The yard of a
+            // camp asked about due south of the village must keep VillageGap
+            // from the village's own. Bushes in a row within an hour of it.
             var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
-            var w = new BuildingsWorld(paint: grid =>
+            var w = new BuildingsWorld(size: 100, paint: grid =>
             {
                 for (var i = 0; i < bushes; i++)
                 {
-                    grid.Set(new WorldPosition(18 + (i % 10), BuildingsWorld.Size - 4 + (i / 10)), TerrainKind.Scrub);
-                    grid.Set(new WorldPosition(18 + (i % 10), 8 + (i / 10)), TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(12 + (i % 15), 68 + (i / 15)), TerrainKind.Scrub);
                 }
             });
             w.Wood(100);
             var house = w.BuildNext();
-            var south = house.Anchor.Y + house.Height;
-            var roofTop = house.Anchor.Y - BuildingTable.Of(BuildingKind.House).Clearance;
             var radius = Buildings.CampYardRadius;
             var map = w.Settlement.Id;
+            var closest = BuildingsWorld.Centre.Y + radius + Buildings.VillageGap + radius + 1;
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius - 1), map, 12), Is.False, "the yard's edge reaches the house");
-                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, south + radius), map, 12), Is.True, "one row further, clear of it");
-                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius), map, 12), Is.False, "the yard's edge reaches the roof");
-                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, roofTop - radius - 1), map, 12), Is.True, "one row further, clear of it");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(BuildingsWorld.Centre.X, closest - 1), map, 12), Is.False, "the yard's edge is within the gap of the village's");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(BuildingsWorld.Centre.X, closest), map, 12), Is.True, "one row further, clear of it");
+                Assert.That(w.Buildings.CanSettle(w.Settlement.Position, map, 12), Is.False, "nor on its camp");
+                Assert.That(w.Buildings.CanSettle(house.Anchor, map, 12), Is.False, "nor on its house");
             });
+        }
+
+        [Test]
+        public void The_gap_is_kept_from_a_roof_as_from_its_house()
+        {
+            // A roof stands Clearance rows over the ground north of its house,
+            // and counts as the house does. The camp south on a tall map, so
+            // its first house goes up north of it with room north of that.
+            var camp = new WorldPosition(20, 60);
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            var w = new BuildingsWorld(size: 100, camp: camp, paint: grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(12 + (i % 15), 10 + (i / 15)), TerrainKind.Scrub);
+                }
+            });
+            w.Wood(100);
+            var house = w.BuildNext();
+            var roofTop = house.Anchor.Y - BuildingTable.Of(BuildingKind.House).Clearance;
+            var radius = Buildings.CampYardRadius;
+            var map = w.Settlement.Id;
+            var furthest = roofTop - Buildings.VillageGap - radius - 1;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(furthest + 1 + radius, Is.LessThan(camp.Y - radius - Buildings.VillageGap), "the camp's own yard is not what binds here");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, furthest + 1), map, 12), Is.False, "the yard's edge is within the gap of the roof");
+                Assert.That(w.Buildings.CanSettle(new WorldPosition(house.Anchor.X, furthest), map, 12), Is.True, "one row further, clear of it");
+            });
+        }
+
+        [Test]
+        public void No_roof_is_built_within_the_gap_of_a_neighbouring_settlement()
+        {
+            // A neighbour forty cells north: the gap reaches down to just
+            // north of this village's own yard, where a roof over a house
+            // beside the yard would overhang into it.
+            var camp = new WorldPosition(30, 64);
+            var w = new BuildingsWorld(people: 40, size: 100, camp: camp);
+            var neighbour = w.World.Founding.Found(
+                w.World.AddBand(4, new WorldPosition(camp.X, camp.Y - 40)),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            w.Wood(5000);
+            for (var i = 0; i < 16; i++)
+            {
+                var before = w.Buildings.All.Count;
+                w.Dawn();
+                if (w.Buildings.All.Count == before)
+                {
+                    break;
+                }
+
+                w.Finish(w.Buildings.All[before]);
+            }
+
+            var gapEnds = neighbour.Position.Y + Buildings.CampYardRadius + Buildings.VillageGap;
+            Assert.That(w.Buildings.All.Where(b => b.Settlement == w.Settlement.Id).Count(), Is.GreaterThan(8), "the village grew");
+
+            foreach (var building in w.Buildings.All.Where(b => b.Settlement == w.Settlement.Id))
+            {
+                var roofTop = building.Anchor.Y - BuildingTable.Of(building.Kind).Clearance;
+                Assert.That(roofTop, Is.GreaterThan(gapEnds), building + "'s roof is within the gap of " + neighbour.Id);
+            }
         }
 
         // Every cell of the camp yard at the fixture's centre, set to one kind.
@@ -877,14 +973,14 @@ namespace KingdomWatch.Core.Tests.Construction
             // Enough bushes in reach for a season and a half of twelve people,
             // at 42 Food a bush a year (7 picks of 2 in each fruiting season).
             var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
-            var w = new BuildingsWorld(paint: grid =>
+            var w = new BuildingsWorld(size: 100, paint: grid =>
             {
                 for (var i = 0; i < bushes; i++)
                 {
-                    grid.Set(new WorldPosition(5 + (i % 30), 5 + (i / 30)), TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(SettleAt.X - 5 + (i % 10), SettleAt.Y + 5 + (i / 10)), TerrainKind.Scrub);
                 }
             });
-            var at = BuildingsWorld.Centre;
+            var at = SettleAt;
             var map = w.Settlement.Id;
 
             Assert.That(w.Buildings.CanSettle(at, map, 12), Is.True, "spring day 0");
@@ -899,6 +995,11 @@ namespace KingdomWatch.Core.Tests.Construction
             w.World.Clock.AdvanceTo(new SimulationTime(SimulationTime.DaysPerSeason * SimulationTime.TicksPerDay), w.World.Router);
             Assert.That(w.Buildings.CanSettle(at, map, 12), Is.False, "the first day of summer");
         }
+
+        // Where the settling fixtures ask about, on a map a hundred across:
+        // VillageGap clear of the fixture's own settlement, and inside what
+        // its band saw.
+        private static readonly WorldPosition SettleAt = new WorldPosition(66, 20);
 
         [Test]
         public void Skills_and_food_questions_refuse_what_is_not_a_question()
@@ -958,19 +1059,19 @@ namespace KingdomWatch.Core.Tests.Construction
             // What a world picks its starting villages with (#146): no holder
             // exists yet, so the land is read as if all of it were known.
             var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
-            var w = new BuildingsWorld(paint: grid =>
+            var w = new BuildingsWorld(size: 100, paint: grid =>
             {
                 for (var i = 0; i < bushes; i++)
                 {
-                    grid.Set(new WorldPosition(5 + (i % 30), 5 + (i / 30)), TerrainKind.Scrub);
+                    grid.Set(new WorldPosition(SettleAt.X - 5 + (i % 10), SettleAt.Y + 5 + (i / 10)), TerrainKind.Scrub);
                 }
 
-                for (var x = 30; x < 36; x++)
+                for (var x = SettleAt.X + 10; x < SettleAt.X + 16; x++)
                 {
-                    grid.Set(new WorldPosition(x, 30), TerrainKind.Forest);
+                    grid.Set(new WorldPosition(x, SettleAt.Y + 10), TerrainKind.Forest);
                 }
             });
-            var at = BuildingsWorld.Centre;
+            var at = SettleAt;
             var all = new bool[w.World.Grid.CellCount];
             System.Array.Fill(all, true);
             var none = new bool[w.World.Grid.CellCount];
@@ -1035,18 +1136,19 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void No_room_no_building_and_no_settling()
         {
-            // Rocks everywhere but the camp: no footprint fits anywhere.
-            var w = new BuildingsWorld(paint: grid =>
+            // Rocks everywhere but the camps: no footprint fits anywhere.
+            var w = new BuildingsWorld(size: 100, paint: grid =>
             {
-                for (var y = 0; y < BuildingsWorld.Size; y++)
+                for (var y = 0; y < grid.Height; y++)
                 {
-                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    for (var x = 0; x < grid.Width; x++)
                     {
                         grid.Set(new WorldPosition(x, y), (x + y) % 2 == 0 ? TerrainKind.Rocks : TerrainKind.Scrub);
                     }
                 }
 
                 grid.Set(BuildingsWorld.Centre, TerrainKind.Plains);
+                grid.Set(SettleAt, TerrainKind.Plains);
             });
             w.Wood(100);
             var wood = w.Stores.Available(ResourceKind.Wood);
@@ -1058,7 +1160,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(w.Buildings.All, Is.Empty);
                 Assert.That(w.Stores.Available(ResourceKind.Wood), Is.EqualTo(wood), "nothing embodied");
                 Assert.That(w.Buildings.ForageInReach(BuildingsWorld.Centre, w.Settlement.Id), Is.GreaterThan(Buildings.YearlyNeed(1)), "bushes aplenty");
-                Assert.That(w.Buildings.CanSettle(BuildingsWorld.Centre, w.Settlement.Id, 1), Is.False, "but no ground for a barn");
+                Assert.That(w.Buildings.ForageInReach(SettleAt, w.Settlement.Id), Is.GreaterThan(Buildings.YearlyNeed(1)), "bushes aplenty there too");
+                Assert.That(w.Buildings.CanSettle(SettleAt, w.Settlement.Id, 1), Is.False, "but no ground for a barn");
             });
         }
 

@@ -40,19 +40,38 @@
 
 .PARAMETER Flat
     Launches the player with -hud-flat: the panel is drawn as a build without
-    the art submodule would draw it, flat frames in Unity's own font.
+    the art submodule would draw it, flat frames in Unity's own font. Also
+    lets the run go ahead without the art submodule, which otherwise stops it.
 
 .PARAMETER SkipBuild
     Runs the player already in Game/Builds/Windows instead of building it.
 
+.PARAMETER Seed
+    Launches the player with -seed: the world from another seed, with no
+    rebuild, since the seed is read when the player starts. The default is
+    the scene's, 1.
+
+.PARAMETER Stops
+    Launches the player with -stops: only the stops named, each keeping its
+    number from the whole route, and no capture analysis - a look at one view
+    rather than a measurement. The stops are whole-map, quarter, quarter-pan,
+    half, half-pan, full, full-pan, double, double-pan, whole-map-again,
+    quarter-again, whole-from-quarter and quarter-back (ScriptedRun.cs).
+
 .EXAMPLE
     pwsh tools/Profile.ps1
+
+.EXAMPLE
+    pwsh tools/Profile.ps1 -SkipBuild -Seed 30 -Stops whole-map
+    Seed 30's whole map from the last build, in about the time the game takes
+    to start.
 
 .PREREQUISITES
     - The Unity version in Game/ProjectSettings/ProjectVersion.txt, with
       Windows Build Support, installed through Unity Hub (or UNITY_EDITOR set
       to its Unity.exe)
-    - The art submodule checked out, or the route flies over plain markers
+    - The art submodule checked out; without it the script stops, unless
+      -Flat is passed
     - .NET SDK per global.json
 #>
 [CmdletBinding()]
@@ -60,6 +79,9 @@ param(
     [int]$Width = 2400,
     [int]$Height = 1080,
     [switch]$SkipBuild,
+    [ValidateRange(1, [int]::MaxValue)]
+    [int]$Seed,
+    [string[]]$Stops,
     [switch]$HudDemo,
     [switch]$Notch,
     [switch]$Flat
@@ -107,6 +129,15 @@ function Invoke-Unity([string]$Method, [string]$Log, [string[]]$Extra) {
 
 New-Item -ItemType Directory -Force $captures | Out-Null
 
+# Without the art the route flies over coloured cells and plain markers, and
+# its timings and screenshots say nothing about the game as it is drawn - a
+# worktree made without the submodule produced exactly that, unnoticed.
+# -Flat says a run without the art is meant.
+$art = Join-Path $game 'Assets/Art'
+if (-not $Flat -and -not ((Test-Path $art) -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1))) {
+    throw "The art submodule ($art) is empty. Run: git submodule update --init Game/Assets/Art (see docs/unity.md), or pass -Flat for a run without it."
+}
+
 if (-not $SkipBuild) {
     Write-Host 'Building Core...'
     dotnet build (Join-Path $root 'Core/KingdomWatch.Core.csproj') -c Release --nologo -v quiet
@@ -123,19 +154,36 @@ $arguments = @('-scripted-run', $captures, '-screen-fullscreen', '0', '-screen-w
 if ($HudDemo) { $arguments += '-hud-demo' }
 if ($Notch) { $arguments += '-hud-notch' }
 if ($Flat) { $arguments += '-hud-flat' }
+if ($Seed) { $arguments += @('-seed', $Seed) }
+if ($Stops) { $arguments += @('-stops', ($Stops -join ',')) }
 Invoke-Program $player $arguments | Out-Null
 
 # The run's log names it; its captures, one per stop, share its stamp.
 $log = Get-ChildItem $captures -Filter 'Run_*.log' | Where-Object LastWriteTime -ge $started | Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $log) { throw "The run did not finish; see $(Join-Path $captures 'player.log')." }
+if (-not $log) {
+    # The player says why in its log - a stop -Stops names that does not
+    # exist - so say it here too.
+    $playerLog = Join-Path $captures 'player.log'
+    $why = if (Test-Path $playerLog) { (Select-String -Path $playerLog -Pattern '^(ScriptedRun|SimulationDriver): ' | Select-Object -First 1).Line } else { $null }
+    throw "The run did not finish; see $playerLog.$(if ($why) { "`n$why" })"
+}
 $stamp = $log.BaseName
-$stops = @(Get-ChildItem $captures -Filter "${stamp}_*.raw" | Sort-Object Name)
-if ($stops.Count -eq 0) { throw "The run recorded no capture; see $(Join-Path $captures 'player.log')." }
+$captured = @(Get-ChildItem $captures -Filter "${stamp}_*.raw" | Sort-Object Name)
+if ($captured.Count -eq 0) { throw "The run recorded no capture; see $(Join-Path $captures 'player.log')." }
 
-Write-Host "Analysing $($stops.Count) captures..."
-$arguments = foreach ($stop in $stops) { '-capture'; $stop.FullName }
-Invoke-Unity 'KingdomWatch.Game.Editor.ProfilerAnalysis.Batch' (Join-Path $captures 'analysis.log') $arguments
+# A run of a few stops is a look, not a measurement: its screenshots are
+# what it is for, and analysing its captures would cost a Unity session.
+if (-not $Stops) {
+    Write-Host "Analysing $($captured.Count) captures..."
+    $arguments = foreach ($stop in $captured) { '-capture'; $stop.FullName }
+    Invoke-Unity 'KingdomWatch.Game.Editor.ProfilerAnalysis.Batch' (Join-Path $captures 'analysis.log') $arguments
+}
 
 Get-Content $log.FullName
 Write-Host ''
-Write-Host "Markers: $(Join-Path $captures "${stamp}_NN_<stop>.markers.txt")"
+if ($Stops) {
+    Write-Host "Screenshots: $(Join-Path $captures "${stamp}_NN_<stop>.png")"
+}
+else {
+    Write-Host "Markers: $(Join-Path $captures "${stamp}_NN_<stop>.markers.txt")"
+}

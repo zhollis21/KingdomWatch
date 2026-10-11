@@ -220,18 +220,29 @@ namespace KingdomWatch.Core.Traversal
         /// mover has no defined transport.
         /// </exception>
         public bool TryFindRoute(
-            WorldPosition from, WorldPosition to, Transport mover, int radius, List<WorldPosition> route, out long cost)
+            WorldPosition from, WorldPosition to, Transport mover, int radius, List<WorldPosition> route, out long cost) =>
+            TryFindRoute(from, to, mover, radius, long.MaxValue, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindRoute(WorldPosition, WorldPosition, Transport, int, List{WorldPosition}, out long)"/>,
+        /// found only if it costs no more than <paramref name="maxCost"/>:
+        /// what bounds a search by how far someone would walk rather than by
+        /// a box of cells, so it reaches further along roads than through
+        /// forest. Pass <see cref="int.MaxValue"/> as the radius for no box.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// Either position is off the map, the radius or the cost is negative,
+        /// or the mover has no defined transport.
+        /// </exception>
+        public bool TryFindRoute(
+            WorldPosition from, WorldPosition to, Transport mover, int radius, long maxCost, List<WorldPosition> route, out long cost)
         {
             if (route is null)
             {
                 throw new ArgumentNullException(nameof(route));
             }
 
-            if (radius < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
-            }
-
+            RequireBounds(radius, maxCost);
             TransportGuard.RequireMover(mover);
             var start = _grid.IndexOf(from);
             var goal = _grid.IndexOf(to);
@@ -258,10 +269,28 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, to, from, radius, null, false);
+                Expand(current, mover, to, from, radius, maxCost, null, false);
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// The box radius, in cells, that holds every cell a route costing at
+        /// most <paramref name="maxCost"/> could reach: each cell further out
+        /// costs at least a straight step onto the cheapest ground or road
+        /// there is. For a caller that bounds by cost but counts by box, as a
+        /// starting site's quick upper bound on the trees in reach does.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The cost is negative.</exception>
+        public int RadiusOf(long maxCost)
+        {
+            if (maxCost < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxCost), maxCost, "A cost is not negative.");
+            }
+
+            return (int)Math.Min(int.MaxValue, maxCost / ((long)StraightCost * _rules.CheapestCost));
         }
 
         /// <summary>
@@ -367,6 +396,30 @@ namespace KingdomWatch.Core.Traversal
             bool edgesOnly,
             int radius,
             List<WorldPosition> route,
+            out long cost) =>
+            TryFindNearest(from, mover, acceptable, known, filter, through, edgesOnly, radius, long.MaxValue, route, out cost);
+
+        /// <summary>
+        /// <see cref="TryFindNearest(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, ISiteFilter, ISiteFilter, bool, int, List{WorldPosition}, out long)"/>,
+        /// counting only cells whose route costs no more than
+        /// <paramref name="maxCost"/>: a search bounded by how far someone
+        /// would walk. Pass <see cref="int.MaxValue"/> as the radius for no box.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius or the cost is negative, or
+        /// the mover has no defined transport.
+        /// </exception>
+        public bool TryFindNearest(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            ISiteFilter? filter,
+            ISiteFilter? through,
+            bool edgesOnly,
+            int radius,
+            long maxCost,
+            List<WorldPosition> route,
             out long cost)
         {
             if (route is null)
@@ -388,11 +441,7 @@ namespace KingdomWatch.Core.Traversal
                     nameof(acceptable));
             }
 
-            if (radius < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
-            }
-
+            RequireBounds(radius, maxCost);
             TransportGuard.RequireMover(mover);
             var start = _grid.IndexOf(from);
 
@@ -420,7 +469,7 @@ namespace KingdomWatch.Core.Traversal
                     return true;
                 }
 
-                Expand(current, mover, null, from, radius, through, edgesOnly);
+                Expand(current, mover, null, from, radius, maxCost, through, edgesOnly);
             }
 
             return false;
@@ -447,7 +496,48 @@ namespace KingdomWatch.Core.Traversal
             Transport mover,
             ReadOnlySpan<bool> acceptable,
             ReadOnlySpan<bool> known,
-            int radius)
+            int radius) =>
+            CountReachable(from, mover, acceptable, known, radius, long.MaxValue);
+
+        /// <summary>
+        /// <see cref="CountReachable(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, int)"/>,
+        /// counting only cells whose route costs no more than
+        /// <paramref name="maxCost"/>. Pass <see cref="int.MaxValue"/> as the
+        /// radius for no box.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius or the cost is negative, or
+        /// the mover has no defined transport.
+        /// </exception>
+        public int CountReachable(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            int radius,
+            long maxCost) =>
+            (int)WeighReachable(from, mover, acceptable, known, radius, maxCost, null);
+
+        /// <summary>
+        /// <see cref="CountReachable(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, int, long)"/>,
+        /// each cell counted at what <paramref name="weight"/> makes of its
+        /// route's cost rather than at one: what a settlement's food and wood
+        /// in reach are counted by, a far bush worth less than a near one
+        /// because fewer trips a day reach it. Null weighs every cell one.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius or the cost is negative, or
+        /// the mover has no defined transport.
+        /// </exception>
+        /// <exception cref="OverflowException">The weights sum past a long: refused rather than wrapped.</exception>
+        public long WeighReachable(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            int radius,
+            long maxCost,
+            ICostWeight? weight)
         {
             if (!known.IsEmpty && known.Length < _grid.CellCount)
             {
@@ -463,11 +553,7 @@ namespace KingdomWatch.Core.Traversal
                     nameof(acceptable));
             }
 
-            if (radius < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
-            }
-
+            RequireBounds(radius, maxCost);
             TransportGuard.RequireMover(mover);
             var start = _grid.IndexOf(from);
 
@@ -478,7 +564,7 @@ namespace KingdomWatch.Core.Traversal
 
             BeginSearch();
             Open(start, 0, start, 0);
-            var found = 0;
+            var found = 0L;
 
             while (_heapCount > 0)
             {
@@ -486,10 +572,10 @@ namespace KingdomWatch.Core.Traversal
 
                 if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
                 {
-                    found++;
+                    found = checked(found + (weight is null ? 1L : weight.WeightOf(_gScore[current])));
                 }
 
-                Expand(current, mover, null, from, radius, null, false);
+                Expand(current, mover, null, from, radius, maxCost, null, false);
             }
 
             return found;
@@ -499,9 +585,10 @@ namespace KingdomWatch.Core.Traversal
         // corners, each priced by the cell it enters, with the heuristic
         // toward the goal when there is one - without, the search is
         // Dijkstra - nothing opened outside the box, and nothing the gate
-        // refuses. The first four neighbours are the orthogonal ones, all a
-        // search along edges takes.
-        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius, ISiteFilter? through, bool edgesOnly)
+        // refuses, nor anything costing more than maxCost to reach. The first
+        // four neighbours are the orthogonal ones, all a search along edges
+        // takes.
+        private void Expand(int current, Transport mover, WorldPosition? goal, WorldPosition origin, int radius, long maxCost, ISiteFilter? through, bool edgesOnly)
         {
             _closed[current] = true;
             var position = _grid.PositionAt(current);
@@ -539,7 +626,7 @@ namespace KingdomWatch.Core.Traversal
                 // most CellCount steps, which an int cannot promise to hold.
                 var tentative = _gScore[current] + ((long)stepCost * EntryCost(nextIndex, mover));
 
-                if (_seen[nextIndex] && tentative >= _gScore[nextIndex])
+                if (tentative > maxCost || (_seen[nextIndex] && tentative >= _gScore[nextIndex]))
                 {
                     continue;
                 }
@@ -548,6 +635,19 @@ namespace KingdomWatch.Core.Traversal
             }
         }
 
+
+        private static void RequireBounds(int radius, long maxCost)
+        {
+            if (radius < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(radius), radius, "A radius is not negative.");
+            }
+
+            if (maxCost < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxCost), maxCost, "A cost is not negative.");
+            }
+        }
 
         // The masks directly rather than TerrainRule.Admits: the mover was
         // validated once at entry, and this runs for every neighbour of every

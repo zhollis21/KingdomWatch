@@ -222,6 +222,8 @@ namespace KingdomWatch.Core.Construction
         private readonly bool[] _forest;
         private readonly bool[] _ground;
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
+        private readonly Dictionary<EntityId, ReachCount> _forageCounts = new Dictionary<EntityId, ReachCount>();
+        private readonly Dictionary<EntityId, ReachCount> _woodCounts = new Dictionary<EntityId, ReachCount>();
         private readonly List<EntityId> _scratchHearths = new List<EntityId>();
 
         public Buildings(
@@ -300,6 +302,34 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
+        /// <summary>
+        /// How far, in route cost, the bushes <see cref="ForageInReach(WorldPosition, ReadOnlySpan{bool})"/>
+        /// counts lie: a forager's near walk (<see cref="Jobs.NearWalk"/>),
+        /// about an hour. Foragers go further, out to dusk, but a village
+        /// does not count on bushes that far: counted, even at half, they
+        /// held off its barn and fields until its near bushes were gone and
+        /// trips a day out could not feed it - whole sides starved in the
+        /// world runs.
+        /// </summary>
+        public static readonly long ForageReach = Jobs.NearWalk(PrimitiveTier.Forage.Duration);
+
+        /// <summary>
+        /// How far, in route cost, the trees <see cref="WoodInReach(WorldPosition, ReadOnlySpan{bool})"/>
+        /// counts stand: as far as a woodcutter goes (<see cref="Jobs.ReachCost(long)"/>).
+        /// </summary>
+        public static readonly long WoodReach = Jobs.ReachCost(PrimitiveTier.GatherWood.Duration);
+
+        /// <summary>
+        /// The furthest walk, in route cost, at which a tree counts whole in
+        /// <see cref="WoodInReach(WorldPosition, ReadOnlySpan{bool})"/> - a
+        /// woodcutter's near walk (<see cref="Jobs.NearWalk"/>). Past it, out
+        /// to <see cref="WoodReach"/>, a tree counts half: a woodcutter makes
+        /// a trip a day fewer to it, and a village leans on it less.
+        /// </summary>
+        public static readonly long WoodFullReach = Jobs.NearWalk(PrimitiveTier.GatherWood.Duration);
+
+        private static readonly TreeWeight Trees = new TreeWeight();
+
         /// <summary>A year of meals for this many people.</summary>
         public static long YearlyNeed(int living) =>
             living >= 0
@@ -341,7 +371,44 @@ namespace KingdomWatch.Core.Construction
         /// knowing what <paramref name="mapHolder"/> knows, could forage.
         /// </summary>
         public long ForageInReach(WorldPosition at, EntityId mapHolder) =>
-            ForageInReach(at, _knownMaps.For(mapHolder));
+            Weighed(_forageCounts, at, mapHolder, _scrub, ForageReach, null) * BushYearlyFood;
+
+        // A holder's bushes or trees in reach, weighed (null counts each
+        // one), counted again only when it asks from somewhere else or the
+        // ground or any map has changed since: food in reach is asked at
+        // every courtship and conception, and searching each time - for
+        // trees, out to dusk - made a world run several times slower. Kept,
+        // never saved: the count is the same whenever it is made, so a world
+        // restored without it counts again.
+        private long Weighed(
+            Dictionary<EntityId, ReachCount> counts, WorldPosition at, EntityId holder, bool[] kinds, long reach, ICostWeight? weight)
+        {
+            var known = _knownMaps.For(holder);
+
+            if (!counts.TryGetValue(holder, out var count))
+            {
+                count = new ReachCount();
+                counts.Add(holder, count);
+            }
+            else if (count.At == at && count.Rewrites == _grid.Rewrites && count.MapChanges == _knownMaps.Changes)
+            {
+                return count.Weighed;
+            }
+
+            count.At = at;
+            count.Rewrites = _grid.Rewrites;
+            count.MapChanges = _knownMaps.Changes;
+            count.Weighed = _pathfinder.WeighReachable(at, Jobs.Mover, kinds, known, int.MaxValue, reach, weight);
+            return count.Weighed;
+        }
+
+        private sealed class ReachCount
+        {
+            public WorldPosition At;
+            public long Rewrites;
+            public long MapChanges;
+            public long Weighed;
+        }
 
         /// <summary>
         /// <see cref="ForageInReach(WorldPosition, EntityId)"/> for a map
@@ -350,16 +417,18 @@ namespace KingdomWatch.Core.Construction
         /// reads it - what a world picks its starting villages from (#146).
         /// </summary>
         public long ForageInReach(WorldPosition at, ReadOnlySpan<bool> known) =>
-            _pathfinder.CountReachable(at, Jobs.Mover, _scrub, known, Jobs.MaxSiteRadius) * BushYearlyFood;
+            _pathfinder.CountReachable(at, Jobs.Mover, _scrub, known, int.MaxValue, ForageReach) * BushYearlyFood;
 
         /// <summary>
         /// Whether a band of this many could settle here: a whole year's
         /// picking of the bushes in reach (<see cref="ForageInReach"/>) would
-        /// cover half as much again as one season's eating, nothing stands in
-        /// or roofs over the camp's yard (the #153 review), and there is
-        /// ground for a barn. That is a third of what the words "a season of
-        /// bushes" would suggest, since a bush gives a year's fruit over
-        /// three seasons; it is the measure the #100 harness runs were tuned
+        /// cover half as much again as one season's eating, the camp's yard
+        /// keeps <see cref="VillageGap"/> from every settlement's buildings
+        /// and yard - so nothing stands in or roofs over it either (the #153
+        /// review, #154) - and there is ground for a barn. That is a third of
+        /// what the words "a season of bushes" would suggest, since a bush
+        /// gives a year's fruit over three seasons; it is the measure the
+        /// #100 harness runs were tuned
         /// with, and one that camps on the placeholder map can pass - none
         /// has bushes for a year's eating. It only has to carry the village to
         /// its first harvest: a barn and a field are days of work, and the
@@ -402,7 +471,7 @@ namespace KingdomWatch.Core.Construction
             return now.Season == Season.Spring
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, known) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
-                && YardIsClear(at)
+                && YardIsApart(at)
                 && TryPlace(BuildingKind.Barn, at, at, known, EntityId.None, out _);
         }
 
@@ -494,7 +563,7 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(settlement));
             }
 
-            return WoodInReach(settlement.Position, _knownMaps.For(settlement.Id));
+            return WoodFromTrees(Weighed(_woodCounts, settlement.Position, settlement.Id, _forest, WoodReach, Trees)) / TreeWeight.Whole;
         }
 
         /// <summary>
@@ -506,7 +575,7 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public long WoodInReach(WorldPosition at, ReadOnlySpan<bool> known)
         {
-            return WoodFromTrees(_pathfinder.CountReachable(at, Jobs.Mover, _forest, known, Jobs.MaxSiteRadius));
+            return WoodFromTrees(_pathfinder.WeighReachable(at, Jobs.Mover, _forest, known, int.MaxValue, WoodReach, Trees)) / TreeWeight.Whole;
         }
 
         /// <summary>
@@ -516,10 +585,39 @@ namespace KingdomWatch.Core.Construction
         /// Never falls as the count rises, so a bound on the trees is a bound
         /// on the wood (#146).
         /// </summary>
-        public long WoodFromTrees(int trees) =>
+        /// <exception cref="ArgumentOutOfRangeException">The count is negative.</exception>
+        /// <exception cref="OverflowException">The wood would not fit a long: refused rather than wrapped.</exception>
+        public long WoodFromTrees(long trees) =>
             trees >= 0
-                ? (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays
+                ? checked(trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear) / LandCover.RegrowDays
                 : throw new ArgumentOutOfRangeException(nameof(trees), trees, "No fewer trees than none.");
+
+        // A tree in reach weighs Whole out to WoodFullReach and one out to
+        // WoodReach: half, counted in halves.
+        private sealed class TreeWeight : ICostWeight
+        {
+            public const long Whole = 2L;
+
+            public long WeightOf(long cost) => cost <= WoodFullReach ? Whole : cost <= WoodReach ? 1L : 0L;
+        }
+
+        /// <summary>
+        /// <see cref="WoodInReach(WorldPosition, ReadOnlySpan{bool})"/> as it
+        /// would come to with this many trees near enough to count whole and
+        /// this many in all, each other one at the weight of a trip a day
+        /// fewer: an estimate, read off counts of trees rather than walks to
+        /// them. What a world ranks its starting sites' candidates by (#146).
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">A count is negative, or the near ones outnumber them all.</exception>
+        public long WoodEstimate(int nearTrees, int trees)
+        {
+            if (nearTrees < 0 || nearTrees > trees)
+            {
+                throw new ArgumentOutOfRangeException(nameof(nearTrees), nearTrees, "Between none and the " + trees + " in all.");
+            }
+
+            return WoodFromTrees((nearTrees * TreeWeight.Whole) + (trees - nearTrees)) / TreeWeight.Whole;
+        }
 
         /// <summary>
         /// Whether the forest in reach (<see cref="WoodInReach"/>) would keep
@@ -1339,24 +1437,5 @@ namespace KingdomWatch.Core.Construction
         // Within CampYardRadius of a camp, each way.
         private static bool WithinYard(WorldPosition at, WorldPosition camp) =>
             Math.Abs(at.X - camp.X) <= CampYardRadius && Math.Abs(at.Y - camp.Y) <= CampYardRadius;
-
-        // Whether a camp here would have a yard nothing stands in or roofs over.
-        private bool YardIsClear(WorldPosition camp)
-        {
-            for (var y = camp.Y - CampYardRadius; y <= camp.Y + CampYardRadius; y++)
-            {
-                for (var x = camp.X - CampYardRadius; x <= camp.X + CampYardRadius; x++)
-                {
-                    var at = new WorldPosition(x, y);
-
-                    if (_grid.Contains(at) && (_onCell.ContainsKey(_grid.IndexOf(at)) || _underRoof.Contains(_grid.IndexOf(at))))
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
     }
 }

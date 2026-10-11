@@ -41,7 +41,7 @@ Unity consumes Core as a managed plug-in: every build of Core copies `KingdomWat
 
 Releases to Google Play are built and uploaded by `.github/workflows/android-release.yml` and promoted by `promote-release.yml`; the Unity build is GameCI's own build script, configured in the workflow, not the (development) Android build profile. Setup, secrets and the first-release steps are in `docs/release.md`. Never commit a keystore.
 
-The game's art is licensed but not redistributable, so it lives in a private submodule at `Game/Assets/Art` (#121). Never copy anything from it into this repository, which is public: not the images, not a crop of them, and not an exported screenshot committed as a fixture. The game runs without the submodule, drawing plain markers.
+The game's art is licensed but not redistributable, so it lives in a private submodule at `Game/Assets/Art` (#121). Never copy anything from it into this repository, which is public: not the images, not a crop of them, and not an exported screenshot committed as a fixture. The game runs without the submodule, drawing plain markers. A worktree starts with it empty; fill it before building or looking at the Unity view (`docs/unity.md`, "The art submodule" - Claude Code sessions do it on start).
 
 Three constraints on `Core/` are enforced by tests in `Core.Tests/CoreAssemblyContractTests.cs` rather than by convention: it targets `netstandard2.1`, it is **single-targeted**, and it references nothing but the `netstandard` facade. Adding a package reference or a Unity type to Core will fail the build, by design.
 
