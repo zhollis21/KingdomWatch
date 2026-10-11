@@ -19,7 +19,7 @@ namespace KingdomWatch.Game
     {
         Far,
         // Roads, districts, farms and buildings belong here (section 16).
-        // Buildings and fields draw from Medium in, and Core has no roads or
+        // Roads, buildings and fields draw from Medium in, and Core has no
         // districts yet, so until it does Medium draws what Near draws.
         Medium,
         Near,
@@ -185,7 +185,7 @@ namespace KingdomWatch.Game
         private SpriteRenderer colourGround;
         private GameObject tiledGround;
         private TerrainGrid grid;
-        private Tilemap landMap, shoreMap;
+        private Tilemap landMap, shoreMap, roadMap;
         // The scenery below LiveSceneryFrom: flowers and sprouts flat on the
         // ground, and trees, rocks and bushes standing up.
         private Tilemap flatMap, standingMap;
@@ -195,6 +195,9 @@ namespace KingdomWatch.Game
         // (width + 1) by (height + 1).
         private byte[] shoreMasks;
         private bool[] drawnWater;
+        // Which road edge each corner takes, by which of its cells are road
+        // (#158); laid out as shoreMasks. Only with the art.
+        private byte[] roadMasks;
         // The season every cell of the map shows, built or not: the spread
         // writes it, and Build lays from it. A corner's shoreline piece
         // shows its owner cell's season (see CornerOwner).
@@ -220,13 +223,15 @@ namespace KingdomWatch.Game
         private int chunksAcross, chunksDown;
         private readonly List<Chunk> resident = new List<Chunk>();
         private readonly Stack<SpriteRenderer> sceneryPool = new Stack<SpriteRenderer>();
-        private TileBase[] landBlock, shoreBlock;
+        private TileBase[] landBlock, shoreBlock, roadBlock;
         private readonly List<(int Column, int Row, int Distance)> toBuild = new List<(int, int, int)>();
         private readonly System.Diagnostics.Stopwatch buildClock = new System.Diagnostics.Stopwatch();
         private readonly List<Vector3Int> changedCells = new List<Vector3Int>();
         private readonly List<TileBase> changedTiles = new List<TileBase>();
         private readonly List<Vector3Int> changedCorners = new List<Vector3Int>();
         private readonly List<TileBase> changedCornerTiles = new List<TileBase>();
+        private readonly List<Vector3Int> changedRoadCorners = new List<Vector3Int>();
+        private readonly List<TileBase> changedRoadTiles = new List<TileBase>();
         private readonly List<TileChangeData> changedFlowers = new List<TileChangeData>();
         // The land's bushes and trees (#26), the instant the view is drawing,
         // the built chunk Regrow looked at last, and its tile writes.
@@ -621,9 +626,12 @@ namespace KingdomWatch.Game
         }
 
         // Redraws what Core has rewritten since the last frame (#150): today
-        // clearing, scrub and forest turned to plains under a building. The
-        // chunks holding those cells are built again, and the zoomed-out map
-        // or the plain map recoloured cell by cell. When more was rewritten
+        // clearing, scrub and forest turned to plains under a building, and
+        // road laid (#158). The chunks holding those cells, and those laying
+        // a road edge that changed with them, are built again, and the
+        // zoomed-out map or the plain map recoloured cell by cell. A road
+        // edge over a cell that is not road is grass on grass, so only the
+        // rewritten cell's own colour changes. When more was rewritten
         // than the grid's change log keeps, the whole map is redrawn instead.
         // Land turned to water or back - a bridge, section 12 - would move
         // shorelines too (drawnWater, shoreMasks), which nothing redraws yet.
@@ -649,6 +657,18 @@ namespace KingdomWatch.Game
                 }
                 StaleChunk(x, y);
                 farCells.Add(cell);
+                // The four corners around the cell, in world units.
+                for (var j = height - 1 - y; j <= height - y; j++)
+                {
+                    for (var i = x; i <= x + 1; i++)
+                    {
+                        var corner = j * (width + 1) + i;
+                        var mask = RoadMask(i, j);
+                        if (roadMasks[corner] == mask) continue;
+                        roadMasks[corner] = mask;
+                        StaleCorner(i, j);
+                    }
+                }
             }
             if (art != null) RedrawFar();
             else if (terrainChanged)
@@ -665,6 +685,7 @@ namespace KingdomWatch.Game
                 DrawTerrain(grid);
                 return;
             }
+            RoadMasks();
             foreach (var chunk in resident) chunk.Stale = true;
             farCells.Clear();
             BuildSeasonMaps();
@@ -674,6 +695,13 @@ namespace KingdomWatch.Game
         private void StaleChunk(int x, int y)
         {
             var chunk = ChunkAt(x, y);
+            if (chunk != null) chunk.Stale = true;
+        }
+
+        // The same for the chunk that lays a corner.
+        private void StaleCorner(int i, int j)
+        {
+            var chunk = CornerChunk(i, j);
             if (chunk != null) chunk.Stale = true;
         }
 
@@ -1001,9 +1029,15 @@ namespace KingdomWatch.Game
             terrainTexture.Apply(false);
         }
 
-        // One cell of the map without the art: its kind's colour, a shade
-        // darker on alternate cells.
-        private Color32 PlainColour(int x, int y) => ColourOf(grid[new WorldPosition(x, y)], ((x + y) & 1) == 0 ? 0 : 8);
+        // One cell of the map without the art: its kind's colour, or earth
+        // where it is road (#158), a shade darker on alternate cells.
+        private Color32 PlainColour(int x, int y)
+        {
+            var at = new WorldPosition(x, y);
+            var shade = ((x + y) & 1) == 0 ? 0 : 8;
+            if (grid.RoadAt(at) != RoadGrade.None) return new Color32((byte)(176 - shade), (byte)(138 - shade), (byte)(92 - shade), 255);
+            return ColourOf(grid[at], shade);
+        }
 
         // The zoomed-out map in the art's colours, once for each season, when
         // the world is shown. Refresh swaps between them as the seasons turn,
@@ -1069,27 +1103,27 @@ namespace KingdomWatch.Game
             colourGround.sharedMaterial = spreadMaterial;
         }
 
-        // One cell as the art view draws it, reduced to a colour: its ground,
-        // the shoreline pieces on its four corners, and what stands on it.
+        // One cell as the art view draws it, reduced to a colour: its ground
+        // or a road's path, the road edges and shoreline pieces on its four
+        // corners, and what stands on it.
         private Color32 FarColour(int x, int y, int season)
         {
             var index = y * width + x;
             var hash = CellHash(x, y);
             var water = drawnWater[index];
+            var road = IsRoad(x, y);
             var tuft = !water && artColours.Tufts[season].Length > 0 && Decorated(hash) && Tufted(hash);
             var colour = water ? artColours.Water
+                : road ? artColours.Path
                 : tuft ? artColours.Tufts[season][(hash >> 12) % (uint)artColours.Tufts[season].Length]
                 : artColours.Plain[season];
 
-            // The cell's own tile row, and the corners at its four corners in
-            // world units; each shoreline piece lays its facing quarter over
-            // this cell, a quarter of the cell's area.
-            var t = height - 1 - y;
-            var shore = artColours.Shore[season];
-            colour = ArtColours.Over(colour, shore[shoreMasks[t * (width + 1) + x]][3], 0.25f);
-            colour = ArtColours.Over(colour, shore[shoreMasks[t * (width + 1) + x + 1]][2], 0.25f);
-            colour = ArtColours.Over(colour, shore[shoreMasks[(t + 1) * (width + 1) + x]][1], 0.25f);
-            colour = ArtColours.Over(colour, shore[shoreMasks[(t + 1) * (width + 1) + x + 1]][0], 0.25f);
+            // Over a cell that is not road, a road edge is grass on grass. A
+            // road cell's corners all draw road pieces, which stand in for
+            // the shoreline's (ShorePiece).
+            colour = road
+                ? OverCorners(colour, artColours.RoadEdges[season], roadMasks, x, y)
+                : OverCorners(colour, artColours.Shore[season], shoreMasks, x, y);
 
             if (!water)
             {
@@ -1099,12 +1133,24 @@ namespace KingdomWatch.Game
                 // The season's fruit: the zoomed-out map is made once per
                 // season, so it shows no bush picked clean or tree felled.
                 else if (kind == TerrainKind.Scrub) colour = ArtColours.Over(colour, artColours.Bushes[ArtSet.BushFruitOf((Season)season) * ArtSet.BushSizes + (int)(hash % ArtSet.BushSizes)]);
-                else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && season != (int)Season.Winter)
+                else if (kind == TerrainKind.Plains && !road && Decorated(hash) && !Tufted(hash) && season != (int)Season.Winter)
                 {
                     colour = ArtColours.Over(colour, artColours.FlatDecor[(hash >> 12) / 8 % (uint)artColours.FlatDecor.Length]);
                 }
             }
             return ArtColours.ToColour(colour);
+        }
+
+        // `colour` under the corner pieces at a cell's four corners, in world
+        // units from its own tile row: each lays its facing quarter over the
+        // cell, a quarter of the cell's area.
+        private Vector4 OverCorners(Vector4 colour, Vector4[][] pieces, byte[] masks, int x, int y)
+        {
+            var t = height - 1 - y;
+            colour = ArtColours.Over(colour, pieces[masks[t * (width + 1) + x]][3], 0.25f);
+            colour = ArtColours.Over(colour, pieces[masks[t * (width + 1) + x + 1]][2], 0.25f);
+            colour = ArtColours.Over(colour, pieces[masks[(t + 1) * (width + 1) + x]][1], 0.25f);
+            return ArtColours.Over(colour, pieces[masks[(t + 1) * (width + 1) + x + 1]][0], 0.25f);
         }
 
         private static Color ColourOf(BuildingKind kind)
@@ -1133,9 +1179,10 @@ namespace KingdomWatch.Game
         }
 
         // The Medium and Near ground: rippling water and the season's land per
-        // cell, shoreline pieces over the joins, a tree on every forest cell,
-        // a rock on every rocks cell, a berry bush on every scrub cell, and a
-        // light scatter of tufts and flowers on the plains. Which
+        // cell, shoreline pieces over the joins, bare path on every road cell
+        // with grass edges over its joins the same way (#158), a tree on every
+        // forest cell, a rock on every rocks cell, a berry bush on every scrub
+        // cell, and a light scatter of tufts and flowers on the plains. Which
         // variant goes where is drawn from the cell's position, so the map
         // looks the same every time. Both kinds of water draw alike until
         // worldgen places deep water (#127).
@@ -1147,7 +1194,13 @@ namespace KingdomWatch.Game
             tiledGround = new GameObject("Tiled terrain");
             tiledGround.transform.SetParent(transform, false);
             tiledGround.AddComponent<Grid>();
-            landMap = NewTilemap("Ground", Vector3.zero, -5, false);
+            landMap = NewTilemap("Ground", Vector3.zero, -6, false);
+            // Road corners (#158) sit on the corners as shoreline pieces do,
+            // over the ground and under the fields, so a field's soil covers
+            // the grass they lay beside a road. Where a corner has road and
+            // water both, its road piece draws the bank and the shoreline
+            // map has nothing there (ShorePiece).
+            roadMap = NewTilemap("Road edges", new Vector3(-0.5f, -0.5f, 0f), -5, true);
             // Shoreline pieces sit on the corners where four cells meet, half a
             // cell off the ground grid, so each piece joins up to four cells
             // and sixteen pieces cover every mix of land and water. Along the
@@ -1201,9 +1254,33 @@ namespace KingdomWatch.Game
                     shoreMasks[j * (width + 1) + i] = (byte)shoreMask;
                 }
             }
+            roadMasks = new byte[(width + 1) * (height + 1)];
+            RoadMasks();
 
             tiledGround.SetActive(false);
         }
+
+        // Every corner's road edge, from the grid.
+        private void RoadMasks()
+        {
+            for (var j = 0; j <= height; j++)
+                for (var i = 0; i <= width; i++)
+                    roadMasks[j * (width + 1) + i] = RoadMask(i, j);
+        }
+
+        // Which of the four cells around corner (i, j) are road, as
+        // ShoreMask has it; the cells as in TileTerrain. Past the map's edge
+        // counts as whatever is at the edge, so a road runs off the map
+        // rather than ending in grass.
+        private byte RoadMask(int i, int j) => (byte)ArtSet.ShoreMask(
+            RoadNear(i - 1, height - 1 - j), RoadNear(i, height - 1 - j),
+            RoadNear(i - 1, height - j), RoadNear(i, height - j));
+
+        private bool RoadNear(int x, int y) => IsRoad(Mathf.Clamp(x, 0, width - 1), Mathf.Clamp(y, 0, height - 1));
+
+        // Whether a cell draws as road: road in Core, and not a land cell
+        // drawn as water where a river steps diagonally (DrawnWater).
+        private bool IsRoad(int x, int y) => !drawnWater[y * width + x] && grid.RoadAt(new WorldPosition(x, y)) != RoadGrade.None;
 
         // Builds the chunks the camera can see that are not built yet, a few
         // per frame, and then releases those well out of sight. A chunk one past
@@ -1275,8 +1352,9 @@ namespace KingdomWatch.Game
             (a, b) => a.Distance != b.Distance ? a.Distance.CompareTo(b.Distance)
                 : a.Row != b.Row ? a.Row.CompareTo(b.Row) : a.Column.CompareTo(b.Column);
 
-        // Lays one chunk's ground and shoreline in two block writes, and its
-        // scenery either in one or two more or on renderers from the pool.
+        // Lays one chunk's ground and shoreline in two block writes, a third
+        // for its road edges if it has any, and its scenery either in one or
+        // two more or on renderers from the pool.
         // Over `old`, the chunk built there before, if any: the block writes
         // cover its tiles, so only what they leave is cleared (#132).
         private Chunk Build(int column, int row, bool withDecor, bool sceneryTiled, Chunk old)
@@ -1318,7 +1396,7 @@ namespace KingdomWatch.Game
                         continue;
                     }
                     var cellSeason = (Season)landSeasons[index];
-                    landBlock[block] = GroundTile(cellSeason, hash);
+                    landBlock[block] = IsRoad(x, y) ? art.Path : GroundTile(cellSeason, hash);
                     StandScenery(chunk, x, y, block, hash, cellSeason);
                 }
             }
@@ -1338,16 +1416,22 @@ namespace KingdomWatch.Game
             using var shoreScope = ShoreMarker.Auto();
             var shore = chunk.Shore;
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
+            if (roadBlock == null || roadBlock.Length != shoreBlock.Length) roadBlock = new TileBase[shoreBlock.Length];
             for (var j = 0; j < shore.size.y; j++)
             {
                 for (var i = 0; i < shore.size.x; i++)
                 {
                     var index = (shore.yMin + j) * (width + 1) + shore.xMin + i;
-                    var cornerSeason = (Season)landSeasons[CornerOwner(shore.xMin + i, shore.yMin + j)];
-                    shoreBlock[j * shore.size.x + i] = art.GroundOf(cornerSeason).Shore[shoreMasks[index]];
+                    var season = (Season)landSeasons[CornerOwner(shore.xMin + i, shore.yMin + j)];
+                    shoreBlock[j * shore.size.x + i] = ShorePiece(season, index);
+                    roadBlock[j * shore.size.x + i] = RoadPiece(season, index);
+                    chunk.HasRoads |= roadMasks[index] != 0;
                 }
             }
             shoreMap.SetTilesBlock(shore, shoreBlock);
+            // Road edges in one more block write (#158), skipped where there
+            // is no road now and none was laid before.
+            if (chunk.HasRoads || (old != null && old.HasRoads)) roadMap.SetTilesBlock(shore, roadBlock);
             return chunk;
         }
 
@@ -1372,6 +1456,7 @@ namespace KingdomWatch.Game
             if (shoreBlock == null || shoreBlock.Length != shore.size.x * shore.size.y) shoreBlock = new TileBase[shore.size.x * shore.size.y];
             System.Array.Clear(shoreBlock, 0, shoreBlock.Length);
             shoreMap.SetTilesBlock(shore, shoreBlock);
+            if (chunk.HasRoads) roadMap.SetTilesBlock(shore, shoreBlock);
 
             ReturnScenery(chunk);
             chunks[chunk.Row * chunksAcross + chunk.Column] = null;
@@ -1427,10 +1512,11 @@ namespace KingdomWatch.Game
                 var rock = hash % (uint)art.Rocks.Length;
                 Stand(chunk, art.Rocks[rock], art.RockTiles[rock], x, y, block, 0.3f);
             }
-            else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && buildings.At(new WorldPosition(x, y)) == null)
+            else if (kind == TerrainKind.Plains && Decorated(hash) && !Tufted(hash) && !IsRoad(x, y) && buildings.At(new WorldPosition(x, y)) == null)
             {
-                // Not under a building: a field's soil is no place for a
-                // flower, and a house hides its own.
+                // Not on a road, which is trodden bare, or under a building:
+                // a field's soil is no place for a flower, and a house hides
+                // its own.
                 // Flowers and sprouts; bushes grow only on scrub.
                 var pick = hash >> 12;
                 // A pixel or two at quarter size: not worth drawing there.
@@ -1645,7 +1731,8 @@ namespace KingdomWatch.Game
             turnedChanged = true;
 
             var chunk = ChunkAt(x, y);
-            if (chunk != null && !drawnWater[cell])
+            // A road's path is the same in every season.
+            if (chunk != null && !drawnWater[cell] && !IsRoad(x, y))
             {
                 changedCells.Add(new Vector3Int(x, height - 1 - y, 0));
                 changedTiles.Add(GroundTile(spreadTo, CellHash(x, y)));
@@ -1666,15 +1753,30 @@ namespace KingdomWatch.Game
 
         private void TurnCorner(int i, int j)
         {
-            // A corner is laid by the chunk whose cell lies north-east of it
-            // (see Chunk), not by its owner's.
-            if (ChunkAt(Mathf.Min(i, width - 1), Mathf.Clamp(height - 1 - j, 0, height - 1)) == null) return;
+            if (CornerChunk(i, j) == null) return;
+            var corner = j * (width + 1) + i;
             changedCorners.Add(new Vector3Int(i, j, 0));
-            changedCornerTiles.Add(art.GroundOf(spreadTo).Shore[shoreMasks[j * (width + 1) + i]]);
+            changedCornerTiles.Add(ShorePiece(spreadTo, corner));
+            // Most corners edge no road: those are left alone.
+            if (roadMasks[corner] == 0) return;
+            changedRoadCorners.Add(new Vector3Int(i, j, 0));
+            changedRoadTiles.Add(RoadPiece(spreadTo, corner));
         }
+
+        // A corner's shoreline piece, or none where it edges a road too: the
+        // road's piece draws the bank there (ArtSet.RoadCorner).
+        private TileBase ShorePiece(Season season, int corner) =>
+            roadMasks[corner] != 0 ? null : art.GroundOf(season).Shore[shoreMasks[corner]];
+
+        private TileBase RoadPiece(Season season, int corner) =>
+            roadMasks[corner] == 0 ? null : art.RoadCorner(season, roadMasks[corner], shoreMasks[corner]);
 
         // The built chunk holding a cell, or null.
         private Chunk ChunkAt(int x, int y) => chunks[y / ChunkSize * chunksAcross + x / ChunkSize];
+
+        // The built chunk that lays a corner's pieces, or null: the one whose
+        // cell lies north-east of it (see Chunk), not its owner's.
+        private Chunk CornerChunk(int i, int j) => ChunkAt(Mathf.Min(i, width - 1), Mathf.Clamp(height - 1 - j, 0, height - 1));
 
         // The cell whose season a corner's shoreline piece shows: the one
         // south-east of it, clamped to the map, so the piece turns with the
@@ -1692,10 +1794,13 @@ namespace KingdomWatch.Game
             Spread(now);
             WriteChanged(landMap, changedCells, changedTiles);
             WriteChanged(shoreMap, changedCorners, changedCornerTiles);
+            WriteChanged(roadMap, changedRoadCorners, changedRoadTiles);
             changedCells.Clear();
             changedTiles.Clear();
             changedCorners.Clear();
             changedCornerTiles.Clear();
+            changedRoadCorners.Clear();
+            changedRoadTiles.Clear();
 
             foreach (var chunk in resident)
             {
@@ -1959,6 +2064,9 @@ namespace KingdomWatch.Game
 
             // Whether its flowers and sprouts were stood up (see DecorFrom).
             public bool WithDecor;
+
+            // Whether it laid any road edges, which only then need clearing.
+            public bool HasRoads;
 
             // Whether its scenery is tiles rather than renderers (see
             // LiveSceneryFrom): FlowerTiles when it is, Scenery, Flowers and

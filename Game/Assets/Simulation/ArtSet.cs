@@ -90,6 +90,14 @@ namespace KingdomWatch.Game
         public Ground[] Seasons { get; } = new Ground[4];
         public Tile Water { get; private set; }
 
+        // Bare earth for a road (#158), the same in every season: a trodden
+        // lane shows through the snow.
+        public Tile Path { get; private set; }
+
+        // Path's pixels, and the RoadCorner tiles made so far by their key.
+        private Color32[] pathPixels;
+        private readonly Dictionary<int, Tile> roadCorners = new Dictionary<int, Tile>();
+
         // Water that moves, for a few cells among the plain ones: faint
         // sparkles, a droplet's ring now and then, and a fish. Each comes in
         // AccentPhases copies started at different frames, so neighbours do
@@ -250,43 +258,171 @@ namespace KingdomWatch.Game
                 var sheet = Texture(GroundSheets[season]);
                 var plain = PlainTiles[season] == null ? null : Texture(PlainTiles[season]);
                 if (sheet == null || (PlainTiles[season] != null && plain == null)) return false;
-                Seasons[season] = LoadGround(sheet, plain);
+                var pixels = ReadPixels(sheet);
+                Seasons[season] = LoadGround(sheet, pixels, plain);
+                // The spring sheet's patch of path, columns 0-2 and rows 5-7,
+                // has plain path in its middle; the snow sheet has none.
+                if (season != 0) continue;
+                Path = NewTile(Cut(sheet, PixelsPerCell, 6 * PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
+                pathPixels = PiecePixels(sheet, pixels, 1, 6);
             }
             return true;
         }
+
+        // The tile at a corner with road on `road` of its cells and water on
+        // `water`, both by ShoreMask (#158): path with this season's grass
+        // edging it, made the first time it is asked for and kept. It is
+        // opaque, so it carries its own path, and it stands in for the
+        // shoreline piece as well when the corner has water, keeping its bank
+        // with the road's grass edge between path and bank. Two roads meeting
+        // only at a corner touch at the corner point (Pinched).
+        public Tile RoadCorner(Season season, int road, int water)
+        {
+            var key = ((int)season * 16 + road) * 16 + water;
+            if (roadCorners.TryGetValue(key, out var made)) return made;
+
+            var ground = Seasons[(int)season];
+            // The grass edging the road, water side too, so a road beside the
+            // river reads as path, grass, then bank, as the bank does
+            // anywhere. All four cells road: no grass edge.
+            var ring = road == ShoreMask(true, false, false, true) ? Pinched(ground, ShoreMask(true, false, false, false), ShoreMask(false, false, false, true))
+                : road == ShoreMask(false, true, true, false) ? Pinched(ground, ShoreMask(false, true, false, false), ShoreMask(false, false, true, false))
+                : ground.RoadRingPixels[road];
+            var shore = ground.ShorePixels[water];
+            // The shoreline piece's twin without the bank: the sheets draw
+            // the same grass edge on both, so the bank is where they differ,
+            // in a colour the twin does not use. The islands redraw a few
+            // pixels of their edge in the grass's other greens.
+            var unbanked = ground.RoadRingPixels[water];
+            var grass = new HashSet<int>();
+            if (unbanked != null) foreach (var colour in unbanked) if (colour.a > 0) grass.Add(Packed(colour));
+            var pixels = new Color32[PixelsPerCell * PixelsPerCell];
+            var half = PixelsPerCell / 2;
+            for (var y = 0; y < PixelsPerCell; y++)
+            {
+                for (var x = 0; x < PixelsPerCell; x++)
+                {
+                    var i = y * PixelsPerCell + x;
+                    // Texture rows count up, so the top two quarters are y >= half.
+                    var quarter = y >= half
+                        ? (x < half ? ShoreMask(true, false, false, false) : ShoreMask(false, true, false, false))
+                        : (x < half ? ShoreMask(false, false, true, false) : ShoreMask(false, false, false, true));
+                    // Water on two opposite corners has no shoreline piece,
+                    // and DrawnWater never leaves it; were it there, the
+                    // water would show through.
+                    if ((water & quarter) != 0) pixels[i] = shore != null ? shore[i] : default;
+                    // On a road, the grass edging it lies over the bank, as
+                    // grass does on any bank.
+                    else if ((road & quarter) != 0 && ring != null && ring[i].a > 0) pixels[i] = ring[i];
+                    // The bank keeps its own pixels; its grass gives way to
+                    // the road's.
+                    else if (shore != null && shore[i].a > 0 && !Same(shore[i], unbanked[i]) && !grass.Contains(Packed(shore[i]))) pixels[i] = shore[i];
+                    else pixels[i] = ring != null && ring[i].a > 0 ? ring[i] : pathPixels[i];
+                }
+            }
+
+            var texture = Own(new Texture2D(PixelsPerCell, PixelsPerCell, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Road corner" });
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            made = NewTile(Cut(texture, 0, 0, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
+            roadCorners.Add(key, made);
+            return made;
+        }
+
+        // Two roads meeting only at a corner, which has no piece: the edges
+        // of the pieces for each alone, pinched together at the corner. Each
+        // pixel is path where either piece's hole is, and otherwise the
+        // grass of whichever hole is nearer, so each keeps its own edge.
+        private static Color32[] Pinched(Ground ground, int first, int second)
+        {
+            var a = ground.RoadRingPixels[first];
+            var b = ground.RoadRingPixels[second];
+            var pixels = new Color32[a.Length];
+            for (var y = 0; y < PixelsPerCell; y++)
+            {
+                for (var x = 0; x < PixelsPerCell; x++)
+                {
+                    var i = y * PixelsPerCell + x;
+                    if (a[i].a == 0 || b[i].a == 0) continue;
+                    pixels[i] = HoleDistance(first, x, y) <= HoleDistance(second, x, y) ? a[i] : b[i];
+                }
+            }
+            return pixels;
+        }
+
+        // How far a pixel is, in pixels, from the quarter a one-corner mask
+        // names, in texture order: the top quarters are y >= half.
+        private static int HoleDistance(int mask, int x, int y)
+        {
+            var half = PixelsPerCell / 2;
+            var left = mask == ShoreMask(true, false, false, false) || mask == ShoreMask(false, false, true, false);
+            var top = mask == ShoreMask(true, false, false, false) || mask == ShoreMask(false, true, false, false);
+            var dx = left ? Mathf.Max(0, x - (half - 1)) : Mathf.Max(0, half - x);
+            var dy = top ? Mathf.Max(0, half - y) : Mathf.Max(0, y - (half - 1));
+            return Mathf.Max(dx, dy);
+        }
+
+        // One 16 px piece of a sheet read by ReadPixels, counted from the top
+        // left, in texture order: its bottom row first.
+        private static Color32[] PiecePixels(Texture2D sheet, Color32[] pixels, int column, int row)
+        {
+            var piece = new Color32[PixelsPerCell * PixelsPerCell];
+            var rect = FromTop(sheet, column * PixelsPerCell, row * PixelsPerCell, PixelsPerCell, PixelsPerCell);
+            for (var y = 0; y < PixelsPerCell; y++)
+                for (var x = 0; x < PixelsPerCell; x++)
+                    piece[y * PixelsPerCell + x] = pixels[((int)rect.y + y) * sheet.width + (int)rect.x + x];
+            return piece;
+        }
+
+        private static int Packed(Color32 c) => c.r | c.g << 8 | c.b << 16 | c.a << 24;
+
+        private static bool Same(Color32 a, Color32 b) => Packed(a) == Packed(b);
 
         // One season's ground, from a sheet counted in 16 px tiles from the top
         // left: a ring of ground around a hole (columns 3-5, rows 0-2) and an
         // island of ground in water (columns 3-4, rows 3-4), each transparent
         // where the water shows through from below, and three tufted variants
-        // of plain ground (columns 5-7, row 9). The snow sheet stops after row
-        // 4, so winter has no tufts, and its plain ground is at (5, 4).
-        private Ground LoadGround(Texture2D sheet, Texture2D plain)
+        // of plain ground (columns 5-7, row 9). The same ring and island
+        // without the bank (columns 0-2, rows 0-4) edge a road (#158), with
+        // the path showing through. The snow sheet stops after row 4, so
+        // winter has no tufts, and its plain ground is at (5, 4). `pixels`
+        // is the sheet as ReadPixels reads it, for RoadCorner.
+        private Ground LoadGround(Texture2D sheet, Color32[] pixels, Texture2D plain)
         {
             Tile Piece(int column, int row) => NewTile(Cut(sheet, column * PixelsPerCell, row * PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
             var ground = plain == null
                 ? new Ground(Piece(5, 4), new Tile[0])
                 : new Ground(NewTile(Cut(plain, 0, 0, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f))), new[] { Piece(5, 9), Piece(6, 9), Piece(7, 9) });
-            var shore = ground.Shore;
-            shore[ShoreMask(false, false, false, true)] = Piece(3, 0);
-            shore[ShoreMask(false, false, true, true)] = Piece(4, 0);
-            shore[ShoreMask(false, false, true, false)] = Piece(5, 0);
-            shore[ShoreMask(false, true, false, true)] = Piece(3, 1);
-            shore[ShoreMask(true, false, true, false)] = Piece(5, 1);
-            shore[ShoreMask(false, true, false, false)] = Piece(3, 2);
-            shore[ShoreMask(true, true, false, false)] = Piece(4, 2);
-            shore[ShoreMask(true, false, false, false)] = Piece(5, 2);
-            var landBottomRight = Piece(3, 3);
-            var landBottomLeft = Piece(4, 3);
-            var landTopRight = Piece(3, 4);
-            var landTopLeft = Piece(4, 4);
-            shore[ShoreMask(true, true, true, false)] = landBottomRight;
-            shore[ShoreMask(true, true, false, true)] = landBottomLeft;
-            shore[ShoreMask(true, false, true, true)] = landTopRight;
-            shore[ShoreMask(false, true, true, true)] = landTopLeft;
-            // Water on two opposite corners only has no piece: the caller
-            // draws a land cell there as water, so the two never meet.
+            Edges(ground.Shore, ground.ShorePixels, 3);
+            Edges(ground.RoadEdges, ground.RoadRingPixels, 0);
             return ground;
+
+            // A ring whose left column is `left`, rows 0-2, and the island
+            // under it, rows 3-4, by which corners show through.
+            void Edges(Tile[] pieces, Color32[][] piecePixels, int left)
+            {
+                void Put(int mask, int column, int row)
+                {
+                    pieces[mask] = Piece(column, row);
+                    piecePixels[mask] = PiecePixels(sheet, pixels, column, row);
+                }
+
+                Put(ShoreMask(false, false, false, true), left, 0);
+                Put(ShoreMask(false, false, true, true), left + 1, 0);
+                Put(ShoreMask(false, false, true, false), left + 2, 0);
+                Put(ShoreMask(false, true, false, true), left, 1);
+                Put(ShoreMask(true, false, true, false), left + 2, 1);
+                Put(ShoreMask(false, true, false, false), left, 2);
+                Put(ShoreMask(true, true, false, false), left + 1, 2);
+                Put(ShoreMask(true, false, false, false), left + 2, 2);
+                Put(ShoreMask(true, true, true, false), left, 3);
+                Put(ShoreMask(true, true, false, true), left + 1, 3);
+                Put(ShoreMask(true, false, true, true), left, 4);
+                Put(ShoreMask(false, true, true, true), left + 1, 4);
+                // Two opposite corners only have no piece. For water the
+                // caller draws a land cell there as water, so the two never
+                // meet; RoadCorner pinches two roads' pieces together.
+            }
         }
 
         private bool LoadScenery()
@@ -724,6 +860,16 @@ namespace KingdomWatch.Game
             // Shoreline pieces by which corners of a tile are water (see
             // ShoreMask); null where nothing is drawn.
             public Tile[] Shore { get; } = new Tile[16];
+
+            // The grass edging a road (#158), by which corners of a tile are
+            // road, as Shore is by water: for measuring, since what is drawn
+            // is ArtSet.RoadCorner, made from these pieces' pixels.
+            public Tile[] RoadEdges { get; } = new Tile[16];
+
+            // RoadEdges' and Shore's pixels in texture order, null where
+            // there is no piece.
+            public Color32[][] RoadRingPixels { get; } = new Color32[16][];
+            public Color32[][] ShorePixels { get; } = new Color32[16][];
         }
     }
 
@@ -752,6 +898,9 @@ namespace KingdomWatch.Game
         // By season, then ShoreMask, then quadrant: 0 bottom-left, 1
         // bottom-right, 2 top-left, 3 top-right, in texture space.
         public Vector4[][][] Shore { get; } = new Vector4[4][][];
+        // The same for the grass edging a road (#158).
+        public Vector4[][][] RoadEdges { get; } = new Vector4[4][][];
+        public Vector4 Path { get; private set; }
         public Vector4 Water { get; private set; }
         public Vector4[] Trees { get; private set; }
         public Vector4[] Rocks { get; private set; }
@@ -767,19 +916,10 @@ namespace KingdomWatch.Game
                 colours.Plain[season] = colours.Of(ground.Plain.sprite);
                 colours.Tufts[season] = new Vector4[ground.Tufts.Length];
                 for (var i = 0; i < ground.Tufts.Length; i++) colours.Tufts[season][i] = colours.Of(ground.Tufts[i].sprite);
-                colours.Shore[season] = new Vector4[ground.Shore.Length][];
-                for (var mask = 0; mask < ground.Shore.Length; mask++)
-                {
-                    var quadrants = new Vector4[4];
-                    var piece = ground.Shore[mask];
-                    if (piece != null)
-                    {
-                        var half = ArtSet.PixelsPerCell / 2;
-                        for (var q = 0; q < 4; q++) quadrants[q] = colours.Of(piece.sprite, new RectInt(q % 2 * half, q / 2 * half, half, half));
-                    }
-                    colours.Shore[season][mask] = quadrants;
-                }
+                colours.Shore[season] = colours.Quadrants(ground.Shore);
+                colours.RoadEdges[season] = colours.Quadrants(ground.RoadEdges);
             }
+            colours.Path = colours.Of(art.Path.sprite);
             colours.Water = colours.Of(art.Water.sprite);
             colours.Trees = colours.Each(art.Trees);
             colours.Rocks = colours.Each(art.Rocks);
@@ -803,6 +943,25 @@ namespace KingdomWatch.Game
                 (byte)Mathf.Clamp(premultiplied.y / a * 255f, 0f, 255f),
                 (byte)Mathf.Clamp(premultiplied.z / a * 255f, 0f, 255f),
                 255);
+        }
+
+        // Each corner piece's four quadrants, by mask; zero where a mask has
+        // no piece.
+        private Vector4[][] Quadrants(Tile[] pieces)
+        {
+            var result = new Vector4[pieces.Length][];
+            for (var mask = 0; mask < pieces.Length; mask++)
+            {
+                var quadrants = new Vector4[4];
+                var piece = pieces[mask];
+                if (piece != null)
+                {
+                    var half = ArtSet.PixelsPerCell / 2;
+                    for (var q = 0; q < 4; q++) quadrants[q] = Of(piece.sprite, new RectInt(q % 2 * half, q / 2 * half, half, half));
+                }
+                result[mask] = quadrants;
+            }
+            return result;
         }
 
         private Vector4[] Each(Sprite[] sprites)
