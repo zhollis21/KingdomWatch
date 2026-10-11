@@ -89,6 +89,14 @@ namespace KingdomWatch.Core.WorldGen
             var grid = world.Grid;
             var known = ReadOnlySpan<bool>.Empty;
 
+            // Each candidate first carries an upper bound on its wood: every
+            // forest cell in its reach box, reachable or not. Counting what a
+            // village's woodcutters could actually walk to is a search per
+            // candidate, and on the M1 map that is seconds; the bound is a
+            // lookup. Only candidates whose bound could still outrank the best
+            // exact count in hand are searched, which gives exactly the order
+            // searching every one would (#160 review).
+            var forest = new ForestCounts(grid);
             var candidates = new List<Candidate>();
 
             for (var y = Lattice / 2; y < grid.Height; y += Lattice)
@@ -104,25 +112,48 @@ namespace KingdomWatch.Core.WorldGen
                         continue;
                     }
 
-                    candidates.Add(new Candidate(at, world.Buildings.WoodInReach(at, known), x < river));
+                    candidates.Add(new Candidate(at, world.Buildings.WoodFromTrees(forest.InBox(at, Jobs.MaxSiteRadius)), x < river));
                 }
             }
 
-            // A total order - wood, then row, then column - so the unstable
-            // sort gives the same ranking on every platform.
-            candidates.Sort(static (a, b) =>
-                a.Wood != b.Wood ? b.Wood.CompareTo(a.Wood)
-                : a.At.Y != b.At.Y ? a.At.Y.CompareTo(b.At.Y)
-                : a.At.X.CompareTo(b.At.X));
+            candidates.Sort(RankOrder);
 
+            var counted = new SortedSet<Candidate>(Comparer<Candidate>.Create(RankOrder));
             var west = new List<WorldPosition>(perSide);
             var east = new List<WorldPosition>(perSide);
             var spacingSquared = (long)spacing * spacing;
             var need = Buildings.YearlyNeed(villageSize);
+            var next = 0;
 
-            for (var i = 0; i < candidates.Count && (west.Count < perSide || east.Count < perSide); i++)
+            while (west.Count < perSide || east.Count < perSide)
             {
-                var candidate = candidates[i];
+                // Search every candidate whose bound outranks the best count
+                // in hand: a count never exceeds its bound, so once the next
+                // bound ranks below that best, nothing unsearched can beat it.
+                // A candidate whose side is full, or that a site already taken
+                // crowds, is dropped unsearched - sites are only ever added, so
+                // it would be refused when its turn came anyway.
+                while (next < candidates.Count && (counted.Count == 0 || RankOrder(candidates[next], counted.Min) < 0))
+                {
+                    var bound = candidates[next++];
+
+                    if ((bound.West ? west : east).Count >= perSide
+                        || IsCrowded(bound.At, west, spacingSquared)
+                        || IsCrowded(bound.At, east, spacingSquared))
+                    {
+                        continue;
+                    }
+
+                    counted.Add(new Candidate(bound.At, world.Buildings.WoodInReach(bound.At, known), bound.West));
+                }
+
+                if (counted.Count == 0)
+                {
+                    break;
+                }
+
+                var candidate = counted.Min;
+                counted.Remove(candidate);
                 var side = candidate.West ? west : east;
 
                 // The cheap tests first: the founding check places a barn.
@@ -173,6 +204,14 @@ namespace KingdomWatch.Core.WorldGen
             throw new InvalidOperationException("Row " + row + " has no river; this is not a placeholder map.");
         }
 
+        // A total order - wood, then row, then column - so the unstable sort
+        // and the sorted set rank the same on every platform, and no two
+        // candidates ever tie.
+        private static int RankOrder(Candidate a, Candidate b) =>
+            a.Wood != b.Wood ? b.Wood.CompareTo(a.Wood)
+            : a.At.Y != b.At.Y ? a.At.Y.CompareTo(b.At.Y)
+            : a.At.X.CompareTo(b.At.X);
+
         private static bool IsCrowded(WorldPosition at, List<WorldPosition> taken, long spacingSquared)
         {
             for (var i = 0; i < taken.Count; i++)
@@ -187,6 +226,47 @@ namespace KingdomWatch.Core.WorldGen
             }
 
             return false;
+        }
+
+        // Forest cells in any box of the grid, by one lookup: a summed-area
+        // table, where each entry counts the forest above and left of it.
+        private sealed class ForestCounts
+        {
+            private readonly int[] _sums;
+            private readonly int _stride;
+            private readonly int _width;
+            private readonly int _height;
+
+            public ForestCounts(TerrainGrid grid)
+            {
+                _width = grid.Width;
+                _height = grid.Height;
+                _stride = _width + 1;
+                _sums = new int[_stride * (_height + 1)];
+
+                for (var y = 0; y < _height; y++)
+                {
+                    var row = 0;
+
+                    for (var x = 0; x < _width; x++)
+                    {
+                        row += grid[new WorldPosition(x, y)] == TerrainKind.Forest ? 1 : 0;
+                        _sums[((y + 1) * _stride) + x + 1] = _sums[(y * _stride) + x + 1] + row;
+                    }
+                }
+            }
+
+            // The box the Pathfinder searches within: radius cells each way,
+            // clipped to the grid.
+            public int InBox(WorldPosition at, int radius)
+            {
+                var left = Math.Max(0, at.X - radius);
+                var top = Math.Max(0, at.Y - radius);
+                var right = Math.Min(_width - 1, at.X + radius) + 1;
+                var bottom = Math.Min(_height - 1, at.Y + radius) + 1;
+                return _sums[(bottom * _stride) + right] - _sums[(top * _stride) + right]
+                    - _sums[(bottom * _stride) + left] + _sums[(top * _stride) + left];
+            }
         }
 
         private readonly struct Candidate

@@ -506,9 +506,20 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public long WoodInReach(WorldPosition at, ReadOnlySpan<bool> known)
         {
-            var trees = _pathfinder.CountReachable(at, Jobs.Mover, _forest, known, Jobs.MaxSiteRadius);
-            return (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
+            return WoodFromTrees(_pathfinder.CountReachable(at, Jobs.Mover, _forest, known, Jobs.MaxSiteRadius));
         }
+
+        /// <summary>
+        /// Wood a year this many forest cells give back, each felled and
+        /// grown again every <see cref="LandCover.RegrowDays"/>: what
+        /// <see cref="WoodInReach(ICommunity)"/> makes of the trees it counts.
+        /// Never falls as the count rises, so a bound on the trees is a bound
+        /// on the wood (#146).
+        /// </summary>
+        public long WoodFromTrees(int trees) =>
+            trees >= 0
+                ? (long)trees * _land.TreeCuts * WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays
+                : throw new ArgumentOutOfRangeException(nameof(trees), trees, "No fewer trees than none.");
 
         /// <summary>
         /// Whether the forest in reach (<see cref="WoodInReach"/>) would keep
