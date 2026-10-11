@@ -52,6 +52,32 @@ namespace KingdomWatch.Core.Tests.Knowledge
         }
 
         [Test]
+        public void Changes_counts_every_change_to_any_map_and_nothing_else()
+        {
+            var maps = Fresh(out _);
+            var changes = new List<long> { maps.Changes };
+
+            maps.Track(Band);
+            changes.Add(maps.Changes);
+            maps.Reveal(Band, new WorldPosition(3, 3), 1);
+            changes.Add(maps.Changes);
+            var afterReveal = maps.Changes;
+            maps.Reveal(Band, new WorldPosition(3, 3), 1);
+            maps.RevealAlong(Band, new[] { new WorldPosition(3, 3), new WorldPosition(3, 4) }, 0);
+            var unchanged = maps.Changes;
+            maps.HandOver(Band, Town);
+            changes.Add(maps.Changes);
+            maps.Untrack(Town);
+            changes.Add(maps.Changes);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(changes, Is.Ordered.Ascending.And.Unique, "tracked, revealed, handed over, forgotten: each a change");
+                Assert.That(unchanged, Is.EqualTo(afterReveal), "revealing what was known already changes nothing");
+            });
+        }
+
+        [Test]
         public void A_grid_is_required()
         {
             Assert.That(() => new KnownMaps(null!), Throws.ArgumentNullException);

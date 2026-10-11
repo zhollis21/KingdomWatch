@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
@@ -17,11 +18,14 @@ namespace KingdomWatch.Core.WorldGen
     /// hearths a village can keep, so how many households it can house
     /// (<see cref="Buildings.CanFuelAnotherHearth"/>), and every barn and
     /// house is built from it; once its fields are in, a village eats from
-    /// them more than from its bushes. So a site is ranked by
-    /// <see cref="Buildings.WoodInReach(WorldPosition, ReadOnlySpan{bool})"/>.
-    /// Stone is not scored: nothing spends it yet.
+    /// them more than from its bushes. So a site is ranked by its wood - an
+    /// estimate of it (<see cref="Buildings.WoodEstimate"/>) from how many
+    /// trees stand how far off in a straight line, since counting what
+    /// woodcutters could walk to out to dusk for every candidate took
+    /// seconds. Stone is not scored: nothing spends it yet.
     ///
-    /// Bushes gate instead, and so does having any forest in reach at all.
+    /// Bushes gate instead, and so does having any forest in reach at all,
+    /// counted as the village will walk to them.
     /// A site's bushes have to cover a whole year of
     /// the village's eating (<see cref="Buildings.YearlyNeed"/>), and the site
     /// has to pass the founding check
@@ -33,16 +37,19 @@ namespace KingdomWatch.Core.WorldGen
     /// before their first harvest - eight of thirty-two, over eight seeds,
     /// were dead within sixty days - and with the year's floor none were.
     ///
-    /// **Read as if everything were known.** Nobody exists to have seen the
-    /// land yet, and a village's searches reach
-    /// <see cref="Jobs.MaxSiteRadius"/>, well inside the
-    /// <see cref="Nomadic.NomadicBands.RevealRadius"/> it is given at
-    /// founding, so a whole-map view counts exactly what the village will.
+    /// **Read as the village will know it.** Nobody exists to have seen the
+    /// land yet, and a village is given
+    /// <see cref="Nomadic.NomadicBands.RevealRadius"/> around it at founding,
+    /// as a band's first camp is; its work reaches further than that
+    /// (<see cref="Jobs.ReachCost(long)"/>), so each candidate is read
+    /// knowing that box and no more, which gates on exactly what the village
+    /// will count.
     ///
     /// **Deterministic.** Candidates are every <see cref="Lattice"/>-th cell
-    /// each way, ranked by wood with ties to the lower row, then the lower
+    /// each way, ranked by estimated wood with ties to the lower row, then the lower
     /// column; the walk down that ranking takes a site when its side still
     /// has room, it is at least the spacing from every site already taken,
+    /// its woodcutters could walk to a tree,
     /// its bushes would feed the village a year, and it passes the founding
     /// check. No draws, so the sites are a pure
     /// function of the map.
@@ -56,6 +63,10 @@ namespace KingdomWatch.Core.WorldGen
     {
         /// <summary>Cells between candidate sites, each way.</summary>
         public const int Lattice = 8;
+
+        // A straight step over plains, in route cost: what the wood estimate
+        // reads distance by (TerrainRules.Default).
+        private const long PlainsStep = 100L;
 
         /// <summary>
         /// The sites, in the order to found them: the west side's in rank
@@ -86,17 +97,22 @@ namespace KingdomWatch.Core.WorldGen
                 throw new ArgumentOutOfRangeException(nameof(spacing), spacing, "Villages cannot be closer than on top of each other.");
             }
 
-            // Empty is the whole map, as the Pathfinder reads a known mask.
+            // What a village founded at each candidate would know.
             var grid = world.Grid;
-            var known = ReadOnlySpan<bool>.Empty;
+            var sight = new Sight(grid);
 
-            // Each candidate first carries an upper bound on its wood: every
-            // forest cell in its reach box, reachable or not. Counting what a
-            // village's woodcutters could actually walk to is a search per
-            // candidate, and on the M1 map that is seconds; the bound is a
-            // lookup. Only candidates whose bound could still outrank the best
-            // exact count in hand are searched, which gives exactly the order
-            // searching every one would (#160 review).
+            // Each candidate is ranked by an estimate of its wood: every forest
+            // cell in the box it will know, those near enough to count whole
+            // counted whole and the rest at the weight of a trip a day fewer
+            // (Buildings.WoodEstimate), near and far told apart by straight
+            // steps over plains - no roads stand before anything is built.
+            // Counting what a village's woodcutters could actually walk to is
+            // a search per candidate, and with work reaching out to dusk that
+            // was seconds of every world's start; the estimate is a lookup.
+            // The walking count is asked only of the sites the walk below
+            // takes, and only as a gate.
+            var box = (int)Math.Min(NomadicBands.RevealRadius, Buildings.WoodReach / PlainsStep);
+            var near = (int)Math.Min(box, Buildings.WoodFullReach / PlainsStep);
             var forest = new ForestCounts(grid);
             var candidates = new List<Candidate>();
 
@@ -113,48 +129,20 @@ namespace KingdomWatch.Core.WorldGen
                         continue;
                     }
 
-                    candidates.Add(new Candidate(at, world.Buildings.WoodFromTrees(forest.InBox(at, Jobs.MaxSiteRadius)), x < river));
+                    candidates.Add(new Candidate(at, world.Buildings.WoodEstimate(forest.InBox(at, near), forest.InBox(at, box)), x < river));
                 }
             }
 
             candidates.Sort(RankOrder);
 
-            var counted = new SortedSet<Candidate>(Comparer<Candidate>.Create(RankOrder));
             var west = new List<WorldPosition>(perSide);
             var east = new List<WorldPosition>(perSide);
             var spacingSquared = (long)spacing * spacing;
             var need = Buildings.YearlyNeed(villageSize);
-            var next = 0;
 
-            while (west.Count < perSide || east.Count < perSide)
+            for (var i = 0; i < candidates.Count && (west.Count < perSide || east.Count < perSide); i++)
             {
-                // Search every candidate whose bound outranks the best count
-                // in hand: a count never exceeds its bound, so once the next
-                // bound ranks below that best, nothing unsearched can beat it.
-                // A candidate whose side is full, or that a site already taken
-                // crowds, is dropped unsearched - sites are only ever added, so
-                // it would be refused when its turn came anyway.
-                while (next < candidates.Count && (counted.Count == 0 || RankOrder(candidates[next], counted.Min) < 0))
-                {
-                    var bound = candidates[next++];
-
-                    if ((bound.West ? west : east).Count >= perSide
-                        || IsCrowded(bound.At, west, spacingSquared)
-                        || IsCrowded(bound.At, east, spacingSquared))
-                    {
-                        continue;
-                    }
-
-                    counted.Add(new Candidate(bound.At, world.Buildings.WoodInReach(bound.At, known), bound.West));
-                }
-
-                if (counted.Count == 0)
-                {
-                    break;
-                }
-
-                var candidate = counted.Min;
-                counted.Remove(candidate);
+                var candidate = candidates[i];
                 var side = candidate.West ? west : east;
 
                 // The cheap tests first: the founding check places a barn.
@@ -164,8 +152,9 @@ namespace KingdomWatch.Core.WorldGen
                     || candidate.Wood == 0
                     || IsCrowded(candidate.At, west, spacingSquared)
                     || IsCrowded(candidate.At, east, spacingSquared)
-                    || world.Buildings.ForageInReach(candidate.At, known) < need
-                    || !world.Buildings.CanSettle(candidate.At, known, villageSize))
+                    || world.Buildings.WoodInReach(candidate.At, sight.Around(candidate.At)) == 0
+                    || world.Buildings.ForageInReach(candidate.At, sight.Around(candidate.At)) < need
+                    || !world.Buildings.CanSettle(candidate.At, sight.Around(candidate.At), villageSize))
                 {
                     continue;
                 }
@@ -270,6 +259,51 @@ namespace KingdomWatch.Core.WorldGen
                 var bottom = Math.Min(_height - 1, at.Y + radius) + 1;
                 return _sums[(bottom * _stride) + right] - _sums[(top * _stride) + right]
                     - _sums[(bottom * _stride) + left] + _sums[(top * _stride) + left];
+            }
+        }
+
+        // A known mask holding only the box a village founded at one place is
+        // shown, as the Pathfinder reads a known mask: one flag per cell,
+        // reused from candidate to candidate.
+        private sealed class Sight
+        {
+            private readonly TerrainGrid _grid;
+            private readonly bool[] _known;
+            private WorldPosition? _shown;
+
+            public Sight(TerrainGrid grid)
+            {
+                _grid = grid;
+                _known = new bool[grid.CellCount];
+            }
+
+            public ReadOnlySpan<bool> Around(WorldPosition at)
+            {
+                if (_shown != at)
+                {
+                    if (_shown is WorldPosition old)
+                    {
+                        Mark(old, false);
+                    }
+
+                    Mark(at, true);
+                    _shown = at;
+                }
+
+                return _known;
+            }
+
+            private void Mark(WorldPosition centre, bool known)
+            {
+                var radius = NomadicBands.RevealRadius;
+
+                for (var y = Math.Max(0, centre.Y - radius); y <= Math.Min(_grid.Height - 1, centre.Y + radius); y++)
+                {
+                    for (var x = Math.Max(0, centre.X - radius); x <= Math.Min(_grid.Width - 1, centre.X + radius); x++)
+                    {
+                        _known[_grid.IndexOf(new WorldPosition(x, y))] = known;
+                    }
+                }
             }
         }
 

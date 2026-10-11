@@ -105,7 +105,7 @@ namespace KingdomWatch.Core.Tests.Performance
             var band = NewBand(ids, people, new WorldPosition(2, 2), food: 1);
             jobs.Track(band);
             knownMaps.Track(band.Id);
-            knownMaps.Reveal(band.Id, band.Position, Jobs.MaxSiteRadius);
+            knownMaps.Reveal(band.Id, band.Position, 16);
 
             SeasonWithAReturn(clock, router, jobs, band, SimulationTime.Zero);
             var gatheredBefore = band.SharedSupplies.Flows(ResourceKind.Food).Gathered;

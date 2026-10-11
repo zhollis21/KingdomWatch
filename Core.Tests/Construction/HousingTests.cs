@@ -35,6 +35,20 @@ namespace KingdomWatch.Core.Tests.Construction
             }
         };
 
+        // Woods twice as deep: as much wood counted as Woods would give if
+        // every tree in it counted whole, since a tree past an hour's walk
+        // counts half.
+        private static readonly Action<TerrainGrid> DeepWoods = grid =>
+        {
+            for (var y = 0; y < 10; y++)
+            {
+                for (var x = 5; x < 35; x++)
+                {
+                    grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
+                }
+            }
+        };
+
         [Test]
         public void A_free_house_is_a_vacancy_only_once_every_tent_family_is_housed()
         {
@@ -368,8 +382,8 @@ namespace KingdomWatch.Core.Tests.Construction
             // couple, built only when there is one to marry and the land can
             // fuel the hearth it would light.
             var bare = Fed(new BuildingsWorld());
-            var wooded = Fed(new BuildingsWorld(paint: Woods));
-            var lonely = Fed(new BuildingsWorld(paint: Woods));
+            var wooded = Fed(new BuildingsWorld(paint: DeepWoods));
+            var lonely = Fed(new BuildingsWorld(paint: DeepWoods));
 
             foreach (var w in new[] { bare, wooded, lonely })
             {
@@ -404,20 +418,38 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void Wood_in_reach_is_every_forest_cell_grown_back_once_a_regrowth()
+        public void Wood_in_reach_is_every_forest_cell_grown_back_once_a_regrowth_the_far_ones_at_half()
         {
             var w = new BuildingsWorld(paint: Woods);
             var bare = new BuildingsWorld();
             var trees = 5 * 30;
-            var expected = (long)trees * w.World.Land.TreeCuts * Buildings.WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays;
+
+            // Each tree near or far by the walk to it, priced on its own.
+            var near = 0;
+            var route = new List<WorldPosition>();
+
+            for (var y = 5; y < 10; y++)
+            {
+                for (var x = 5; x < 35; x++)
+                {
+                    w.World.Pathfinder.TryFindRoute(w.Settlement.Position, new WorldPosition(x, y), KingdomWatch.Core.Work.Jobs.Mover, route, out var cost);
+                    near += cost <= Buildings.WoodFullReach ? 1 : 0;
+                }
+            }
+
+            var expected = (((long)near * 2) + trees - near) * w.World.Land.TreeCuts * Buildings.WoodPerCut * SimulationTime.DaysPerYear / LandCover.RegrowDays / 2;
 
             Assert.Multiple(() =>
             {
+                Assert.That(near, Is.GreaterThan(0).And.LessThan(trees), "some near, some far");
                 Assert.That(w.Buildings.WoodInReach(w.Settlement), Is.EqualTo(expected));
                 Assert.That(bare.Buildings.WoodInReach(bare.Settlement), Is.Zero);
                 Assert.That(() => w.Buildings.WoodInReach(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Buildings.CanFuelAnotherHearth(null!), Throws.ArgumentNullException);
-                Assert.That(w.Buildings.WoodFromTrees(trees), Is.EqualTo(expected), "the same sum, from the count");
+                Assert.That(w.Buildings.WoodFromTrees((near * 2L) + trees - near) / 2, Is.EqualTo(expected), "the same sum, from the counts");
+                Assert.That(w.Buildings.WoodEstimate(near, trees), Is.EqualTo(expected), "and the estimate, given the same split");
+                Assert.That(() => w.Buildings.WoodEstimate(-1, trees), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => w.Buildings.WoodEstimate(trees + 1, trees), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(w.Buildings.WoodFromTrees(0), Is.Zero);
                 Assert.That(w.Buildings.WoodFromTrees(int.MaxValue), Is.GreaterThan(w.Buildings.WoodFromTrees(int.MaxValue - 1)), "no overflow at the top");
                 Assert.That(() => w.Buildings.WoodFromTrees(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());

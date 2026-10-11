@@ -799,14 +799,14 @@ namespace KingdomWatch.Game
 
         // A field's tiles, queued when its look changes (FieldLook): nothing
         // until it is cleared, see-through soil while it is sown, then soil
-        // with the wheat at its stage.
+        // with the wheat at its stage once it has had a day's tending.
         private void LayField(int index, Building field)
         {
             var look = FieldLook(field);
             if (look == fieldLooks[index]) return;
             fieldLooks[index] = look;
             var tint = new Color(1f, 1f, 1f, look == 1 ? UnbuiltAlpha : 1f);
-            var crop = look >= 2 ? art.Wheat[look - 2] : null;
+            var crop = look >= 3 ? art.Wheat[look - 3] : null;
             for (var dy = 0; dy < field.Height; dy++)
             {
                 var row = dy == 0 ? 0 : dy == field.Height - 1 ? 2 : 1;
@@ -820,15 +820,17 @@ namespace KingdomWatch.Game
             }
         }
 
-        // 0 while the ground is uncleared, 1 while it is sown, then 2 plus
-        // its ArtSet.Wheat stage: seed, sprouts and flowering a third of the
-        // tending days each, and ripe through the harvest.
+        // 0 while the ground is uncleared, 1 while it is sown, 2 for bare soil
+        // before its first day's tending - all winter, and after a harvest -
+        // then 3 plus its ArtSet.Wheat stage: seed, sprouts and flowering a
+        // third of the tending days each, and ripe through the harvest.
         private static int FieldLook(Building field)
         {
             if (!field.Cleared) return 0;
             if (!field.IsComplete) return 1;
-            if (field.Stage == FieldStage.Harvesting) return 5;
-            return 2 + Mathf.Min(2, field.DaysDone * 3 / Buildings.TendingDays);
+            if (field.Stage == FieldStage.Harvesting) return 6;
+            if (field.DaysDone == 0) return 2;
+            return 3 + Mathf.Min(2, field.DaysDone * 3 / Buildings.TendingDays);
         }
 
         private SpriteRenderer NewBuilding()

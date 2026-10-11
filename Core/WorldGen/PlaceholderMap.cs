@@ -38,7 +38,8 @@ namespace KingdomWatch.Core.WorldGen
         // sets how big a patch is and how far apart; the threshold sets how
         // much of the map it covers. Placeholder numbers, in the
         // TerrainRules.Default sense: tuned so patches leave gaps wider than
-        // a worker's reach (Jobs.MaxSiteRadius), both sides of the river
+        // the 16 cells a worker reached when they were set (a worker now
+        // goes as far as dusk allows, Jobs.ReachCost), both sides of the river
         // have room for their starting villages (StartingSites), and both
         // homelands still live (WorldRunTests).
         private const int ForestSpacing = 40;

@@ -93,8 +93,35 @@ namespace KingdomWatch.Core.Construction
         /// <summary>Score per footprint cell of scrub or forest, once plains have failed.</summary>
         public const int ClearingWeight = 2;
 
+        /// <summary>
+        /// How far from the centre, in cells each way, a house or barn is
+        /// looked for first. Only when nothing fits there does the search
+        /// widen, doubling, out to <see cref="BuildReach"/>: so a village
+        /// stays compact while it can and a town grows as far as its
+        /// buildings need.
+        /// </summary>
+        public const int NearRadius = 16;
+
+        /// <summary>
+        /// The most a building may cost to walk to from the centre, in route
+        /// cost: as far as a Builder or Farmer goes for a share
+        /// (<see cref="Jobs.ReachCost(long)"/>), so whatever is placed can be
+        /// built and farmed.
+        /// </summary>
+        public static readonly long BuildReach = Jobs.ReachCost(ShareTicks);
+
+        /// <summary>
+        /// Cells that must lie between anything of one settlement - a
+        /// building, a field, its camp yard - and anything of another, roads
+        /// apart: placement keeps this clear, and a band does not settle
+        /// where its yard would break it (#154). Villages start at least
+        /// <see cref="World.M1VillageSpacing"/> apart, so two neighbours
+        /// share the rest between them, first come first served.
+        /// </summary>
+        public const int VillageGap = 30;
+
         /// <summary>How far a lane may run from a door, in cells.</summary>
-        public const int LaneRadius = 2 * Jobs.MaxSiteRadius;
+        public const int LaneRadius = 2 * NearRadius;
 
         // The best footprints a lane is tried for before placement gives up:
         // a door the search reached whose lane is walled off by buildings
@@ -116,6 +143,7 @@ namespace KingdomWatch.Core.Construction
         private readonly List<WorldPosition> _lane = new List<WorldPosition>();
         private readonly List<WorldPosition> _square = new List<WorldPosition>();
         private readonly List<WorldPosition> _laneRoute = new List<WorldPosition>();
+        private readonly List<(int MinX, int MinY, int MaxX, int MaxY)> _others = new List<(int MinX, int MinY, int MaxX, int MaxY)>();
 
         /// <summary>
         /// The door of a footprint anchored here: the middle cell of the row
@@ -148,7 +176,10 @@ namespace KingdomWatch.Core.Construction
         // Where a building of this kind goes, and its lane into _lane: the
         // best-scoring footprint the search reaches, trying plains alone
         // first. `from` is where the search starts - the centre, or a field's
-        // barn - and `centre` the settlement's camp.
+        // barn - and `centre` the settlement's camp. A house or barn is
+        // looked for within NearRadius first, then in boxes twice as wide
+        // until one fits or the box holds all of BuildReach; a field within
+        // FieldRadius of its barn, where a Farmer can reach it.
         private bool TryPlace(
             BuildingKind kind,
             WorldPosition from,
@@ -158,9 +189,41 @@ namespace KingdomWatch.Core.Construction
             out WorldPosition anchor,
             Building? barn = null)
         {
+            CollectOthers(settlement);
+
+            if (barn is object)
+            {
+                return TryPlaceWithin(kind, from, centre, known, settlement, barn, FieldRadius, out anchor);
+            }
+
+            var widest = _pathfinder.RadiusOf(BuildReach);
+
+            for (var radius = NearRadius; ; radius = (int)Math.Min(widest, 2L * radius))
+            {
+                if (TryPlaceWithin(kind, from, centre, known, settlement, null, radius, out anchor))
+                {
+                    return true;
+                }
+
+                if (radius >= widest)
+                {
+                    return false;
+                }
+            }
+        }
+
+        private bool TryPlaceWithin(
+            BuildingKind kind,
+            WorldPosition from,
+            WorldPosition centre,
+            ReadOnlySpan<bool> known,
+            EntityId settlement,
+            Building? barn,
+            int radius,
+            out WorldPosition anchor)
+        {
             _lane.Clear();
             var spec = BuildingTable.Of(kind);
-            var radius = barn is null ? Jobs.MaxSiteRadius : FieldRadius;
 
             _scorer.Begin(kind, spec, centre, barn, settlement);
             CollectNetwork(centre, radius);
@@ -172,7 +235,10 @@ namespace KingdomWatch.Core.Construction
                     return false;
                 }
 
-                if (TryJoin(kind, anchor, centre))
+                // A field is searched for from its barn, so it is asked
+                // separately whether a Farmer could walk to it.
+                if ((barn is null || _pathfinder.TryFindRoute(centre, anchor, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _))
+                    && TryJoin(kind, anchor, centre))
                 {
                     return true;
                 }
@@ -190,7 +256,7 @@ namespace KingdomWatch.Core.Construction
             for (var pass = 0; pass < 2; pass++)
             {
                 _scorer.StartPass(plainsOnly: pass == 0);
-                _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _scorer, radius, _scratchRoute, out _);
+                _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _scorer, null, false, radius, BuildReach, _scratchRoute, out _);
 
                 if (_scorer.Best >= 0)
                 {
@@ -356,9 +422,11 @@ namespace KingdomWatch.Core.Construction
         }
 
         // The yard's scrub, forest and rocks, into _square: what the building
-        // being approved clears with its own. Not a cell some building already
-        // waits to clear: one goes up at a time in a settlement, but a band can
-        // settle with its yard over another village's lane (#154).
+        // being approved clears with its own. One goes up at a time in a
+        // settlement, a lane never enters another's yard, and VillageGap
+        // keeps a yard far from every other settlement's buildings and so
+        // from the lanes waiting at their doors (#154): nothing else waits
+        // to clear these.
         private void CollectSquare(WorldPosition centre)
         {
             _square.Clear();
@@ -370,8 +438,7 @@ namespace KingdomWatch.Core.Construction
                     var at = new WorldPosition(x, y);
                     var kind = _grid[at];
 
-                    if ((kind == TerrainKind.Scrub || kind == TerrainKind.Forest || kind == TerrainKind.Rocks)
-                        && !_laneOf.ContainsKey(_grid.IndexOf(at)))
+                    if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest || kind == TerrainKind.Rocks)
                     {
                         _square.Add(at);
                     }
@@ -432,8 +499,9 @@ namespace KingdomWatch.Core.Construction
         // Whether a footprint anchored here may stand: every cell on the map,
         // plains (or, unless plainsOnly, scrub or forest), under no building,
         // roof, road or pending lane, and out of every settlement's camp yard;
-        // and its own roof's rows over no building, road, lane or yard (#150,
-        // the #153 review). A roof may hang off the map.
+        // its own roof's rows over no building, road, lane or yard (#150,
+        // the #153 review); and VillageGap from any other settlement (#154).
+        // A roof may hang off the map.
         private bool Fits(BuildingSpec spec, WorldPosition anchor, WorldPosition keep, bool plainsOnly)
         {
             for (var dy = 0; dy < spec.Height; dy++)
@@ -478,7 +546,67 @@ namespace KingdomWatch.Core.Construction
                 }
             }
 
-            return true;
+            return !NearOthers(anchor, spec.Width, spec.Height);
+        }
+
+        // Every other settlement's buildings and camp yards, each widened by
+        // VillageGap: what nothing of this one may overlap. Gathered once per
+        // placement, for Fits to test each footprint against. EntityId.None
+        // for a camp not yet founded, to which every settlement is another.
+        private void CollectOthers(EntityId settlement)
+        {
+            _others.Clear();
+
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var building = _all[i];
+
+                if (building.Settlement != settlement)
+                {
+                    _others.Add(Widened(building.Anchor.X, building.Anchor.Y, building.Width, building.Height));
+                }
+            }
+
+            for (var i = 0; i < _camps.Count; i++)
+            {
+                var camp = _camps[i];
+
+                if (camp.Id != settlement)
+                {
+                    var side = (2 * CampYardRadius) + 1;
+                    _others.Add(Widened(camp.Position.X - CampYardRadius, camp.Position.Y - CampYardRadius, side, side));
+                }
+            }
+        }
+
+        private static (int MinX, int MinY, int MaxX, int MaxY) Widened(int x, int y, int width, int height) =>
+            (x - VillageGap, y - VillageGap, x + width - 1 + VillageGap, y + height - 1 + VillageGap);
+
+        // Whether a rectangle anchored here overlaps anything CollectOthers
+        // gathered: lies within VillageGap of another settlement.
+        private bool NearOthers(WorldPosition anchor, int width, int height)
+        {
+            for (var i = 0; i < _others.Count; i++)
+            {
+                var other = _others[i];
+
+                if (anchor.X <= other.MaxX && anchor.X + width - 1 >= other.MinX
+                    && anchor.Y <= other.MaxY && anchor.Y + height - 1 >= other.MinY)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Whether a camp founded here would keep VillageGap from every
+        // settlement (#154).
+        private bool YardIsApart(WorldPosition camp)
+        {
+            CollectOthers(EntityId.None);
+            return !NearOthers(
+                new WorldPosition(camp.X - CampYardRadius, camp.Y - CampYardRadius), (2 * CampYardRadius) + 1, (2 * CampYardRadius) + 1);
         }
 
         private bool IsRoadOrLane(int index) => _grid.RoadAt(index) != RoadGrade.None || _laneOf.ContainsKey(index);

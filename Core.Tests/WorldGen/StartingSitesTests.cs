@@ -26,11 +26,46 @@ namespace KingdomWatch.Core.Tests.WorldGen
         private static IReadOnlyList<WorldPosition> PickM1(World world) =>
             StartingSites.Pick(world, World.M1VillagesPerSide, World.M1VillageSize, World.M1VillageSpacing);
 
-        private static bool[] AllKnown(World world)
+        // What a village founded at a place knows: the box a band's first
+        // camp is shown (NomadicBands.RevealRadius), and no more. One mask,
+        // moved from place to place.
+        private sealed class Sight
         {
-            var known = new bool[world.Grid.CellCount];
-            Array.Fill(known, true);
-            return known;
+            private readonly World _world;
+            private readonly bool[] _known;
+            private WorldPosition? _shown;
+
+            public Sight(World world)
+            {
+                _world = world;
+                _known = new bool[world.Grid.CellCount];
+            }
+
+            public bool[] Around(WorldPosition at)
+            {
+                if (_shown is WorldPosition old)
+                {
+                    Mark(old, false);
+                }
+
+                Mark(at, true);
+                _shown = at;
+                return _known;
+            }
+
+            private void Mark(WorldPosition centre, bool known)
+            {
+                var grid = _world.Grid;
+                var radius = KingdomWatch.Core.Nomadic.NomadicBands.RevealRadius;
+
+                for (var y = Math.Max(0, centre.Y - radius); y <= Math.Min(grid.Height - 1, centre.Y + radius); y++)
+                {
+                    for (var x = Math.Max(0, centre.X - radius); x <= Math.Min(grid.Width - 1, centre.X + radius); x++)
+                    {
+                        _known[grid.IndexOf(new WorldPosition(x, y))] = known;
+                    }
+                }
+            }
         }
 
         [Test]
@@ -60,7 +95,7 @@ namespace KingdomWatch.Core.Tests.WorldGen
                 for (var seed = 1UL; seed <= Seeds; seed++)
                 {
                     var world = Empty(seed);
-                    var known = AllKnown(world);
+                    var sight = new Sight(world);
                     var sites = PickM1(world);
 
                     Assert.That(sites, Has.Count.EqualTo(2 * World.M1VillagesPerSide), "seed " + seed);
@@ -70,8 +105,8 @@ namespace KingdomWatch.Core.Tests.WorldGen
                         var at = sites[i];
                         var west = at.X < StartingSites.RiverColumn(world.Grid, at.Y);
                         Assert.That(west, Is.EqualTo(i < World.M1VillagesPerSide), "seed " + seed + " site " + i + ": west first");
-                        Assert.That(world.Buildings.CanSettle(at, known, World.M1VillageSize), Is.True, "seed " + seed + " site " + i);
-                        Assert.That(world.Buildings.ForageInReach(at, known), Is.GreaterThanOrEqualTo(Buildings.YearlyNeed(World.M1VillageSize)), "seed " + seed + " site " + i + ": a year of bushes");
+                        Assert.That(world.Buildings.CanSettle(at, sight.Around(at), World.M1VillageSize), Is.True, "seed " + seed + " site " + i);
+                        Assert.That(world.Buildings.ForageInReach(at, sight.Around(at)), Is.GreaterThanOrEqualTo(Buildings.YearlyNeed(World.M1VillageSize)), "seed " + seed + " site " + i + ": a year of bushes");
 
                         for (var j = 0; j < i; j++)
                         {
@@ -85,20 +120,24 @@ namespace KingdomWatch.Core.Tests.WorldGen
         }
 
         [Test]
-        public void Each_side_s_first_site_has_the_most_wood_of_any_candidate_that_could_be_settled()
+        public void Each_side_s_first_site_has_the_most_estimated_wood_of_any_candidate_that_could_be_settled()
         {
-            // Wood ranks; a year of bushes and the founding check gate: every
-            // lattice cell on a side with more wood in reach than that side's
-            // first pick fails one or the other.
+            // Estimated wood ranks; any forest walked to, a year of bushes and
+            // the founding check gate: every lattice cell on a side with more
+            // estimated wood than that side's first pick fails one of them.
             var world = Empty(1UL);
-            var known = AllKnown(world);
+            var sight = new Sight(world);
             var sites = PickM1(world);
+            var forest = new ForestSums(world.Grid);
+            var box = (int)Math.Min(KingdomWatch.Core.Nomadic.NomadicBands.RevealRadius, Buildings.WoodReach / 100L);
+            var near = (int)Math.Min(box, Buildings.WoodFullReach / 100L);
+            long Estimate(WorldPosition at) => world.Buildings.WoodEstimate(forest.InBox(at, near), forest.InBox(at, box));
 
             Assert.Multiple(() =>
             {
                 foreach (var first in new[] { sites[0], sites[World.M1VillagesPerSide] })
                 {
-                    var wood = world.Buildings.WoodInReach(first, known);
+                    var wood = Estimate(first);
                     var west = first.X < StartingSites.RiverColumn(world.Grid, first.Y);
 
                     for (var y = StartingSites.Lattice / 2; y < world.Grid.Height; y += StartingSites.Lattice)
@@ -109,19 +148,43 @@ namespace KingdomWatch.Core.Tests.WorldGen
                         {
                             var at = new WorldPosition(x, y);
 
-                            if (x == river || x < river != west || !world.Jobs.CanStandAt(at)
-                                || world.Buildings.WoodInReach(at, known) <= wood)
+                            if (x == river || x < river != west || !world.Jobs.CanStandAt(at) || Estimate(at) <= wood)
                             {
                                 continue;
                             }
 
-                            var fits = world.Buildings.ForageInReach(at, known) >= Buildings.YearlyNeed(World.M1VillageSize)
-                                && world.Buildings.CanSettle(at, known, World.M1VillageSize);
-                            Assert.That(fits, Is.False, at + " has more wood than " + first);
+                            var fits = world.Buildings.WoodInReach(at, sight.Around(at)) > 0
+                                && world.Buildings.ForageInReach(at, sight.Around(at)) >= Buildings.YearlyNeed(World.M1VillageSize)
+                                && world.Buildings.CanSettle(at, sight.Around(at), World.M1VillageSize);
+                            Assert.That(fits, Is.False, at + " has more estimated wood than " + first);
                         }
                     }
                 }
             });
+        }
+
+        // Forest cells in any box, by brute count: the test's own reading of
+        // the counts the estimate is made from.
+        private sealed class ForestSums
+        {
+            private readonly TerrainGrid _grid;
+
+            public ForestSums(TerrainGrid grid) => _grid = grid;
+
+            public int InBox(WorldPosition at, int radius)
+            {
+                var count = 0;
+
+                for (var y = Math.Max(0, at.Y - radius); y <= Math.Min(_grid.Height - 1, at.Y + radius); y++)
+                {
+                    for (var x = Math.Max(0, at.X - radius); x <= Math.Min(_grid.Width - 1, at.X + radius); x++)
+                    {
+                        count += _grid[new WorldPosition(x, y)] == TerrainKind.Forest ? 1 : 0;
+                    }
+                }
+
+                return count;
+            }
         }
 
         [Test]
@@ -214,7 +277,7 @@ namespace KingdomWatch.Core.Tests.WorldGen
             {
                 Assert.That(world.Nomads.TrackedCount, Is.Zero);
                 Assert.That(world.KnownMaps.Knows(village.Id, village.Position), Is.True);
-                Assert.That(world.Buildings.WoodInReach(village), Is.EqualTo(world.Buildings.WoodInReach(village.Position, AllKnown(world))), "it knows all its reach");
+                Assert.That(world.Buildings.WoodInReach(village), Is.EqualTo(world.Buildings.WoodInReach(village.Position, new Sight(world).Around(village.Position))), "it knows what a band's first camp shows");
                 Assert.That(world.Jobs.IsTracked(village) && world.Hunger.IsTracked(village) && world.Matchmaking.IsTracked(village), Is.True);
                 Assert.That(() => world.AddVillage(20, new WorldPosition(-1, 0)), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => world.AddVillage(20, new WorldPosition(StartingSites.RiverColumn(world.Grid, 0), 0)), Throws.TypeOf<ArgumentOutOfRangeException>(), "on the river");

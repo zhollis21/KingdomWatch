@@ -361,52 +361,6 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void A_village_settled_over_another_s_waiting_lane_leaves_that_lane_to_it()
-        {
-            // A belt of forest round the first camp, so its house's lane waits
-            // to be cleared; then a second village founded with its yard over
-            // that lane (#154: nothing keeps camps or lanes apart).
-            var w = new BuildingsWorld(paint: grid =>
-            {
-                for (var y = 0; y < BuildingsWorld.Size; y++)
-                {
-                    for (var x = 0; x < BuildingsWorld.Size; x++)
-                    {
-                        var ring = Chebyshev(new WorldPosition(x, y), BuildingsWorld.Centre);
-
-                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
-                        {
-                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
-                        }
-                    }
-                }
-            });
-            w.Wood(1000);
-            w.Dawn();
-            var house = w.Buildings.All.Single();
-            var waiting = house.Lane.First(at => w.World.Grid[at] == TerrainKind.Forest);
-            var neighbour = w.World.Founding.Found(
-                w.World.AddBand(4, waiting),
-                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
-
-            neighbour.SharedSupplies.Gather(ResourceKind.Wood, 100);
-
-            Assert.DoesNotThrow(() => w.Buildings.AtDawn(neighbour, 1, 4));
-
-            var theirs = w.Buildings.All.Where(b => b.Settlement == neighbour.Id).ToList();
-            Assert.That(theirs, Is.Not.Empty, "the newcomers built");
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(theirs.SelectMany(b => b.Square), Has.No.Member(waiting), "the first village's lane is still its own to clear");
-                Assert.That(w.Buildings.IsReserved(waiting), Is.True);
-            });
-
-            w.Finish(house);
-            Assert.That(w.World.Grid.RoadAt(waiting), Is.EqualTo(RoadGrade.Track));
-        }
-
-        [Test]
         public void No_lane_to_the_roads_no_building()
         {
             // Rocks everywhere but the camp, a way from it to one patch of
@@ -514,6 +468,69 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(
                 two.Buildings.All.Select(b => (b.Kind, b.Anchor, string.Join(";", b.Lane))),
                 Is.EqualTo(one.Buildings.All.Select(b => (b.Kind, b.Anchor, string.Join(";", b.Lane)))));
+        }
+
+        [Test]
+        public void A_house_goes_further_out_only_when_nothing_fits_near_the_centre()
+        {
+            var w = new BuildingsWorld(size: 100, paint: PaintCrowdedCentre);
+            w.Wood(100);
+
+            w.Dawn();
+
+            var house = w.Buildings.All.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(house.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(Chebyshev(house.Anchor, BuildingsWorld.Centre), Is.GreaterThan(CrowdedRadius), "past the rocks, where nothing stood in the way");
+                Assert.That(Chebyshev(house.Anchor, BuildingsWorld.Centre), Is.GreaterThan(2 * Buildings.NearRadius), "past the box work's builders used to reach");
+            });
+        }
+
+        [Test]
+        public void Builders_walk_out_to_a_house_however_far_it_had_to_go()
+        {
+            var w = new BuildingsWorld(size: 100, paint: PaintCrowdedCentre);
+            w.Wood(5000);
+            w.Stores.Gather(ResourceKind.Food, 100000);
+            w.Stores.Gather(ResourceKind.Stone, 1000);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            w.World.Jobs.Track(w.Settlement);
+
+            // The first dawn: stores full, so the house is the only need.
+            w.World.AdvanceTo(KingdomWatch.Core.Clock.SimulationTime.Zero.Plus(KingdomWatch.Core.Work.Jobs.Dawn + 1L));
+
+            Assert.That(w.World.Jobs.OnDuty(w.Settlement, JobKind.Builder), Is.GreaterThan(0), "hands set out to build " + house);
+        }
+
+        // Rocks round the camp out to CrowdedRadius, which no footprint or
+        // lane takes, with a track running east through them: the only room
+        // for a house is past the rocks, joined to the yard along the track.
+        private const int CrowdedRadius = 36;
+
+        private static void PaintCrowdedCentre(TerrainGrid grid)
+        {
+            for (var y = 0; y < grid.Height; y++)
+            {
+                for (var x = 0; x < grid.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+                    var ring = Chebyshev(at, BuildingsWorld.Centre);
+
+                    if (ring > Buildings.CampYardRadius && ring <= CrowdedRadius)
+                    {
+                        grid.Set(at, TerrainKind.Rocks);
+                    }
+                }
+            }
+
+            for (var x = BuildingsWorld.Centre.X + Buildings.CampYardRadius + 1; x <= BuildingsWorld.Centre.X + CrowdedRadius + 4; x++)
+            {
+                var at = new WorldPosition(x, BuildingsWorld.Centre.Y);
+                grid.Set(at, TerrainKind.Plains);
+                grid.SetRoad(at, RoadGrade.Track);
+            }
         }
 
         // Forty people with wood to spare, built up as far as twenty
