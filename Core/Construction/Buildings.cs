@@ -1214,7 +1214,7 @@ namespace KingdomWatch.Core.Construction
 
         private void Plan(ICommunity settlement, int living)
         {
-            Building? barnWithRoom = null;
+            var barnWithRoom = false;
             var hasHouse = false;
 
             for (var i = 0; i < _all.Count; i++)
@@ -1234,34 +1234,50 @@ namespace KingdomWatch.Core.Construction
 
                 hasHouse |= standing.Kind == BuildingKind.House;
 
-                if (standing.Kind == BuildingKind.Barn && barnWithRoom is null && FieldsOf(standing) < FieldsPerBarn)
-                {
-                    barnWithRoom = standing;
-                }
+                barnWithRoom |= standing.Kind == BuildingKind.Barn && FieldsOf(standing) < FieldsPerBarn;
             }
 
             BuildingKind kind;
-            WorldPosition from;
+            WorldPosition anchor;
             Building? barn = null;
+            var known = _knownMaps.For(settlement.Id);
 
             if (hasHouse && IsFoodShort(settlement, living))
             {
-                if (barnWithRoom is object)
+                if (barnWithRoom && !CanAfford(settlement, BuildingKind.Field))
+                {
+                    return;
+                }
+
+                // A field goes to the first barn with ground left for one. A
+                // barn with room on paper but none on the ground counts as
+                // full: kept as the barn with room, it held off every barn
+                // after it, and a hungry village stayed hungry with its hands
+                // idle for decades (#163).
+                if (barnWithRoom && TryPlaceField(settlement, known, out anchor, out barn))
                 {
                     kind = BuildingKind.Field;
-                    barn = barnWithRoom;
-                    from = barnWithRoom.Anchor;
                 }
                 else
                 {
                     kind = BuildingKind.Barn;
-                    from = settlement.Position;
+
+                    if (!CanAfford(settlement, kind)
+                        || !TryPlace(kind, settlement.Position, settlement.Position, known, settlement.Id, out anchor))
+                    {
+                        return;
+                    }
                 }
             }
             else if (TryFirstUnhoused(settlement, out _) || WantsSpareHouse(settlement))
             {
                 kind = BuildingKind.House;
-                from = settlement.Position;
+
+                if (!CanAfford(settlement, kind)
+                    || !TryPlace(kind, settlement.Position, settlement.Position, known, settlement.Id, out anchor))
+                {
+                    return;
+                }
             }
             else
             {
@@ -1270,18 +1286,6 @@ namespace KingdomWatch.Core.Construction
 
             var spec = BuildingTable.Of(kind);
             var stores = settlement.SharedSupplies;
-
-            // The wood has to be spare: what is left must still light every
-            // hearth through the coming winter, the reserve Jobs stocks for.
-            var winterFuel = (long)Warmth.CountHearths(settlement.Members, _people, _scratchHearths)
-                * Warmth.FuelPerFire * Jobs.WinterDaysAhead(_clock.Now);
-
-            if (_skills.BestIn(settlement, spec.Skill) < spec.MinimumTier
-                || stores.Available(ResourceKind.Wood) - winterFuel < spec.Wood
-                || !TryPlace(kind, from, settlement.Position, _knownMaps.For(settlement.Id), settlement.Id, out var anchor, barn))
-            {
-                return;
-            }
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
             CollectSquare(settlement.Position);
@@ -1328,6 +1332,41 @@ namespace KingdomWatch.Core.Construction
                     }
                 }
             }
+        }
+
+        // Someone has the skill, and the wood is spare: what is left must
+        // still light every hearth through the coming winter, the reserve
+        // Jobs stocks for.
+        private bool CanAfford(ICommunity settlement, BuildingKind kind)
+        {
+            var spec = BuildingTable.Of(kind);
+            var winterFuel = (long)Warmth.CountHearths(settlement.Members, _people, _scratchHearths)
+                * Warmth.FuelPerFire * Jobs.WinterDaysAhead(_clock.Now);
+
+            return _skills.BestIn(settlement, spec.Skill) >= spec.MinimumTier
+                && settlement.SharedSupplies.Available(ResourceKind.Wood) - winterFuel >= spec.Wood;
+        }
+
+        // The next field and the barn it belongs to: the first of the
+        // settlement's barns, in building order, with room for another field
+        // and ground within FieldRadius to put it on.
+        private bool TryPlaceField(ICommunity settlement, ReadOnlySpan<bool> known, out WorldPosition anchor, [NotNullWhen(true)] out Building? barn)
+        {
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var standing = _all[i];
+
+                if (standing.Settlement == settlement.Id && standing.Kind == BuildingKind.Barn && FieldsOf(standing) < FieldsPerBarn
+                    && TryPlace(BuildingKind.Field, standing.Anchor, settlement.Position, known, settlement.Id, out anchor, standing))
+                {
+                    barn = standing;
+                    return true;
+                }
+            }
+
+            anchor = default;
+            barn = null;
+            return false;
         }
 
         private int FieldsOf(Building barn)

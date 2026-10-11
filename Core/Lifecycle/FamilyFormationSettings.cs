@@ -17,11 +17,14 @@ namespace KingdomWatch.Core.Lifecycle
         public const long DefaultMourningTicks = SimulationTime.TicksPerYear;
 
         /// <summary>
-        /// Remarriage after a year, first cousins refused. The conservative
-        /// reading of section 6, for a world with no culture to loosen it.
+        /// Remarriage after a year, first cousins permitted. Section 6 makes
+        /// the cousin taboo culture's, loosened where the mating pool is
+        /// strained; with no culture yet, every village is a closed pool of
+        /// twenty, and refusing cousins sealed it within three generations
+        /// while the barns stood full (#163). Culture (#40) takes it back.
         /// </summary>
         public static readonly FamilyFormationSettings Default =
-            new FamilyFormationSettings(DefaultMourningTicks, firstCousinsPermitted: false);
+            new FamilyFormationSettings(DefaultMourningTicks, firstCousinsPermitted: true);
 
         public FamilyFormationSettings(long mourningTicks, bool firstCousinsPermitted)
         {

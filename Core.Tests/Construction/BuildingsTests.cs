@@ -223,6 +223,44 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_barn_with_no_ground_left_for_a_field_does_not_hold_off_the_next_barn()
+        {
+            // #163: a barn with room on paper but rocks all round it was
+            // still the barn every field waited for, so no second barn was
+            // ever built and the village stayed short of food for good.
+            var w = new BuildingsWorld(people: 40, size: 80);
+            w.Wood(1000);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            w.BuildNext();
+
+            var grid = w.World.Grid;
+            var reach = Buildings.FieldRadius + 5;
+
+            for (var y = barn.Anchor.Y - reach; y <= barn.Anchor.Y + reach + barn.Height; y++)
+            {
+                for (var x = barn.Anchor.X - reach; x <= barn.Anchor.X + reach + barn.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+                    var nearCamp = System.Math.Abs(x - BuildingsWorld.Centre.X) <= 4 && System.Math.Abs(y - BuildingsWorld.Centre.Y) <= 4;
+
+                    if (grid.Contains(at) && !nearCamp && w.Buildings.At(at) is null && grid.RoadAt(at) == RoadGrade.None)
+                    {
+                        grid.Set(at, TerrainKind.Rocks);
+                    }
+                }
+            }
+
+            var next = w.BuildNext();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.All.Count(b => b.Barn == barn.Id), Is.LessThan(Buildings.FieldsPerBarn), "the first barn still has room on paper");
+                Assert.That(next.Kind, Is.EqualTo(BuildingKind.Barn));
+            });
+        }
+
+        [Test]
         public void A_field_still_being_sown_feeds_nobody_yet()
         {
             // All plains, so nothing in reach but the field; and nothing in
