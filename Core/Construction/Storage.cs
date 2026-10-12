@@ -42,9 +42,22 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether a store counts as full for the demand for more storage:
         /// within a tenth of its capacity, so a night's eating or a day's
-        /// fuel before the dawn it is read at does not hide it.
+        /// fuel before the dawn it is read at does not hide it. Throws for a
+        /// negative amount or capacity.
         /// </summary>
-        public static bool IsFull(long available, long capacity) => available * 10L >= capacity * 9L;
+        public static bool IsFull(long available, long capacity)
+        {
+            if (available < 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(available), available, "A store cannot hold less than nothing.");
+            }
+
+            RequireCapacity(capacity);
+
+            // Nine tenths, rounded up, without a product that overflows near
+            // long.MaxValue (#98 review).
+            return available >= capacity - (capacity / 10L);
+        }
 
         /// <summary>The capacity of a kind with no storage built. Throws for <see cref="ResourceKind.None"/> or an undefined kind.</summary>
         public static int BaseOf(ResourceKind kind)
@@ -112,7 +125,8 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// Loses whatever of a kind is available past <paramref name="capacity"/>,
-        /// as destroyed, so the ledger still balances.
+        /// as destroyed, so the ledger still balances. Throws for a negative
+        /// capacity.
         /// </summary>
         public static void Spill(ResourceLedger stores, ResourceKind kind, long capacity)
         {
@@ -121,11 +135,21 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(stores));
             }
 
+            RequireCapacity(capacity);
+
             var over = stores.Available(kind) - capacity;
 
             if (over > 0L)
             {
                 stores.Destroy(kind, (int)over);
+            }
+        }
+
+        private static void RequireCapacity(long capacity)
+        {
+            if (capacity < 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "A capacity cannot be negative.");
             }
         }
     }

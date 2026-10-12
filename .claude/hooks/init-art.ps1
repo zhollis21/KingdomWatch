@@ -21,7 +21,9 @@ $art = Join-Path $root 'Game/Assets/Art'
 # this is what tells "never ran" from "ran against the wrong folder".
 function Write-RunLog([string]$Decision) {
     try {
-        $common = (& git -C (Get-Location).Path rev-parse --path-format=absolute --git-common-dir 2>$null)
+        # From the folder the hook was handed, not the one it runs in: a run
+        # from outside the checkout is exactly what this is here to catch.
+        $common = (& git -C $root rev-parse --path-format=absolute --git-common-dir 2>$null)
         if ($common) {
             $line = '{0:u}  project={1}  cwd={2}  {3}' -f (Get-Date), $env:CLAUDE_PROJECT_DIR, (Get-Location).Path, $Decision
             Add-Content -Path (Join-Path $common.Trim() 'init-art.log') -Value $line

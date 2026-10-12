@@ -1,5 +1,6 @@
 using System;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
@@ -236,8 +237,12 @@ namespace KingdomWatch.Core.WorldGen
 
             // Opening stock, not production: the chronicle reads the flows,
             // and nobody has gathered anything yet.
+            // What a band's stores cannot hold - food for more than 50 - is
+            // spilled, as any arrival past capacity is (#98).
             band.SharedSupplies.Open(ResourceKind.Food, size * Hunger.DailyRation * Jobs.FoodTargetDays);
             band.SharedSupplies.Open(ResourceKind.Wood, StartingWood);
+            Storage.Spill(band.SharedSupplies, ResourceKind.Food, Storage.BaseFood);
+            Storage.Spill(band.SharedSupplies, ResourceKind.Wood, Storage.BaseWood);
 
             // Announced last, once the whole band exists - in the store, the
             // genealogy, the band and its household - the way a birth is

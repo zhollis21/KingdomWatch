@@ -49,6 +49,12 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(Storage.IsFull(89, 100), Is.False);
                 Assert.That(Storage.IsFull(90, 100), Is.True);
                 Assert.That(Storage.IsFull(600, 500), Is.True);
+                Assert.That(Storage.IsFull(0, 0), Is.True, "nothing to hold is full");
+                Assert.That(Storage.IsFull(long.MaxValue, long.MaxValue), Is.True, "no overflow at the top of the range (#98 review)");
+                Assert.That(Storage.IsFull(long.MaxValue - (long.MaxValue / 10) - 1, long.MaxValue), Is.False);
+                Assert.That(Storage.IsFull(long.MaxValue - (long.MaxValue / 10), long.MaxValue), Is.True);
+                Assert.That(() => Storage.IsFull(-1, 500), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => Storage.IsFull(0, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
             });
         }
 
@@ -69,6 +75,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(stores.AuditBalances(), Is.True);
                 Assert.That(() => Storage.Spill(null!, ResourceKind.Wood, 0), Throws.ArgumentNullException);
                 Assert.That(() => Storage.Spill(stores, (ResourceKind)99, 0), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => Storage.Spill(stores, ResourceKind.Wood, long.MinValue), Throws.TypeOf<System.ArgumentOutOfRangeException>(), "not a silent no-op from overflow (#98 review)");
+                Assert.That(stores.Available(ResourceKind.Wood), Is.EqualTo(250), "a refused spill destroys nothing");
             });
         }
 

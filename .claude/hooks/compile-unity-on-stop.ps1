@@ -46,8 +46,14 @@ if (-not (Test-Path $unity)) {
 }
 
 # Core's build copies the dll Unity compiles against, so the view meets the
-# Core it will run with.
+# Core it will run with. When it fails, Unity would compile against the last
+# dll and pass, and the stamp would then skip the check after Core is fixed:
+# say so and leave the stamp alone (build-on-stop.ps1 reports Core's errors).
 & dotnet build (Join-Path $root 'Core/KingdomWatch.Core.csproj') -c Release -v q -nologo | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Say 'The Unity scripts changed but were not compiled: Core does not build, so Unity would only meet the last Core that did.'
+    exit 0
+}
 
 $log = Join-Path ([IO.Path]::GetTempPath()) "kw-unity-compile-$PID.log"
 $info = [System.Diagnostics.ProcessStartInfo]::new($unity)
