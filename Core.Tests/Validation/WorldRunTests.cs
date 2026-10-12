@@ -40,10 +40,10 @@ namespace KingdomWatch.Core.Tests.Validation
         private const int Seeds = 3;
         private const long Years = 60L;
 
-        // On 8 seeds no homeland passes 146 by year 75. Villages no longer
-        // level off: by year 200 homelands hold 135 to 603 and are still
-        // growing (#163), so this bounds the test's sixty years only.
-        private const int PopulationCeiling = 250;
+        // On 8 seeds no village passes 121 by year 75. Villages no longer
+        // level off: by year 200 the largest hold several hundred and are
+        // still growing (#163), so this bounds the test's sixty years only.
+        private const int PopulationCeiling = 200;
 
         // Each seed run once for the fixture: the tests over them read the
         // same runs, and the worlds' decades are the costly part.
@@ -80,61 +80,59 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void Every_homeland_lives_and_levels_off()
+        public void Every_village_lives_and_stays_under_a_ceiling()
         {
-            // Housing, forest and food hold a village's growth, and a short
-            // winter is rationed rather than eaten through (#69, #147, #149).
+            // A short winter is rationed rather than eaten through (#69,
+            // #147, #149), and each village is held to it on its own, so a
+            // growing neighbour cannot hide one dying out (#163).
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
                     var seed = "seed " + run.World.Seed;
-                    Assert.That(run.WestDiedOut, Is.Null, seed + ": west died out");
-                    Assert.That(run.EastDiedOut, Is.Null, seed + ": east died out");
+                    Assert.That(run.DiedOut, Is.Empty, seed + ": a village died out");
 
                     foreach (var year in run.Years)
                     {
-                        Assert.That(year.West, Is.LessThanOrEqualTo(PopulationCeiling), seed + " west, year " + year.Year);
-                        Assert.That(year.East, Is.LessThanOrEqualTo(PopulationCeiling), seed + " east, year " + year.Year);
+                        foreach (var village in year.Villages)
+                        {
+                            Assert.That(village.Living, Is.LessThanOrEqualTo(PopulationCeiling), seed + " " + village.Village + ", year " + year.Year);
+                        }
                     }
                 }
             });
         }
 
         [Test]
-        public void No_year_s_hunger_and_cold_take_a_quarter_of_a_homeland()
+        public void No_year_s_hunger_and_cold_take_a_quarter_of_a_village()
         {
             // A village that runs short shrinks; before #149 one winter took
-            // nearly everyone in it. Each homeland against its own size, so a
+            // nearly everyone in it. Each village against its own size, so a
             // big one cannot hide a small one's winter (the #156 review). A
-            // homeland of fewer than ten is too small for a share to mean
+            // village of fewer than ten is too small for a share to mean
             // anything: one death is a tenth of it.
             Assert.Multiple(() =>
             {
                 foreach (var run in Runs)
                 {
-                    var west = run.FoundingWest;
-                    var east = run.FoundingEast;
+                    var before = run.Founding;
 
                     foreach (var year in run.Years)
                     {
-                        Check(run, year, "west", west, year.WestTally);
-                        Check(run, year, "east", east, year.EastTally);
-                        west = year.West;
-                        east = year.East;
+                        foreach (var start in before)
+                        {
+                            var lost = year.Of(start.Village).Tally.Starved + year.Of(start.Village).Tally.Froze;
+
+                            if (start.Living >= 10)
+                            {
+                                Assert.That(lost * 4, Is.LessThan(start.Living), "seed " + run.World.Seed + " " + start.Village + ", year " + year.Year + ": " + lost + " of " + start.Living);
+                            }
+                        }
+
+                        before = year.Villages;
                     }
                 }
             });
-
-            static void Check(WorldRun run, YearSummary year, string side, int before, YearTally tally)
-            {
-                var lost = tally.Starved + tally.Froze;
-
-                if (before >= 10)
-                {
-                    Assert.That(lost * 4, Is.LessThan(before), "seed " + run.World.Seed + " " + side + ", year " + year.Year + ": " + lost + " of " + before);
-                }
-            }
         }
 
         [Test]
@@ -460,15 +458,52 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void A_run_refuses_a_missing_world_or_one_with_no_river_to_split()
+        public void A_run_refuses_a_missing_world_and_counts_a_band_where_there_is_no_river()
         {
+            // Villages are counted wherever they stand; sides of a river were
+            // what needed one (#163).
             var riverless = new World(1UL, new TerrainGrid(8, 8, TerrainKind.Plains), DemographicSettings.Default);
-            riverless.AddBand(12, new WorldPosition(3, 3));
+            var band = riverless.AddBand(12, new WorldPosition(3, 3));
+            var run = new WorldRun(riverless);
 
             Assert.Multiple(() =>
             {
                 Assert.That(() => new WorldRun(null!), Throws.ArgumentNullException);
-                Assert.That(() => new WorldRun(riverless), Throws.InvalidOperationException, "no homelands to count");
+                Assert.That(run.Founding, Has.Count.EqualTo(1));
+                Assert.That(run.Founding[0].Village, Is.EqualTo(band.Id));
+                Assert.That(run.Founding[0].Living, Is.EqualTo(12));
+            });
+        }
+
+        [Test]
+        public void A_band_that_settles_moves_its_people_and_does_not_die_out()
+        {
+            // The band's people are the settlement's from its founding on: a
+            // death after it is the settlement's, and the band, empty now, is
+            // gone without having died out.
+            var world = new World(1UL, new TerrainGrid(16, 16, TerrainKind.Plains), DemographicSettings.Default);
+            world.Nomads.Settles = false;
+            var band = world.AddBand(12, new WorldPosition(8, 8));
+            var run = new WorldRun(world);
+            var settlement = world.Founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+
+            // Bare plains feed and warm nobody: a year's food and fuel in
+            // store, so the year is about who is counted where.
+            settlement.SharedSupplies.Gather(ResourceKind.Food, 100_000);
+            settlement.SharedSupplies.Gather(ResourceKind.Wood, 10_000);
+            world.Deaths.Die(settlement.Members[0], new Reasons(ReasonCode.Froze));
+
+            run.RunYears(1L);
+            var year = run.Years[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.IsClean, Is.True);
+                Assert.That(run.DiedOut, Is.Empty, "a band that settles has not died out");
+                Assert.That(year.Villages, Has.Count.EqualTo(2), "the band, then the settlement it founded");
+                Assert.That(year.Of(settlement.Id).Tally.Froze, Is.EqualTo(1), "the death is the settlement's");
+                Assert.That(year.Of(band.Id).Living, Is.Zero);
+                Assert.That(year.Of(settlement.Id).Living, Is.EqualTo(settlement.Members.Count));
             });
         }
 
@@ -509,66 +544,74 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
-        public void Deaths_are_tallied_for_the_homeland_they_happened_in()
+        public void Deaths_are_tallied_for_the_village_they_happened_in()
         {
-            // A village's catastrophe must not hide behind the other homeland's
-            // numbers (the #156 review): the west's dead are the west's.
+            // A village's catastrophe must not hide behind another's numbers
+            // (the #156 review, and #163 for villages on the same side): the
+            // second village's dead are the second village's.
             var run = new WorldRun(1UL);
-            var west = run.World.Founding.All[0];
-            var dead = west.Members.Count / 2;
+            var stricken = run.World.Founding.All[1];
+            var dead = stricken.Members.Count / 2;
 
-            foreach (var member in new List<PersonHandle>(west.Members).GetRange(0, dead))
+            foreach (var member in new List<PersonHandle>(stricken.Members).GetRange(0, dead))
             {
                 run.World.Deaths.Die(member, new Reasons(ReasonCode.Froze));
             }
 
             run.RunYears(1L);
             var year = run.Years[0];
+            var froze = 0;
+            var deaths = 0;
+            var births = 0;
+
+            foreach (var village in year.Villages)
+            {
+                froze += village.Tally.Froze;
+                deaths += village.Tally.Deaths;
+                births += village.Tally.Births;
+            }
 
             Assert.Multiple(() =>
             {
-                Assert.That(year.WestTally.Froze, Is.EqualTo(dead));
-                Assert.That(year.EastTally.Froze, Is.Zero);
-                Assert.That(year.Tally.Froze, Is.EqualTo(year.WestTally.Froze + year.EastTally.Froze), "the whole is the sum");
-                Assert.That(year.Tally.Deaths, Is.EqualTo(year.WestTally.Deaths + year.EastTally.Deaths));
-                Assert.That(year.Tally.Births, Is.EqualTo(year.WestTally.Births + year.EastTally.Births));
+                Assert.That(year.Of(stricken.Id).Tally.Froze, Is.EqualTo(dead));
+                Assert.That(froze, Is.EqualTo(dead), "nobody else froze");
+                Assert.That(year.Tally.Froze, Is.EqualTo(froze), "the whole is the sum");
+                Assert.That(year.Tally.Deaths, Is.EqualTo(deaths));
+                Assert.That(year.Tally.Births, Is.EqualTo(births));
+                Assert.That(year.Villages, Has.Count.EqualTo(run.Founding.Count), "the same villages, in the same order");
             });
         }
 
-        [TestCase(0, TestName = "A west that dies out is reported, not failed")]
-        [TestCase(1, TestName = "An east that dies out is reported, not failed")]
-        public void A_homeland_that_dies_out_is_reported_not_failed(int side)
+        [TestCase(0, TestName = "A first village that dies out is reported, not failed")]
+        [TestCase(1, TestName = "A village beside a living one that dies out is reported, not failed")]
+        [TestCase(3, TestName = "A last village that dies out is reported, not failed")]
+        public void A_village_that_dies_out_is_reported_not_failed(int index)
         {
             // The #103 review made a die-out fail the run; #26 made it a
-            // report, since berries run out and homelands can starve until
-            // farms. It must still be seen: the year, and the chronicle line.
-            // Everyone on one side of the river dies before the first year:
-            // the west's villages are founded first, then the east's.
+            // report, since berries run out and villages can starve until
+            // farms. It must still be seen: the year, and the chronicle line,
+            // even when the village beside it lives on (#163).
             var run = new WorldRun(1UL);
+            var village = run.World.Founding.All[index];
 
-            for (var i = 0; i < World.M1VillagesPerSide; i++)
+            foreach (var member in new List<PersonHandle>(village.Members))
             {
-                var village = run.World.Founding.All[side * World.M1VillagesPerSide + i];
-
-                foreach (var member in new List<PersonHandle>(village.Members))
-                {
-                    run.World.Deaths.Die(member, new Reasons(ReasonCode.Illness));
-                }
+                run.World.Deaths.Die(member, new Reasons(ReasonCode.Illness));
             }
 
             run.RunYears(2L);
             var text = new StringWriter();
             Chronicle.Write(run, text);
-            var died = side == 0 ? run.WestDiedOut : run.EastDiedOut;
-            var lived = side == 0 ? run.EastDiedOut : run.WestDiedOut;
 
             Assert.Multiple(() =>
             {
                 Assert.That(run.IsClean, Is.True, "a world can die out without breaking a rule");
-                Assert.That(died, Is.EqualTo(1L), "the first year that ended with nobody there");
-                Assert.That(lived, Is.Null);
+                Assert.That(run.DiedOut, Has.Count.EqualTo(1), "once, and only that village");
+                Assert.That(run.DiedOut[0].Village, Is.EqualTo(village.Id));
+                Assert.That(run.DiedOut[0].Year, Is.EqualTo(1L), "the first year that ended with nobody there");
+                Assert.That(run.Years[1].Of(village.Id).Living, Is.Zero, "still listed, empty");
                 Assert.That(run.Held, Is.True, "reported, not failed");
-                Assert.That(text.ToString(), Does.Contain((side == 0 ? "West" : "East") + " died out in year 1."));
+                Assert.That(text.ToString(), Does.Contain(village.Id + " died out in year 1."));
             });
         }
         [Test]
@@ -598,7 +641,8 @@ namespace KingdomWatch.Core.Tests.Validation
 
             Assert.Multiple(() =>
             {
-                Assert.That(written, Does.StartWith("Year 0: west " + WorldRun.WestSize + ", east " + WorldRun.EastSize));
+                Assert.That(written, Does.StartWith("Year 0: " + run.World.Founding.All[0].Id + " " + World.M1VillageSize + ", "));
+                Assert.That(Occurrences(written.Split('\n')[0], " " + World.M1VillageSize), Is.EqualTo(run.Founding.Count), "every village on the founding line");
                 Assert.That(written, Does.Contain("Year 1: ").And.Contain("Year 2: ").And.Contain("Year 3: "));
                 Assert.That(Occurrences(written, " was founded"), Is.EqualTo(2 * World.M1VillagesPerSide), "one per starting village");
                 Assert.That(written, Does.Not.Contain("PersonBorn").And.Not.Contain("PersonDied"), "folded into the year lines");
