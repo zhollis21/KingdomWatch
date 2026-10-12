@@ -1,5 +1,6 @@
 using System;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
@@ -35,6 +36,32 @@ namespace KingdomWatch.Core.Tests.Settlements
                 Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, null!, d.Matchmaking, w.KnownMaps), Throws.ArgumentNullException);
                 Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, w.Jobs, null!, w.KnownMaps), Throws.ArgumentNullException);
                 Assert.That(() => new Founding(d.Bus, w.Deaths, d.Fertility, w.Hunger, w.Warmth, w.Jobs, d.Matchmaking, null!), Throws.ArgumentNullException);
+            });
+        }
+
+        [Test]
+        public void A_settlement_founded_with_more_than_its_stores_hold_keeps_what_they_hold()
+        {
+            // A new settlement has no storage built, so it holds the base
+            // (#98 review): what the band brings past it is spilled, audited.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, 30);
+            band.SharedSupplies.Gather(ResourceKind.Wood, Storage.BaseWood + 40);
+            band.SharedSupplies.Gather(ResourceKind.Stone, 2);
+            var adults = w.JoinAdults(band, 4);
+            band.Leader = adults[0];
+
+            var settlement = w.Founding.Found(band, Why);
+            var stores = settlement.SharedSupplies;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stores.Available(ResourceKind.Wood), Is.EqualTo(Storage.BaseWood));
+                Assert.That(stores.Flows(ResourceKind.Wood).Destroyed, Is.EqualTo(40L));
+                Assert.That(stores.Available(ResourceKind.Stone), Is.EqualTo(2), "within the base");
+                Assert.That(stores.Available(ResourceKind.Food), Is.EqualTo(30));
+                Assert.That(stores.AuditBalances(), Is.True);
+                Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
             });
         }
 

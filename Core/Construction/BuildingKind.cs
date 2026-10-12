@@ -22,5 +22,11 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>A sown field, tied to a barn, worked by Farmers for Grain.</summary>
         Field = 3,
+
+        /// <summary>Storage for Food and Grain (<see cref="Storage"/>, #98).</summary>
+        Granary = 4,
+
+        /// <summary>Storage for Wood (<see cref="Storage"/>, #98).</summary>
+        Woodshed = 5,
     }
 }

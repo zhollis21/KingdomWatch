@@ -84,6 +84,16 @@ namespace KingdomWatch.Game
             }
 #endif
             world = World.M1(unchecked((ulong)seed));
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
+            // -years N and -days D run the world N years and D days on
+            // before the first frame, so a look at something a village
+            // builds later, or shows only in a season (tools/Look.ps1 -Years
+            // and -Days), starts where it stands. Without -days it stops at
+            // the year boundary, where the harness hashes, so the year hash
+            // still compares.
+            var start = WholeArgument(args, "-years") * SimulationTime.TicksPerYear + WholeArgument(args, "-days") * SimulationTime.TicksPerDay;
+            if (start > 0L) world.AdvanceTo(new SimulationTime(start));
+#endif
             SnapshotYear();
             // A scene missing a reference runs the simulation with no view,
             // saying so once rather than throwing every frame.
@@ -320,6 +330,19 @@ namespace KingdomWatch.Game
             for (var i = 0; i < bands.Count; i++) if (Contains(bands[i], person)) return bands[i];
             return null;
         }
+
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
+        // The whole number above zero after `flag`, 0 when it is not given,
+        // and 0 with an error logged when what follows is anything else.
+        private long WholeArgument(string[] args, string flag)
+        {
+            var at = System.Array.IndexOf(args, flag);
+            if (at < 0) return 0L;
+            if (at + 1 < args.Length && int.TryParse(args[at + 1], out var value) && value > 0) return value;
+            Debug.LogError("SimulationDriver: " + flag + " wants a whole number above zero; ignoring it.", this);
+            return 0L;
+        }
+#endif
 
         private static bool Contains(ICommunity community, PersonHandle person)
         {

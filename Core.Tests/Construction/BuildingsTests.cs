@@ -535,7 +535,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 }
             }
 
-            w.Wood(100);
+            // Little enough that the clearing's wood all fits (#98).
+            w.Wood(BuildingTable.Of(BuildingKind.House).Wood);
             w.Dawn();
             var house = w.Buildings.All.Single();
             var cells = house.Width * house.Height;
@@ -1187,7 +1188,8 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void No_demand_no_building()
         {
-            // Everyone housed and a year in store: nothing is wanted.
+            // Everyone housed, a year in store and room for the winter's
+            // wood: nothing is wanted.
             var w = new BuildingsWorld();
             w.Wood(1000);
             w.Stores.Gather(ResourceKind.Grain, (int)(Buildings.YearlyNeed(w.Living) / PrimitiveTier.MealsPerGrain));
@@ -1204,7 +1206,7 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.Multiple(() =>
             {
                 Assert.That(w.Buildings.All.Count, Is.EqualTo(count));
-                Assert.That(w.Buildings.All.All(b => b.Kind == BuildingKind.House), Is.True);
+                Assert.That(w.Buildings.All.Where(b => b.Kind != BuildingKind.House).Select(b => b.Kind), Is.EqualTo(new[] { BuildingKind.Woodshed }), "the full woodpile's Woodshed, before the houses after the first (#98)");
             });
         }
 

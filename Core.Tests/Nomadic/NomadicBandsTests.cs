@@ -268,11 +268,14 @@ namespace KingdomWatch.Core.Tests.Nomadic
                 w.Demographics.Base.Ids.Next(EntityKind.MobileGroup), MobileGroupPurpose.NomadicBand, WorkWorld.Camp);
             var end = new SimulationTime(long.MaxValue);
             var lastCouncil = new SimulationTime(end.Ticks - end.TickOfDay + NomadicBands.FirstLight);
-            var councils = (NomadicBands.SettlingPressure + 59) / 60;
+            // Twelve: the most whose winter the base Food capacity holds
+            // (#98), so nobody starves either.
+            const int size = 12;
+            var councils = (NomadicBands.SettlingPressure + size - 1) / size;
             w.Clock.AdvanceTo(lastCouncil.Plus(-councils * Day), w.Router);
             w.NewBandTrackedEverywhere(band);
-            w.JoinAdults(band, 60);
-            band.SharedSupplies.Gather(ResourceKind.Food, WorkWorld.PlentifulFood(60));
+            w.JoinAdults(band, size);
+            band.SharedSupplies.Gather(ResourceKind.Food, WorkWorld.PlentifulFood(size));
 
             Assert.That(() => w.AdvanceTo(end), Throws.Nothing);
 

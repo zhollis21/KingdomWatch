@@ -24,8 +24,8 @@ namespace KingdomWatch.Core.Tests.Performance
         {
             var w = new BuildingsWorld(people: 20);
             w.World.Jobs.Track(w.Settlement);
-            w.Wood(Jobs.WoodCap + 2000);
-            w.Stores.Gather(ResourceKind.Stone, Jobs.StoneCap);
+            w.Wood(Jobs.WoodReserve + 2000);
+            w.Stores.Gather(ResourceKind.Stone, Storage.BaseStone);
             w.Stores.Gather(ResourceKind.Food, w.Living * 60);
 
             // Long enough to raise a house, a barn and fields and to bring a
@@ -39,8 +39,10 @@ namespace KingdomWatch.Core.Tests.Performance
             // route buffer grows to the longest route it has held, which is
             // Jobs' contract, and a new field further out is a longer one.
             w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
-            w.Stores.Gather(ResourceKind.Wood, Jobs.WoodCap);
+            w.Stores.Gather(ResourceKind.Wood, Jobs.WoodReserve);
+            EmptyGrain(w);
             w.World.Advance(20L * SimulationTime.TicksPerDay);
+            EmptyGrain(w);
             var grain = w.Stores.Flows(ResourceKind.Grain).Gathered;
             var count = w.Buildings.All.Count;
 
@@ -53,5 +55,10 @@ namespace KingdomWatch.Core.Tests.Performance
                 Assert.That(w.Stores.Flows(ResourceKind.Grain).Gathered, Is.GreaterThan(grain), "fields harvested");
             });
         }
+
+        // Room for the crop: Farmers stop at a full Grain store (#98), and
+        // this measures them farming.
+        private static void EmptyGrain(BuildingsWorld w) =>
+            w.Stores.Consume(ResourceKind.Grain, w.Stores.Available(ResourceKind.Grain));
     }
 }

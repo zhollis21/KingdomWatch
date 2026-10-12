@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using UnityEngine;
 using UnityEngine.Tilemaps;
@@ -181,6 +182,15 @@ namespace KingdomWatch.Game
         // per building from its id (#150).
         public Sprite[] Houses { get; private set; }
         public Sprite[] Barns { get; private set; }
+
+        // Storage (#98): the silo for a Granary, and for a Woodshed a fenced
+        // log yard on its footprint at each fill level, Woodsheds[level] for
+        // level 0 (empty) to YardLevels (full).
+        public Sprite[] Granaries { get; private set; }
+        public Sprite[] Woodsheds { get; private set; }
+
+        // A yard's three log slots each hold a small stack, then a tall pile.
+        public const int YardLevels = 6;
 
         // Tilled soil, the nine pieces of a bordered patch: FarmLand[row * 3 +
         // column], where row and column are 0 on a field's north or west edge,
@@ -615,7 +625,7 @@ namespace KingdomWatch.Game
         private bool LoadBuildings()
         {
             // A house's walls meet the ground 16 px above the bottom of its
-            // frame, a barn's 15 px.
+            // frame, a barn's 15 px, the silo's 5 px.
             var houses = new List<Sprite>();
             var barns = new List<Sprite>();
             foreach (var walls in new[] { "Base", "Green", "Red" })
@@ -632,6 +642,10 @@ namespace KingdomWatch.Game
             Houses = houses.ToArray();
             Barns = barns.ToArray();
 
+            var silo = Texture(Pack + "Buildings/Buildings/Unique_Buildings/Silo/Silo");
+            if (silo == null || !LoadYards()) return false;
+            Granaries = new[] { Cut(silo, 0, 0, silo.width, silo.height, new Vector2(0.5f, 5f / silo.height)) };
+
             // FarmLand_Tile.png in 16 px tiles from the top left: the bordered
             // patch is columns 1-3, rows 0-2. Crops.png has a crop to every
             // two rows, wheat first: its seed, sprouts, flowering and ripe
@@ -647,6 +661,118 @@ namespace KingdomWatch.Game
             for (var stage = 0; stage < Wheat.Length; stage++)
                 Wheat[stage] = NewTile(Cut(crops, (stage + 2) * PixelsPerCell, PixelsPerCell, PixelsPerCell, PixelsPerCell, new Vector2(0.5f, 0.5f)));
             return true;
+        }
+
+        // The Woodshed (#98) is a fenced log yard drawn for its 5x4 footprint:
+        // Fences.png's 16 px pieces round the edge, a cell to each, with a gate
+        // in the middle of the front; and three log slots along the middle,
+        // each Outdoor_Decor's small stack and then its tall pile. Composed
+        // once for every fill level, side by side in one texture.
+        private const int YardWidth = 5, YardHeight = 4;
+        private const int YardBase = 46; // where the logs stand, from the yard's top
+        private static readonly int[] YardSlots = { 11, 30, 49 }; // the tall piles' left edges
+        private static readonly RectInt SmallStack = new RectInt(1, 197, 14, 24);
+        private static readonly RectInt TallPile = new RectInt(7, 259, 20, 42);
+
+        // Each cell of the fence, from the top left: (cell, piece) pairs, the
+        // piece as its column and row on Fences.png. Back row and sides first,
+        // so the logs stand in front of them, then the front row over the logs.
+        private static readonly (Vector2Int cell, Vector2Int piece)[] BackFence =
+        {
+            (new Vector2Int(0, 0), new Vector2Int(1, 1)), (new Vector2Int(1, 0), new Vector2Int(2, 0)),
+            (new Vector2Int(2, 0), new Vector2Int(2, 0)), (new Vector2Int(3, 0), new Vector2Int(2, 0)),
+            (new Vector2Int(4, 0), new Vector2Int(3, 1)),
+            (new Vector2Int(0, 1), new Vector2Int(0, 1)), (new Vector2Int(4, 1), new Vector2Int(0, 1)),
+            (new Vector2Int(0, 2), new Vector2Int(0, 1)), (new Vector2Int(4, 2), new Vector2Int(0, 1)),
+        };
+        private static readonly (Vector2Int cell, Vector2Int piece)[] FrontFence =
+        {
+            (new Vector2Int(0, 3), new Vector2Int(1, 3)), (new Vector2Int(1, 3), new Vector2Int(3, 0)),
+            (new Vector2Int(3, 3), new Vector2Int(1, 0)), (new Vector2Int(4, 3), new Vector2Int(3, 3)),
+        };
+
+        private bool LoadYards()
+        {
+            var spec = BuildingTable.Of(BuildingKind.Woodshed);
+            if (spec.Width != YardWidth || spec.Height != YardHeight)
+            {
+                Debug.LogError("ArtSet: the Woodshed's yard is drawn for " + YardWidth + "x" + YardHeight + " cells, not " + spec.Width + "x" + spec.Height + ".");
+                return false;
+            }
+            var fences = Texture(Decor + "Fences");
+            var decor = Texture(Decor + "Outdoor_Decor");
+            if (fences == null || decor == null) return false;
+            var fence = new Sheet(ReadPixels(fences), fences.width, fences.height);
+            var logs = new Sheet(ReadPixels(decor), decor.width, decor.height);
+
+            const int width = YardWidth * PixelsPerCell, height = YardHeight * PixelsPerCell;
+            var yards = new Sheet(new Color32[width * (YardLevels + 1) * height], width * (YardLevels + 1), height);
+            for (var level = 0; level <= YardLevels; level++)
+            {
+                var left = level * width;
+                foreach (var (cell, piece) in BackFence) Fence(yards, left, cell, fence, piece);
+                for (var slot = 0; slot < YardSlots.Length; slot++)
+                {
+                    // A slot fills once with a small stack, and again with a tall pile.
+                    var x = left + YardSlots[slot];
+                    if (level > YardSlots.Length + slot) Paste(yards, x, YardBase - TallPile.height, logs, TallPile);
+                    else if (level > slot) Paste(yards, x + (TallPile.width - SmallStack.width) / 2, YardBase - SmallStack.height, logs, SmallStack);
+                }
+                foreach (var (cell, piece) in FrontFence) Fence(yards, left, cell, fence, piece);
+            }
+
+            var texture = Own(new Texture2D(yards.Width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Woodshed yards" });
+            texture.SetPixels32(yards.Pixels);
+            texture.Apply(false, true);
+            Woodsheds = new Sprite[YardLevels + 1];
+            for (var level = 0; level <= YardLevels; level++)
+                Woodsheds[level] = Own(Sprite.Create(texture, new Rect(level * width, 0, width, height), new Vector2(0.5f, 0f), PixelsPerCell, 0, SpriteMeshType.FullRect));
+            return true;
+        }
+
+        private static void Fence(Sheet to, int left, Vector2Int cell, Sheet fence, Vector2Int piece) =>
+            Paste(to, left + cell.x * PixelsPerCell, cell.y * PixelsPerCell, fence,
+                new RectInt(piece.x * PixelsPerCell, piece.y * PixelsPerCell, PixelsPerCell, PixelsPerCell));
+
+        // Pixels read back from a texture, bottom row first as Unity keeps them.
+        private readonly struct Sheet
+        {
+            public readonly Color32[] Pixels;
+            public readonly int Width, Height;
+
+            public Sheet(Color32[] pixels, int width, int height)
+            {
+                Pixels = pixels;
+                Width = width;
+                Height = height;
+            }
+
+            public int IndexFromTop(int x, int y) => (Height - 1 - y) * Width + x;
+        }
+
+        // Lays `piece` of `sheet` (both counted from the top left) over `to`
+        // at (x, y) from its top left, the way a sprite drawn over another
+        // would: what is behind shows through the part-transparent shadows.
+        private static void Paste(Sheet to, int x, int y, Sheet sheet, RectInt piece)
+        {
+            for (var dy = 0; dy < piece.height; dy++)
+            {
+                for (var dx = 0; dx < piece.width; dx++)
+                {
+                    var top = sheet.Pixels[sheet.IndexFromTop(piece.x + dx, piece.y + dy)];
+                    if (top.a == 0) continue;
+                    var i = to.IndexFromTop(x + dx, y + dy);
+                    var under = to.Pixels[i];
+                    var a = top.a / 255f;
+                    var b = under.a / 255f * (1f - a);
+                    var alpha = a + b;
+                    to.Pixels[i] = new Color32(
+                        (byte)Mathf.RoundToInt((top.r * a + under.r * b) / alpha),
+                        (byte)Mathf.RoundToInt((top.g * a + under.g * b) / alpha),
+                        (byte)Mathf.RoundToInt((top.b * a + under.b * b) / alpha),
+                        (byte)Mathf.RoundToInt(alpha * 255f));
+                }
+            }
         }
 
         private bool LoadVillagers()

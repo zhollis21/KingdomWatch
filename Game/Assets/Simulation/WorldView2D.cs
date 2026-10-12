@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Land;
+using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
 using Unity.Profiling;
 using UnityEngine;
@@ -274,6 +275,11 @@ namespace KingdomWatch.Game
         private readonly List<TileChangeData> cropTiles = new List<TileChangeData>();
         // Settlements with a finished house, which leave their tents behind.
         private readonly HashSet<EntityId> housed = new HashSet<EntityId>();
+        // Each settlement's wood, read from its stores, and how many of its
+        // finished Woodsheds this frame has drawn so far: the order the logs
+        // fill them in (Storage.WoodInShed).
+        private Founding founding;
+        private readonly Dictionary<EntityId, int> shedsDrawn = new Dictionary<EntityId, int>();
         private Transform peopleRoot;
         private Transform communityRoot;
         private SpriteRenderer highlight;
@@ -327,6 +333,7 @@ namespace KingdomWatch.Game
             grid = world.Grid;
             rewritesSeen = grid.Rewrites;
             buildings = world.Buildings;
+            founding = world.Founding;
             land = world.Land;
             simNow = world.Now;
             shoreMasks = new byte[(width + 1) * (height + 1)];
@@ -758,17 +765,20 @@ namespace KingdomWatch.Game
             buildingsPlaced = all.Count;
         }
 
-        // Houses and barns (#150) stand as their sprites, centred on their
+        // Houses, barns and storage (#150, #98) stand as their sprites, centred on their
         // footprint's south edge and sorted by it, so people south of one walk
         // in front of it; fields are soil and wheat in the field tilemaps
-        // (LayField). Each is see-through until built. A sprite fits its
+        // (LayField). A building is see-through until built; a field is
+        // bare soil while it is sown. A sprite fits its
         // footprint's width, and its roof stands over the rows north of it
-        // that Core keeps clear (BuildingSpec.Clearance). Without the art, each
-        // is a block of colour on its footprint. Hidden at Far zoom, where the
-        // settlement's marker stands for them all.
+        // that Core keeps clear (BuildingSpec.Clearance); a Woodshed's yard
+        // shows its share of the settlement's wood (YardLevel). Without the
+        // art, each is a block of colour on its footprint. Hidden at Far
+        // zoom, where the settlement's marker stands for them all.
         private void DrawBuildings()
         {
             housed.Clear();
+            shedsDrawn.Clear();
             var all = buildings.All;
             var visible = Band != ZoomBand.Far;
             for (var i = 0; i < all.Count; i++)
@@ -785,6 +795,8 @@ namespace KingdomWatch.Game
                 var looks = art == null ? null
                     : building.Kind == BuildingKind.House ? art.Houses
                     : building.Kind == BuildingKind.Barn ? art.Barns
+                    : building.Kind == BuildingKind.Granary ? art.Granaries
+                    : building.Kind == BuildingKind.Woodshed ? art.Woodsheds
                     : null;
                 if (art != null && building.Kind == BuildingKind.Field) LayField(i, building);
                 // A field draws in the tilemaps, and a kind with no art yet
@@ -799,7 +811,7 @@ namespace KingdomWatch.Game
                 {
                     // Picked from the id, so a building always looks the same.
                     var pick = (int)((building.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
-                    sprite.sprite = looks[pick % looks.Length];
+                    sprite.sprite = building.Kind == BuildingKind.Woodshed ? looks[YardLevel(building)] : looks[pick % looks.Length];
                     sprite.transform.localPosition = new Vector3(OnArtPixel(middle), OnArtPixel(height - south), 0f);
                     sprite.sortingOrder = OrderAt(south);
                     sprite.color = new Color(1f, 1f, 1f, alpha);
@@ -816,8 +828,7 @@ namespace KingdomWatch.Game
                 }
             }
 
-            // Each tile keeps its tint, which lock flags would drop. Allocates,
-            // and only on a frame where a field changed.
+            // Allocates, and only on a frame where a field changed.
             if (fieldTiles.Count == 0) return;
             fieldMap.SetTiles(fieldTiles.ToArray(), true);
             cropMap.SetTiles(cropTiles.ToArray(), true);
@@ -825,16 +836,38 @@ namespace KingdomWatch.Game
             cropTiles.Clear();
         }
 
+        // How full a Woodshed's yard is drawn, 0 to ArtSet.YardLevels: its
+        // share of the settlement's wood, the finished ones filling in the
+        // order they stand in All, oldest first. Any wood at all shows a
+        // stack. An unbuilt one is empty.
+        private int YardLevel(Building shed)
+        {
+            if (!shed.IsComplete) return 0;
+            shedsDrawn.TryGetValue(shed.Settlement, out var order);
+            shedsDrawn[shed.Settlement] = order + 1;
+            var held = Storage.WoodInShed(WoodOf(shed.Settlement), order);
+            return (int)((held * ArtSet.YardLevels + Storage.WoodshedWood - 1) / Storage.WoodshedWood);
+        }
+
+        private long WoodOf(EntityId settlement)
+        {
+            var all = founding.All;
+            for (var i = 0; i < all.Count; i++)
+                if (all[i].Id == settlement) return all[i].SharedSupplies.Available(ResourceKind.Wood);
+            return 0L;
+        }
+
         // A field's tiles, queued when its look changes (FieldLook): nothing
-        // until it is cleared, see-through soil while it is sown, then soil
-        // with the wheat at its stage once it has had a day's tending.
+        // until it is cleared, then soil, with the wheat at its stage once it
+        // has had a day's tending. Only ever whole tiles, never a tint: a
+        // tile whose colour alone changes is not redrawn while in view, which
+        // left a field that was sown on screen see-through under its wheat.
         private void LayField(int index, Building field)
         {
             var look = FieldLook(field);
             if (look == fieldLooks[index]) return;
             fieldLooks[index] = look;
-            var tint = new Color(1f, 1f, 1f, look == 1 ? UnbuiltAlpha : 1f);
-            var crop = look >= 3 ? art.Wheat[look - 3] : null;
+            var crop = look >= 2 ? art.Wheat[look - 2] : null;
             for (var dy = 0; dy < field.Height; dy++)
             {
                 var row = dy == 0 ? 0 : dy == field.Height - 1 ? 2 : 1;
@@ -842,23 +875,23 @@ namespace KingdomWatch.Game
                 {
                     var column = dx == 0 ? 0 : dx == field.Width - 1 ? 2 : 1;
                     var position = new Vector3Int(field.Anchor.X + dx, height - 1 - (field.Anchor.Y + dy), 0);
-                    fieldTiles.Add(new TileChangeData(position, look == 0 ? null : art.FarmLand[row * 3 + column], tint, Matrix4x4.identity));
+                    fieldTiles.Add(new TileChangeData(position, look == 0 ? null : art.FarmLand[row * 3 + column], Color.white, Matrix4x4.identity));
                     cropTiles.Add(new TileChangeData(position, crop, Color.white, Matrix4x4.identity));
                 }
             }
         }
 
-        // 0 while the ground is uncleared, 1 while it is sown, 2 for bare soil
-        // before its first day's tending - all winter, and after a harvest -
-        // then 3 plus its ArtSet.Wheat stage: seed, sprouts and flowering a
+        // 0 while the ground is uncleared, 1 for bare soil - while it is sown,
+        // before its first day's tending, all winter, and after a harvest -
+        // then 2 plus its ArtSet.Wheat stage: seed, sprouts and flowering a
         // third of the tending days each, and ripe through the harvest.
         private static int FieldLook(Building field)
         {
             if (!field.Cleared) return 0;
             if (!field.IsComplete) return 1;
-            if (field.Stage == FieldStage.Harvesting) return 6;
-            if (field.DaysDone == 0) return 2;
-            return 3 + Mathf.Min(2, field.DaysDone * 3 / Buildings.TendingDays);
+            if (field.Stage == FieldStage.Harvesting) return 5;
+            if (field.DaysDone == 0) return 1;
+            return 2 + Mathf.Min(2, field.DaysDone * 3 / Buildings.TendingDays);
         }
 
         private SpriteRenderer NewBuilding()
@@ -1162,6 +1195,8 @@ namespace KingdomWatch.Game
                 case BuildingKind.House: return new Color(0.8f, 0.55f, 0.4f);
                 case BuildingKind.Barn: return new Color(0.62f, 0.24f, 0.2f);
                 case BuildingKind.Field: return new Color(0.88f, 0.76f, 0.38f);
+                case BuildingKind.Granary: return new Color(0.25f, 0.5f, 0.42f);
+                case BuildingKind.Woodshed: return new Color(0.42f, 0.29f, 0.17f);
                 default: return new Color(0.6f, 0.6f, 0.6f);
             }
         }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Lifecycle;
@@ -404,6 +405,25 @@ namespace KingdomWatch.Core.Tests.WorldGen
                     Assert.That(w.People.GetAgeStage(member), Is.EqualTo(w.Settings.StageAt(w.People.GetAgeYears(member, w.Clock.Now))));
                 });
             }
+        }
+
+        [Test]
+        public void A_band_too_big_for_its_stores_opens_with_what_they_hold()
+        {
+            // 60 people would bring 600 Food to a 500 store (#98 review): the
+            // rest is spilled, audited, as any arrival past capacity is.
+            var w = new DemographicWorld();
+            var band = w.Generator.Generate(60, Here);
+            var food = band.SharedSupplies.Flows(ResourceKind.Food);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(Storage.BaseFood));
+                Assert.That(food.Opening, Is.EqualTo(60L * Hunger.DailyRation * Jobs.FoodTargetDays));
+                Assert.That(food.Destroyed, Is.EqualTo((60L * Hunger.DailyRation * Jobs.FoodTargetDays) - Storage.BaseFood));
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(BandGenerator.StartingWood), "within the base");
+                Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
+            });
         }
 
         [Test]

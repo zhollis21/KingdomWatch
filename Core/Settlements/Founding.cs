@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
@@ -177,6 +178,9 @@ namespace KingdomWatch.Core.Settlements
                 if (available > 0)
                 {
                     band.SharedSupplies.TransferTo(settlement.SharedSupplies, (ResourceKind)kind, available);
+                    // A new settlement has no storage yet: the base, and what
+                    // is past it spilled (#98).
+                    Storage.Spill(settlement.SharedSupplies, (ResourceKind)kind, Storage.BaseOf((ResourceKind)kind));
                 }
             }
 

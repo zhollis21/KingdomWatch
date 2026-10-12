@@ -162,7 +162,7 @@ namespace KingdomWatch.Core.Data
             account.Exported += quantity;
         }
 
-        /// <summary>Stock lost: raided, burned down, or otherwise destroyed.</summary>
+        /// <summary>Stock lost: raided, burned down, spilled past capacity, or otherwise destroyed.</summary>
         public void Destroy(ResourceKind kind, int quantity)
         {
             ref var account = ref Ref(kind, quantity);
