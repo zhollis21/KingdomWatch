@@ -536,6 +536,37 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_village_founded_mid_run_is_ranged_from_its_first_year_not_from_nothing()
+        {
+            // The PR #165 review: a settlement founded in year 2 is not in the
+            // founding list, and the year before it existed is not a year it
+            // was empty. Its range starts at its first year's end.
+            var world = new World(1UL, new TerrainGrid(16, 16, TerrainKind.Plains), DemographicSettings.Default);
+            world.Nomads.Settles = false;
+            var band = world.AddBand(12, new WorldPosition(8, 8));
+            band.SharedSupplies.Gather(ResourceKind.Food, 100_000);
+            band.SharedSupplies.Gather(ResourceKind.Wood, 10_000);
+            var run = new WorldRun(world).RunYears(1L);
+            var settlement = world.Founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            run.RunYears(1L);
+
+            var village = run.RangeOf(settlement.Id);
+            var wanderers = run.RangeOf(band.Id);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(run.Years[0].Villages, Has.Count.EqualTo(1), "year 1 has not seen it");
+                Assert.That(village.First, Is.EqualTo(run.Years[1].Of(settlement.Id).Living).And.GreaterThan(0), "its first year's end");
+                Assert.That(village.Low, Is.EqualTo(village.First), "no empty year before it existed");
+                Assert.That(village.Last, Is.EqualTo(settlement.Members.Count));
+                Assert.That(wanderers.First, Is.EqualTo(12), "the band from its founding size");
+                Assert.That(wanderers.Last, Is.Zero, "and empty once it settled");
+                Assert.That(wanderers.High, Is.GreaterThanOrEqualTo(12));
+                Assert.That(() => run.RangeOf(new EntityId(EntityKind.Settlement, 999UL)), Throws.ArgumentException, "a village never seen");
+            });
+        }
+
+        [Test]
         public void A_run_refuses_a_negative_length_or_one_past_the_end_of_time_before_advancing()
         {
             var run = new WorldRun(1UL);
@@ -658,6 +689,26 @@ namespace KingdomWatch.Core.Tests.Validation
                 Assert.That(run.DiedOut, Is.Not.InstanceOf<List<DieOut>>());
                 Assert.That(run.Years[0].Villages, Is.Not.InstanceOf<VillageYear[]>(), "a year's villages either");
                 Assert.That(validator.Findings, Is.Not.InstanceOf<List<ValidationFinding>>());
+            });
+        }
+
+        [Test]
+        public void A_year_owns_its_villages_and_hands_out_one_read_only_view_of_them()
+        {
+            // The PR #165 review: the array a year was built from is the
+            // caller's, so editing it must not edit the year; and the view
+            // is made once, not on every read.
+            var villages = new[] { new VillageYear(new EntityId(EntityKind.Settlement, 1UL), 20, default) };
+            var year = new YearSummary(1L, villages);
+            villages[0] = new VillageYear(villages[0].Village, 0, default);
+            var firstRead = year.Villages;
+            var secondRead = year.Villages;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstRead[0].Living, Is.EqualTo(20), "the caller's array is not the year's");
+                Assert.That(secondRead, Is.SameAs(firstRead), "one view, made once");
+                Assert.That(() => new YearSummary(1L, null!), Throws.ArgumentNullException);
             });
         }
 

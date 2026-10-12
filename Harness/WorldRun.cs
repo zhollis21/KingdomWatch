@@ -99,14 +99,70 @@ namespace KingdomWatch.Harness
         public IReadOnlyList<DieOut> DiedOut => _diedOutView;
 
         /// <summary>
-        /// Whether the run passed: it broke no invariant. A homeland dying out
-        /// used to fail it too (the #103 review), but since #26 berries run
+        /// Whether the run passed: it broke no invariant. A die-out used to
+        /// fail it too (the #103 review), but since #26 berries run
         /// out and bands can starve on the move, and since #100 a village
         /// that has cut every tree in its reach freezes (#147), so a
         /// die-out is reported - <see cref="DiedOut"/>, the chronicle and
         /// the sweep line - and not failed. Settling is not part of it either.
         /// </summary>
         public bool Held => IsClean;
+
+        /// <summary>
+        /// A village's numbers over the run, from the first time it was seen:
+        /// its founding size for one standing at the start, its first year's
+        /// end for one founded later - so the years before it existed are not
+        /// counted as empty ones. Throws for a village the run has never seen.
+        /// </summary>
+        public VillageRange RangeOf(EntityId village)
+        {
+            if (!_indexOf.TryGetValue(village, out var index))
+            {
+                throw new ArgumentException(village + " is not a village this run has seen.", nameof(village));
+            }
+
+            int? first = null;
+            var low = 0;
+            var high = 0;
+            var last = 0;
+
+            for (var f = 0; f < _founding.Count; f++)
+            {
+                if (_founding[f].Village == village)
+                {
+                    first = _founding[f].Living;
+                }
+            }
+
+            if (first is int founded)
+            {
+                low = high = last = founded;
+            }
+
+            // A village's place in the order is fixed and the order only
+            // grows, so a year has seen it exactly when it lists that many.
+            for (var y = 0; y < _years.Count; y++)
+            {
+                var villages = _years[y].Villages;
+
+                if (villages.Count <= index)
+                {
+                    continue;
+                }
+
+                last = villages[index].Living;
+
+                if (first is null)
+                {
+                    first = low = high = last;
+                }
+
+                low = Math.Min(low, last);
+                high = Math.Max(high, last);
+            }
+
+            return new VillageRange(village, first ?? 0, last, low, high);
+        }
 
         /// <summary>
         /// Advances year by year, validating after each, and stops at the first
@@ -453,6 +509,29 @@ namespace KingdomWatch.Harness
         public YearTally Tally { get; }
     }
 
+    /// <summary>A village's numbers over a run: where it started, where it is, and the fewest and most in between.</summary>
+    public readonly struct VillageRange
+    {
+        public VillageRange(EntityId village, int first, int last, int low, int high)
+        {
+            Village = village;
+            First = first;
+            Last = last;
+            Low = low;
+            High = high;
+        }
+
+        public EntityId Village { get; }
+
+        public int First { get; }
+
+        public int Last { get; }
+
+        public int Low { get; }
+
+        public int High { get; }
+    }
+
     /// <summary>A village that died out, and the first year that ended with nobody in it.</summary>
     public readonly struct DieOut
     {
@@ -471,16 +550,21 @@ namespace KingdomWatch.Harness
     {
         private readonly VillageYear[] _villages;
 
+        /// <summary>
+        /// A year of these villages. The array is copied: the year owns its
+        /// villages, so editing the caller's array afterwards changes nothing.
+        /// </summary>
         public YearSummary(long year, VillageYear[] villages)
         {
             Year = year;
-            _villages = villages ?? throw new ArgumentNullException(nameof(villages));
+            _villages = (VillageYear[])(villages ?? throw new ArgumentNullException(nameof(villages))).Clone();
+            Villages = Array.AsReadOnly(_villages);
         }
 
         public long Year { get; }
 
         /// <summary>Every village the run has seen by this year's end, in the run's order.</summary>
-        public IReadOnlyList<VillageYear> Villages => Array.AsReadOnly(_villages);
+        public IReadOnlyList<VillageYear> Villages { get; }
 
         /// <summary>Every village's births and deaths this year.</summary>
         public YearTally Tally

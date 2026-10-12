@@ -172,27 +172,8 @@ namespace KingdomWatch.Harness
 
             for (var v = 0; v < villages.Count; v++)
             {
-                var village = villages[v].Village;
-                var first = 0;
-
-                for (var f = 0; f < run.Founding.Count; f++)
-                {
-                    if (run.Founding[f].Village == village)
-                    {
-                        first = run.Founding[f].Living;
-                    }
-                }
-
-                int low = first, high = first;
-
-                for (var y = 0; y < run.Years.Count; y++)
-                {
-                    var living = run.Years[y].Of(village).Living;
-                    low = Math.Min(low, living);
-                    high = Math.Max(high, living);
-                }
-
-                parts.Add($"{village} {first}->{villages[v].Living} [{low}..{high}]");
+                var range = run.RangeOf(villages[v].Village);
+                parts.Add($"{range.Village} {range.First}->{range.Last} [{range.Low}..{range.High}]");
             }
 
             return string.Join(", ", parts);
