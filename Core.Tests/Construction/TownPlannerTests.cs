@@ -145,6 +145,239 @@ namespace KingdomWatch.Core.Tests.Construction
             grid.Contains(at) && (grid.RoadAt(at) != RoadGrade.None || Chebyshev(at, BuildingsWorld.Centre) <= Buildings.CampYardRadius);
 
         [Test]
+        public void A_field_s_lane_leaves_from_its_cheapest_side_not_the_one_nearest_a_road()
+        {
+            // #169. The pocket's east side is four cells from the barn's door
+            // as the crow flies, but walled off from it: its only way out is
+            // eleven cells round to the house's lane. Its south side is five
+            // from a road, straight down. The east side used to be tried first
+            // and kept, its lane running down the field's own flank.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketSouthCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketWest), "the only plains a field fits");
+                Assert.That(field.Lane, Is.EqualTo(PocketSouthCorridor), "the short lane south");
+            });
+        }
+
+        [Test]
+        public void A_field_s_lane_leaves_from_its_cheapest_side_whichever_side_is_tried_first()
+        {
+            // Sides are tried south first; here the south lane winds thirteen
+            // cells out to a road and the east one eleven, so the east wins.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketSouthLongCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketWest));
+                Assert.That(field.Lane, Is.EqualTo(PocketEastCorridor));
+            });
+        }
+
+        [Test]
+        public void A_field_goes_where_its_real_lane_is_short_not_where_a_road_only_looks_near()
+        {
+            // #169. Two pockets. The one by the barn scores better as the crow
+            // flies - four cells from the barn's door - but its lane has to run
+            // eleven cells round; the one in the corner looks six from a road
+            // and its lane is eight. Joined and rescored, the corner wins.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketCorner, PocketCornerCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketCorner));
+                Assert.That(field.Lane, Is.EqualTo(PocketCornerCorridor));
+            });
+        }
+
+        [Test]
+        public void A_field_keeps_the_site_by_the_barn_when_the_other_s_lane_runs_further_still()
+        {
+            // The same two pockets, the corner's lane now thirteen cells: worse
+            // than the eleven by the barn once both are rescored, so the site
+            // that scored best as the crow flies keeps it.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketCorner, PocketCornerLongCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketWest));
+                Assert.That(field.Lane, Is.EqualTo(PocketEastCorridor));
+            });
+        }
+
+        [Test]
+        public void A_field_whose_only_site_needs_a_long_lane_is_still_laid_out()
+        {
+            // A long lane makes a site worse, never refused: a barn with only
+            // such ground left still gets its field, and the village its grain.
+            var w = PocketWorld(PocketWest, PocketEastCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketWest));
+                Assert.That(field.Lane, Is.EqualTo(PocketEastCorridor));
+            });
+        }
+
+        [Test]
+        public void A_field_with_no_side_a_lane_can_leave_from_is_not_laid_out()
+        {
+            // The pocket alone, rocks on every side of it: nowhere for a lane
+            // to start, however near the barn's door it looks.
+            var w = PocketWorld(PocketWest);
+
+            w.Dawn();
+
+            Assert.That(w.Buildings.All.Where(b => b.Kind == BuildingKind.Field), Is.Empty);
+        }
+
+        [Test]
+        public void A_field_s_lane_never_runs_along_another_of_its_sides()
+        {
+            // What a lane round its own field looks like from outside: cells
+            // beside the field on more than the side it left from.
+            var w = BuildVillage();
+            var fields = w.Buildings.All.Where(b => b.Kind == BuildingKind.Field && b.Lane.Count > 0).ToList();
+            Assert.That(fields, Is.Not.Empty, "fields with lanes to check");
+
+            foreach (var field in fields)
+            {
+                var start = SideOf(field, field.Lane[0]);
+
+                foreach (var at in field.Lane.Where(at => Beside(field, at)))
+                {
+                    Assert.That(SideOf(field, at), Is.EqualTo(start), field + "'s lane at " + at);
+                }
+            }
+        }
+
+        // Which side of a footprint a cell beside it is on: 0 north, 1 south,
+        // 2 west, 3 east.
+        private static int SideOf(Building building, WorldPosition at) =>
+            at.Y < building.Anchor.Y ? 0
+            : at.Y >= building.Anchor.Y + building.Height ? 1
+            : at.X < building.Anchor.X ? 2
+            : 3;
+
+        // The pocket worlds (#169) start as the usual village's first house
+        // and barn - the barn at (5, 4), its door's lane east and down to
+        // the house's at (14, 9..17) - then turn every other cell to rocks,
+        // which a field cannot stand on and a lane cannot cross, and carve
+        // back the cells given: a 5x5 pocket at an anchor, or a corridor
+        // ending on a road. Only a pocket fits a field.
+        private static readonly WorldPosition PocketWest = new WorldPosition(2, 11);
+
+        private static readonly WorldPosition PocketCorner = new WorldPosition(0, 0);
+
+        // From the west pocket's east side round to the house's lane at (14, 17).
+        private static readonly WorldPosition[] PocketEastCorridor = Line((7, 13), (7, 17)).Concat(Line((8, 17), (13, 17))).ToArray();
+
+        // From the west pocket's south side straight down to a road at (4, 21).
+        private static readonly WorldPosition[] PocketSouthCorridor = Line((4, 16), (4, 20)).ToArray();
+
+        // From the west pocket's south side down and west to a road at (0, 25).
+        private static readonly WorldPosition[] PocketSouthLongCorridor = Line((4, 16), (4, 22)).Concat(Line((3, 22), (0, 22))).Concat(Line((0, 23), (0, 24))).ToArray();
+
+        // From the corner pocket's south side down and west to a road at (0, 11).
+        private static readonly WorldPosition[] PocketCornerCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 10))).ToArray();
+
+        // The same, carried on down the west edge to a road at (0, 16).
+        private static readonly WorldPosition[] PocketCornerLongCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 15))).ToArray();
+
+        private static BuildingsWorld PocketWorld(params object[] carve)
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            Assert.That(barn.Kind, Is.EqualTo(BuildingKind.Barn));
+            Assert.That(barn.Anchor, Is.EqualTo(new WorldPosition(5, 4)), "the barn the pockets are drawn round");
+            var grid = w.World.Grid;
+
+            for (var y = 0; y < BuildingsWorld.Size; y++)
+            {
+                for (var x = 0; x < BuildingsWorld.Size; x++)
+                {
+                    var at = new WorldPosition(x, y);
+
+                    if (grid.RoadAt(at) == RoadGrade.None && w.Buildings.At(at) is null)
+                    {
+                        grid.Set(at, TerrainKind.Rocks);
+                    }
+                }
+            }
+
+            foreach (var piece in carve)
+            {
+                if (piece is WorldPosition anchor)
+                {
+                    for (var dy = 0; dy < 5; dy++)
+                    {
+                        for (var dx = 0; dx < 5; dx++)
+                        {
+                            grid.Set(new WorldPosition(anchor.X + dx, anchor.Y + dy), TerrainKind.Plains);
+                        }
+                    }
+                }
+                else
+                {
+                    var corridor = (WorldPosition[])piece;
+
+                    foreach (var at in corridor)
+                    {
+                        grid.Set(at, TerrainKind.Plains);
+                    }
+
+                    // The road it ends on, one step on from its last cell,
+                    // unless that is road already.
+                    var last = corridor[corridor.Length - 1];
+                    var before = corridor.Length > 1 ? corridor[corridor.Length - 2] : last;
+                    var end = new WorldPosition(last.X + (last.X - before.X), last.Y + (last.Y - before.Y));
+
+                    if (grid.RoadAt(end) == RoadGrade.None)
+                    {
+                        grid.Set(end, TerrainKind.Plains);
+                        grid.SetRoad(end, RoadGrade.Track);
+                    }
+                }
+            }
+
+            return w;
+        }
+
+        // The cells from one end to the other along a row or a column.
+        private static IEnumerable<WorldPosition> Line((int X, int Y) from, (int X, int Y) to)
+        {
+            var steps = Math.Max(Math.Abs(to.X - from.X), Math.Abs(to.Y - from.Y));
+
+            for (var i = 0; i <= steps; i++)
+            {
+                yield return new WorldPosition(from.X + (Math.Sign(to.X - from.X) * i), from.Y + (Math.Sign(to.Y - from.Y) * i));
+            }
+        }
+
+        [Test]
         public void Barns_stand_further_out_than_the_houses_before_them()
         {
             var w = BuildVillage();
