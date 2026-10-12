@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Needs;
@@ -171,14 +172,14 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToForest));
             Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack), "the way home enters plains and the scrub camp");
 
-            band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodCap);
+            band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodReserve);
             w.Advance(SimulationTime.TicksPerDay);
-            Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.StoneGatherer), "wood capped, stone short");
+            Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.StoneGatherer), "wood stocked, stone short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.StoneGatherer), Is.EqualTo(WorkWorld.RocksCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToRocks));
             Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack));
 
-            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
+            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone);
             w.Advance(SimulationTime.TicksPerDay);
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.None), "everything covered: labour surplus");
             Assert.That(w.Jobs.HasTask(adult), Is.False);
@@ -188,7 +189,7 @@ namespace KingdomWatch.Core.Tests.Work
         public void A_worker_takes_the_store_furthest_below_its_target_not_the_first_that_is_short()
         {
             // Summer, one person in no household: food's target is ten days
-            // plus a winter, 3 * 40 = 120, and wood's is the cap plus thirty
+            // plus a winter, 3 * 40 = 120, and wood's is the reserve plus thirty
             // fires. Food at 108 is a tenth short; an empty woodpile is all
             // of it. Strict priority sent every hand to food until food was
             // full, which is how a settlement short of food all year froze
@@ -196,7 +197,7 @@ namespace KingdomWatch.Core.Tests.Work
             var w = new WorkWorld();
             w.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerSeason));
             var band = w.NewBand(WorkWorld.Camp, 108);
-            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
+            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone);
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
@@ -210,7 +211,7 @@ namespace KingdomWatch.Core.Tests.Work
             var w = new WorkWorld();
             w.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerSeason));
             var band = w.NewBand(WorkWorld.Camp, 0);
-            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
+            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone);
             var adults = w.JoinAdults(band, 6);
 
             w.AdvanceToDawn();
@@ -267,18 +268,81 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.People.GetJob(first), Is.EqualTo(expected));
         }
 
-        [TestCase(0L, 0, JobKind.None, TestName = "In spring the woodpile stops at the cap")]
+        [TestCase(Storage.BaseFood - 1, JobKind.Forager, TestName = "Foragers fill the Food to its capacity")]
+        [TestCase(Storage.BaseFood, JobKind.None, TestName = "Foragers stop at the Food's capacity however much more is wanted")]
+        public void The_food_target_is_held_to_the_capacity(int food, JobKind expected)
+        {
+            // Twenty people in summer want 800 meals; the Food holds 500 (#98).
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerSeason));
+            var band = w.NewBand(WorkWorld.Camp, food);
+            WorkWorld.FillWoodAndStone(band);
+            var adults = w.JoinAdults(band, 20);
+
+            w.AdvanceToDawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Jobs.FoodWant(adults.Count, SimulationTime.DaysPerSeason), Is.GreaterThan(Storage.BaseFood));
+                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(expected));
+            });
+        }
+
+        [Test]
+        public void The_wants_count_the_people_hearths_and_winter_and_refuse_what_cannot_be()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(Jobs.FoodWant(0, 0L), Is.Zero);
+                Assert.That(Jobs.FoodWant(20, SimulationTime.DaysPerSeason), Is.EqualTo(20L * (Jobs.FoodTargetDays + SimulationTime.DaysPerSeason)));
+                Assert.That(Jobs.FoodWant(int.MaxValue, SimulationTime.DaysPerSeason), Is.EqualTo((long)int.MaxValue * (Jobs.FoodTargetDays + SimulationTime.DaysPerSeason)), "no int overflow");
+                Assert.That(Jobs.WoodWant(0, SimulationTime.DaysPerSeason), Is.EqualTo(Jobs.WoodReserve));
+                Assert.That(Jobs.WoodWant(3, 10L), Is.EqualTo(Jobs.WoodReserve + (3L * Warmth.FuelPerFire * 10L)));
+                Assert.That(() => Jobs.FoodWant(-1, 0L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Jobs.FoodWant(1, -1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Jobs.FoodWant(1, SimulationTime.DaysPerSeason + 1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Jobs.WoodWant(-1, 0L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Jobs.WoodWant(1, -1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => Jobs.WoodWant(1, SimulationTime.DaysPerSeason + 1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void A_trip_home_to_a_store_already_full_is_lost()
+        {
+            // Foragers sent for a store with room come home to one the test
+            // filled while they were out: what does not fit is lost (#98).
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(SimulationTime.DaysPerSeason));
+            var band = w.NewBand(WorkWorld.Camp, 400);
+            WorkWorld.FillWoodAndStone(band);
+            var adults = w.JoinAdults(band, 20);
+            w.AdvanceToDawn();
+            Assume.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Forager));
+
+            band.SharedSupplies.Gather(ResourceKind.Food, 2 * Storage.BaseFood);
+            w.Advance(SimulationTime.TicksPerDay / 2);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.LessThanOrEqualTo(Storage.BaseFood));
+                Assert.That(band.SharedSupplies.Flows(ResourceKind.Food).Destroyed, Is.GreaterThan(0L));
+                Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
+            });
+        }
+
+        [TestCase(0L, 0, JobKind.None, TestName = "In spring the woodpile stops at the reserve")]
         [TestCase(30L, 0, JobKind.Woodcutter, TestName = "From summer the woodpile also holds a winter of fires")]
-        [TestCase(30L, 30, JobKind.None, TestName = "A winter of fires on top of the cap is enough")]
+        [TestCase(30L, 30, JobKind.None, TestName = "A winter of fires on top of the reserve is enough")]
         public void From_summer_the_wood_target_carries_a_winter_of_fires(long startDay, int beyondCap, JobKind expected)
         {
             // One person in no household: one communal fire, so a winter is
-            // thirty fires' worth of wood on top of the cap.
+            // thirty fires' worth of wood on top of the reserve.
             var w = new WorkWorld();
             w.AdvanceTo(SimulationTime.FromDays(startDay));
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             WorkWorld.FillStone(band);
-            band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodCap + (beyondCap * Warmth.FuelPerFire));
+            band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodReserve + (beyondCap * Warmth.FuelPerFire));
             var adult = w.Join(band, 30L);
 
             w.AdvanceToDawn();
@@ -1226,9 +1290,12 @@ namespace KingdomWatch.Core.Tests.Work
         {
             var w = new WorkWorld(5UL, WorkWorld.DefaultMap());
             WorkWorld.NeverRunsOut(w.Land);
-            var band = w.NewBand(WorkWorld.Camp, 30 * Hunger.DailyRation);
+            // Twelve: the most whose winter the base Food capacity holds
+            // (#98), so the band is never short of room.
+            const int size = 12;
+            var band = w.NewBand(WorkWorld.Camp, size * Hunger.DailyRation);
 
-            for (var i = 0; i < 30; i++)
+            for (var i = 0; i < size; i++)
             {
                 // Half adults, the rest spread across the other stages.
                 var age = i % 2 == 0 ? 20L + i : new[] { 1L, 6L, 13L, 60L }[i / 2 % 4];
@@ -1242,7 +1309,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.Count(DomainEventKind.FamineStarted), Is.Zero, "nobody went unfed");
                 Assert.That(band.SharedSupplies.Flows(ResourceKind.Food).Gathered, Is.GreaterThan(0L));
                 Assert.That(band.SharedSupplies.Flows(ResourceKind.Wood).Gathered, Is.GreaterThan(0L), "the surplus went to wood");
-                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.LessThanOrEqualTo(Jobs.WoodCap + PrimitiveTier.GatherWood.Outputs[0].Quantity * 30), "and stopped near the cap");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.LessThanOrEqualTo(Storage.BaseWood), "and stopped at the capacity");
                 Assert.That(band.SharedSupplies.AuditBalances(), Is.True);
                 Assert.That(w.Hunger.IsInFamine(band), Is.False);
                 Assert.That(
@@ -1277,14 +1344,14 @@ namespace KingdomWatch.Core.Tests.Work
         // The band's counts (#83). They used to be rebuilt by walking every
         // member on every pick; now the dawn pass builds them and the three
         // places a task slot changes keep the on-duty half exact. Each test
-        // below sits the wood stock one gather either side of the cap, so a
+        // below sits the wood stock one gather either side of the reserve, so a
         // count that is off by one task flips the job that gets picked.
         // ---------------------------------------------------------------
 
         [Test]
         public void A_starting_task_counts_against_the_cap_at_once()
         {
-            // 198 wood and a cap of 200: the first cutter is wanted, and the
+            // 198 wood and a reserve of 200: the first cutter is wanted, and the
             // two his trip will bring home fill the store, so the second is
             // not. Were a started task not counted until it delivered, both
             // would cut and the band would overshoot.
@@ -1298,8 +1365,8 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Woodcutter), "198 + nothing on its way = under the cap");
-                Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.None), "198 + his two = the cap, so wood is done");
+                Assert.That(w.People.GetJob(adults[0]), Is.EqualTo(JobKind.Woodcutter), "198 + nothing on its way = under the reserve");
+                Assert.That(w.People.GetJob(adults[1]), Is.EqualTo(JobKind.None), "198 + his two = the reserve, so wood is done");
             });
         }
 
@@ -1308,7 +1375,7 @@ namespace KingdomWatch.Core.Tests.Work
         {
             // 196 wood, one cutter. He delivers two and picks again: 198 in
             // store with nothing on its way is the same expectation as 196
-            // with his trip out, and still under the cap, so he cuts again.
+            // with his trip out, and still under the reserve, so he cuts again.
             // A task counted both in the store and on the road would read 200
             // and send him to the rocks.
             var w = new WorkWorld();
@@ -1318,7 +1385,7 @@ namespace KingdomWatch.Core.Tests.Work
             var cutter = w.Join(band, 30L);
 
             w.AdvanceToDawn();
-            Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "196 is under the cap");
+            Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter), "196 is under the reserve");
 
             w.AdvanceTo(w.Jobs.TaskOf(cutter).End);
 
@@ -1341,7 +1408,7 @@ namespace KingdomWatch.Core.Tests.Work
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
             band.SharedSupplies.Gather(ResourceKind.Wood, 198);
-            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap - 1);
+            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone - 1);
             var cutter = w.Join(band, 30L);
             var gatherer = w.Join(band, 31L);
 
@@ -1360,7 +1427,7 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.Multiple(() =>
             {
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(198L), "the dead deliver nothing");
-                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "198 and nobody cutting is under the cap again");
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "198 and nobody cutting is under the reserve again");
             });
         }
 

@@ -27,8 +27,8 @@ namespace KingdomWatch.Core.Tests.Construction
         {
             var w = new BuildingsWorld(people: 20);
             w.World.Jobs.Track(w.Settlement);
-            w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
-            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
+            w.Wood(KingdomWatch.Core.Work.Jobs.WoodReserve + 2000);
+            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
             w.Stores.Gather(ResourceKind.Food, w.Living * 60);
             settlement = w.Settlement;
             return w.World;
@@ -366,8 +366,8 @@ namespace KingdomWatch.Core.Tests.Construction
 
                 grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
-            w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
-            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
+            w.Wood(KingdomWatch.Core.Work.Jobs.WoodReserve + 2000);
+            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
             w.Dawn();
             var house = w.Buildings.All.Single();
             Assert.That(house.ClearTicks, Is.GreaterThan(0L));
@@ -420,8 +420,8 @@ namespace KingdomWatch.Core.Tests.Construction
 
                 grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
             });
-            w.Wood(KingdomWatch.Core.Work.Jobs.WoodCap + 2000);
-            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Work.Jobs.StoneCap);
+            w.Wood(KingdomWatch.Core.Work.Jobs.WoodReserve + 2000);
+            w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
             // Bushes that never run out: only the reservation can move a
             // forager off the site found at dawn.
             w.World.Land.BushPicks = LandCover.MaxClaims;

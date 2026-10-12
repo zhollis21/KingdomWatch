@@ -36,6 +36,16 @@ namespace KingdomWatch.Core.Construction
     /// barn needs. One building goes up at a time, so a settlement never
     /// spreads its hands across half-finished work.
     ///
+    /// **Storage** (#98). A store that is full - within a tenth of its
+    /// capacity (<see cref="CapacityOf"/>, <see cref="Storage.IsFull"/>) -
+    /// while more is wanted going into a winter is demand for the building
+    /// that holds more of it: a Granary, once there is a barn, for Food or
+    /// for Grain, which Farmers stop at; a Woodshed, once there is a house,
+    /// for Wood. A hungry village whose stores are full
+    /// builds a Granary rather than more farmland; otherwise a Woodshed
+    /// comes before a Granary, and both before houses. Storage is built from
+    /// any wood in stock, the winter's fuel included.
+    ///
     /// **The work competes with gathering.** An approved building's
     /// unclaimed hours, and each field's unclaimed hours today, are needs
     /// <see cref="Jobs"/> ranks against food, wood and stone by the same
@@ -643,6 +653,33 @@ namespace KingdomWatch.Core.Construction
         public IReadOnlyList<StoreTrend> StoreTrends => _trendsView;
 
         /// <summary>
+        /// How much of a kind a community can hold (#98): the
+        /// <see cref="Storage"/> base, plus what each of its finished storage
+        /// buildings adds. A band has no buildings, so it has the base.
+        /// </summary>
+        public long CapacityOf(EntityId community, ResourceKind kind)
+        {
+            long capacity = Storage.BaseOf(kind);
+
+            if (community.Kind != EntityKind.Settlement)
+            {
+                return capacity;
+            }
+
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var building = _all[i];
+
+                if (building.Settlement == community && building.IsComplete)
+                {
+                    capacity += Storage.AddedBy(building.Kind, kind);
+                }
+            }
+
+            return capacity;
+        }
+
+        /// <summary>
         /// Whether a settlement has a home for a new household: a finished
         /// house nobody lives in, and no household of its own still in a
         /// tent - those are housed first, oldest first (#69).
@@ -763,7 +800,9 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// The settlement's first field with today's hours unclaimed, and how
         /// short all its fields are today: what <see cref="Jobs"/> ranks a
-        /// Farmer by. Nothing in winter.
+        /// Farmer by. Nothing in winter, nor while the Grain is at capacity:
+        /// the fields stand idle rather than grow a crop with nowhere to keep
+        /// it (#98).
         /// </summary>
         public bool TryFieldWork(EntityId settlement, [NotNullWhen(true)] out Building? field, out long shortBy, out long target)
         {
@@ -795,6 +834,13 @@ namespace KingdomWatch.Core.Construction
                     shortBy += left;
                     field ??= candidate;
                 }
+            }
+
+            if (field is object && CampOf(settlement).SharedSupplies.Available(ResourceKind.Grain) >= CapacityOf(settlement, ResourceKind.Grain))
+            {
+                field = null;
+                shortBy = 0L;
+                target = 0L;
             }
 
             return field is object;
@@ -982,6 +1028,7 @@ namespace KingdomWatch.Core.Construction
             if (field.Stage == FieldStage.Harvesting)
             {
                 stores.Gather(ResourceKind.Grain, GrainPerHarvestDay);
+                Storage.Spill(stores, ResourceKind.Grain, CapacityOf(field.Settlement, ResourceKind.Grain));
             }
 
             field.DaysDone++;
@@ -1036,11 +1083,13 @@ namespace KingdomWatch.Core.Construction
             if (building.ClearCuts > 0)
             {
                 stores.Gather(ResourceKind.Wood, building.ClearCuts * WoodPerCut);
+                Storage.Spill(stores, ResourceKind.Wood, CapacityOf(building.Settlement, ResourceKind.Wood));
             }
 
             if (building.ClearRocks > 0)
             {
                 stores.Gather(ResourceKind.Stone, building.ClearRocks * StonePerRock);
+                Storage.Spill(stores, ResourceKind.Stone, CapacityOf(building.Settlement, ResourceKind.Stone));
             }
         }
 
@@ -1217,6 +1266,7 @@ namespace KingdomWatch.Core.Construction
         {
             var barnWithRoom = false;
             var hasHouse = false;
+            var hasBarn = false;
 
             for (var i = 0; i < _all.Count; i++)
             {
@@ -1234,6 +1284,7 @@ namespace KingdomWatch.Core.Construction
                 }
 
                 hasHouse |= standing.Kind == BuildingKind.House;
+                hasBarn |= standing.Kind == BuildingKind.Barn;
 
                 barnWithRoom |= standing.Kind == BuildingKind.Barn && FieldsOf(standing) < FieldsPerBarn;
             }
@@ -1243,7 +1294,21 @@ namespace KingdomWatch.Core.Construction
             Building? barn = null;
             var known = _knownMaps.For(settlement.Id);
 
-            if (hasHouse && IsFoodShort(settlement, living))
+            var foodShort = hasHouse && IsFoodShort(settlement, living);
+            var wantsGranary = hasBarn && WantsGranary(settlement, living, foodShort);
+
+            // Food short with the stores full: more farmland cannot help, a
+            // Granary can (#98).
+            if (foodShort && wantsGranary)
+            {
+                kind = BuildingKind.Granary;
+
+                if (!TryPlaceStorage(settlement, kind, known, out anchor))
+                {
+                    return;
+                }
+            }
+            else if (foodShort)
             {
                 if (barnWithRoom && !CanAfford(settlement, BuildingKind.Field))
                 {
@@ -1268,6 +1333,24 @@ namespace KingdomWatch.Core.Construction
                     {
                         return;
                     }
+                }
+            }
+            else if (hasHouse && WantsWoodshed(settlement))
+            {
+                kind = BuildingKind.Woodshed;
+
+                if (!TryPlaceStorage(settlement, kind, known, out anchor))
+                {
+                    return;
+                }
+            }
+            else if (wantsGranary)
+            {
+                kind = BuildingKind.Granary;
+
+                if (!TryPlaceStorage(settlement, kind, known, out anchor))
+                {
+                    return;
                 }
             }
             else if (TryFirstUnhoused(settlement, out _) || WantsSpareHouse(settlement))
@@ -1346,6 +1429,53 @@ namespace KingdomWatch.Core.Construction
 
             return _skills.BestIn(settlement, spec.Skill) >= spec.MinimumTier
                 && settlement.SharedSupplies.Available(ResourceKind.Wood) - winterFuel >= spec.Wood;
+        }
+
+        // Storage is built with any wood in stock, the winter's fuel included:
+        // a village that cannot hold its winter's fuel is what a Woodshed is
+        // for, and it could otherwise never afford one (#98).
+        private bool TryPlaceStorage(ICommunity settlement, BuildingKind kind, ReadOnlySpan<bool> known, out WorldPosition anchor)
+        {
+            var spec = BuildingTable.Of(kind);
+            anchor = default;
+
+            return _skills.BestIn(settlement, spec.Skill) >= spec.MinimumTier
+                && settlement.SharedSupplies.Available(ResourceKind.Wood) >= spec.Wood
+                && TryPlace(kind, settlement.Position, settlement.Position, known, settlement.Id, out anchor);
+        }
+
+        // Whether Foragers or Farmers are stopping short for want of room
+        // (#98): the Food is full (Storage.IsFull) and the food wanted going
+        // into a winter, less the Grain in store, is more than it holds; or
+        // the Grain is full while food is short. Grain has no want of its
+        // own - Farmers fill whatever room there is - so a full Grain store in
+        // a fed village wants nothing; counted, it built Granary after
+        // Granary for Farmers to fill. A store with room is not short of it,
+        // however much is wanted.
+        private bool WantsGranary(ICommunity settlement, int living, bool foodShort)
+        {
+            var stores = settlement.SharedSupplies;
+            var grain = stores.Available(ResourceKind.Grain);
+            var food = CapacityOf(settlement.Id, ResourceKind.Food);
+            var wanted = Jobs.FoodWant(living, SimulationTime.DaysPerSeason) - ((long)grain * PrimitiveTier.MealsPerGrain);
+
+            return (Storage.IsFull(stores.Available(ResourceKind.Food), food) && wanted > food)
+                || (foodShort && Storage.IsFull(grain, CapacityOf(settlement.Id, ResourceKind.Grain)));
+        }
+
+        // Whether Woodcutters are stopping short for want of room (#98): the
+        // Wood is full, and the wood wanted going into a winter is more.
+        private bool WantsWoodshed(ICommunity settlement)
+        {
+            var capacity = CapacityOf(settlement.Id, ResourceKind.Wood);
+
+            if (!Storage.IsFull(settlement.SharedSupplies.Available(ResourceKind.Wood), capacity))
+            {
+                return false;
+            }
+
+            var hearths = Warmth.CountHearths(settlement.Members, _people, _scratchHearths);
+            return Jobs.WoodWant(hearths, SimulationTime.DaysPerSeason) > capacity;
         }
 
         // The next field and the barn it belongs to: the first of the

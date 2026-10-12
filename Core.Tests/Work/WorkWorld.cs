@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
+using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Knowledge;
@@ -225,16 +226,16 @@ namespace KingdomWatch.Core.Tests.Work
         internal static int PlentifulFood(int members) => members * Hunger.DailyRation * (Jobs.FoodTargetDays + 100);
 
         // Wood enough that no season's woodpile target is ever reached for:
-        // Jobs.WoodCap plus a winter of fires for more hearths than any
+        // Jobs.WoodReserve plus a winter of fires for more hearths than any
         // fixture holds. For the fixtures whose subject is not the cold.
-        internal const int PlentifulWood = Jobs.WoodCap + (100 * Warmth.FuelPerFire * (int)SimulationTime.DaysPerSeason);
+        internal const int PlentifulWood = Jobs.WoodReserve + (100 * Warmth.FuelPerFire * (int)SimulationTime.DaysPerSeason);
 
         // Fills the stores a fixture is not about, so that the one it is about
         // is the only one short: a worker takes the store furthest below its
         // target, so an empty store the test never mentions would compete.
         internal static void FillWood(MobileGroup band) => band.SharedSupplies.Gather(ResourceKind.Wood, PlentifulWood);
 
-        internal static void FillStone(MobileGroup band) => band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneCap);
+        internal static void FillStone(MobileGroup band) => band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone);
 
         internal static void FillWoodAndStone(MobileGroup band)
         {

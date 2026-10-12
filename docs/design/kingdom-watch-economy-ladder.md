@@ -309,14 +309,31 @@ for a bundle of resources or items (§5). None of them produce anything.
 The same five gates apply. Labour surplus is the same per-settlement
 condition as above; demand is specific to storage — the building's bundle
 sitting at capacity, so the workers who make it keep stopping early (§5).
+Two differences, both from #98: "at capacity" means within a tenth of it,
+so a night's eating before the dawn check doesn't hide it; and storage is
+built from any wood in stock, the winter's fuel included, since a
+woodpile too small for the winter is exactly what a Woodshed answers.
 
 | Building | Min skill | Inputs | Prerequisite | Raises capacity for |
 |---|---|---|---|---|
-| Granary | Apprentice construction | Wood | a barn | Food, Grain |
-| Woodshed | Apprentice construction | Wood | a house | Wood, Charcoal |
+| Granary | Apprentice construction (Novice until #22) | Wood | a barn | Food, Grain |
+| Woodshed | Apprentice construction (Novice until #22) | Wood | a house | Wood, Charcoal |
 | Stoneyard | Apprentice construction | Wood | a house | Stone, Ore |
 | Vault | Journeyman construction | Stone | a smeltery or a smithy | Metal, Tools |
 | Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
+
+#98 built the Granary and the Woodshed. The Stoneyard waits for #166,
+which gives Stone a use, since nothing consumes Stone yet; the Vault and
+the Armory wait for the kinds they hold (#37, #99).
+
+A Granary is wanted when the Food is full and the food wanted going into a
+winter, less the Grain in store, is more than it holds; or when the Grain
+is full while the village is short of food. In that case it comes before
+more farmland, since more fields can't help a village with nowhere to put
+the crop. Grain has no want of its own (Farmers fill whatever room there
+is), so a full Grain store in a fed village wants nothing. A Woodshed is
+wanted when the Wood is full and the wood wanted going into a winter is
+more. Otherwise the planner goes Woodshed, then Granary, then houses.
 
 The Vault and the Armory are built in Stone because they hold the most
 costly thing a settlement makes. Like the smeltery and the smithy, they are
@@ -349,19 +366,29 @@ Every resource and item kind has a capacity. A base amount is always free —
 held by the band or settlement itself, at the Town Hall/Fort/Castle once one
 exists — and each storage building in §4 raises it further for its bundle.
 
-This generalizes something that already exists rather than inventing
-something new: `Core/Work/Jobs.cs:165,168` has `WoodCap = 200` and
-`StoneCap = 100` today — flat, per-band constants that tell a Woodcutter or
-StoneGatherer to stop gathering once the band's expected stock would reach
-them (for wood, since #53, plus a winter's fuel from summer on). That is a real cap, just an ad-hoc, unbuildable one covering two
-resources. The system here replaces two special-cased numbers with one
-principled rule covering every kind.
+This generalized something that already existed. Before #98, `Jobs` had
+`WoodCap = 200` and `StoneCap = 100`: flat per-band constants that told a
+Woodcutter or StoneGatherer to stop gathering once the band's expected stock
+would reach them. That was a real cap, just an ad-hoc, unbuildable one
+covering two resources. #98 replaced both with one rule for every kind
+(`Core/Construction/Storage.cs`).
 
-**Overflow: workers idle, nothing is wasted.** Exactly what `WoodCap` and
-`StoneCap` already do — a worker stops gathering or crafting once the
-settlement's expected stock of that kind would hit its capacity. Nobody's
-work is lost; they simply stop early and (per the plan's §12 job-assignment loop) pick
-up whatever else is needed instead.
+**Wants, held to capacity.** Each store has a want: food for ten days plus
+the winter ahead; `Jobs.WoodReserve` (200) of wood plus the winter's fuel;
+stone as much as there is room for. Workers aim for the lesser of the want
+and the capacity, counting what's on its way home. Farmers stop once the
+Grain is full, and the fields stand idle.
+
+**Overflow is lost.** Whatever still arrives past capacity is destroyed,
+through the ledger's audited `Destroy`: a harvest day, the timber and rock
+from clearing a site, the last load of a trip. This reverses the original
+"nothing is wasted" rule (decided at #98's kickoff). Since workers stop
+early, the losses are small, and a harvest is lost only when the Grain
+fills mid-crop.
+
+**Bands too.** A band has the same base as a village and can't build, so a
+band of more than about twelve can't hold its winter's food. That pushes
+bands toward settling.
 
 **No spoilage, anywhere.** Capacity is the only supply-side constraint. Food
 and Grain sit in stock exactly as gathered until eaten or the cap fills up;
@@ -369,10 +396,17 @@ nothing decays while it waits. This corrects the plan's §9 "storage is core —
 granaries, stores, spoilage" line — spoilage turned out not to be the
 mechanism worth building; capacity is.
 
-The exact numbers — how much is free at the Town Hall, how much each storage
-building adds — are not decided here. They are exactly the kind of thing
-`PrimitiveTier`'s quantities already are: placeholders for the harness (#17)
-to tune once there is a world to run them against.
+The numbers #98 set are placeholders for the harness to tune, like
+`PrimitiveTier`'s quantities:
+
+| | Base | Granary adds | Woodshed adds |
+|---|---|---|---|
+| Food | 500 | 500 | |
+| Grain | 100 | 100 | |
+| Wood | 250 | | 250 |
+| Stone | 100 | | |
+
+Both buildings cost 25 wood and take 24 work-hours.
 
 ---
 

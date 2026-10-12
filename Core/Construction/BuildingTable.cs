@@ -65,6 +65,13 @@ namespace KingdomWatch.Core.Construction
         private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 30, 7, 5, 3, 32 * Hour);
         private static readonly BuildingSpec Field = new BuildingSpec(Capability.Farming, SkillTier.Novice, 5, 5, 5, 0, 8 * Hour);
 
+        // The ladder gates storage at Apprentice construction; Novice until
+        // skills exist (#22), so that it is built at all (#98). Sized to the
+        // art's silo, and for a Woodshed to a fenced log yard, whose piles
+        // stand inside the fence and need no clearance, as a field's crop.
+        private static readonly BuildingSpec Granary = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 3, 2, 3, 24 * Hour);
+        private static readonly BuildingSpec Woodshed = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 5, 4, 0, 24 * Hour);
+
         /// <summary>The spec of a kind. Throws for <see cref="BuildingKind.None"/> or an undefined kind.</summary>
         public static BuildingSpec Of(BuildingKind kind)
         {
@@ -76,6 +83,10 @@ namespace KingdomWatch.Core.Construction
                     return Barn;
                 case BuildingKind.Field:
                     return Field;
+                case BuildingKind.Granary:
+                    return Granary;
+                case BuildingKind.Woodshed:
+                    return Woodshed;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a defined BuildingKind, or None.");
             }

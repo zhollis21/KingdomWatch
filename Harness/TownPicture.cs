@@ -148,6 +148,8 @@ namespace KingdomWatch.Harness
                 case BuildingKind.House: return "#b5583a";
                 case BuildingKind.Barn: return "#7b2d26";
                 case BuildingKind.Field: return "#e8c84a";
+                case BuildingKind.Granary: return "#3f7f6a";
+                case BuildingKind.Woodshed: return "#6b4a2b";
                 default: return "#ff00ff";
             }
         }

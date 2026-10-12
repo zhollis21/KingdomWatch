@@ -182,11 +182,12 @@ namespace KingdomWatch.Core.Work
         /// <summary>Foragers are needed while the band's food, counting what is on its way home, covers fewer days than this.</summary>
         public const int FoodTargetDays = 10;
 
-        /// <summary>Woodcutters are needed while the band's wood, counting what is on its way home, is below this.</summary>
-        public const int WoodCap = 200;
-
-        /// <summary>Stone gatherers are needed while the band's stone, counting what is on its way home, is below this.</summary>
-        public const int StoneCap = 100;
+        /// <summary>
+        /// Wood a community keeps on hand over and above the winter's fuel
+        /// (<see cref="WoodWant"/>): what building draws on. Held to the
+        /// capacity, like every store (<see cref="Construction.Storage"/>, #98).
+        /// </summary>
+        public const int WoodReserve = 200;
 
         /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
@@ -826,8 +827,17 @@ namespace KingdomWatch.Core.Work
             if (JobTable.IsGathering(task.Job))
             {
                 // Gathering has no inputs in process, so completing is a Gather;
-                // the ledger tallies it as such.
-                tracked.Group.SharedSupplies.CompleteRecipe(JobTable.Recipe(task.Job, task.Start.Season));
+                // the ledger tallies it as such. The last load to a store
+                // that filled while it was out is partly lost (#98).
+                var recipe = JobTable.Recipe(task.Job, task.Start.Season);
+                var ledger = tracked.Group.SharedSupplies;
+                ledger.CompleteRecipe(recipe);
+
+                for (var i = 0; i < recipe.Outputs.Count; i++)
+                {
+                    var kind = recipe.Outputs[i].Kind;
+                    Storage.Spill(ledger, kind, CapacityOf(tracked, kind));
+                }
             }
             else
             {
@@ -930,7 +940,7 @@ namespace KingdomWatch.Core.Work
             // At least one: the dawn pass counts before anything starts, and
             // a pick follows either that pass - which only offers a living
             // member - or a completion, which only a worker started at that
-            // pass can reach. So the daily draw in TargetOf is never zero.
+            // pass can reach. So the daily draw in WantOf is never zero.
             var living = tracked.Living;
             var chosen = JobKind.None;
             long chosenShort = 0L;
@@ -968,15 +978,20 @@ namespace KingdomWatch.Core.Work
                     continue;
                 }
 
-                var target = TargetOf(tracked, job, living, winterDays);
-                var shortBy = target - Expected(tracked, ledger, ResourceOf(job));
+                // What the store wants, but no more than it can hold (#98).
+                var kind = ResourceOf(job);
+                var want = WantOf(tracked, job, living, winterDays);
+                var capacity = CapacityOf(tracked, kind);
 
                 // Grain is eaten too, milled (#100), so it counts toward the
-                // food a forager would otherwise be sent for.
-                if (job == JobKind.Forager)
-                {
-                    shortBy -= (long)ledger.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain;
-                }
+                // food a forager would otherwise be sent for - but not toward
+                // the room the Food has.
+                var stillWanted = job == JobKind.Forager
+                    ? want - ((long)ledger.Available(ResourceKind.Grain) * PrimitiveTier.MealsPerGrain)
+                    : want;
+
+                var target = Math.Min(want, capacity);
+                var shortBy = Math.Min(stillWanted, capacity) - Expected(tracked, ledger, kind);
 
                 // Needed at all, and strictly further short than the best so
                 // far - compared as fractions by cross-multiplying. Food's
@@ -1099,22 +1114,52 @@ namespace KingdomWatch.Core.Work
             tracked.Hearths = Warmth.CountHearths(members, _people, _hearthScratch);
         }
 
-        // The stock a job's store is worked up to. Living is at least one
+        /// <summary>
+        /// The food a community wants in store, in meals: <see cref="FoodTargetDays"/>
+        /// of eating for those alive, and the winter ahead (<see cref="WinterDaysAhead"/>).
+        /// Grain counts toward it, milled. Refuses a negative count or a
+        /// winter longer than a season.
+        /// </summary>
+        public static long FoodWant(int living, long winterDays) =>
+            (long)Hunger.DailyRation * RequireCount(living, nameof(living)) * (FoodTargetDays + RequireWinter(winterDays));
+
+        /// <summary>
+        /// The wood a community wants in store: <see cref="WoodReserve"/>,
+        /// and fuel for each hearth through the winter ahead. Refuses a
+        /// negative count or a winter longer than a season.
+        /// </summary>
+        public static long WoodWant(int hearths, long winterDays) =>
+            WoodReserve + ((long)RequireCount(hearths, nameof(hearths)) * Warmth.FuelPerFire * RequireWinter(winterDays));
+
+        private static int RequireCount(int count, string name) =>
+            count >= 0 ? count : throw new ArgumentOutOfRangeException(name, count, "Nobody is fewer than nobody.");
+
+        private static long RequireWinter(long days) =>
+            days >= 0L && days <= SimulationTime.DaysPerSeason
+                ? days
+                : throw new ArgumentOutOfRangeException(nameof(days), days, "Between none and a season's " + SimulationTime.DaysPerSeason + " days.");
+
+        // The stock a job's store would be worked up to with room for all of
+        // it; ChooseJob holds it to the capacity. Living is at least one
         // wherever this is reached (see ChooseJob), so food's is never zero.
-        private static long TargetOf(Tracked tracked, JobKind job, int living, long winterDays)
+        // Stone has no use yet, so it is gathered until there is no room.
+        private static long WantOf(Tracked tracked, JobKind job, int living, long winterDays)
         {
             switch (job)
             {
                 case JobKind.Forager:
-                    return (long)Hunger.DailyRation * living * (FoodTargetDays + winterDays);
+                    return FoodWant(living, winterDays);
                 case JobKind.Woodcutter:
-                    return WoodCap + ((long)tracked.Hearths * Warmth.FuelPerFire * winterDays);
+                    return WoodWant(tracked.Hearths, winterDays);
                 case JobKind.StoneGatherer:
-                    return StoneCap;
+                    return long.MaxValue;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
             }
         }
+
+        private long CapacityOf(Tracked tracked, ResourceKind kind) =>
+            _buildings is null ? Storage.BaseOf(kind) : _buildings.CapacityOf(tracked.Group.Id, kind);
 
         private static ResourceKind ResourceOf(JobKind job)
         {
