@@ -6,10 +6,11 @@
 # view until this, and on #98 a change to it was handed back unbuilt.
 #
 # Opens the project headless, which takes a minute or two and cannot run
-# while the Editor has it open: then it says so rather than passing. A
-# failed compile blocks the stop once, with the errors; if it still fails
-# when Claude stops again (stop_hook_active), it lets Claude stop and say so,
-# as build-on-stop.ps1 does.
+# while the Editor has it open or without Unity installed. A failed compile,
+# or one that could not run, blocks the stop once, with the reason; if it
+# still fails when Claude stops again (stop_hook_active), it lets Claude stop
+# and says so, as build-on-stop.ps1 does. A Core that does not build is only
+# reported here: build-on-stop.ps1 blocks on it.
 
 $ErrorActionPreference = 'Stop'
 $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json
@@ -38,11 +39,31 @@ function Say([string]$Message) {
     @{ systemMessage = $Message } | ConvertTo-Json -Compress
 }
 
+# A compile that could not run blocks the first stop, as a failed one does:
+# a message reaches the user but not Claude, whose reply would then hand the
+# change back as checked (#98 review). Stopping again lets it through.
+function Unchecked([string]$Why) {
+    if ($payload.stop_hook_active) {
+        Say "The Unity scripts changed but were not compiled: $Why"
+    }
+    else {
+        @{
+            decision = 'block'
+            reason   = "The Unity scripts changed but were not compiled: $Why Say so when handing back; the view is unchecked."
+        } | ConvertTo-Json -Compress
+    }
+    exit 0
+}
+
 $version = (Select-String -Path (Join-Path $game 'ProjectSettings/ProjectVersion.txt') -Pattern '^m_EditorVersion: (.+)$').Matches[0].Groups[1].Value
 $unity = if ($env:UNITY_EDITOR) { $env:UNITY_EDITOR } else { "C:/Program Files/Unity/Hub/Editor/$version/Editor/Unity.exe" }
 if (-not (Test-Path $unity)) {
-    Say "The Unity scripts changed but were not compiled: Unity $version is not at $unity (install it, or set UNITY_EDITOR)."
-    exit 0
+    Unchecked "Unity $version is not at $unity (install it, or set UNITY_EDITOR)."
+}
+
+Import-Module (Join-Path $root 'tools/UnityPlayer.psm1')
+if (Test-UnityProjectOpen $game) {
+    Unchecked 'the project is open in the Editor. Close it, or check the Console there.'
 }
 
 # Core's build copies the dll Unity compiles against, so the view meets the
@@ -71,11 +92,6 @@ $text = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
 
 if ($process.ExitCode -eq 0) {
     Set-Content -Path $stamp -Value $hash -NoNewline
-    exit 0
-}
-
-if ($text -match 'another Unity instance') {
-    Say 'The Unity scripts changed but were not compiled: the project is open in the Editor. Close it, or check the Console there.'
     exit 0
 }
 

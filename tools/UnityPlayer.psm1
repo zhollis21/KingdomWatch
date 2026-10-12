@@ -27,18 +27,33 @@ function Invoke-Program([string]$Path, [string[]]$Arguments) {
     $process.ExitCode
 }
 
+# Whether a Unity - the Editor, or a headless run - has the project open: it
+# holds Temp/UnityLockfile shut to everyone else while it does. Unity 6
+# writes nothing about it to the log of the run it refuses, only exit 1
+# (#98 review).
+function Test-UnityProjectOpen([string]$Game) {
+    $lock = Join-Path $Game 'Temp/UnityLockfile'
+    if (-not (Test-Path $lock)) { return $false }
+    try {
+        [IO.File]::Open($lock, 'Open', 'ReadWrite', 'None').Dispose()
+        return $false
+    }
+    catch [IO.IOException] {
+        return $true
+    }
+}
+
 # Runs Unity headless against the project and throws, pointing at its log,
 # if it fails.
 function Invoke-Unity([string]$Unity, [string]$Game, [string]$Method, [string]$Log, [string[]]$Extra) {
+    if (Test-UnityProjectOpen $Game) { throw "The project is open in the Editor (or another Unity run); close it first." }
     $arguments = @('-batchmode', '-nographics', '-projectPath', $Game, '-logFile', $Log, '-executeMethod', $Method) + $Extra
     $exitCode = Invoke-Program $Unity $arguments
     if ($exitCode -ne 0) {
         # Unity makes the log's folder itself, but one that dies before
         # writing leaves none, and reading it then would hide the exit code
         # (#135 review).
-        $open = (Test-Path $Log) -and (Select-String -Path $Log -Pattern 'another Unity instance' -Quiet)
-        $hint = if ($open) { ' The project is open in the Editor; close it first.' } else { '' }
-        throw "Unity $Method failed (exit $exitCode); see $Log.$hint"
+        throw "Unity $Method failed (exit $exitCode); see $Log."
     }
 }
 
@@ -63,4 +78,4 @@ function Build-Player([string]$Root, [string]$Game, [string]$Unity) {
     Invoke-Unity $Unity $Game 'KingdomWatch.Game.Editor.DevBuild.Windows' (Join-Path $Game 'Builds/devbuild.log') @('-buildTarget', 'Win64')
 }
 
-Export-ModuleMember -Function Get-UnityEditor, Invoke-Program, Invoke-Unity, Assert-Art, Build-Player
+Export-ModuleMember -Function Get-UnityEditor, Invoke-Program, Test-UnityProjectOpen, Invoke-Unity, Assert-Art, Build-Player
