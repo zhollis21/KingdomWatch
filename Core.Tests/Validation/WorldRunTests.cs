@@ -40,8 +40,9 @@ namespace KingdomWatch.Core.Tests.Validation
         private const int Seeds = 3;
         private const long Years = 60L;
 
-        // No homeland on any seed in the 200-year sweep passes this; most
-        // level off at 40 to 120 (#69).
+        // On 8 seeds no homeland passes 146 by year 75. Villages no longer
+        // level off: by year 200 homelands hold 135 to 603 and are still
+        // growing (#163), so this bounds the test's sixty years only.
         private const int PopulationCeiling = 250;
 
         // Each seed run once for the fixture: the tests over them read the

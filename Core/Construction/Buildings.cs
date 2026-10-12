@@ -26,7 +26,8 @@ namespace KingdomWatch.Core.Construction
     /// section 9 conditions hold: someone with the skill
     /// (<see cref="ISkillSource"/>), the wood in stock over and above the
     /// coming winter's fuel, the buildings it stands on (a barn needs a
-    /// house, a field a barn with room), hands to spare - somebody found
+    /// house, a field a barn with room for it in its count and on the
+    /// ground around it), hands to spare - somebody found
     /// nothing needed at this dawn - and real demand. Demand is a household
     /// without a home, or food in reach falling short of the mouths to feed
     /// with less than a year in store (<see cref="IsFoodShort"/>), which a

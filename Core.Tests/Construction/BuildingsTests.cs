@@ -253,10 +253,16 @@ namespace KingdomWatch.Core.Tests.Construction
 
             var next = w.BuildNext();
 
+            // And the boxed-in barn, still first in building order with room
+            // on paper, does not take the next field from the new one.
+            var after = w.BuildNext();
+
             Assert.Multiple(() =>
             {
                 Assert.That(w.Buildings.All.Count(b => b.Barn == barn.Id), Is.LessThan(Buildings.FieldsPerBarn), "the first barn still has room on paper");
                 Assert.That(next.Kind, Is.EqualTo(BuildingKind.Barn));
+                Assert.That(after.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(after.Barn, Is.EqualTo(next.Id), "the field goes to the barn with ground for it");
             });
         }
 
