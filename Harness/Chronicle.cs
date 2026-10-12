@@ -11,7 +11,7 @@ namespace KingdomWatch.Harness
     /// <summary>
     /// The world as text (section 19's M1 question): one line per journal
     /// entry that says something happened to a community or a family, and
-    /// births and deaths folded into a line per year with each homeland's
+    /// births and deaths folded into a line per year with each village's
     /// population, since two centuries of them one per line is unreadable.
     /// </summary>
     /// <remarks>
@@ -45,8 +45,7 @@ namespace KingdomWatch.Harness
             var built = new HashSet<EntityId>();
             var harvested = new HashSet<EntityId>();
 
-            output.WriteLine(
-                "Year 0: west " + run.FoundingWest + ", east " + run.FoundingEast + " (the founding villages)");
+            output.WriteLine("Year 0: " + Villages(run.Founding) + " (the founding villages)");
 
             for (var y = 0; y < run.Years.Count; y++)
             {
@@ -77,25 +76,31 @@ namespace KingdomWatch.Harness
                     }
                 }
 
-                output.WriteLine(
-                    "Year " + year.Year + ": west " + year.West + ", east " + year.East
-                    + " (" + Tally(year.Tally) + ")");
+                output.WriteLine("Year " + year.Year + ": " + Villages(year.Villages) + " (" + Tally(year.Tally) + ")");
             }
 
-            if (run.WestDiedOut is long west)
+            for (var i = 0; i < run.DiedOut.Count; i++)
             {
-                output.WriteLine("West died out in year " + west + ".");
-            }
-
-            if (run.EastDiedOut is long east)
-            {
-                output.WriteLine("East died out in year " + east + ".");
+                output.WriteLine(run.DiedOut[i].Village + " died out in year " + run.DiedOut[i].Year + ".");
             }
 
             if (run.Failure != null)
             {
                 output.WriteLine("Stopped: " + run.Failure);
             }
+        }
+
+        // Each village and how many live there, in the run's order.
+        private static string Villages(IReadOnlyList<VillageYear> villages)
+        {
+            var parts = new List<string>(villages.Count);
+
+            for (var i = 0; i < villages.Count; i++)
+            {
+                parts.Add(villages[i].Village + " " + villages[i].Living);
+            }
+
+            return string.Join(", ", parts);
         }
 
         private static string Tally(YearTally tally)

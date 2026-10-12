@@ -10,8 +10,8 @@ namespace KingdomWatch.Core.Tests.Lifecycle
     [TestFixture]
     public sealed class FamilyFormationTests
     {
-        private static readonly FamilyFormationSettings CousinsPermitted =
-            new FamilyFormationSettings(FamilyFormationSettings.DefaultMourningTicks, firstCousinsPermitted: true);
+        private static readonly FamilyFormationSettings CousinsRefused =
+            new FamilyFormationSettings(FamilyFormationSettings.DefaultMourningTicks, firstCousinsPermitted: false);
 
         [Test]
         public void Construction_refuses_a_missing_collaborator()
@@ -29,13 +29,13 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         }
 
         [Test]
-        public void Settings_refuse_a_negative_mourning_period_and_default_to_the_conservative_reading()
+        public void Settings_refuse_a_negative_mourning_period_and_default_to_permitting_cousins()
         {
             Assert.Multiple(() =>
             {
                 Assert.That(() => new FamilyFormationSettings(-1L, true), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(FamilyFormationSettings.Default.MourningTicks, Is.EqualTo(SimulationTime.TicksPerYear));
-                Assert.That(FamilyFormationSettings.Default.FirstCousinsPermitted, Is.False);
+                Assert.That(FamilyFormationSettings.Default.FirstCousinsPermitted, Is.True, "until culture owns the taboo (#163)");
             });
         }
 
@@ -180,12 +180,12 @@ namespace KingdomWatch.Core.Tests.Lifecycle
                 Assert.That(w.Family.Evaluate(daughtersSon, sonsWife), Is.EqualTo(PartnerRefusal.None), "an aunt by marriage is not kin");
                 Assert.That(w.Family.Evaluate(daughtersSon, daughter), Is.EqualTo(PartnerRefusal.KinshipBanned), "mother and son");
                 Assert.That(w.Family.Evaluate(son, daughtersSon), Is.EqualTo(PartnerRefusal.SameSex));
-                Assert.That(w.Family.Evaluate(sonsDaughter, daughtersSon), Is.EqualTo(PartnerRefusal.CousinTaboo), "first cousins, refused by default");
+                Assert.That(w.Family.Evaluate(sonsDaughter, daughtersSon), Is.EqualTo(PartnerRefusal.None), "first cousins, permitted by default");
             });
 
-            var permissive = new FamilyFormation(w.Bus, w.People, w.Genealogy, w.Partnerships, w.Households, CousinsPermitted);
+            var strict = new FamilyFormation(w.Bus, w.People, w.Genealogy, w.Partnerships, w.Households, CousinsRefused);
 
-            Assert.That(permissive.Evaluate(sonsDaughter, daughtersSon), Is.EqualTo(PartnerRefusal.None), "first cousins, permitted by setting");
+            Assert.That(strict.Evaluate(sonsDaughter, daughtersSon), Is.EqualTo(PartnerRefusal.CousinTaboo), "first cousins, refused by setting");
         }
 
         [Test]

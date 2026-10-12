@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using KingdomWatch.Core.Clock;
@@ -117,13 +118,10 @@ namespace KingdomWatch.Harness
             for (var seed = 1UL; seed <= (ulong)seeds; seed++)
             {
                 var run = Run(seed, years, bushPicks);
-                var last = run.Years[run.Years.Count - 1];
-                var (westLow, westHigh, eastLow, eastHigh) = Range(run);
                 Console.WriteLine(
-                    $"  seed {seed}: west {run.FoundingWest}->{last.West} [{westLow}..{westHigh}], "
-                    + $"east {run.FoundingEast}->{last.East} [{eastLow}..{eastHigh}], "
+                    $"  seed {seed}: {Villages(run)}, "
                     + $"settled {Year(run.FirstSettlement)}, hash {run.Hash():x16}"
-                    + DiedOut("west", run.WestDiedOut) + DiedOut("east", run.EastDiedOut)
+                    + DiedOut(run)
                     + (run.IsClean ? string.Empty : " BROKEN " + run.Failure));
 
                 if (!run.Held)
@@ -165,23 +163,33 @@ namespace KingdomWatch.Harness
             return run.RunYears(years);
         }
 
-        private static (int, int, int, int) Range(WorldRun run)
+        // Each village the run saw: where it started, where it ended, and the
+        // fewest and most it held in between.
+        private static string Villages(WorldRun run)
         {
-            int westLow = run.FoundingWest, westHigh = run.FoundingWest;
-            int eastLow = run.FoundingEast, eastHigh = run.FoundingEast;
+            var villages = run.Years.Count == 0 ? run.Founding : run.Years[run.Years.Count - 1].Villages;
+            var parts = new List<string>(villages.Count);
 
-            for (var i = 0; i < run.Years.Count; i++)
+            for (var v = 0; v < villages.Count; v++)
             {
-                westLow = Math.Min(westLow, run.Years[i].West);
-                westHigh = Math.Max(westHigh, run.Years[i].West);
-                eastLow = Math.Min(eastLow, run.Years[i].East);
-                eastHigh = Math.Max(eastHigh, run.Years[i].East);
+                var range = run.RangeOf(villages[v].Village);
+                parts.Add($"{range.Village} {range.First}->{range.Last} [{range.Low}..{range.High}]");
             }
 
-            return (westLow, westHigh, eastLow, eastHigh);
+            return string.Join(", ", parts);
         }
 
-        private static string DiedOut(string side, long? year) => year is null ? string.Empty : " DIED OUT " + side + " y" + year;
+        private static string DiedOut(WorldRun run)
+        {
+            var text = string.Empty;
+
+            for (var i = 0; i < run.DiedOut.Count; i++)
+            {
+                text += " DIED OUT " + run.DiedOut[i].Village + " y" + run.DiedOut[i].Year;
+            }
+
+            return text;
+        }
 
         private static string Year(SimulationTime? time) => time is null ? "never" : "y" + time.Value.YearNumber;
 
