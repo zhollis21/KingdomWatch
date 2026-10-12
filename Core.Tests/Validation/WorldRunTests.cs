@@ -104,6 +104,34 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Each_village_s_numbers_add_up_year_on_year()
+        {
+            // Nobody moves between villages in M1, so a village's people
+            // last year, plus its births, less its deaths, are its people
+            // now. Every birth and death counted for the wrong village - a
+            // newborn not given their mother's - breaks it somewhere (#163).
+            Assert.Multiple(() =>
+            {
+                foreach (var run in Runs)
+                {
+                    var before = run.Founding;
+
+                    foreach (var year in run.Years)
+                    {
+                        foreach (var start in before)
+                        {
+                            var now = year.Of(start.Village);
+                            Assert.That(now.Living, Is.EqualTo(start.Living + now.Tally.Births - now.Tally.Deaths), "seed " + run.World.Seed + " " + start.Village + ", year " + year.Year);
+                        }
+
+                        Assert.That(year.Villages, Has.Count.EqualTo(before.Count), "seed " + run.World.Seed + ": no village appears in M1");
+                        before = year.Villages;
+                    }
+                }
+            });
+        }
+
+        [Test]
         public void No_year_s_hunger_and_cold_take_a_quarter_of_a_village()
         {
             // A village that runs short shrinks; before #149 one winter took
@@ -626,6 +654,9 @@ namespace KingdomWatch.Core.Tests.Validation
             Assert.Multiple(() =>
             {
                 Assert.That(run.Years, Is.Not.InstanceOf<List<YearSummary>>());
+                Assert.That(run.Founding, Is.Not.InstanceOf<List<VillageYear>>());
+                Assert.That(run.DiedOut, Is.Not.InstanceOf<List<DieOut>>());
+                Assert.That(run.Years[0].Villages, Is.Not.InstanceOf<VillageYear[]>(), "a year's villages either");
                 Assert.That(validator.Findings, Is.Not.InstanceOf<List<ValidationFinding>>());
             });
         }
