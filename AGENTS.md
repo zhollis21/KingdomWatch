@@ -143,7 +143,16 @@ pwsh tools/Build-Roadmap.ps1
 # Build a Windows development player, fly its scripted camera route and analyse
 # the captures (Unity Editor closed; see docs/unity.md, "Scripted runs", and /profile)
 pwsh tools/Profile.ps1
+
+# Screenshot a change where it shows: the world run on N years, the camera on
+# the first finished building of a kind (Unity Editor closed; docs/unity.md, "Looks")
+pwsh tools/Look.ps1 -Show Granary -Years 3
 ```
+
+A change to what the Unity view draws is not done until it has been seen:
+build it with `tools/Look.ps1`, look at the screenshot, and hand that back.
+"Check it in the Editor" is not a verification step. Both scripts share
+`tools/UnityPlayer.psm1` (finding Unity, the art check, the player build).
 
 ```powershell
 # Every page of a REST collection, as one JSON array — for the skills, which

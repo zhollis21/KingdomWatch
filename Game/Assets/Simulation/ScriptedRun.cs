@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using KingdomWatch.Core;
+using KingdomWatch.Core.Construction;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -107,6 +108,18 @@ namespace KingdomWatch.Game
             Directory.CreateDirectory(folder);
             var run = new ScriptedRun(rig, view, world, folder);
 
+            // `-show <kind>` adds a stop, "show", at full size on the first
+            // finished building of that kind (tools/Look.ps1 -Show), so a look
+            // at a new kind lands on one; `-show <number>` on that building.
+            // None standing quits, saying so: the
+            // run would otherwise screenshot something else and pass.
+            var show = System.Array.IndexOf(args, "-show");
+            if (show >= 0 && !run.AddShow(show + 1 < args.Length ? args[show + 1] : ""))
+            {
+                Application.Quit(1);
+                return null;
+            }
+
             var only = System.Array.IndexOf(args, "-stops");
             if (only >= 0 && !run.Keep(only + 1 < args.Length ? args[only + 1] : ""))
             {
@@ -116,6 +129,55 @@ namespace KingdomWatch.Game
 
             run.Begin();
             return run;
+        }
+
+        // Adds the "show" stop on the first finished building of a kind, or on
+        // the building with that number, finished or not, wherever the run
+        // flies first (a building printed as Building#50 is -show 50); false,
+        // having said why, for a name that is no kind, a kind with none
+        // standing yet, or a number no building has.
+        private bool AddShow(string kindName)
+        {
+            if (ulong.TryParse(kindName, out var number))
+            {
+                foreach (var building in world.Buildings.All)
+                {
+                    if (building.Id.Value == number) return AddShow(building);
+                }
+                Debug.LogError("ScriptedRun: -show " + number + ": no building has that number in year " + world.Now.YearNumber + ".");
+                return false;
+            }
+
+            if (!System.Enum.TryParse<BuildingKind>(kindName, true, out var kind) || kind == BuildingKind.None
+                || !System.Enum.IsDefined(typeof(BuildingKind), kind))
+            {
+                var kinds = new List<string>(System.Enum.GetNames(typeof(BuildingKind)));
+                kinds.Remove(nameof(BuildingKind.None));
+                Debug.LogError("ScriptedRun: -show wants a building kind, one of " + string.Join(", ", kinds) + ", or a building's number; got '" + kindName + "'.");
+                return false;
+            }
+
+            foreach (var building in world.Buildings.All)
+            {
+                if (building.Kind == kind && building.IsComplete) return AddShow(building);
+            }
+
+            Debug.LogError("ScriptedRun: -show " + kind + ": none standing in year " + world.Now.YearNumber + "; try more -years.");
+            return false;
+        }
+
+        private bool AddShow(Building building)
+        {
+            var middle = new Vector2(building.Anchor.X + building.Width / 2f, world.Grid.Height - (building.Anchor.Y + building.Height / 2f));
+            var stop = Stop.At("show", 16f, false);
+            stop.Centre = middle;
+            // Flown first, so it lands on the day the run starts at, with the
+            // building as -years and -days left it; numbered last, so the
+            // route's stops keep theirs.
+            stop.Number = stops.Count + 1;
+            stops.Insert(0, stop);
+            Line("Show: " + building.Kind + " " + building.Id + " at " + building.Anchor.X + "," + building.Anchor.Y);
+            return true;
         }
 
         // Drops every stop not named in a comma-separated list; false, having
@@ -145,6 +207,10 @@ namespace KingdomWatch.Game
             // wait for the next vertical blank.
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = -1;
+            // The game pauses when its window is not in front, and Windows
+            // does not always bring a window launched from a script to the
+            // front: two looks sat paused on their first stop until killed.
+            Application.runInBackground = true;
 
             Profiler.maxUsedMemory = 512 * 1024 * 1024;
 
@@ -243,7 +309,7 @@ namespace KingdomWatch.Game
             if (stop.PixelsPerCell <= 0f) rig.WholeMap();
             else
             {
-                rig.CentreOn(centre);
+                rig.CentreOn(stop.Centre ?? centre);
                 rig.ZoomTo(stop.PixelsPerCell);
             }
             fillSeconds = 0f;
@@ -354,6 +420,8 @@ namespace KingdomWatch.Game
             // Zero for the whole map.
             public float PixelsPerCell;
             public bool Pan;
+            // Where it looks, when not at the first village.
+            public Vector2? Centre;
             public int FillFrames;
             public float FillSeconds;
             public bool Filled;

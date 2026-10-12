@@ -14,16 +14,36 @@ $ErrorActionPreference = 'Stop'
 $root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
 $art = Join-Path $root 'Game/Assets/Art'
 
+# Every run leaves a line in the shared .git folder (never committed, and
+# the same file from every worktree): when, the folder it was handed, the
+# folder it ran in, and what it decided. Worktrees opened on 2026-10-12
+# came up without the art and with no sign the hook had run (#98), and
+# this is what tells "never ran" from "ran against the wrong folder".
+function Write-RunLog([string]$Decision) {
+    try {
+        $common = (& git -C (Get-Location).Path rev-parse --path-format=absolute --git-common-dir 2>$null)
+        if ($common) {
+            $line = '{0:u}  project={1}  cwd={2}  {3}' -f (Get-Date), $env:CLAUDE_PROJECT_DIR, (Get-Location).Path, $Decision
+            Add-Content -Path (Join-Path $common.Trim() 'init-art.log') -Value $line
+        }
+    }
+    catch {
+        # The log is a diagnosis aid; it never stops the hook.
+    }
+}
+
 # Art there already: nothing to do. A missing folder counts as empty - the
 # checkout recreates it - and so does one holding only git's own pointer,
 # which a checkout that failed partway can leave.
 function Test-Art { (Test-Path $art) -and (Get-ChildItem $art -Force | Where-Object Name -ne '.git' | Select-Object -First 1) }
 
 if (Test-Art) {
+    Write-RunLog "art already at $art"
     exit 0
 }
 
 function Report([string]$Message) {
+    Write-RunLog $Message
     @{ systemMessage = $Message } | ConvertTo-Json -Compress
 }
 
@@ -33,6 +53,7 @@ try {
     $source = Join-Path (Split-Path $common -Parent) 'Game/Assets/Art'
 
     if (-not (Test-Path (Join-Path $source '.git'))) {
+        Write-RunLog "no art at $source to check out from"
         exit 0
     }
 
