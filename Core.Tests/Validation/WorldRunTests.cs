@@ -713,6 +713,25 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_default_year_is_an_empty_one()
+        {
+            // The PR #165 review: a year is a struct, so default(YearSummary)
+            // exists; it reads as no villages and nothing happening rather
+            // than throwing.
+            var year = default(YearSummary);
+            var village = new EntityId(EntityKind.Settlement, 1UL);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(year.Villages, Is.Empty);
+                Assert.That(year.Tally.Births, Is.Zero);
+                Assert.That(year.Tally.Deaths, Is.Zero);
+                Assert.That(year.Of(village).Living, Is.Zero);
+                Assert.That(year.Of(village).Village, Is.EqualTo(village));
+            });
+        }
+
+        [Test]
         public void The_chronicle_prints_each_year_and_each_village_s_founding_once()
         {
             var run = new WorldRun(1UL).RunYears(3L);

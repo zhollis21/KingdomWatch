@@ -548,7 +548,11 @@ namespace KingdomWatch.Harness
 
     public readonly struct YearSummary
     {
-        private readonly VillageYear[] _villages;
+        private static readonly IReadOnlyList<VillageYear> NoVillages = Array.AsReadOnly(Array.Empty<VillageYear>());
+
+        // Null in default(YearSummary), which reads as a year of nobody.
+        private readonly VillageYear[]? _villages;
+        private readonly IReadOnlyList<VillageYear>? _view;
 
         /// <summary>
         /// A year of these villages. The array is copied: the year owns its
@@ -558,13 +562,13 @@ namespace KingdomWatch.Harness
         {
             Year = year;
             _villages = (VillageYear[])(villages ?? throw new ArgumentNullException(nameof(villages))).Clone();
-            Villages = Array.AsReadOnly(_villages);
+            _view = Array.AsReadOnly(_villages);
         }
 
         public long Year { get; }
 
         /// <summary>Every village the run has seen by this year's end, in the run's order.</summary>
-        public IReadOnlyList<VillageYear> Villages { get; }
+        public IReadOnlyList<VillageYear> Villages => _view ?? NoVillages;
 
         /// <summary>Every village's births and deaths this year.</summary>
         public YearTally Tally
@@ -572,10 +576,11 @@ namespace KingdomWatch.Harness
             get
             {
                 var tally = default(YearTally);
+                var villages = _villages ?? Array.Empty<VillageYear>();
 
-                for (var i = 0; i < _villages.Length; i++)
+                for (var i = 0; i < villages.Length; i++)
                 {
-                    tally += _villages[i].Tally;
+                    tally += villages[i].Tally;
                 }
 
                 return tally;
@@ -585,11 +590,13 @@ namespace KingdomWatch.Harness
         /// <summary>This village's year: what it held, or nobody and nothing if the run had not seen it yet.</summary>
         public VillageYear Of(EntityId village)
         {
-            for (var i = 0; i < _villages.Length; i++)
+            var villages = _villages ?? Array.Empty<VillageYear>();
+
+            for (var i = 0; i < villages.Length; i++)
             {
-                if (_villages[i].Village == village)
+                if (villages[i].Village == village)
                 {
-                    return _villages[i];
+                    return villages[i];
                 }
             }
 
