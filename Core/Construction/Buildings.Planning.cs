@@ -260,23 +260,28 @@ namespace KingdomWatch.Core.Construction
         // A field's best site by its real lane (#169). A site is scored by
         // how far its nearest side stands from a road as the crow flies,
         // and its lane can run much further round whatever stands in the
-        // way. So each of the best sites is joined in turn and rescored with
-        // the lane it actually got, and the cheapest kept: a site whose lane
-        // is no longer than its score assumed, or one scoring no better than
-        // the cheapest kept so far, ends the search, since no site after it
-        // can do better. Into _lane.
+        // way. So each of the best few sites is joined and rescored with the
+        // lane it actually got, the lowest kept, ties to the lower cell index
+        // as in the scoring. All of them: the crow-flies distance is measured
+        // against the network near the centre only, so it is no lower bound
+        // on a lane, and no site can be passed over on its score alone. Open
+        // plains stay preferred outright: once a plains site is kept, ground
+        // to clear is not looked at. Into _lane.
         private bool TryPlaceField(WorldPosition from, WorldPosition centre, ReadOnlySpan<bool> known, int radius, out WorldPosition anchor)
         {
             var keptScore = long.MaxValue;
+            var keptCell = -1;
+            var keptPlains = false;
             anchor = default;
 
             for (var attempt = 0; attempt < PlacementAttempts; attempt++)
             {
-                if (!TryBest(from, radius, known, out var site) || _scorer.BestScore >= keptScore)
+                if (!TryBest(from, radius, known, out var site) || (keptPlains && !_scorer.PlainsOnly))
                 {
                     break;
                 }
 
+                var cell = _grid.IndexOf(site);
                 var estimate = _scorer.ToRoad(site);
 
                 // A field is searched for from its barn, so it is asked
@@ -286,27 +291,24 @@ namespace KingdomWatch.Core.Construction
                 {
                     var score = _scorer.BestScore + (FieldRoadWeight * (_lane.Count - estimate));
 
-                    if (score < keptScore)
+                    if (score < keptScore || (score == keptScore && cell < keptCell))
                     {
                         keptScore = score;
+                        keptCell = cell;
+                        keptPlains = _scorer.PlainsOnly;
                         anchor = site;
                         _keptLane.Clear();
                         _keptLane.AddRange(_lane);
                     }
-
-                    if (_lane.Count <= estimate)
-                    {
-                        break;
-                    }
                 }
 
-                _scorer.Refuse(_grid.IndexOf(site));
+                _scorer.Refuse(cell);
             }
 
             _lane.Clear();
             _lane.AddRange(_keptLane);
             _keptLane.Clear();
-            return keptScore != long.MaxValue;
+            return keptCell >= 0;
         }
 
         // The best footprint the search reaches: plains first, then any ground.
@@ -330,7 +332,7 @@ namespace KingdomWatch.Core.Construction
 
         // Joins a footprint to the network, its lane into _lane: a house or
         // barn from its door; a field not already touching a road from the
-        // middle of one of its sides, nearest the network first.
+        // middle of whichever of its sides gives the cheapest lane.
         private bool TryJoin(BuildingKind kind, WorldPosition anchor, WorldPosition centre)
         {
             _lane.Clear();
@@ -719,6 +721,9 @@ namespace KingdomWatch.Core.Construction
 
             /// <summary>The best anchor's score this pass.</summary>
             public long BestScore => _bestScore;
+
+            /// <summary>Whether this pass takes open plains only.</summary>
+            public bool PlainsOnly => _plainsOnly;
 
             public void Begin(BuildingKind kind, BuildingSpec spec, WorldPosition centre, Building? barn, EntityId settlement)
             {

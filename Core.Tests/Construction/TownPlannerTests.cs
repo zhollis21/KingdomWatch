@@ -223,6 +223,45 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void Two_field_sites_whose_real_lanes_tie_go_to_the_lower_cell_index()
+        {
+            // The corner's lane at twelve cells rescores it level with the site
+            // by the barn; ties go to the lower cell index, as in the scoring,
+            // and the corner's is lower however late it was joined.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketCorner, PocketCornerTieCorridor);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketCorner));
+                Assert.That(field.Lane, Is.EqualTo(PocketCornerTieCorridor));
+            });
+        }
+
+        [Test]
+        public void A_field_takes_open_plains_with_a_long_lane_over_ground_to_clear_with_a_short_one()
+        {
+            // The corner pocket with a bush in it: cheaper than the site by the
+            // barn once both lanes are counted, but open plains are preferred
+            // outright to clearing (#100), and rescoring does not undo that.
+            var w = PocketWorld(PocketWest, PocketEastCorridor, PocketCorner, PocketCornerCorridor);
+            w.World.Grid.Set(PocketCorner, TerrainKind.Scrub);
+
+            w.Dawn();
+            var field = w.Latest!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
+                Assert.That(field.Anchor, Is.EqualTo(PocketWest));
+                Assert.That(field.Lane, Is.EqualTo(PocketEastCorridor));
+            });
+        }
+
+        [Test]
         public void A_field_whose_only_site_needs_a_long_lane_is_still_laid_out()
         {
             // A long lane makes a site worse, never refused: a barn with only
@@ -301,6 +340,9 @@ namespace KingdomWatch.Core.Tests.Construction
 
         // From the corner pocket's south side down and west to a road at (0, 11).
         private static readonly WorldPosition[] PocketCornerCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 10))).ToArray();
+
+        // The same, carried on down the west edge to a road at (0, 15).
+        private static readonly WorldPosition[] PocketCornerTieCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 14))).ToArray();
 
         // The same, carried on down the west edge to a road at (0, 16).
         private static readonly WorldPosition[] PocketCornerLongCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 15))).ToArray();
