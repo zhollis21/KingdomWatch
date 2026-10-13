@@ -360,9 +360,25 @@ namespace KingdomWatch.Core.Construction
             {
                 var seed = _seeds[s];
                 var from = _grid.PositionAt(seed);
+
+                // Most network cells have no open ground beside them for a
+                // link to leave by: skip them before the searches.
+                if (!CanLeave(from, centre))
+                {
+                    continue;
+                }
+
                 CountRoadDepths(from, centre);
 
                 _linkTarget.Begin(from, reach, doorLink);
+
+                // The route steps along edges, so it is never shorter than
+                // its span: no far end saving more than the best so far
+                // (which a later seed only ties at best), no search.
+                if (_linkTarget.BestSaving() <= bestSaving)
+                {
+                    continue;
+                }
 
                 if (!_pathfinder.TryFindNearest(
                         from, Jobs.Mover, _anyKind, default, _linkTarget, _linkGate, true, reach, long.MaxValue, _linkRoute, out _))
@@ -393,6 +409,35 @@ namespace KingdomWatch.Core.Construction
             }
 
             return bestSeed >= 0;
+        }
+
+        // Whether a link could take its first step from this network cell:
+        // its first cell is never joined (a link spans at least LinkFloor),
+        // and must pass the parts of LinkGate that do not depend on where
+        // the link left from.
+        private bool CanLeave(WorldPosition from, WorldPosition centre)
+        {
+            for (var step = 0; step < 4; step++)
+            {
+                var next = Step(from, step);
+
+                if (!_grid.Contains(next))
+                {
+                    continue;
+                }
+
+                var cell = _grid.IndexOf(next);
+
+                if (!IsJoined(cell, centre)
+                    && _laneGate.Accepts(cell)
+                    && !_laneGate.Flanks(next)
+                    && !ClosesBlock(next, centre, links: true))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Whether a cell is the network a link joins: a road, this
@@ -591,6 +636,32 @@ namespace KingdomWatch.Core.Construction
                 _from = from;
                 _reach = reach;
                 _doorLink = doorLink;
+            }
+
+            /// <summary>
+            /// The most any far end in reach could save by road over its
+            /// span, or <see cref="int.MinValue"/> when none is in reach.
+            /// </summary>
+            public int BestSaving()
+            {
+                var grid = _owner._grid;
+                var best = int.MinValue;
+
+                for (var y = Math.Max(0, _from.Y - _reach); y <= Math.Min(grid.Height - 1, _from.Y + _reach); y++)
+                {
+                    for (var x = Math.Max(0, _from.X - _reach); x <= Math.Min(grid.Width - 1, _from.X + _reach); x++)
+                    {
+                        var at = new WorldPosition(x, y);
+                        var cell = grid.IndexOf(at);
+
+                        if (Accepts(cell))
+                        {
+                            best = Math.Max(best, _owner.RoadDepth(at) - Manhattan(_from, at));
+                        }
+                    }
+                }
+
+                return best;
             }
 
             public bool Accepts(int cell)
