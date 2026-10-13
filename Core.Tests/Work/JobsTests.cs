@@ -807,6 +807,35 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_tree_s_last_cut_leaves_plains_once_its_woodcutter_is_home_and_a_stump_given_back_on_a_death()
+        {
+            // Nothing grows back on its own (#155): the stump stays until the
+            // trip that felled it is home, so a death can still give it back.
+            var w = new WorkWorld();
+            w.Land.TreeCuts = 1;
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
+            var felling = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.People.GetJob(felling), Is.EqualTo(JobKind.Woodcutter));
+            var stump = w.Grid[WorkWorld.ForestCell];
+
+            w.Deaths.Die(felling, new Reasons(ReasonCode.Illness));
+            var givenBack = w.Land.CutsLeft(WorkWorld.ForestCell);
+
+            var again = w.Join(band, 30L);
+            w.Advance(SimulationTime.TicksPerDay);
+            Assert.That(w.People.GetJob(again), Is.EqualTo(JobKind.Woodcutter));
+            w.AdvanceTo(w.Jobs.TaskOf(again).End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stump, Is.EqualTo(TerrainKind.Forest), "a stump while the trip is out");
+                Assert.That(givenBack, Is.EqualTo(1), "the dead woodcutter's cut given back");
+                Assert.That(w.Grid[WorkWorld.ForestCell], Is.EqualTo(TerrainKind.Plains), "felled for good once home");
+            });
+        }
+
+        [Test]
         public void Foragers_strip_the_nearest_bush_then_spread_to_the_next_and_none_walks_to_a_bare_one()
         {
             // A row of bushes east of camp, each a step further. Every

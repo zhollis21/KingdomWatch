@@ -680,7 +680,7 @@ namespace KingdomWatch.Core.Work
                     // So was a tree planted (#155): one that never gets its
                     // forester's hour is not planted.
                     _land.Unplant(task.Destination);
-                    tracked.PlantShort += RequireBuildings().WoodPerPlanting * Buildings.WoodHeadroomDenominator;
+                    tracked.PlantShort += RequireBuildings().WoodPerPlanting * Buildings.PlantHeadroomDenominator;
                 }
                 else
                 {
@@ -848,6 +848,13 @@ namespace KingdomWatch.Core.Work
                     var kind = recipe.Outputs[i].Kind;
                     Storage.Spill(ledger, kind, CapacityOf(tracked, kind));
                 }
+
+                // A tree's last cut fells it for good, now that its trip is
+                // home and can no longer give the cut back (#155).
+                if (task.Job == JobKind.Woodcutter)
+                {
+                    _land.Fell(task.Destination);
+                }
             }
             else if (task.Job != JobKind.Forester)
             {
@@ -907,7 +914,7 @@ namespace KingdomWatch.Core.Work
                 // next Forester's pick finds the next cell. Cannot refuse -
                 // ChooseJob only offers plantable plains.
                 _land.Plant(site.Destination);
-                tracked.PlantShort -= RequireBuildings().WoodPerPlanting * Buildings.WoodHeadroomDenominator;
+                tracked.PlantShort -= RequireBuildings().WoodPerPlanting * Buildings.PlantHeadroomDenominator;
             }
             else if (building is null)
             {

@@ -53,7 +53,7 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void A_tree_has_its_uncut_cuts_left_none_as_a_stump_and_all_again_once_grown_back()
+        public void A_tree_has_its_uncut_cuts_left_and_none_as_a_stump_however_long_it_waits()
         {
             var grid = new TerrainGrid(4, 4, TerrainKind.Forest);
             grid.Set(new WorldPosition(3, 3), TerrainKind.Plains);
@@ -78,7 +78,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(land.CutsLeft(tree), Is.EqualTo(land.TreeCuts), "grown back");
+                Assert.That(land.CutsLeft(tree), Is.Zero, "nothing grows back (#155)");
                 Assert.That(() => land.CutsLeft(new WorldPosition(3, 3)), Throws.ArgumentException, "plains have no tree");
             });
         }

@@ -106,8 +106,10 @@ namespace KingdomWatch.Core.Tests.Land
         }
 
         [Test]
-        public void A_tree_falls_after_its_cuts_and_stands_again_after_regrowing()
+        public void A_tree_falls_after_its_cuts_and_never_grows_back()
         {
+            // Only a forester puts a tree back (#155): the stump the last cut
+            // leaves stays one until its trip is home, then is plains.
             for (var i = 0; i < _land.TreeCuts; i++)
             {
                 Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Standing), "cut " + i);
@@ -118,21 +120,57 @@ namespace KingdomWatch.Core.Tests.Land
             Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Stump));
             Assert.That(_land.Promising.Accepts(_grid.IndexOf(Tree)), Is.False, "a stump is no wood, in any season");
 
-            AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays / 2L));
-            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Sapling));
+            AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays * 2L));
+            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Stump), "years on, still a stump");
             Assert.That(_land.IsWorkable(Tree), Is.False);
+            Assert.That(_land.CutsLeft(Tree), Is.Zero);
 
-            AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays));
-            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Standing));
-            Assert.That(_land.IsWorkable(Tree), Is.True);
+            _land.Fell(Tree);
 
-            // Grown back, it takes a full set of cuts again.
+            Assert.Multiple(() =>
+            {
+                Assert.That(_grid[Tree], Is.EqualTo(TerrainKind.Plains));
+                Assert.That(_land.StateAt(_grid.IndexOf(Tree)), Is.Zero);
+            });
+        }
+
+        [Test]
+        public void Felling_leaves_a_tree_with_cuts_left_and_every_other_cell_alone()
+        {
+            _land.Take(Tree);
+            _land.Fell(Tree);
+            _land.Fell(Bush);
+            _land.Fell(Open);
+            _land.Plant(Open);
+            _land.Fell(Open);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(_grid[Tree], Is.EqualTo(TerrainKind.Forest));
+                Assert.That(_land.CutsLeft(Tree), Is.EqualTo(_land.TreeCuts - 1));
+                Assert.That(_grid[Bush], Is.EqualTo(TerrainKind.Scrub));
+                Assert.That(_grid[Open], Is.EqualTo(TerrainKind.Forest), "a sapling is no stump");
+                Assert.That(_land.IsGrowing(_grid.IndexOf(Open)), Is.True);
+            });
+        }
+
+        [Test]
+        public void A_stump_whose_cut_is_given_back_stands_again()
+        {
             for (var i = 0; i < _land.TreeCuts; i++)
             {
                 _land.Take(Tree);
             }
 
-            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Stump));
+            _land.Return(Tree);
+            _land.Fell(Tree);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(_grid[Tree], Is.EqualTo(TerrainKind.Forest));
+                Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Standing));
+                Assert.That(_land.CutsLeft(Tree), Is.EqualTo(1));
+            });
         }
 
         [Test]
@@ -311,7 +349,7 @@ namespace KingdomWatch.Core.Tests.Land
         }
 
         [Test]
-        public void A_planted_tree_stands_after_the_regrowth_and_is_then_an_ordinary_tree()
+        public void A_planted_tree_stands_after_growing_and_is_an_ordinary_tree_once_cut()
         {
             _land.Plant(Open);
             var cell = _grid.IndexOf(Open);
@@ -327,12 +365,25 @@ namespace KingdomWatch.Core.Tests.Land
                 Assert.That(_land.StageOf(Open), Is.EqualTo(TreeStage.Standing));
                 Assert.That(_land.IsGrowing(cell), Is.False);
                 Assert.That(_land.Grown.Accepts(cell), Is.True);
-                Assert.That(_land.TryGetPlanted(cell, out _), Is.False);
+                Assert.That(_land.TryGetPlanted(cell, out _), Is.True, "planted until first cut");
                 Assert.That(_land.CutsLeft(Open), Is.EqualTo(_land.TreeCuts));
             });
 
             _land.Take(Open);
-            Assert.That(_land.CutsLeft(Open), Is.EqualTo(_land.TreeCuts - 1));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(_land.CutsLeft(Open), Is.EqualTo(_land.TreeCuts - 1));
+                Assert.That(_land.TryGetPlanted(cell, out _), Is.False);
+            });
+
+            for (var i = 1; i < _land.TreeCuts; i++)
+            {
+                _land.Take(Open);
+            }
+
+            _land.Fell(Open);
+            Assert.That(_grid[Open], Is.EqualTo(TerrainKind.Plains), "felled for good like any other");
         }
 
         [Test]

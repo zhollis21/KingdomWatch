@@ -19,11 +19,12 @@ namespace KingdomWatch.Core.Construction
     ///
     /// **When.** A settlement wants Foresters while the forest in reach,
     /// counting the trees it planted that are still growing, gives less
-    /// than the hearths it has and one more would burn in a winter, with
-    /// the <see cref="WoodHeadroomNumerator"/>/<see cref="WoodHeadroomDenominator"/>
-    /// headroom a new house waits on. The house waits on grown trees alone,
-    /// so planting runs ahead of housing by the time a tree takes to grow,
-    /// rather than housing running ahead of the wood.
+    /// than twice what a new house waits on: the hearths it has and one more
+    /// burning through a winter, with <see cref="PlantHeadroomNumerator"/>/<see cref="PlantHeadroomDenominator"/>
+    /// headroom where a house has <see cref="WoodHeadroomNumerator"/>/<see cref="WoodHeadroomDenominator"/>.
+    /// Nothing grows back on its own, and a tree takes five years to count
+    /// toward a house, so planting runs ahead of a growing village rather
+    /// than behind it.
     ///
     /// **Where.** The nearest plains cell a Forester can reach within
     /// <see cref="WoodFullReach"/>, where a planted tree counts as whole
@@ -38,6 +39,16 @@ namespace KingdomWatch.Core.Construction
     {
         /// <summary>Worker-ticks to plant one tree: a Forester's work at the site.</summary>
         public const long PlantTicks = Hour;
+
+        /// <summary>
+        /// Over <see cref="PlantHeadroomDenominator"/>: the margin Foresters
+        /// plant to over what a settlement's hearths and one more burn -
+        /// twice the house limit's.
+        /// </summary>
+        public const long PlantHeadroomNumerator = 2L * WoodHeadroomNumerator;
+
+        /// <summary>See <see cref="PlantHeadroomNumerator"/>.</summary>
+        public const long PlantHeadroomDenominator = WoodHeadroomDenominator;
 
         /// <summary>
         /// Wood a year one planted tree gives once grown, counted whole: what
@@ -72,8 +83,8 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// How short of Foresters a settlement is, in wood a year, against a
-        /// target of what its hearths and one more burn in a winter with the
-        /// building headroom (#155): what <see cref="Jobs"/> ranks a Forester
+        /// target of twice what its hearths and one more burn in a winter
+        /// with the building headroom (#155): what <see cref="Jobs"/> ranks a Forester
         /// by. <paramref name="hearths"/> is the dawn count. A Forester's tree
         /// goes in the ground as the trip sets out, so those already out are
         /// counted in the forest rather than on their way.
@@ -92,15 +103,15 @@ namespace KingdomWatch.Core.Construction
             }
 
             var burn = (hearths + 1L) * Warmth.FuelPerFire * SimulationTime.DaysPerSeason;
-            target = burn * WoodHeadroomNumerator;
+            target = burn * PlantHeadroomNumerator;
 
             // The grown forest is the house limit's count, already swept, and
             // never more than the planted: when it is enough, so is the other.
-            shortBy = target - (WoodInReach(settlement) * WoodHeadroomDenominator);
+            shortBy = target - (WoodInReach(settlement) * PlantHeadroomDenominator);
 
             if (shortBy > 0L)
             {
-                shortBy = target - (WoodPlantedInReach(settlement) * WoodHeadroomDenominator);
+                shortBy = target - (WoodPlantedInReach(settlement) * PlantHeadroomDenominator);
             }
 
             if (shortBy <= 0L)

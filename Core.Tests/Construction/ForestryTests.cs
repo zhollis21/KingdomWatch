@@ -121,7 +121,7 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void A_village_with_no_forest_wants_Foresters_for_its_hearths_and_one_more()
+        public void A_village_with_no_forest_wants_Foresters_for_twice_its_hearths_and_one_more()
         {
             var w = new BuildingsWorld();
 
@@ -131,7 +131,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(target, Is.EqualTo(burn * Buildings.WoodHeadroomNumerator));
+                Assert.That(target, Is.EqualTo(burn * Buildings.PlantHeadroomNumerator));
                 Assert.That(shortBy, Is.EqualTo(target), "no wood at all");
             });
         }
@@ -169,7 +169,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             w.Buildings.TryPlantWork(w.Settlement, 0, out var after, out _);
 
-            Assert.That(before - after, Is.EqualTo(w.Buildings.WoodPerPlanting * Buildings.WoodHeadroomDenominator));
+            Assert.That(before - after, Is.EqualTo(w.Buildings.WoodPerPlanting * Buildings.PlantHeadroomDenominator));
         }
 
         [Test]
@@ -314,11 +314,12 @@ namespace KingdomWatch.Core.Tests.Construction
             // The shortfall is swept at dawn, and each tree planted since
             // comes off it: a village a tree or two short sends that many
             // Foresters, however many have nothing better to do. (A sapling
-            // at the edge of reach counts for less than a whole tree.)
-            var w = new BuildingsWorld();
+            // at the edge of reach counts for less than a whole tree.) A small
+            // village, so its saplings fit near the centre.
+            var w = new BuildingsWorld(people: 3);
             var hearths = Warmth.CountHearths(w.Settlement.Members, w.World.People, new List<EntityId>());
             w.Buildings.TryPlantWork(w.Settlement, hearths, out var shortBy, out _);
-            var perTree = w.Buildings.WoodPerPlanting * Buildings.WoodHeadroomDenominator;
+            var perTree = w.Buildings.WoodPerPlanting * Buildings.PlantHeadroomDenominator;
             var saplings = (int)((shortBy - 1L) / perTree);
             var cells = Enumerable.Range(0, w.World.Grid.CellCount)
                 .Where(w.Buildings.Plantable.Accepts)

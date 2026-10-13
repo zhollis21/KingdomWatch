@@ -587,10 +587,10 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// Wood a year the forest in a settlement's reach gives back: every
-        /// forest cell its woodcutters could be sent to, felled and grown
-        /// again every <see cref="LandCover.RegrowDays"/>. A cell is counted
-        /// whether its tree stands today or not, since a stump is a tree in
-        /// five years; cleared ground is plains and is not.
+        /// grown tree its woodcutters could be sent to, felled and replanted
+        /// every <see cref="LandCover.RegrowDays"/> (#155: nothing grows back
+        /// unless a Forester plants it). A sapling is left out until it has
+        /// grown, and felled ground is plains and is not counted.
         /// </summary>
         public long WoodInReach(ICommunity settlement)
         {
@@ -616,7 +616,7 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// Wood a year this many forest cells give back, each felled and
-        /// grown again every <see cref="LandCover.RegrowDays"/>: what
+        /// replanted every <see cref="LandCover.RegrowDays"/>: what
         /// <see cref="WoodInReach(ICommunity)"/> makes of the trees it counts.
         /// Never falls as the count rises, so a bound on the trees is a bound
         /// on the wood (#146).
