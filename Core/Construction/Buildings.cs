@@ -277,7 +277,11 @@ namespace KingdomWatch.Core.Construction
 
             _scorer = new SiteScorer(this);
             _laneGate = new LaneGate(this);
-            _networkTarget = new NetworkTarget(_grid);
+            _networkTarget = new NetworkTarget(this);
+            _streetGate = new StreetGate(this);
+            _realNetwork = new RealNetwork(this);
+            _linkTarget = new LinkTarget(this);
+            _linkGate = new LinkGate(this);
         }
 
         /// <summary>Every building, oldest first. The order to iterate in.</summary>
@@ -1373,6 +1377,7 @@ namespace KingdomWatch.Core.Construction
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
             CollectSquare(settlement.Position);
+            AddLinks(kind, anchor, settlement.Position);
             var clearTicks = ClearTicksOf(kind, anchor, _lane, out var clearCuts, out var clearRocks);
             var building = new Building(
                 _clock.Ids.Next(EntityKind.Building), kind, settlement.Id, barn?.Id ?? EntityId.None,

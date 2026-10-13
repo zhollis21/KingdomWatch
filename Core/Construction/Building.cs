@@ -97,6 +97,9 @@ namespace KingdomWatch.Core.Construction
         /// laid as road when its ground is cleared (#23): from its door, or
         /// for a field from beside the middle of one of its sides. Empty when
         /// the door, or one of a field's edges, is already on the network.
+        /// It may run on along the settlement's planned streets to the
+        /// network, and a house's or barn's may carry links after it: short
+        /// tracks closing a loop in the roads nearby (#171).
         /// </summary>
         public IReadOnlyList<WorldPosition> Lane { get; }
 

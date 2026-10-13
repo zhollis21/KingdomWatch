@@ -31,6 +31,8 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void A_lane_is_a_walk_from_the_door_under_no_building()
         {
+            // The walk from the door, one strip; any links after it (#171)
+            // are StreetPlanTests'.
             var w = BuildVillage();
 
             foreach (var building in w.Buildings.All)
@@ -49,12 +51,16 @@ namespace KingdomWatch.Core.Tests.Construction
                 for (var i = 0; i < lane.Count; i++)
                 {
                     Assert.That(w.Buildings.At(lane[i]), Is.Null, building + "'s lane at " + lane[i]);
-
-                    if (i > 0)
-                    {
-                        Assert.That(Manhattan(lane[i], lane[i - 1]), Is.EqualTo(1), building + "'s lane shares an edge with its last cell at " + lane[i]);
-                    }
                 }
+
+                var walk = 1;
+
+                while (walk < lane.Count && Manhattan(lane[walk], lane[walk - 1]) == 1)
+                {
+                    walk++;
+                }
+
+                Assert.That(walk >= lane.Count || Buildings.HasDoor(building.Kind), Is.True, building + "'s lane is one strip, as it has no door to link");
             }
         }
 
@@ -80,12 +86,17 @@ namespace KingdomWatch.Core.Tests.Construction
             // Fields take the spots beside a road while there are any, and lay
             // a lane only once those near their barn are used up: a few of a
             // village's fields, not most. Without the pull toward roads half
-            // of this village's fields lay lanes; with it, a fifth.
+            // of this village's fields lay lanes; with it, a fifth. A field
+            // beside a planned street lays the street (#171): that is the
+            // street going in, not a lane of its own.
             var w = BuildVillage();
             var fields = w.Buildings.All.Where(b => b.Kind == BuildingKind.Field).ToList();
             Assert.That(fields, Has.Count.GreaterThanOrEqualTo(8), "fields to check");
 
-            Assert.That(fields.Count(f => f.Lane.Count > 0) * 4, Is.LessThanOrEqualTo(fields.Count), "at most a quarter lay lanes");
+            Assert.That(
+                fields.Count(f => f.Lane.Any(at => !Buildings.IsStreet(at, BuildingsWorld.Centre))) * 4,
+                Is.LessThanOrEqualTo(fields.Count),
+                "at most a quarter lay lanes off the streets");
         }
 
         [Test]
@@ -320,16 +331,18 @@ namespace KingdomWatch.Core.Tests.Construction
             : 3;
 
         // The pocket worlds (#169) start as the usual village's first house
-        // and barn - the barn at (5, 4), its door's lane east and down to
-        // the house's at (14, 9..17) - then turn every other cell to rocks,
-        // which a field cannot stand on and a lane cannot cross, and carve
-        // back the cells given: a 5x5 pocket at an anchor, or a corridor
-        // ending on a road. Only a pocket fits a field.
+        // and barn, the barn at (5, 4), then turn every other cell to rocks,
+        // which a field cannot stand on and a lane cannot cross, and lift
+        // every road but their own: the barn door's lane east along
+        // (8..13, 9) and a track down (14, 9..17), the way the first lanes
+        // ran before the street plan (#171). Then they carve back the cells
+        // given: a 5x5 pocket at an anchor, or a corridor ending on a road.
+        // Only a pocket fits a field.
         private static readonly WorldPosition PocketWest = new WorldPosition(2, 11);
 
         private static readonly WorldPosition PocketCorner = new WorldPosition(0, 0);
 
-        // From the west pocket's east side round to the house's lane at (14, 17).
+        // From the west pocket's east side round to the track at (14, 17).
         private static readonly WorldPosition[] PocketEastCorridor = Line((7, 13), (7, 17)).Concat(Line((8, 17), (13, 17))).ToArray();
 
         // From the west pocket's south side straight down to a road at (4, 21).
@@ -347,6 +360,10 @@ namespace KingdomWatch.Core.Tests.Construction
         // The same, carried on down the west edge to a road at (0, 16).
         private static readonly WorldPosition[] PocketCornerLongCorridor = Line((2, 5), (2, 9)).Concat(Line((1, 9), (0, 9))).Concat(Line((0, 10), (0, 15))).ToArray();
 
+        // The road the corridors run to: the barn door's lane and the track it
+        // meets.
+        private static readonly WorldPosition[] PocketRoads = Line((8, 9), (13, 9)).Concat(Line((14, 9), (14, 17))).ToArray();
+
         private static BuildingsWorld PocketWorld(params object[] carve)
         {
             var w = new BuildingsWorld();
@@ -362,12 +379,19 @@ namespace KingdomWatch.Core.Tests.Construction
                 for (var x = 0; x < BuildingsWorld.Size; x++)
                 {
                     var at = new WorldPosition(x, y);
+                    grid.SetRoad(at, RoadGrade.None);
 
-                    if (grid.RoadAt(at) == RoadGrade.None && w.Buildings.At(at) is null)
+                    if (w.Buildings.At(at) is null)
                     {
                         grid.Set(at, TerrainKind.Rocks);
                     }
                 }
+            }
+
+            foreach (var at in PocketRoads)
+            {
+                grid.Set(at, TerrainKind.Plains);
+                grid.SetRoad(at, RoadGrade.Track);
             }
 
             foreach (var piece in carve)

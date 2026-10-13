@@ -202,8 +202,11 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void A_barn_holds_only_so_many_fields()
         {
-            // Forty people: short of food until some ten fields stand.
-            var w = new BuildingsWorld(people: 40);
+            // Forty people: short of food until some ten fields stand. On a
+            // map with room round the barn on every side: against the edge of
+            // the usual one, with the streets taking their share (#171), a
+            // barn has room for fewer fields than it may hold.
+            var w = new BuildingsWorld(people: 40, size: 80, camp: new WorldPosition(40, 40));
             w.Wood(1000);
             w.BuildNext();
             var barn = w.BuildNext();
@@ -777,11 +780,14 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void A_roof_may_hang_off_the_north_edge_of_the_map()
         {
-            // Rocks everywhere but the camp, a lane north from it, and the
-            // top rows: the only room for a house is against the north edge,
-            // where its roof stands off the map.
+            // Rocks everywhere but the camp, a lane north from the corner of
+            // its yard, and the top rows: the only room for a house is against
+            // the north edge, where its roof stands off the map. The lane
+            // keeps off the street north from the camp, which nothing is
+            // built on (#171).
             var house = BuildingTable.Of(BuildingKind.House);
             var camp = new WorldPosition(20, 8);
+            var lane = camp.X + Buildings.CampYardRadius;
             var w = new BuildingsWorld(
                 paint: grid =>
                 {
@@ -789,7 +795,7 @@ namespace KingdomWatch.Core.Tests.Construction
                     {
                         for (var x = 0; x < BuildingsWorld.Size; x++)
                         {
-                            var open = y < house.Height || (x == camp.X && y <= camp.Y);
+                            var open = y < house.Height || (x == lane && y <= camp.Y);
                             grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
                         }
                     }

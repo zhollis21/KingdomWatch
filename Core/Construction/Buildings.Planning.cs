@@ -37,7 +37,10 @@ namespace KingdomWatch.Core.Construction
     ///
     /// **Where, by score.** Every footprint the bounded search reaches from
     /// the centre (or, for a field, from its barn) that the old rules allow
-    /// is scored, lowest best, ties to the lower cell index, all in integers:
+    /// is scored, lowest best, ties to the lower cell index, all in integers
+    /// (a door near an open cell of the settlement's planned streets counts
+    /// as near a road, and no footprint or roof sits on one; the streets and
+    /// the links a lane may carry are in Buildings.Streets.cs, #171):
     /// <list type="bullet">
     /// <item>a house near the centre, its door near a road;</item>
     /// <item>a barn on the outskirts: a ring <see cref="RingGap"/> beyond the
@@ -428,6 +431,31 @@ namespace KingdomWatch.Core.Construction
             _laneGate.Begin(spec, anchor, centre);
             _networkTarget.Centre = centre;
 
+            _networkTarget.Streets = true;
+
+            if (!_pathfinder.TryFindNearest(gate, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out cost))
+            {
+                return false;
+            }
+
+            var end = _laneRoute[_laneRoute.Count - 1];
+
+            for (var i = 0; i < _laneRoute.Count - 1; i++)
+            {
+                _lane.Add(_laneRoute[i]);
+            }
+
+            // Ended on a street not laid yet: the street, as far as it runs
+            // to the network (#171). Where it does not, the lane joins the
+            // network the way it would with no plan at all.
+            if (IsNetwork(end, centre) || TryStreet(end, centre, ref cost))
+            {
+                return true;
+            }
+
+            _lane.Clear();
+            _networkTarget.Streets = false;
+
             if (!_pathfinder.TryFindNearest(gate, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out cost))
             {
                 return false;
@@ -454,7 +482,7 @@ namespace KingdomWatch.Core.Construction
                 {
                     var at = new WorldPosition(x, y);
 
-                    if (WithinYard(at, centre) || _grid.RoadAt(at) != RoadGrade.None)
+                    if (WithinYard(at, centre) || _grid.RoadAt(at) != RoadGrade.None || IsOpenStreet(_grid.IndexOf(at), centre))
                     {
                         _network.Add(at);
                     }
@@ -551,7 +579,7 @@ namespace KingdomWatch.Core.Construction
                 {
                     var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
 
-                    if (!_grid.Contains(at) || InAnyYard(at, keep))
+                    if (!_grid.Contains(at) || InAnyYard(at, keep) || IsStreet(at, keep))
                     {
                         return false;
                     }
@@ -580,7 +608,7 @@ namespace KingdomWatch.Core.Construction
 
                     var index = _grid.IndexOf(under);
 
-                    if (InAnyYard(under, keep) || _onCell.ContainsKey(index) || IsRoadOrLane(index))
+                    if (InAnyYard(under, keep) || IsStreet(under, keep) || _onCell.ContainsKey(index) || IsRoadOrLane(index))
                     {
                         return false;
                     }
@@ -954,19 +982,23 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
-        // The network a lane ends on: any road, or the settlement's own yard.
+        // The network a lane ends on: any road, or the settlement's own yard;
+        // and, with Streets, one of its planned streets still open (#171).
         private sealed class NetworkTarget : ISiteFilter
         {
-            private readonly TerrainGrid _grid;
+            private readonly Buildings _owner;
 
-            public NetworkTarget(TerrainGrid grid) => _grid = grid;
+            public NetworkTarget(Buildings owner) => _owner = owner;
 
             public WorldPosition Centre { get; set; }
 
+            public bool Streets { get; set; }
+
             public bool Accepts(int cell)
             {
-                var at = _grid.PositionAt(cell);
-                return _grid.RoadAt(cell) != RoadGrade.None || WithinYard(at, Centre);
+                var grid = _owner._grid;
+                var at = grid.PositionAt(cell);
+                return grid.RoadAt(cell) != RoadGrade.None || WithinYard(at, Centre) || (Streets && _owner.IsOpenStreet(cell, Centre));
             }
         }
     }
