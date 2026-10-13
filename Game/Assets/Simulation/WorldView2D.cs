@@ -568,6 +568,10 @@ namespace KingdomWatch.Game
                         stepX = route[route.Length - 1].X - route[route.Length - 2].X;
                         stepY = route[route.Length - 1].Y - route[route.Length - 2].Y;
                     }
+                    // A diagonal step is drawn as the side it faces (Pose
+                    // prefers the side): standing back along both would put
+                    // them off the corner, swinging past what they work on.
+                    if (stepX != 0) stepY = 0;
                     return new Activity(motion, tool, stepX, stepY, -StandBack * System.Math.Sign(stepX), -StandBack * System.Math.Sign(stepY));
                 default:
                     return default;
