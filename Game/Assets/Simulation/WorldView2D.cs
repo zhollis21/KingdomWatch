@@ -175,6 +175,11 @@ namespace KingdomWatch.Game
 
         private readonly List<Figure> people = new List<Figure>();
         private readonly List<EntityId> peopleIds = new List<EntityId>();
+
+        // Cells (y * width + x) someone is on the way to or at work on.
+        // Core fells a tree or strips a bush when the trip that does it sets
+        // out, so until the work is done the view draws it as it stood.
+        private readonly HashSet<int> beingWorked = new HashSet<int>();
         private readonly List<SpriteRenderer> communityMarkers = new List<SpriteRenderer>();
         private readonly List<EntityId> communityIds = new List<EntityId>();
         private readonly List<int> communitySizes = new List<int>();
@@ -431,10 +436,17 @@ namespace KingdomWatch.Game
             // The span rather than People.Alive(): Alive allocates an iterator
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
+            beingWorked.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
+                if (world.Jobs.HasTask(person))
+                {
+                    var task = world.Jobs.TaskOf(person);
+                    var phase = task.PhaseAt(now);
+                    if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
+                }
                 var at = PositionOf(world, person, record.Position, now);
                 var activity = ActivityOf(world, person, record.Id.Value, now);
                 var figure = FigureAt(used);
@@ -1666,8 +1678,9 @@ namespace KingdomWatch.Game
         private int GrowthOf(TerrainKind kind, int x, int y)
         {
             var at = new WorldPosition(x, y);
-            if (kind == TerrainKind.Scrub) return land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
-            return (int)land.StageOf(at);
+            var worked = beingWorked.Contains(y * width + x);
+            if (kind == TerrainKind.Scrub) return worked || land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
+            return worked ? (int)TreeStage.Standing : (int)land.StageOf(at);
         }
 
         // A felled tree is its own stump, then a small tree of its kind, then
