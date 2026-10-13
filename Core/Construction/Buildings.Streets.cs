@@ -111,6 +111,12 @@ namespace KingdomWatch.Core.Construction
         private int _stamp;
         private WorldPosition _depthOrigin;
 
+        // Open planned cells within StreetSection of the network along the
+        // plan, each with its depth: the ones a site's door may score as
+        // near. Reused; looked up, never iterated.
+        private readonly Dictionary<int, int> _streetDepth = new Dictionary<int, int>();
+        private readonly List<int> _streetQueue = new List<int>();
+
         private readonly StreetGate _streetGate;
         private readonly RealNetwork _realNetwork;
         private readonly LinkTarget _linkTarget;
@@ -148,6 +154,78 @@ namespace KingdomWatch.Core.Construction
                 && !_underRoof.Contains(cell)
                 && !_laneOf.ContainsKey(cell)
                 && !InOtherYard(at, centre);
+        }
+
+        // The open planned cells a lane ending on could lay the street from
+        // to the network, into _streetDepth: breadth first along the plan
+        // from the open cells beside the network, StreetSection deep. A
+        // door beside a stretch of plan further out than that scores as far
+        // from the roads as it is, not as on them (#172).
+        private void CollectStreets(WorldPosition centre)
+        {
+            _streetDepth.Clear();
+            _streetQueue.Clear();
+
+            for (var y = Math.Max(0, centre.Y - StreetReach); y <= Math.Min(_grid.Height - 1, centre.Y + StreetReach); y++)
+            {
+                for (var x = Math.Max(0, centre.X - StreetReach); x <= Math.Min(_grid.Width - 1, centre.X + StreetReach); x++)
+                {
+                    var at = new WorldPosition(x, y);
+                    var cell = _grid.IndexOf(at);
+
+                    if (IsOpenStreet(cell, centre) && BesideRealNetwork(at, centre))
+                    {
+                        _streetDepth[cell] = 1;
+                        _streetQueue.Add(cell);
+                    }
+                }
+            }
+
+            for (var next = 0; next < _streetQueue.Count; next++)
+            {
+                var cell = _streetQueue[next];
+                var depth = _streetDepth[cell];
+
+                if (depth == StreetSection)
+                {
+                    continue;
+                }
+
+                var at = _grid.PositionAt(cell);
+
+                for (var step = 0; step < 4; step++)
+                {
+                    var beside = Step(at, step);
+
+                    if (!_grid.Contains(beside))
+                    {
+                        continue;
+                    }
+
+                    var index = _grid.IndexOf(beside);
+
+                    if (!_streetDepth.ContainsKey(index) && IsOpenStreet(index, centre))
+                    {
+                        _streetDepth[index] = depth + 1;
+                        _streetQueue.Add(index);
+                    }
+                }
+            }
+        }
+
+        private bool BesideRealNetwork(WorldPosition at, WorldPosition centre)
+        {
+            for (var step = 0; step < 4; step++)
+            {
+                var beside = Step(at, step);
+
+                if (_grid.Contains(beside) && IsRealNetwork(_grid.IndexOf(beside), centre))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // A lane that ended on a planned street not laid yet: the street from
@@ -326,6 +404,39 @@ namespace KingdomWatch.Core.Construction
             || _laneCells.Contains(cell)
             || WithinYard(_grid.PositionAt(cell), centre);
 
+        // Whether new road here would make a two by two block of road with
+        // three cells already joined (or, for a street, already the real
+        // network) round one of its corners, outside the yard: a road two
+        // wide where a link or street turns beside another (#172).
+        private bool ClosesBlock(WorldPosition at, WorldPosition centre, bool links)
+        {
+            for (var corner = 0; corner < 4; corner++)
+            {
+                var sx = corner < 2 ? 1 : -1;
+                var sy = corner % 2 == 0 ? 1 : -1;
+
+                if (IsRoadOutsideYard(new WorldPosition(at.X + sx, at.Y), centre, links)
+                    && IsRoadOutsideYard(new WorldPosition(at.X, at.Y + sy), centre, links)
+                    && IsRoadOutsideYard(new WorldPosition(at.X + sx, at.Y + sy), centre, links))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsRoadOutsideYard(WorldPosition at, WorldPosition centre, bool links)
+        {
+            if (!_grid.Contains(at) || WithinYard(at, centre))
+            {
+                return false;
+            }
+
+            var cell = _grid.IndexOf(at);
+            return links ? IsJoined(cell, centre) : IsRealNetwork(cell, centre);
+        }
+
         // Breadth first along the network from one cell, out to RoadDepthCap,
         // into the depth window centred on it.
         private void CountRoadDepths(WorldPosition from, WorldPosition centre)
@@ -432,7 +543,7 @@ namespace KingdomWatch.Core.Construction
                     }
                 }
 
-                return true;
+                return !_owner.ClosesBlock(at, Centre, links: false);
             }
         }
 
@@ -522,14 +633,17 @@ namespace KingdomWatch.Core.Construction
                     return _owner._linkTarget.Accepts(cell);
                 }
 
-                if (!_owner._laneGate.Accepts(cell))
+                // A link is a way between roads, not an alley round the
+                // sides or back of the building it came with.
+                var at = _owner._grid.PositionAt(cell);
+
+                if (!_owner._laneGate.Accepts(cell) || _owner._laneGate.Flanks(at))
                 {
                     return false;
                 }
 
                 // New track touches the network only where it leaves it and
                 // where it joins it, never running alongside a road.
-                var at = _owner._grid.PositionAt(cell);
 
                 for (var step = 0; step < 4; step++)
                 {
@@ -546,7 +660,7 @@ namespace KingdomWatch.Core.Construction
                     }
                 }
 
-                return true;
+                return !_owner.ClosesBlock(at, Centre, links: true);
             }
         }
     }

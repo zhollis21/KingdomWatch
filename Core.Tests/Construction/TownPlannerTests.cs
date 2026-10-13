@@ -86,17 +86,19 @@ namespace KingdomWatch.Core.Tests.Construction
             // Fields take the spots beside a road while there are any, and lay
             // a lane only once those near their barn are used up: a few of a
             // village's fields, not most. Without the pull toward roads half
-            // of this village's fields lay lanes; with it, a fifth. A field
-            // beside a planned street lays the street (#171): that is the
-            // street going in, not a lane of its own.
+            // of this village's fields lay lanes; with it, a fifth, and three
+            // in ten once a planned street counts as a road only where it can
+            // be laid through to one (#172). A field beside a planned street
+            // lays the street (#171): that is the street going in, not a lane
+            // of its own.
             var w = BuildVillage();
             var fields = w.Buildings.All.Where(b => b.Kind == BuildingKind.Field).ToList();
             Assert.That(fields, Has.Count.GreaterThanOrEqualTo(8), "fields to check");
 
             Assert.That(
-                fields.Count(f => f.Lane.Any(at => !Buildings.IsStreet(at, BuildingsWorld.Centre))) * 4,
+                fields.Count(f => f.Lane.Any(at => !Buildings.IsStreet(at, BuildingsWorld.Centre))) * 3,
                 Is.LessThanOrEqualTo(fields.Count),
-                "at most a quarter lay lanes off the streets");
+                "at most a third lay lanes off the streets");
         }
 
         [Test]
@@ -367,7 +369,29 @@ namespace KingdomWatch.Core.Tests.Construction
 
         private static BuildingsWorld PocketWorld(params object[] carve)
         {
-            var w = new BuildingsWorld();
+            // Rocks but for the yard and the plains the house and the barn
+            // stand on, roofs and doors with them, so the barn goes where the
+            // pockets are drawn round: no longer its best site once sites
+            // were chosen by their real lane (#172).
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var at = new WorldPosition(x, y);
+                        var open = Chebyshev(at, BuildingsWorld.Centre) <= Buildings.CampYardRadius
+                            || (x >= 15 && x <= 19 && y >= 10 && y <= 16)
+                            || (x >= 5 && x <= 11 && y >= 1 && y <= 8)
+                            || (x == 8 && y == 9);
+
+                        if (!open)
+                        {
+                            grid.Set(at, TerrainKind.Rocks);
+                        }
+                    }
+                }
+            });
             w.Wood(500);
             w.BuildNext();
             var barn = w.BuildNext();
@@ -597,6 +621,34 @@ namespace KingdomWatch.Core.Tests.Construction
                     Assert.That(w.World.Grid.RoadAt(at), Is.EqualTo(RoadGrade.Track), at.ToString());
                     Assert.That(w.World.Grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
                 }
+            });
+        }
+
+        [Test]
+        public void A_house_goes_where_its_real_lane_is_short_not_where_a_road_only_looks_near()
+        {
+            // Zach's catch on #172: a house whose door looked a few cells from
+            // the road, boxed in by a barn's roof, its lane running right round
+            // the house. Here a river along the yard's north side does the
+            // boxing in: a door north of it is near the yard as the crow
+            // flies but a long way round by lane. The house goes south of
+            // it, where its lane is as short as it looks.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var x = 10; x <= 30; x++)
+                {
+                    grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y - Buildings.CampYardRadius - 1), TerrainKind.SmallRiver);
+                }
+            });
+            w.Wood(100);
+            w.Dawn();
+
+            var house = w.Buildings.All.Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Buildings.DoorOf(house.Kind, house.Anchor).Y, Is.GreaterThan(BuildingsWorld.Centre.Y - Buildings.CampYardRadius - 1), "not north of the river");
+                Assert.That(house.Lane, Has.Count.LessThanOrEqualTo(Buildings.StreetSection), house.Anchor + " " + string.Join(" ", house.Lane));
             });
         }
 

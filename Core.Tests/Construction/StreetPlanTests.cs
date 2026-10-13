@@ -16,7 +16,8 @@ namespace KingdomWatch.Core.Tests.Construction
         private static readonly WorldPosition Camp = new WorldPosition(40, 40);
 
         // Grown once and only read: a hundred people on a map with room all
-        // round, building until they want nothing more.
+        // round, fed, so they build homes rather than farms, until they want
+        // nothing more.
         private static readonly Lazy<BuildingsWorld> Town = new Lazy<BuildingsWorld>(GrowTown);
 
         [Test]
@@ -66,11 +67,11 @@ namespace KingdomWatch.Core.Tests.Construction
         {
             // The road distance between two doors over the distance between
             // them on the grid, averaged over every pair at least four cells
-            // apart. Each lane only to the nearest road made it 1.85 in this
-            // town; streets and links bring it under 1.5.
+            // apart. Each lane only to the nearest road made it 1.76 in this
+            // town; streets and links bring it to 1.11.
             var w = Town.Value;
             var doors = w.Buildings.All.Where(b => Buildings.HasDoor(b.Kind)).Select(b => Buildings.DoorOf(b.Kind, b.Anchor)).ToList();
-            Assert.That(doors, Has.Count.GreaterThanOrEqualTo(15), "doors to measure");
+            Assert.That(doors, Has.Count.GreaterThanOrEqualTo(12), "doors to measure");
 
             var ratios = new List<double>();
 
@@ -90,7 +91,7 @@ namespace KingdomWatch.Core.Tests.Construction
                 }
             }
 
-            Assert.That(ratios.Average(), Is.LessThan(1.6));
+            Assert.That(ratios.Average(), Is.LessThan(1.4));
         }
 
         [Test]
@@ -143,10 +144,37 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(links, Is.GreaterThan(0), "links to check");
         }
 
+        [Test]
+        public void No_link_runs_round_its_own_building()
+        {
+            // Zach's catch on #172: a house's link ran up its west side and
+            // round its back, an alley to the road behind. A link may run
+            // along the door's row, not beside the rest of its footprint or
+            // the rows its roof stands over.
+            var w = Town.Value;
+
+            foreach (var building in w.Buildings.All.Where(b => Buildings.HasDoor(b.Kind)))
+            {
+                var clearance = BuildingTable.Of(building.Kind).Clearance;
+                var top = building.Anchor.Y - clearance;
+                var bottom = building.Anchor.Y + building.Height - 1;
+                var left = building.Anchor.X;
+                var right = building.Anchor.X + building.Width - 1;
+
+                foreach (var at in Strips(building.Lane).Skip(1).SelectMany(strip => strip))
+                {
+                    var flanks = ((at.X == left - 1 || at.X == right + 1) && at.Y >= top && at.Y <= bottom)
+                        || (at.Y == top - 1 && at.X >= left && at.X <= right);
+                    Assert.That(flanks, Is.False, building + "'s link at " + at);
+                }
+            }
+        }
+
         private static BuildingsWorld GrowTown()
         {
             var w = new BuildingsWorld(people: 100, size: 80, camp: Camp);
             w.Wood(20000);
+            w.Stores.Gather(ResourceKind.Food, 100000);
 
             for (var i = 0; i < 60; i++)
             {
