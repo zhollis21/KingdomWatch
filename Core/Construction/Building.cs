@@ -129,9 +129,10 @@ namespace KingdomWatch.Core.Construction
         public int ClearCuts { get; }
 
         /// <summary>
-        /// The rock cells of <see cref="Square"/> its clearing quarries away,
-        /// as priced at approval: each pays <see cref="Buildings.StonePerRock"/>
-        /// Stone when the ground is cleared (#23).
+        /// The rock cells of <see cref="Lane"/> and <see cref="Square"/> its
+        /// clearing quarries away, as priced at approval: each pays
+        /// <see cref="Buildings.StonePerRock"/> Stone when the ground is
+        /// cleared (#23, #172).
         /// </summary>
         public int ClearRocks { get; }
 

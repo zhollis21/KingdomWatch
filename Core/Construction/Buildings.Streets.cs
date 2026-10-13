@@ -143,7 +143,7 @@ namespace KingdomWatch.Core.Construction
 
             return IsStreet(at, centre)
                 && _grid.RoadAt(cell) == RoadGrade.None
-                && _ground[(int)_grid.KindAt(cell)]
+                && IsLaneGround(_grid.KindAt(cell))
                 && !_onCell.ContainsKey(cell)
                 && !_underRoof.Contains(cell)
                 && !_laneOf.ContainsKey(cell)

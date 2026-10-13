@@ -961,7 +961,7 @@ namespace KingdomWatch.Core.Construction
                     return true;
                 }
 
-                if (!(_owner._ground[(int)grid.KindAt(cell)] || grid.RoadAt(cell) != RoadGrade.None)
+                if (!(_owner.IsLaneGround(grid.KindAt(cell)) || grid.RoadAt(cell) != RoadGrade.None)
                     || _owner._onCell.ContainsKey(cell)
                     || _owner._underRoof.Contains(cell)
                     || _owner._laneOf.ContainsKey(cell))

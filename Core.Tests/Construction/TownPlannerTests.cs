@@ -332,7 +332,8 @@ namespace KingdomWatch.Core.Tests.Construction
 
         // The pocket worlds (#169) start as the usual village's first house
         // and barn, the barn at (5, 4), then turn every other cell to rocks,
-        // which a field cannot stand on and a lane cannot cross, and lift
+        // which a field cannot stand on and a lane crosses only at a price
+        // well above a corridor's, the street plan to river, and lift
         // every road but their own: the barn door's lane east along
         // (8..13, 9) and a track down (14, 9..17), the way the first lanes
         // ran before the street plan (#171). Then they carve back the cells
@@ -383,7 +384,10 @@ namespace KingdomWatch.Core.Tests.Construction
 
                     if (w.Buildings.At(at) is null)
                     {
-                        grid.Set(at, TerrainKind.Rocks);
+                        // Lanes quarry rocks (#172), and a lane may end on a
+                        // planned street: a river on the plan keeps both to
+                        // the corridors.
+                        grid.Set(at, Buildings.IsStreet(at, BuildingsWorld.Centre) ? TerrainKind.SmallRiver : TerrainKind.Rocks);
                     }
                 }
             }
@@ -545,6 +549,58 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_lane_through_rocks_is_quarried_priced_and_pays_stone()
+        {
+            // A belt of rocks round the camp: every house beyond it, its lane
+            // back to the yard quarried through, as the square's rocks are,
+            // rather than no lane at all, or one round the far side of a
+            // granary (Zach's catch on #172).
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < BuildingsWorld.Size; y++)
+                {
+                    for (var x = 0; x < BuildingsWorld.Size; x++)
+                    {
+                        var ring = Chebyshev(new WorldPosition(x, y), BuildingsWorld.Centre);
+
+                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 2)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Rocks);
+                        }
+                    }
+                }
+            });
+            w.Wood(100);
+            w.Dawn();
+
+            var house = w.Buildings.All.Single();
+            var rocks = house.Lane.Where(at => w.World.Grid[at] == TerrainKind.Rocks).ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(rocks, Has.Count.EqualTo(2), "straight across the belt");
+                Assert.That(house.ClearRocks, Is.EqualTo(rocks.Count));
+                Assert.That(house.ClearTicks, Is.EqualTo(rocks.Count * Buildings.TicksPerRock), "the footprint is plains; the lane's rocks are the clearing");
+                Assert.That(rocks.All(w.Buildings.IsReserved), Is.True, "nobody quarries the lane's rocks meanwhile");
+                Assert.That(house.Lane.All(at => w.World.Grid.RoadAt(at) == RoadGrade.None), Is.True, "not laid before it is cleared");
+            });
+
+            var stone = w.Stores.Available(ResourceKind.Stone);
+            w.Finish(house);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Stores.Available(ResourceKind.Stone) - stone, Is.EqualTo(rocks.Count * Buildings.StonePerRock));
+
+                foreach (var at in house.Lane)
+                {
+                    Assert.That(w.World.Grid.RoadAt(at), Is.EqualTo(RoadGrade.Track), at.ToString());
+                    Assert.That(w.World.Grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
+                }
+            });
+        }
+
+        [Test]
         public void A_lane_over_open_ground_is_laid_at_approval()
         {
             // Nothing to clear, so nothing waits on the Builders.
@@ -662,9 +718,9 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void No_lane_to_the_roads_no_building()
         {
-            // Rocks everywhere but the camp, a way from it to one patch of
+            // A river everywhere but the camp, a way from it to one patch of
             // scrub a house fits, and a strip under the patch for its door:
-            // a door no lane can lead from, since lanes do not cross rocks.
+            // a door no lane can lead from, since lanes cross no river.
             var w = new BuildingsWorld(paint: grid =>
             {
                 for (var y = 0; y < BuildingsWorld.Size; y++)
@@ -672,7 +728,7 @@ namespace KingdomWatch.Core.Tests.Construction
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
                         var patch = x >= 24 && x <= 28 && y >= 20 && y <= 25;
-                        grid.Set(new WorldPosition(x, y), patch ? TerrainKind.Scrub : TerrainKind.Rocks);
+                        grid.Set(new WorldPosition(x, y), patch ? TerrainKind.Scrub : TerrainKind.SmallRiver);
                     }
                 }
 

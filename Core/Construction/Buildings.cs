@@ -67,8 +67,8 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="TicksPerCut"/> for each cut a standing tree has left, what
     /// woodcutting takes for one, and the wood those cuts would have given
     /// goes into stock; <see cref="ClearTicksPerCell"/> for a bush or a
-    /// stump, and <see cref="TicksPerRock"/> for each rock in the square,
-    /// which pays <see cref="StonePerRock"/>. The lane is laid as road when
+    /// stump, and <see cref="TicksPerRock"/> for each rock on the lane or in
+    /// the square, which pays <see cref="StonePerRock"/>. The lane is laid as road when
     /// the clearing is done. Approved
     /// ground and lanes are reserved: nobody gathers there until they are
     /// cleared (<see cref="IsReserved(WorldPosition)"/>), so they are cleared
@@ -1542,13 +1542,21 @@ namespace KingdomWatch.Core.Construction
                 }
             }
 
+            // Rocks on the lane and in the square are quarried away;
+            // footprints never stand on rock.
             for (var i = 0; i < lane.Count; i++)
             {
-                ticks += ClearTicksAt(lane[i], ref timber);
+                if (_grid[lane[i]] == TerrainKind.Rocks)
+                {
+                    ticks += TicksPerRock;
+                    rocks++;
+                }
+                else
+                {
+                    ticks += ClearTicksAt(lane[i], ref timber);
+                }
             }
 
-            // The square's rocks are quarried away; footprints and lanes
-            // never stand on rock.
             for (var i = 0; i < _square.Count; i++)
             {
                 if (_grid[_square[i]] == TerrainKind.Rocks)
@@ -1564,6 +1572,10 @@ namespace KingdomWatch.Core.Construction
 
             return ticks;
         }
+
+        // Ground a lane may cross: what a footprint may stand on, and rocks,
+        // which its clearing quarries away (#172).
+        private bool IsLaneGround(TerrainKind kind) => _ground[(int)kind] || kind == TerrainKind.Rocks;
 
         private long ClearTicksAt(WorldPosition at, ref int timber)
         {
