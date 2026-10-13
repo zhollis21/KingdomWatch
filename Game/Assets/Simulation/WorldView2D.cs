@@ -436,7 +436,7 @@ namespace KingdomWatch.Game
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
                 var at = PositionOf(world, person, record.Position, now);
-                var activity = ActivityOf(world, person, now);
+                var activity = ActivityOf(world, person, record.Id.Value, now);
                 var figure = FigureAt(used);
                 peopleIds[used++] = record.Id;
                 // A per-person offset inside the cell keeps a band from
@@ -447,7 +447,14 @@ namespace KingdomWatch.Game
                 var jitterX = ((id & 0xff) / 255f - 0.5f) * 0.7f;
                 var jitterY = (((id >> 8) & 0xff) / 255f - 0.5f) * 0.7f;
                 // Someone at work stands back from the middle of what they
-                // work on, toward where they came from, so it shows beside them.
+                // work on, toward where they came from, so it shows beside them;
+                // no jitter along the way they face, which could carry them
+                // back onto it.
+                if (activity.Tool != ArtSet.Tool.None)
+                {
+                    if (activity.Dx != 0) jitterX = 0f;
+                    if (activity.Dy != 0) jitterY = 0f;
+                }
                 var cellX = at.X + 0.5f + jitterX + activity.StandX;
                 var cellY = at.Y + 0.5f + jitterY + activity.StandY;
                 figure.Root.localPosition = new Vector3(OnArtPixel(cellX), OnArtPixel(height - cellY), 0f);
@@ -512,7 +519,7 @@ namespace KingdomWatch.Game
         // What someone is doing at an instant, as drawn: walking out or back
         // along their task's direction, working, or standing. Reads the task
         // alone, so it costs nothing for the idle and allocates nothing.
-        private Activity ActivityOf(World world, PersonHandle person, SimulationTime now)
+        private Activity ActivityOf(World world, PersonHandle person, ulong id, SimulationTime now)
         {
             if (!world.Jobs.HasTask(person)) return default;
             var task = world.Jobs.TaskOf(person);
@@ -524,6 +531,21 @@ namespace KingdomWatch.Game
                 case TaskPhase.Returning:
                     return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, -dx, -dy, 0f, 0f);
                 case TaskPhase.Working:
+                    var building = buildings.At(task.Destination);
+                    var field = building != null && building.Kind == BuildingKind.Field ? building : null;
+                    var (motion, tool) = ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
+                    if (field != null)
+                    {
+                        // Everyone on a field works at its corner, as Core has
+                        // it, so each is drawn at a spot of their own on it for
+                        // the task: a cell picked from their id and the task's
+                        // start, worked from the cell beside it.
+                        var spot = (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL;
+                        var cellX = (int)((spot >> 40) % (ulong)field.Width);
+                        var cellY = (int)((spot >> 20) % (ulong)field.Height);
+                        var side = (spot & 1) == 0 ? 1 : -1;
+                        return new Activity(motion, tool, side, 0, cellX - (side * StandBack), cellY);
+                    }
                     // Facing the way the last step of the route went, which is
                     // toward the work from the cell they stepped off; nobody
                     // stepped anywhere when the work is where they live.
@@ -534,23 +556,15 @@ namespace KingdomWatch.Game
                         stepX = route[route.Length - 1].X - route[route.Length - 2].X;
                         stepY = route[route.Length - 1].Y - route[route.Length - 2].Y;
                     }
-                    var (motion, tool) = ArtSet.WorkOf(task.Job, FieldAt(task.Destination));
                     return new Activity(motion, tool, stepX, stepY, -StandBack * System.Math.Sign(stepX), -StandBack * System.Math.Sign(stepY));
                 default:
                     return default;
             }
         }
 
-        // FieldLook of the field covering `at`, or 0 if no field does.
-        private int FieldAt(WorldPosition at)
-        {
-            var building = buildings.At(at);
-            return building != null && building.Kind == BuildingKind.Field ? FieldLook(building) : 0;
-        }
-
         // How far, in cells, someone at work stands back from the middle of
-        // the cell they work: half a cell puts them at its edge.
-        private const float StandBack = 0.5f;
+        // the cell they work: a whole cell, so what they hit shows beside them.
+        private const float StandBack = 1f;
 
         // What Pose draws: the motion and tool, which way the person faces
         // (a step across the map, zero for facing the viewer), and how far
