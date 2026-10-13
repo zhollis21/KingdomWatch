@@ -86,9 +86,11 @@ namespace KingdomWatch.Core.Tests.Construction
             // Fields take the spots beside a road while there are any, and lay
             // a lane only once those near their barn are used up: a few of a
             // village's fields, not most. Without the pull toward roads half
-            // of this village's fields lay lanes; with it, a fifth, and three
+            // of this village's fields lay lanes; with it, a fifth, and four
             // in ten once a planned street counts as a road only where it can
-            // be laid through to one (#172). A field beside a planned street
+            // be laid through to one and a house's door moved under its art
+            // (#172), a layout thing in this small village: grown 40 years,
+            // half of all fields lay none. A field beside a planned street
             // lays the street (#171): that is the street going in, not a lane
             // of its own.
             var w = BuildVillage();
@@ -96,9 +98,9 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(fields, Has.Count.GreaterThanOrEqualTo(8), "fields to check");
 
             Assert.That(
-                fields.Count(f => f.Lane.Any(at => !Buildings.IsStreet(at, BuildingsWorld.Centre))) * 3,
-                Is.LessThanOrEqualTo(fields.Count),
-                "at most a third lay lanes off the streets");
+                fields.Count(f => f.Lane.Any(at => !Buildings.IsStreet(at, BuildingsWorld.Centre))) * 5,
+                Is.LessThanOrEqualTo(fields.Count * 2),
+                "at most two in five lay lanes off the streets");
         }
 
         [Test]
@@ -382,6 +384,7 @@ namespace KingdomWatch.Core.Tests.Construction
                         var at = new WorldPosition(x, y);
                         var open = Chebyshev(at, BuildingsWorld.Centre) <= Buildings.CampYardRadius
                             || (x >= 15 && x <= 19 && y >= 10 && y <= 16)
+                            || (x == 15 + Buildings.HouseDoorColumn && y == 17)
                             || (x >= 5 && x <= 11 && y >= 1 && y <= 8)
                             || (x == 8 && y == 9);
 
@@ -850,14 +853,18 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void A_door_is_the_middle_of_the_row_south_and_a_field_has_none()
+        public void A_door_is_in_the_row_south_where_the_art_draws_it_and_a_field_has_none()
         {
+            // A house's art draws its door left of the middle, over the
+            // second cell (Zach's catch on #172); a barn's is in the middle.
             var house = BuildingTable.Of(BuildingKind.House);
+            var barn = BuildingTable.Of(BuildingKind.Barn);
             var anchor = new WorldPosition(10, 4);
 
             Assert.Multiple(() =>
             {
-                Assert.That(Buildings.DoorOf(BuildingKind.House, anchor), Is.EqualTo(new WorldPosition(10 + (house.Width / 2), 4 + house.Height)));
+                Assert.That(Buildings.DoorOf(BuildingKind.House, anchor), Is.EqualTo(new WorldPosition(10 + 1, 4 + house.Height)));
+                Assert.That(Buildings.DoorOf(BuildingKind.Barn, anchor), Is.EqualTo(new WorldPosition(10 + (barn.Width / 2), 4 + barn.Height)));
                 Assert.That(Buildings.HasDoor(BuildingKind.Barn), Is.True);
                 Assert.That(Buildings.HasDoor(BuildingKind.Field), Is.False);
                 Assert.That(() => Buildings.DoorOf(BuildingKind.Field, anchor), Throws.InstanceOf<ArgumentOutOfRangeException>());

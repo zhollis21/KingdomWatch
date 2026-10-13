@@ -253,14 +253,16 @@ namespace KingdomWatch.Core.Tests.Construction
             // Rocks everywhere but a box round the camp, its south-east corner
             // walled off: the barn goes north-east of the yard, and its field
             // has no room but against the yard's east side, below the street
-            // east (#171).
+            // east (#171). Four rocks where the doors of houses north-east
+            // of the yard would be keep the house west of it, out of the
+            // barn's way (#172).
             var w = new BuildingsWorld(paint: grid =>
             {
                 for (var y = 0; y < BuildingsWorld.Size; y++)
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var open = x >= 12 && x <= 32 && y >= 14 && y <= 28 && !(x >= 29 && y >= 21);
+                        var open = x >= 12 && x <= 32 && y >= 14 && y <= 28 && !(x >= 29 && y >= 21) && !((x == 25 || x == 26) && (y == 19 || y == 20));
                         grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
                     }
                 }

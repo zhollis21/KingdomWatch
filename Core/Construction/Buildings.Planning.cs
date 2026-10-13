@@ -20,9 +20,10 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="TripsPerRock"/> quarrying trips, paying their Stone - and
     /// paved when that clearing is done (<see cref="Building.Square"/>). Its
     /// road network is that yard and every road cell. A house
-    /// or barn has a door, the middle cell of the row south of its
-    /// footprint, and is placed only where a lane can join that door to the
-    /// network without crossing a footprint, a roof, someone's pending lane
+    /// or barn has a door, a cell of the row south of its footprint where
+    /// the art draws it (<see cref="DoorOf"/>), and is placed only where a
+    /// lane can join that door to the network without crossing a footprint,
+    /// a roof, someone's pending lane
     /// or another settlement's yard. The lane is the cheapest way from the
     /// door to the network stepping along edges only, so it is one strip
     /// rather than cells meeting at their corners, and it prefers open
@@ -154,9 +155,16 @@ namespace KingdomWatch.Core.Construction
         private readonly List<(int MinX, int MinY, int MaxX, int MaxY)> _others = new List<(int MinX, int MinY, int MaxX, int MaxY)>();
 
         /// <summary>
-        /// The door of a footprint anchored here: the middle cell of the row
-        /// south of it. Throws for a kind with no door (<see cref="HasDoor"/>)
-        /// and for one that is not a kind.
+        /// The column of a house's footprint, from its west edge, its door is
+        /// in: where the art draws it, left of the middle (#172).
+        /// </summary>
+        public const int HouseDoorColumn = 1;
+
+        /// <summary>
+        /// The door of a footprint anchored here: a cell of the row south of
+        /// it, the middle one but for a house's (<see cref="HouseDoorColumn"/>).
+        /// Throws for a kind with no door (<see cref="HasDoor"/>) and for one
+        /// that is not a kind.
         /// </summary>
         public static WorldPosition DoorOf(BuildingKind kind, WorldPosition anchor)
         {
@@ -167,7 +175,8 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "A " + kind + " has no door.");
             }
 
-            return new WorldPosition(anchor.X + (spec.Width / 2), anchor.Y + spec.Height);
+            var column = kind == BuildingKind.House ? HouseDoorColumn : spec.Width / 2;
+            return new WorldPosition(anchor.X + column, anchor.Y + spec.Height);
         }
 
         /// <summary>
