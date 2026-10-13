@@ -152,12 +152,6 @@ namespace KingdomWatch.Game
         // How opaque a building or field is while it is still going up.
         private const float UnbuiltAlpha = 0.45f;
 
-        // The house art draws its door left of the middle, where the
-        // simulation's door is: about two thirds of a cell, a road that
-        // starts at the door and runs east showing grass under half of it
-        // (#172). Drawn half a cell east, the door stands over its cell.
-        private const float HouseArtShift = 0.5f;
-
         // Where a camp's tents stand, in cells from its fire: the big tent
         // behind it, the small ones either side and further back.
         private static readonly Vector2[] TentOffsets =
@@ -818,8 +812,7 @@ namespace KingdomWatch.Game
                     // Picked from the id, so a building always looks the same.
                     var pick = (int)((building.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
                     sprite.sprite = building.Kind == BuildingKind.Woodshed ? looks[YardLevel(building)] : looks[pick % looks.Length];
-                    var shift = building.Kind == BuildingKind.House ? HouseArtShift : 0f;
-                    sprite.transform.localPosition = new Vector3(OnArtPixel(middle + shift), OnArtPixel(height - south), 0f);
+                    sprite.transform.localPosition = new Vector3(OnArtPixel(middle), OnArtPixel(height - south), 0f);
                     sprite.sortingOrder = OrderAt(south);
                     sprite.color = new Color(1f, 1f, 1f, alpha);
                 }
