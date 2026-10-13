@@ -16,7 +16,7 @@ needed (#78).
 built, and the issues that build a piece record it here as they do. So far:
 the M1 slice — Food, Wood, Stone, gathering only (#52) — and #100's
 buildings: the House, the Barn and its Fields, Grain and its milling, and
-the Builder and Farmer jobs. Everything else is still a plan.
+the Builder and Farmer jobs; and #155's Forester. Everything else is still a plan.
 
 Section numbers refer to this document unless they say "the plan's"; the
 design plan's sections are always cited that way.
@@ -209,6 +209,7 @@ farm existed; #100 dropped that crude form (§7), so it is building-gated.
 | Job | What it does |
 |---|---|
 | Builder (`JobKind.Builder = 4`) | Clears the ground and raises a building from the wood set aside for it. Consumes, produces nothing — but a tree felled in clearing is wood like any other (#100). |
+| Forester (`JobKind.Forester = 6`) | Plants a tree on plains while the settlement's forest in reach, saplings counted, falls short of its hearths and one more. Produces nothing now: the tree is wood in five years (#155). |
 | Hauler | Moves stock between site, store and workshop. |
 
 Milling is deliberately not a job. A quern is tier-zero household work, so

@@ -208,6 +208,31 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void Which_trees_were_planted_is_folded_in()
+        {
+            // A sapling and a tree felled the same day pack alike (#155); only
+            // the plantings tell them apart, and they decide what counts
+            // toward the house limit.
+            var felled = new WorkWorld();
+            var planted = new WorkWorld();
+
+            for (var i = 0; i < felled.Land.TreeCuts; i++)
+            {
+                felled.Land.Take(WorkWorld.ForestCell);
+            }
+
+            planted.Grid.Set(WorkWorld.ForestCell, TerrainKind.Plains);
+            planted.Land.Plant(WorkWorld.ForestCell);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(planted.Land.StateAt(planted.Grid.IndexOf(WorkWorld.ForestCell)),
+                    Is.EqualTo(felled.Land.StateAt(felled.Grid.IndexOf(WorkWorld.ForestCell))), "the cells alike");
+                Assert.That(new WorldHash().AddLand(planted.Land).Value, Is.Not.EqualTo(new WorldHash().AddLand(felled.Land).Value));
+            });
+        }
+
+        [Test]
         public void The_land_cover_s_limits_are_folded_in()
         {
             // The same claims read differently under other limits: seven picks

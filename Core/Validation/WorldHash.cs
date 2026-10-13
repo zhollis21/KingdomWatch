@@ -359,7 +359,8 @@ namespace KingdomWatch.Core.Validation
 
         /// <summary>
         /// Folds in the land cover (#26): every touched cell's index and
-        /// state, in cell-index order.
+        /// state, in cell-index order, then every planted tree still growing
+        /// and the day it went in (#155).
         /// </summary>
         /// <remarks>
         /// Which bushes are bare and which trees are down decides every site
@@ -400,6 +401,30 @@ namespace KingdomWatch.Core.Validation
                 {
                     Mix(cell);
                     Mix(state);
+                }
+            }
+
+            // The trees planted and still growing (#155), which a village
+            // leaves out of its wood: a planted cell and a felled one hold
+            // the same state, so the planting is what tells them apart.
+            var growing = 0;
+
+            for (var cell = 0; cell < land.CellCount; cell++)
+            {
+                if (land.StateAt(cell) != 0 && land.IsGrowing(cell))
+                {
+                    growing++;
+                }
+            }
+
+            Mix(growing);
+
+            for (var cell = 0; cell < land.CellCount; cell++)
+            {
+                if (land.IsGrowing(cell) && land.TryGetPlanted(cell, out var day))
+                {
+                    Mix(cell);
+                    Mix(day);
                 }
             }
 

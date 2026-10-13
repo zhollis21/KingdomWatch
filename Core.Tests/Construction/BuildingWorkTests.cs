@@ -149,22 +149,9 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void The_validator_names_a_cleared_lane_that_is_not_road_over_cleared_ground()
         {
-            // Forest round the camp, so the house's lane runs out through it.
-            var w = new BuildingsWorld(paint: grid =>
-            {
-                for (var y = 0; y < BuildingsWorld.Size; y++)
-                {
-                    for (var x = 0; x < BuildingsWorld.Size; x++)
-                    {
-                        var ring = System.Math.Max(System.Math.Abs(x - BuildingsWorld.Centre.X), System.Math.Abs(y - BuildingsWorld.Centre.Y));
-
-                        if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + 4)
-                        {
-                            grid.Set(new WorldPosition(x, y), TerrainKind.Forest);
-                        }
-                    }
-                }
-            });
+            // River round the camp crossed by a causeway of forest, so the
+            // house's lane runs out along it.
+            var w = new BuildingsWorld(paint: grid => BuildingsWorld.PaintBelt(grid, 4, TerrainKind.Forest));
             w.Wood(100);
             w.Dawn();
             var house = w.Buildings.All.Single();
@@ -250,12 +237,13 @@ namespace KingdomWatch.Core.Tests.Construction
             // A field against the square has its way in by the square's road.
             // Lift that road and the yard is still the yard, but the field has
             // lost its way in, and the validator must say so (the #159 review).
-            // Rocks everywhere but a box round the camp, its south-east corner
+            // River everywhere but a box round the camp, its south-east corner
             // walled off: the barn goes north-east of the yard, and its field
             // has no room but against the yard's east side, below the street
-            // east (#171). Four rocks where the doors of houses north-east
-            // of the yard would be keep the house west of it, out of the
-            // barn's way (#172).
+            // east (#171). Four river cells where the doors of houses
+            // north-east of the yard would be keep the house west of it, out
+            // of the barn's way (#172). River rather than rocks, which since
+            // #155 are ground to build on.
             var w = new BuildingsWorld(paint: grid =>
             {
                 for (var y = 0; y < BuildingsWorld.Size; y++)
@@ -263,7 +251,7 @@ namespace KingdomWatch.Core.Tests.Construction
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
                         var open = x >= 12 && x <= 32 && y >= 14 && y <= 28 && !(x >= 29 && y >= 21) && !((x == 25 || x == 26) && (y == 19 || y == 20));
-                        grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
+                        grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.SmallRiver);
                     }
                 }
             });

@@ -765,6 +765,29 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_sapling_is_clean_and_one_with_a_cut_to_give_or_its_ground_rewritten_is_caught()
+        {
+            // A growing tree is forest that has given every cut (#155); one
+            // whose cell went back to plains is wood counted that is not there.
+            var world = new WorkWorld();
+            var plains = new WorldPosition(4, 4);
+            world.Land.Plant(plains);
+
+            var planted = new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock);
+            world.Land.TreeCuts = world.Land.TreeCuts + 1;
+            var moreCuts = RulesOf(new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock));
+            world.Land.TreeCuts = world.Land.TreeCuts - 1;
+            world.Grid.Set(plains, TerrainKind.Plains);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(planted.IsClean, Is.True, planted.Report(0UL));
+                Assert.That(moreCuts, Does.Contain(ValidationRule.LandClaimInvalid), "a sapling with a cut still to give");
+                Assert.That(RulesOf(new WorldValidator().CheckLand(world.Land, world.Grid, world.Clock)), Does.Contain(ValidationRule.LandClaimInvalid));
+            });
+        }
+
+        [Test]
         public void A_booking_names_an_owner_a_kind_and_an_event()
         {
             // The type is what five systems hand their records out in, so a

@@ -229,8 +229,10 @@ namespace KingdomWatch.Game
         // call it when someone's job changes rather than every frame.
         public Look LookOf(JobKind job, uint seed)
         {
+            // A Forester (#155) dresses as a woodcutter: the art has no shirt
+            // of its own for one yet.
             var shirts = job == JobKind.Forager ? forager
-                : job == JobKind.Woodcutter ? woodcutter
+                : job == JobKind.Woodcutter || job == JobKind.Forester ? woodcutter
                 : job == JobKind.StoneGatherer ? stoneGatherer
                 : job == JobKind.Farmer ? farmer
                 : job == JobKind.Builder ? builder

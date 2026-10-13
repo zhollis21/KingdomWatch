@@ -664,6 +664,33 @@ namespace KingdomWatch.Core.Tests.Traversal
         }
 
         [Test]
+        public void A_site_filter_leaves_cells_out_of_the_weight_but_not_the_walk()
+        {
+            // The filter only decides what counts (#155): the walk still goes
+            // through a refused cell to the cells beyond it.
+            var finder = new Pathfinder(Map("........"), TerrainRules.Default);
+            var plains = Wanting(TerrainKind.Plains);
+            var notFirst = new OnlyEast(1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.WeighReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L, new CostIsWeight(), notFirst), Is.EqualTo(500L));
+                Assert.That(finder.WeighReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L, null, notFirst), Is.EqualTo(2L));
+                Assert.That(finder.WeighReachable(Origin, Transport.Foot, plains, default, int.MaxValue, 300L, null, null), Is.EqualTo(4L));
+            });
+        }
+
+        // Accepts the cells east of a column, on a one-row map.
+        private sealed class OnlyEast : ISiteFilter
+        {
+            private readonly int _after;
+
+            public OnlyEast(int after) => _after = after;
+
+            public bool Accepts(int cell) => cell > _after;
+        }
+
+        [Test]
         public void Weights_that_overflow_their_sum_are_refused_not_wrapped()
         {
             var finder = new Pathfinder(Map(".."), TerrainRules.Default);

@@ -537,7 +537,30 @@ namespace KingdomWatch.Core.Traversal
             ReadOnlySpan<bool> known,
             int radius,
             long maxCost,
-            ICostWeight? weight)
+            ICostWeight? weight) =>
+            WeighReachable(from, mover, acceptable, known, radius, maxCost, weight, null);
+
+        /// <summary>
+        /// <see cref="WeighReachable(WorldPosition, Transport, ReadOnlySpan{bool}, ReadOnlySpan{bool}, int, long, ICostWeight)"/>,
+        /// counting only the cells <paramref name="sites"/> accepts as well:
+        /// a village's trees, less the ones it planted that have not grown
+        /// (#155). Null accepts every cell. The search still passes through
+        /// a cell it does not count.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The origin is off the map, the radius or the cost is negative, or
+        /// the mover has no defined transport.
+        /// </exception>
+        /// <exception cref="OverflowException">The weights sum past a long: refused rather than wrapped.</exception>
+        public long WeighReachable(
+            WorldPosition from,
+            Transport mover,
+            ReadOnlySpan<bool> acceptable,
+            ReadOnlySpan<bool> known,
+            int radius,
+            long maxCost,
+            ICostWeight? weight,
+            ISiteFilter? sites)
         {
             if (!known.IsEmpty && known.Length < _grid.CellCount)
             {
@@ -570,7 +593,7 @@ namespace KingdomWatch.Core.Traversal
             {
                 var current = PopCheapest();
 
-                if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]))
+                if (acceptable[(int)_grid.KindAt(current)] && (known.IsEmpty || known[current]) && (sites is null || sites.Accepts(current)))
                 {
                     found = checked(found + (weight is null ? 1L : weight.WeightOf(_gScore[current])));
                 }

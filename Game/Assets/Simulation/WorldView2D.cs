@@ -1048,6 +1048,7 @@ namespace KingdomWatch.Game
                 case JobKind.StoneGatherer: return new Color(0.72f, 0.72f, 0.76f);
                 case JobKind.Farmer: return new Color(0.92f, 0.78f, 0.2f);
                 case JobKind.Builder: return new Color(0.45f, 0.55f, 0.9f);
+                case JobKind.Forester: return new Color(0.3f, 0.62f, 0.32f);
                 default: return new Color(0.95f, 0.62f, 0.35f);
             }
         }

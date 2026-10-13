@@ -615,7 +615,8 @@ namespace KingdomWatch.Harness
         /// Every cell the land cover has touched (#26) is a bush or a tree,
         /// holding no more claims than one gives: a terrain rewrite under a
         /// claimed cell, or the picks or cuts lowered past what was already
-        /// claimed, leaves land the site search would misread.
+        /// claimed, leaves land the site search would misread. A planted tree
+        /// still growing (#155) is forest with no cut left.
         /// </summary>
         public WorldValidator CheckLand(LandCover land, TerrainGrid grid, SimulationClock clock)
         {
@@ -640,6 +641,16 @@ namespace KingdomWatch.Harness
                     Add(ValidationRule.LandClaimInvalid, now, EntityId.None,
                         grid.PositionAt(cell) + " is " + kind + " with " + land.ClaimsAt(cell)
                         + " claims; it can hold " + most + ".");
+                }
+
+                // A planted tree still growing is a sapling on forest (#155):
+                // the ground cleared from under it, or a cut claimed on it,
+                // leaves wood counted that is not there.
+                if (land.IsGrowing(cell) && (kind != TerrainKind.Forest || land.ClaimsAt(cell) < land.TreeCuts))
+                {
+                    Add(ValidationRule.LandClaimInvalid, now, EntityId.None,
+                        grid.PositionAt(cell) + " is " + kind + " with " + land.ClaimsAt(cell)
+                        + " claims, planted and still growing; a sapling is forest that has given every cut.");
                 }
             }
 

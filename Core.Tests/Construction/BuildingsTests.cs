@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Construction;
@@ -434,13 +435,22 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(w.Buildings.ShareOf(house, JobKind.Builder), Is.EqualTo(Buildings.ShareTicks));
 
             var woodBefore = w.Stores.Available(ResourceKind.Wood);
+            var foodBefore = w.Stores.Available(ResourceKind.Food);
             w.Finish(house);
+
+            // The bushes pay their spring fruit and a little brushwood (#155).
+            var bushes = cells - trees;
 
             Assert.Multiple(() =>
             {
                 Assert.That(house.Cleared, Is.True);
                 Assert.That(house.IsComplete, Is.True);
-                Assert.That(w.Stores.Available(ResourceKind.Wood) - woodBefore, Is.EqualTo(trees * w.World.Land.TreeCuts * Buildings.WoodPerCut));
+                Assert.That(
+                    w.Stores.Available(ResourceKind.Wood) - woodBefore,
+                    Is.EqualTo((trees * w.World.Land.TreeCuts * Buildings.WoodPerCut) + (bushes * Buildings.WoodPerBush)));
+                Assert.That(
+                    w.Stores.Available(ResourceKind.Food) - foodBefore,
+                    Is.EqualTo(bushes * w.World.Land.BushPicks * Buildings.FoodPerPick(Season.Spring)));
 
                 for (var dy = 0; dy < house.Height; dy++)
                 {
@@ -809,9 +819,11 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
-        public void Open_plains_are_preferred_to_clearing()
+        public void Ground_to_clear_beside_the_yard_is_not_passed_over_for_plains_further_out()
         {
-            // Scrub right up to the camp, plains a little further out.
+            // Scrub right up to the camp, plains a little further out. Until
+            // #155 the house went out to the plains; now the ground scores
+            // the same, so it goes beside the yard and clears the bushes.
             var w = new BuildingsWorld(paint: grid =>
             {
                 for (var y = 14; y <= 26; y++)
@@ -827,25 +839,24 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Wood(100);
             w.Dawn();
 
-            // The footprint is open plains; its lane to the yard may still
-            // cross the scrub, and that clearing is priced in (#23).
             var house = w.Buildings.All.Single();
+            var footprint = new List<WorldPosition>();
 
             for (var dy = 0; dy < house.Height; dy++)
             {
                 for (var dx = 0; dx < house.Width; dx++)
                 {
-                    var at = new WorldPosition(house.Anchor.X + dx, house.Anchor.Y + dy);
-                    Assert.That(w.World.Grid[at], Is.EqualTo(TerrainKind.Plains), at.ToString());
+                    footprint.Add(new WorldPosition(house.Anchor.X + dx, house.Anchor.Y + dy));
                 }
             }
 
-            // Its lane, and the scrub in the yard it clears as the square
-            // (#23), are scrub still waiting to be cleared.
-            var scrub = house.Lane.Concat(house.Square).Count(at => w.World.Grid[at] == TerrainKind.Scrub);
+            // Its footprint, its lane and the scrub in the yard it clears as
+            // the square (#23) are scrub still waiting to be cleared.
+            var scrub = footprint.Concat(house.Lane).Concat(house.Square).Distinct().Count(at => w.World.Grid[at] == TerrainKind.Scrub);
 
             Assert.Multiple(() =>
             {
+                Assert.That(footprint.Count(at => w.World.Grid[at] == TerrainKind.Scrub), Is.GreaterThan(footprint.Count / 2), "mostly on the scrub, not out on the plains: " + house.Anchor);
                 Assert.That(house.Square, Is.Not.Empty);
                 Assert.That(house.Cleared, Is.False);
                 Assert.That(house.ClearTicks, Is.EqualTo(scrub * Buildings.ClearTicksPerCell));
@@ -1219,14 +1230,16 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void No_room_no_building_and_no_settling()
         {
-            // Rocks everywhere but the camps: no footprint fits anywhere.
+            // Water every third column, scrub between, but the camps: no
+            // footprint fits anywhere, and the bushes are still walked to.
+            // Water rather than rocks, which since #155 are ground to clear.
             var w = new BuildingsWorld(size: 100, paint: grid =>
             {
                 for (var y = 0; y < grid.Height; y++)
                 {
                     for (var x = 0; x < grid.Width; x++)
                     {
-                        grid.Set(new WorldPosition(x, y), (x + y) % 2 == 0 ? TerrainKind.Rocks : TerrainKind.Scrub);
+                        grid.Set(new WorldPosition(x, y), x % 3 == 0 ? TerrainKind.DeepWater : TerrainKind.Scrub);
                     }
                 }
 
@@ -1378,6 +1391,7 @@ namespace KingdomWatch.Core.Tests.Construction
         // Rocks on every cell within `reach` of the barn that is not a
         // building, a road or the camp: walkable, but ground nothing is
         // built on (#163).
+        // Water, not rocks: since #155 rocks are ground a building clears.
         private static void BoxIn(BuildingsWorld w, Building barn, int reach)
         {
             var grid = w.World.Grid;
@@ -1391,7 +1405,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
                     if (grid.Contains(at) && !nearCamp && w.Buildings.At(at) is null && grid.RoadAt(at) == RoadGrade.None)
                     {
-                        grid.Set(at, TerrainKind.Rocks);
+                        grid.Set(at, TerrainKind.DeepWater);
                     }
                 }
             }

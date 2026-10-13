@@ -83,5 +83,27 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         internal void Wood(int amount) => Stores.Gather(ResourceKind.Wood, amount);
+
+        // A belt of river this wide round the yard, crossed west to east by
+        // a causeway one cell wide of `causeway`, two rows south of the
+        // centre, off the planned spoke: the only way a lane can reach the
+        // yard from beyond it. A river rather than a belt of the causeway's
+        // own ground, which since #155 a house would stand on.
+        internal static void PaintBelt(TerrainGrid grid, int width, TerrainKind causeway)
+        {
+            for (var y = 0; y < grid.Height; y++)
+            {
+                for (var x = 0; x < grid.Width; x++)
+                {
+                    var at = new WorldPosition(x, y);
+                    var ring = System.Math.Max(System.Math.Abs(x - Centre.X), System.Math.Abs(y - Centre.Y));
+
+                    if (ring > Buildings.CampYardRadius && ring <= Buildings.CampYardRadius + width)
+                    {
+                        grid.Set(at, y == Centre.Y + 2 && x > Centre.X ? causeway : TerrainKind.SmallRiver);
+                    }
+                }
+            }
+        }
     }
 }
