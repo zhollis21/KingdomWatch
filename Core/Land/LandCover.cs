@@ -67,6 +67,9 @@ namespace KingdomWatch.Core.Land
         /// <summary>Days from a tree's planting until it stands: five years.</summary>
         public const long RegrowDays = 5L * SimulationTime.DaysPerYear;
 
+        /// <summary>Days a felled tree's stump shows on the plains it left: five years (#155).</summary>
+        public const long StumpDays = 5L * SimulationTime.DaysPerYear;
+
         // A cell's state is (period + 1) << CountBits | count, so zero is a
         // cell nothing has touched and every touched cell is non-zero. A
         // day number at the end of time is under 2^47, so the shifted period
@@ -180,7 +183,9 @@ namespace KingdomWatch.Core.Land
         /// that took it comes home (#155): nothing grows back on its own, and
         /// the ground is open for a forester to plant. Kept a stump until
         /// then so a trip that never comes home can give the cut back
-        /// (<see cref="Return"/>). Nothing to do for any other cell - one
+        /// (<see cref="Return"/>). The plains keep the day, so the view can
+        /// draw the stump on them for <see cref="StumpDays"/>
+        /// (<see cref="ShowsStump"/>). Nothing to do for any other cell - one
         /// with cuts left, or ground cleared since.
         /// </summary>
         public void Fell(WorldPosition at)
@@ -189,9 +194,25 @@ namespace KingdomWatch.Core.Land
 
             if (IsStump(cell))
             {
-                _cells[cell] = 0;
+                _cells[cell] = Pack(_clock.Now.DayNumber, 0);
                 _grid.Set(at, TerrainKind.Plains);
             }
+        }
+
+        /// <summary>
+        /// Whether plains at this position were felled from a tree less than
+        /// <see cref="StumpDays"/> ago (<see cref="Fell"/>): drawn with its
+        /// stump, though open ground to everything else. For the view. False
+        /// for any cell that is not plains, or plains planted or built on
+        /// since; the view still checks for roads and buildings.
+        /// </summary>
+        public bool ShowsStump(WorldPosition at)
+        {
+            var cell = _grid.IndexOf(at);
+
+            return _grid.KindAt(cell) == TerrainKind.Plains
+                && _cells[cell] != 0
+                && _clock.Now.DayNumber - Period(cell) < StumpDays;
         }
 
         /// <summary>

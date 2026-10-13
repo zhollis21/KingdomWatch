@@ -1543,7 +1543,15 @@ namespace KingdomWatch.Game
                 var growth = GrowthOf(kind, x, y);
                 var (sprite, tile) = GrowingArt(kind, growth, hash);
                 var renderer = Stand(chunk, sprite, tile, x, y, block, 0.3f);
-                chunk.Growing.Add(new Growing(x, y, kind == TerrainKind.Scrub, growth, renderer));
+                chunk.Growing.Add(new Growing(x, y, kind == TerrainKind.Scrub, false, growth, renderer));
+            }
+            else if (kind == TerrainKind.Plains && land.ShowsStump(new WorldPosition(x, y)) && !IsRoad(x, y) && buildings.At(new WorldPosition(x, y)) == null)
+            {
+                // A tree felled for good leaves plains, drawn with its stump
+                // for a while (#155). Regrow lets it go to grass.
+                var tree = TreeOf(hash);
+                var renderer = Stand(chunk, art.Stumps[tree], art.StumpTiles[tree], x, y, block, 0.3f);
+                chunk.Growing.Add(new Growing(x, y, false, true, (int)TreeStage.Stump, renderer));
             }
             else if (kind == TerrainKind.Rocks)
             {
@@ -1641,13 +1649,23 @@ namespace KingdomWatch.Game
                 for (var i = 0; i < chunk.Growing.Count; i++)
                 {
                     var growing = chunk.Growing[i];
+                    if (growing.Stump)
+                    {
+                        // A felled tree's stump on plains goes to grass once
+                        // it has stood long enough, and stays gone.
+                        if (growing.Shown < 0 || land.ShowsStump(new WorldPosition(growing.X, growing.Y))) continue;
+                        if (growing.Renderer != null) growing.Renderer.enabled = false;
+                        else changedGrowth.Add(new TileChangeData(new Vector3Int(growing.X, height - 1 - growing.Y, 0), null, Color.white, Matrix4x4.identity));
+                        chunk.Growing[i] = new Growing(growing.X, growing.Y, false, true, -1, growing.Renderer);
+                        continue;
+                    }
                     var kind = growing.Bush ? TerrainKind.Scrub : TerrainKind.Forest;
                     var growth = GrowthOf(kind, growing.X, growing.Y);
                     if (growth == growing.Shown) continue;
                     var (sprite, tile) = GrowingArt(kind, growth, CellHash(growing.X, growing.Y));
                     if (growing.Renderer != null) growing.Renderer.sprite = sprite;
                     else changedGrowth.Add(new TileChangeData(new Vector3Int(growing.X, height - 1 - growing.Y, 0), tile, Color.white, Nudged(growing.X, growing.Y, 0.3f)));
-                    chunk.Growing[i] = new Growing(growing.X, growing.Y, growing.Bush, growth, growing.Renderer);
+                    chunk.Growing[i] = new Growing(growing.X, growing.Y, growing.Bush, false, growth, growing.Renderer);
                 }
                 looked += chunk.Growing.Count;
             }
@@ -2122,14 +2140,17 @@ namespace KingdomWatch.Game
         }
 
         // A tree or bush as drawn: its cell, which, its growth (see
-        // GrowthOf), and its renderer, null when the chunk's scenery is tiled.
+        // GrowthOf; -1 for a felled stump gone to grass), and its renderer,
+        // null when the chunk's scenery is tiled. A stump is one on plains,
+        // where a tree was felled for good (#155).
         private readonly struct Growing
         {
-            public Growing(int x, int y, bool bush, int shown, SpriteRenderer renderer)
+            public Growing(int x, int y, bool bush, bool stump, int shown, SpriteRenderer renderer)
             {
                 X = x;
                 Y = y;
                 Bush = bush;
+                Stump = stump;
                 Shown = shown;
                 Renderer = renderer;
             }
@@ -2137,6 +2158,7 @@ namespace KingdomWatch.Game
             public int X { get; }
             public int Y { get; }
             public bool Bush { get; }
+            public bool Stump { get; }
             public int Shown { get; }
             public SpriteRenderer Renderer { get; }
         }

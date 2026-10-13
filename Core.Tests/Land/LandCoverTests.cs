@@ -126,11 +126,16 @@ namespace KingdomWatch.Core.Tests.Land
             Assert.That(_land.CutsLeft(Tree), Is.Zero);
 
             _land.Fell(Tree);
+            var shown = _land.ShowsStump(Tree);
+            AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays * 2L + LandCover.StumpDays));
 
             Assert.Multiple(() =>
             {
                 Assert.That(_grid[Tree], Is.EqualTo(TerrainKind.Plains));
-                Assert.That(_land.StateAt(_grid.IndexOf(Tree)), Is.Zero);
+                Assert.That(_land.IsWorkable(Tree), Is.True, "open ground");
+                Assert.That(shown, Is.True, "the stump drawn on the plains");
+                Assert.That(_land.ShowsStump(Tree), Is.False, "and gone to grass in time");
+                Assert.That(_land.ShowsStump(Open), Is.False, "plains never felled show none");
             });
         }
 
