@@ -100,10 +100,6 @@ If the fix gets written first anyway, the cheap recovery is to revert it, confir
 
 ## Working with AI Agents
 
-### Commits and pushes
-
-Do not commit or push unless explicitly asked (e.g. "commit this", "push it"). The exception is when asked to create a PR — that implies doing everything needed: branch, commits, push, and PR creation.
-
 ### Self-review
 
 After writing code, run through the review checklist in `.claude/skills/self-review/SKILL.md` (`/self-review`). Fix all issues found before presenting. The review loop is internal — do not surface bugs as a list of things found.
