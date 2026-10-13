@@ -20,9 +20,10 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="TripsPerRock"/> quarrying trips, paying their Stone - and
     /// paved when that clearing is done (<see cref="Building.Square"/>). Its
     /// road network is that yard and every road cell. A house
-    /// or barn has a door, the middle cell of the row south of its
-    /// footprint, and is placed only where a lane can join that door to the
-    /// network without crossing a footprint, a roof, someone's pending lane
+    /// or barn has a door, a cell of the row south of its footprint where
+    /// the art draws it (<see cref="DoorOf"/>), and is placed only where a
+    /// lane can join that door to the network without crossing a footprint,
+    /// a roof, someone's pending lane
     /// or another settlement's yard. The lane is the cheapest way from the
     /// door to the network stepping along edges only, so it is one strip
     /// rather than cells meeting at their corners, and it prefers open
@@ -37,7 +38,10 @@ namespace KingdomWatch.Core.Construction
     ///
     /// **Where, by score.** Every footprint the bounded search reaches from
     /// the centre (or, for a field, from its barn) that the old rules allow
-    /// is scored, lowest best, ties to the lower cell index, all in integers:
+    /// is scored, lowest best, ties to the lower cell index, all in integers
+    /// (a door near an open cell of the settlement's planned streets counts
+    /// as near a road, and no footprint or roof sits on one; the streets and
+    /// the links a lane may carry are in Buildings.Streets.cs, #171):
     /// <list type="bullet">
     /// <item>a house near the centre, its door near a road;</item>
     /// <item>a barn on the outskirts: a ring <see cref="RingGap"/> beyond the
@@ -151,9 +155,16 @@ namespace KingdomWatch.Core.Construction
         private readonly List<(int MinX, int MinY, int MaxX, int MaxY)> _others = new List<(int MinX, int MinY, int MaxX, int MaxY)>();
 
         /// <summary>
-        /// The door of a footprint anchored here: the middle cell of the row
-        /// south of it. Throws for a kind with no door (<see cref="HasDoor"/>)
-        /// and for one that is not a kind.
+        /// The column of a house's footprint, from its west edge, its door is
+        /// in: where the art draws it, left of the middle (#172).
+        /// </summary>
+        public const int HouseDoorColumn = 1;
+
+        /// <summary>
+        /// The door of a footprint anchored here: a cell of the row south of
+        /// it, the middle one but for a house's (<see cref="HouseDoorColumn"/>).
+        /// Throws for a kind with no door (<see cref="HasDoor"/>) and for one
+        /// that is not a kind.
         /// </summary>
         public static WorldPosition DoorOf(BuildingKind kind, WorldPosition anchor)
         {
@@ -164,7 +175,8 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "A " + kind + " has no door.");
             }
 
-            return new WorldPosition(anchor.X + (spec.Width / 2), anchor.Y + spec.Height);
+            var column = kind == BuildingKind.House ? HouseDoorColumn : spec.Width / 2;
+            return new WorldPosition(anchor.X + column, anchor.Y + spec.Height);
         }
 
         /// <summary>
@@ -232,42 +244,23 @@ namespace KingdomWatch.Core.Construction
 
             _scorer.Begin(kind, spec, centre, barn, settlement);
             CollectNetwork(centre, radius);
-
-            if (barn is object)
-            {
-                return TryPlaceField(from, centre, known, radius, out anchor);
-            }
-
-            for (var attempt = 0; attempt < PlacementAttempts; attempt++)
-            {
-                if (!TryBest(from, radius, known, out anchor))
-                {
-                    return false;
-                }
-
-                if (TryJoin(kind, anchor, centre))
-                {
-                    return true;
-                }
-
-                _scorer.Refuse(_grid.IndexOf(anchor));
-            }
-
-            anchor = default;
-            return false;
+            return TryPlaceByLane(kind, from, centre, known, radius, out anchor);
         }
 
-        // A field's best site by its real lane (#169). A site is scored by
-        // how far its nearest side stands from a road as the crow flies,
-        // and its lane can run much further round whatever stands in the
-        // way. So each of the best few sites is joined and rescored with the
-        // lane it actually got, the lowest kept, ties to the lower cell index
-        // as in the scoring. All of them: the crow-flies distance is measured
-        // against the network near the centre only, so it is no lower bound
-        // on a lane, and no site can be passed over on its score alone. Open
-        // plains stay preferred outright: once a plains site is kept, ground
-        // to clear is not looked at. Into _lane.
-        private bool TryPlaceField(WorldPosition from, WorldPosition centre, ReadOnlySpan<bool> known, int radius, out WorldPosition anchor)
+        // A site's best by its real lane: a field's (#169), a house's or a
+        // barn's (#172). A site is scored by how far its door, or a field's
+        // nearest side, stands from the network as the crow flies, and its
+        // lane can run much further round whatever stands in the way: a
+        // neighbour's roof, or a planned street that does not run through to
+        // the roads yet. So each of the best few sites is joined and
+        // rescored with the lane it actually got, the lowest kept, ties to
+        // the lower cell index as in the scoring. All of them: the
+        // crow-flies distance is measured against the network near the
+        // centre only, so it is no lower bound on a lane, and no site can be
+        // passed over on its score alone. Open plains stay preferred
+        // outright: once a plains site is kept, ground to clear is not
+        // looked at. Into _lane.
+        private bool TryPlaceByLane(BuildingKind kind, WorldPosition from, WorldPosition centre, ReadOnlySpan<bool> known, int radius, out WorldPosition anchor)
         {
             var keptScore = long.MaxValue;
             var keptCell = -1;
@@ -282,14 +275,14 @@ namespace KingdomWatch.Core.Construction
                 }
 
                 var cell = _grid.IndexOf(site);
-                var estimate = _scorer.ToRoad(site);
+                var estimate = _scorer.LaneEstimate(site);
 
                 // A field is searched for from its barn, so it is asked
                 // separately whether a Farmer could walk to it.
-                if (_pathfinder.TryFindRoute(centre, site, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _)
-                    && TryJoin(BuildingKind.Field, site, centre))
+                if ((HasDoor(kind) || _pathfinder.TryFindRoute(centre, site, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _))
+                    && TryJoin(kind, site, centre))
                 {
-                    var score = _scorer.BestScore + (FieldRoadWeight * (_lane.Count - estimate));
+                    var score = _scorer.BestScore + (_scorer.LaneWeight * (_lane.Count - estimate));
 
                     if (score < keptScore || (score == keptScore && cell < keptCell))
                     {
@@ -428,6 +421,31 @@ namespace KingdomWatch.Core.Construction
             _laneGate.Begin(spec, anchor, centre);
             _networkTarget.Centre = centre;
 
+            _networkTarget.Streets = true;
+
+            if (!_pathfinder.TryFindNearest(gate, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out cost))
+            {
+                return false;
+            }
+
+            var end = _laneRoute[_laneRoute.Count - 1];
+
+            for (var i = 0; i < _laneRoute.Count - 1; i++)
+            {
+                _lane.Add(_laneRoute[i]);
+            }
+
+            // Ended on a street not laid yet: the street, as far as it runs
+            // to the network (#171). Where it does not, the lane joins the
+            // network the way it would with no plan at all.
+            if (IsNetwork(end, centre) || TryStreet(end, centre, ref cost))
+            {
+                return true;
+            }
+
+            _lane.Clear();
+            _networkTarget.Streets = false;
+
             if (!_pathfinder.TryFindNearest(gate, Jobs.Mover, _anyKind, default, _networkTarget, _laneGate, true, LaneRadius, _laneRoute, out cost))
             {
                 return false;
@@ -446,6 +464,7 @@ namespace KingdomWatch.Core.Construction
         private void CollectNetwork(WorldPosition centre, int radius)
         {
             _network.Clear();
+            CollectStreets(centre);
             var reach = radius + LaneRadius;
 
             for (var y = Math.Max(0, centre.Y - reach); y <= Math.Min(_grid.Height - 1, centre.Y + reach); y++)
@@ -454,7 +473,7 @@ namespace KingdomWatch.Core.Construction
                 {
                     var at = new WorldPosition(x, y);
 
-                    if (WithinYard(at, centre) || _grid.RoadAt(at) != RoadGrade.None)
+                    if (WithinYard(at, centre) || _grid.RoadAt(at) != RoadGrade.None || _streetDepth.ContainsKey(_grid.IndexOf(at)))
                     {
                         _network.Add(at);
                     }
@@ -551,7 +570,7 @@ namespace KingdomWatch.Core.Construction
                 {
                     var at = new WorldPosition(anchor.X + dx, anchor.Y + dy);
 
-                    if (!_grid.Contains(at) || InAnyYard(at, keep))
+                    if (!_grid.Contains(at) || InAnyYard(at, keep) || IsStreet(at, keep))
                     {
                         return false;
                     }
@@ -580,7 +599,7 @@ namespace KingdomWatch.Core.Construction
 
                     var index = _grid.IndexOf(under);
 
-                    if (InAnyYard(under, keep) || _onCell.ContainsKey(index) || IsRoadOrLane(index))
+                    if (InAnyYard(under, keep) || IsStreet(under, keep) || _onCell.ContainsKey(index) || IsRoadOrLane(index))
                     {
                         return false;
                     }
@@ -804,6 +823,17 @@ namespace KingdomWatch.Core.Construction
             // A door a lane can start from: on the map, ground a lane may run
             // on or road already, and under no building, roof or pending lane
             // of another, nor in another settlement's yard.
+            // How far, as the crow flies, a site's lane would run: from a
+            // house's or barn's door, or from a field's nearest open side.
+            public long LaneEstimate(WorldPosition anchor) =>
+                HasDoor(_kind) ? ToNetwork(DoorOf(_kind, anchor)) : ToRoad(anchor);
+
+            // Score per cell of a site's lane, as Score weighs it.
+            public int LaneWeight =>
+                !HasDoor(_kind) ? FieldRoadWeight
+                : _kind == BuildingKind.Barn ? BarnLaneWeight
+                : Buildings.LaneWeight;
+
             // How far a field anchored here is from a road: none when one
             // lies along an edge, else from its nearest open side; a field
             // with no open side cannot be joined at all.
@@ -922,6 +952,20 @@ namespace KingdomWatch.Core.Construction
                 _centre = centre;
             }
 
+            // Whether a cell runs along the sides or the back of the building
+            // being joined: beside its footprint or the rows its roof stands
+            // over, other than along the row its door is in (#172).
+            public bool Flanks(WorldPosition at)
+            {
+                var top = _anchor.Y - _spec.Clearance;
+                var bottom = _anchor.Y + _spec.Height - 1;
+                var left = _anchor.X;
+                var right = _anchor.X + _spec.Width - 1;
+
+                return ((at.X == left - 1 || at.X == right + 1) && at.Y >= top && at.Y <= bottom)
+                    || (at.Y == top - 1 && at.X >= left && at.X <= right);
+            }
+
             public bool Accepts(int cell)
             {
                 var grid = _owner._grid;
@@ -933,7 +977,7 @@ namespace KingdomWatch.Core.Construction
                     return true;
                 }
 
-                if (!(_owner._ground[(int)grid.KindAt(cell)] || grid.RoadAt(cell) != RoadGrade.None)
+                if (!(_owner.IsLaneGround(grid.KindAt(cell)) || grid.RoadAt(cell) != RoadGrade.None)
                     || _owner._onCell.ContainsKey(cell)
                     || _owner._underRoof.Contains(cell)
                     || _owner._laneOf.ContainsKey(cell))
@@ -954,19 +998,23 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
-        // The network a lane ends on: any road, or the settlement's own yard.
+        // The network a lane ends on: any road, or the settlement's own yard;
+        // and, with Streets, one of its planned streets still open (#171).
         private sealed class NetworkTarget : ISiteFilter
         {
-            private readonly TerrainGrid _grid;
+            private readonly Buildings _owner;
 
-            public NetworkTarget(TerrainGrid grid) => _grid = grid;
+            public NetworkTarget(Buildings owner) => _owner = owner;
 
             public WorldPosition Centre { get; set; }
 
+            public bool Streets { get; set; }
+
             public bool Accepts(int cell)
             {
-                var at = _grid.PositionAt(cell);
-                return _grid.RoadAt(cell) != RoadGrade.None || WithinYard(at, Centre);
+                var grid = _owner._grid;
+                var at = grid.PositionAt(cell);
+                return grid.RoadAt(cell) != RoadGrade.None || WithinYard(at, Centre) || (Streets && _owner.IsOpenStreet(cell, Centre));
             }
         }
     }

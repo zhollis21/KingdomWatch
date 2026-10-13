@@ -250,15 +250,19 @@ namespace KingdomWatch.Core.Tests.Construction
             // A field against the square has its way in by the square's road.
             // Lift that road and the yard is still the yard, but the field has
             // lost its way in, and the validator must say so (the #159 review).
-            // Rocks everywhere but a strip round and below the camp: the barn
-            // goes below the yard, and its field has no room but against it.
+            // Rocks everywhere but a box round the camp, its south-east corner
+            // walled off: the barn goes north-east of the yard, and its field
+            // has no room but against the yard's east side, below the street
+            // east (#171). Four rocks where the doors of houses north-east
+            // of the yard would be keep the house west of it, out of the
+            // barn's way (#172).
             var w = new BuildingsWorld(paint: grid =>
             {
                 for (var y = 0; y < BuildingsWorld.Size; y++)
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var open = x >= 10 && x <= 26 && y >= 14 && y <= 28;
+                        var open = x >= 12 && x <= 32 && y >= 14 && y <= 28 && !(x >= 29 && y >= 21) && !((x == 25 || x == 26) && (y == 19 || y == 20));
                         grid.Set(new WorldPosition(x, y), open ? TerrainKind.Plains : TerrainKind.Rocks);
                     }
                 }
@@ -273,7 +277,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.That(field.Kind, Is.EqualTo(BuildingKind.Field));
             Assert.That(
-                Enumerable.Range(field.Anchor.X, field.Width).Any(x => InYard(x, field.Anchor.Y - 1)),
+                Enumerable.Range(field.Anchor.Y, field.Height).Any(y => InYard(field.Anchor.X - 1, y)),
                 Is.True,
                 "the field stands against the yard, so the yard alone would have passed it");
 
@@ -343,8 +347,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var near = x >= 24 && x <= 28 && y >= 20 && y <= 24;
-                        var far = x >= 33 && x <= 37 && y >= 20 && y <= 24;
+                        var near = x >= 24 && x <= 28 && y >= 23 && y <= 27;
+                        var far = x >= 33 && x <= 37 && y >= 23 && y <= 27;
                         grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
                     }
                 }
@@ -357,14 +361,24 @@ namespace KingdomWatch.Core.Tests.Construction
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
 
-                // A strip under the near patch, back to the yard, for the
-                // house's door and its lane (#23).
-                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                for (var y = BuildingsWorld.Centre.Y + 1; y < 24; y++)
                 {
-                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                    grid.Set(new WorldPosition(23, y), TerrainKind.Plains);
                 }
 
-                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23). The patches stand clear of
+                // the street east from the yard, roofs included, since nothing
+                // is built on one (#171).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 28), TerrainKind.Plains);
+                }
+
+                for (var y = 24; y < 28; y++)
+                {
+                    grid.Set(new WorldPosition(BuildingsWorld.Centre.X, y), TerrainKind.Plains);
+                }
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodReserve + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
@@ -397,8 +411,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     for (var x = 0; x < BuildingsWorld.Size; x++)
                     {
-                        var near = x >= 24 && x <= 28 && y >= 20 && y <= 24;
-                        var far = x >= 33 && x <= 37 && y >= 20 && y <= 24;
+                        var near = x >= 24 && x <= 28 && y >= 23 && y <= 27;
+                        var far = x >= 33 && x <= 37 && y >= 23 && y <= 27;
                         grid.Set(new WorldPosition(x, y), near || far ? TerrainKind.Scrub : TerrainKind.Rocks);
                     }
                 }
@@ -411,14 +425,24 @@ namespace KingdomWatch.Core.Tests.Construction
                     grid.Set(new WorldPosition(x, BuildingsWorld.Centre.Y), TerrainKind.Plains);
                 }
 
-                // A strip under the near patch, back to the yard, for the
-                // house's door and its lane (#23).
-                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                for (var y = BuildingsWorld.Centre.Y + 1; y < 24; y++)
                 {
-                    grid.Set(new WorldPosition(x, 25), TerrainKind.Plains);
+                    grid.Set(new WorldPosition(23, y), TerrainKind.Plains);
                 }
 
-                grid.Set(new WorldPosition(BuildingsWorld.Centre.X, 24), TerrainKind.Plains);
+                // A strip under the near patch, back to the yard, for the
+                // house's door and its lane (#23). The patches stand clear of
+                // the street east from the yard, roofs included, since nothing
+                // is built on one (#171).
+                for (var x = BuildingsWorld.Centre.X; x <= 28; x++)
+                {
+                    grid.Set(new WorldPosition(x, 28), TerrainKind.Plains);
+                }
+
+                for (var y = 24; y < 28; y++)
+                {
+                    grid.Set(new WorldPosition(BuildingsWorld.Centre.X, y), TerrainKind.Plains);
+                }
             });
             w.Wood(KingdomWatch.Core.Work.Jobs.WoodReserve + 2000);
             w.Stores.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
