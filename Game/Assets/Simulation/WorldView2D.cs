@@ -181,9 +181,9 @@ namespace KingdomWatch.Game
         // out, so until the work is done the view draws it as it stood.
         private readonly HashSet<int> beingWorked = new HashSet<int>();
 
-        // Field cells (y * width + x) someone has been drawn working this
-        // frame, so the next on that field takes another.
-        private readonly HashSet<int> fieldSpots = new HashSet<int>();
+        // Cells (y * width + x) of a field or a site being cleared that
+        // someone has been drawn working this frame, so the next takes another.
+        private readonly HashSet<int> workSpots = new HashSet<int>();
         private readonly List<SpriteRenderer> communityMarkers = new List<SpriteRenderer>();
         private readonly List<EntityId> communityIds = new List<EntityId>();
         private readonly List<int> communitySizes = new List<int>();
@@ -456,7 +456,7 @@ namespace KingdomWatch.Game
             // The span rather than People.Alive(): Alive allocates an iterator
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
-            fieldSpots.Clear();
+            workSpots.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone) continue;
@@ -558,6 +558,17 @@ namespace KingdomWatch.Game
                     return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, -dx, -dy, 0f, 0f);
                 case TaskPhase.Working:
                     var building = buildings.At(task.Destination);
+                    if (task.Job == JobKind.Builder && building != null && !building.Cleared
+                        && ClearingSpot(building, (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL, out var cleared, out var clearing))
+                    {
+                        // Clearing a site, which Core does to the whole of it
+                        // at once: each builder is drawn at a cell of their
+                        // own that still has something on it, chopping a tree
+                        // or bush or breaking a rock, from the cell beside it.
+                        var (clearMotion, clearTool) = clearing == TerrainKind.Rocks ? (ArtSet.Motion.Swing, ArtSet.Tool.Pickaxe) : (ArtSet.Motion.Chop, ArtSet.Tool.Axe);
+                        var clearSide = (id & 1) == 0 ? 1 : -1;
+                        return new Activity(clearMotion, clearTool, clearSide, 0, cleared.X - task.Destination.X - (clearSide * StandBack), cleared.Y - task.Destination.Y);
+                    }
                     var field = building != null && building.Kind == BuildingKind.Field ? building : null;
                     var (motion, tool) = ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
                     if (field != null)
@@ -573,7 +584,7 @@ namespace KingdomWatch.Game
                         for (var tried = 0; tried < cells; tried++)
                         {
                             var next = (cell + tried) % cells;
-                            if (fieldSpots.Add((field.Anchor.Y + (next / field.Width)) * width + field.Anchor.X + (next % field.Width)))
+                            if (workSpots.Add((field.Anchor.Y + (next / field.Width)) * width + field.Anchor.X + (next % field.Width)))
                             {
                                 cell = next;
                                 break;
@@ -601,6 +612,42 @@ namespace KingdomWatch.Game
                 default:
                     return default;
             }
+        }
+
+        // Of the cells a site's clearing takes (its footprint, lane and square),
+        // the one with a tree, bush or rock on it that `spot` picks, or the
+        // next such that nobody drawn before this frame has; if everyone's
+        // taken, the one picked. False when none has anything left on it.
+        private bool ClearingSpot(Building site, ulong spot, out WorldPosition at, out TerrainKind kind)
+        {
+            var footprint = site.Width * site.Height;
+            var cells = footprint + site.Lane.Count + site.Square.Count;
+            var start = (int)((spot >> 32) % (ulong)cells);
+            at = default;
+            kind = TerrainKind.Plains;
+            var found = false;
+            for (var tried = 0; tried < cells; tried++)
+            {
+                var n = (start + tried) % cells;
+                var cell = n < footprint ? new WorldPosition(site.Anchor.X + (n % site.Width), site.Anchor.Y + (n / site.Width))
+                    : n < footprint + site.Lane.Count ? site.Lane[n - footprint]
+                    : site.Square[n - footprint - site.Lane.Count];
+                var here = grid[cell];
+                if (here != TerrainKind.Forest && here != TerrainKind.Scrub && here != TerrainKind.Rocks) continue;
+                if (!found)
+                {
+                    at = cell;
+                    kind = here;
+                    found = true;
+                }
+                if (workSpots.Add(cell.Y * width + cell.X))
+                {
+                    at = cell;
+                    kind = here;
+                    return true;
+                }
+            }
+            return found;
         }
 
         // How far, in cells, someone at work stands back from the middle of
