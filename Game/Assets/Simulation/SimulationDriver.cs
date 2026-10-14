@@ -138,9 +138,7 @@ namespace KingdomWatch.Game
             Slower = () => { if (speedStep > 0) speedStep--; },
             Faster = () => { if (speedStep < SpeedSteps.Length - 1) speedStep++; },
             TogglePause = () => paused = !paused,
-            WholeMap = () => input.WholeMap(),
             ToggleFollow = () => input.ToggleFollow(UiScale),
-            Deselect = () => input.Deselect(),
             MoveTo = point => input.MoveTo(point),
         };
 

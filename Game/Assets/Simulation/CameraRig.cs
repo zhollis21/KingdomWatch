@@ -146,7 +146,9 @@ namespace KingdomWatch.Game
         }
 
         // Centres on a world point, used by following. Leaves zoom alone.
-        public void CentreOn(Vector2 world) => focus = world;
+        // `offset`, in screen pixels, puts the point that far from the middle
+        // of the screen instead: the middle of what the panel leaves open.
+        public void CentreOn(Vector2 world, Vector2 offset = default) => focus = world - offset / PixelsPerCell;
 
         // Zooms to `pixels` per cell, within the rig's limits: a scripted
         // run's stops (#132).

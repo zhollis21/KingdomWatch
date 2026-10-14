@@ -62,7 +62,7 @@ namespace KingdomWatch.Game
             ReadKeyboard(uiScale, deltaTime);
 
             if (!Following) return;
-            if (!view.Selected.IsNone && view.TryGetDrawnPosition(view.Selected, out var at)) rig.CentreOn(at);
+            if (!view.Selected.IsNone && view.TryGetDrawnPosition(view.Selected, out var at)) rig.CentreOn(at, panel.OpenCentreOffset);
             else Following = false;
         }
 
