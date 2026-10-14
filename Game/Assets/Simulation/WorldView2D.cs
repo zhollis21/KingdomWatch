@@ -180,6 +180,10 @@ namespace KingdomWatch.Game
         // Core fells a tree or strips a bush when the trip that does it sets
         // out, so until the work is done the view draws it as it stood.
         private readonly HashSet<int> beingWorked = new HashSet<int>();
+
+        // Field cells (y * width + x) someone has been drawn working this
+        // frame, so the next on that field takes another.
+        private readonly HashSet<int> fieldSpots = new HashSet<int>();
         private readonly List<SpriteRenderer> communityMarkers = new List<SpriteRenderer>();
         private readonly List<EntityId> communityIds = new List<EntityId>();
         private readonly List<int> communitySizes = new List<int>();
@@ -385,6 +389,8 @@ namespace KingdomWatch.Game
             // out too, so the map is never drawn from cells since rewritten.
             using (RewritesMarker.Auto()) NoteRewrites();
             using (BuildingsMarker.Auto()) PlaceBuildings();
+            // Before Regrow and the chunks, which draw what is being worked.
+            NoteWork(world);
             // Every frame, zoomed in or out, so the season has got as far
             // wherever the view goes next.
             if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
@@ -425,6 +431,20 @@ namespace KingdomWatch.Game
             return pixelsPerCell / scale >= nearEdge ? ZoomBand.Near : ZoomBand.Medium;
         }
 
+        // The cells someone is on the way to or at work on, this frame.
+        private void NoteWork(World world)
+        {
+            var now = world.Now;
+            beingWorked.Clear();
+            foreach (var record in world.People.RecordSpan())
+            {
+                if (record.Id.IsNone || !world.Jobs.HasTask(record.Handle)) continue;
+                var task = world.Jobs.TaskOf(record.Handle);
+                var phase = task.PhaseAt(now);
+                if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
+            }
+        }
+
         private void DrawPeople(World world)
         {
             var used = 0;
@@ -436,17 +456,11 @@ namespace KingdomWatch.Game
             // The span rather than People.Alive(): Alive allocates an iterator
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
-            beingWorked.Clear();
+            fieldSpots.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
-                if (world.Jobs.HasTask(person))
-                {
-                    var task = world.Jobs.TaskOf(person);
-                    var phase = task.PhaseAt(now);
-                    if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
-                }
                 var at = PositionOf(world, person, record.Position, now);
                 var activity = ActivityOf(world, person, record.Id.Value, now);
                 var figure = FigureAt(used);
@@ -551,18 +565,29 @@ namespace KingdomWatch.Game
                         // Everyone on a field works at its corner, as Core has
                         // it, so each is drawn at a spot of their own on it for
                         // the task: a cell picked from their id and the task's
-                        // start, worked from the cell beside it.
+                        // start, or the next one along that nobody drawn before
+                        // them this frame has, worked from the cell beside it.
                         var spot = (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL;
-                        var cellX = (int)((spot >> 40) % (ulong)field.Width);
-                        var cellY = (int)((spot >> 20) % (ulong)field.Height);
+                        var cells = field.Width * field.Height;
+                        var cell = (int)((spot >> 32) % (ulong)cells);
+                        for (var tried = 0; tried < cells; tried++)
+                        {
+                            var next = (cell + tried) % cells;
+                            if (fieldSpots.Add((field.Anchor.Y + (next / field.Width)) * width + field.Anchor.X + (next % field.Width)))
+                            {
+                                cell = next;
+                                break;
+                            }
+                        }
                         var side = (spot & 1) == 0 ? 1 : -1;
-                        return new Activity(motion, tool, side, 0, cellX - (side * StandBack), cellY);
+                        return new Activity(motion, tool, side, 0, (cell % field.Width) - (side * StandBack), cell / field.Width);
                     }
                     // Facing the way the last step of the route went, which is
-                    // toward the work from the cell they stepped off; nobody
-                    // stepped anywhere when the work is where they live.
+                    // toward the work from the cell they stepped off. Work
+                    // where they already stand has no step: they face east,
+                    // from the cell west of it.
                     var route = world.Jobs.RouteOf(person);
-                    int stepX = 0, stepY = 0;
+                    int stepX = 1, stepY = 0;
                     if (route.Length >= 2)
                     {
                         stepX = route[route.Length - 1].X - route[route.Length - 2].X;
