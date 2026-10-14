@@ -6,6 +6,7 @@ using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Settlements;
 using KingdomWatch.Core.Traversal;
+using KingdomWatch.Core.Work;
 using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -174,6 +175,15 @@ namespace KingdomWatch.Game
 
         private readonly List<Figure> people = new List<Figure>();
         private readonly List<EntityId> peopleIds = new List<EntityId>();
+
+        // Cells (y * width + x) someone is on the way to or at work on.
+        // Core fells a tree or strips a bush when the trip that does it sets
+        // out, so until the work is done the view draws it as it stood.
+        private readonly HashSet<int> beingWorked = new HashSet<int>();
+
+        // Cells (y * width + x) of a field or a site being cleared that
+        // someone has been drawn working this frame, so the next takes another.
+        private readonly HashSet<int> workSpots = new HashSet<int>();
         private readonly List<SpriteRenderer> communityMarkers = new List<SpriteRenderer>();
         private readonly List<EntityId> communityIds = new List<EntityId>();
         private readonly List<int> communitySizes = new List<int>();
@@ -379,6 +389,8 @@ namespace KingdomWatch.Game
             // out too, so the map is never drawn from cells since rewritten.
             using (RewritesMarker.Auto()) NoteRewrites();
             using (BuildingsMarker.Auto()) PlaceBuildings();
+            // Before Regrow and the chunks, which draw what is being worked.
+            NoteWork(world);
             // Every frame, zoomed in or out, so the season has got as far
             // wherever the view goes next.
             if (art != null) using (LayLandMarker.Auto()) LayLand(world.Now);
@@ -419,6 +431,20 @@ namespace KingdomWatch.Game
             return pixelsPerCell / scale >= nearEdge ? ZoomBand.Near : ZoomBand.Medium;
         }
 
+        // The cells someone is on the way to or at work on, this frame.
+        private void NoteWork(World world)
+        {
+            var now = world.Now;
+            beingWorked.Clear();
+            foreach (var record in world.People.RecordSpan())
+            {
+                if (record.Id.IsNone || !world.Jobs.HasTask(record.Handle)) continue;
+                var task = world.Jobs.TaskOf(record.Handle);
+                var phase = task.PhaseAt(now);
+                if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
+            }
+        }
+
         private void DrawPeople(World world)
         {
             var used = 0;
@@ -430,11 +456,13 @@ namespace KingdomWatch.Game
             // The span rather than People.Alive(): Alive allocates an iterator
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
+            workSpots.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
                 var at = PositionOf(world, person, record.Position, now);
+                var activity = ActivityOf(world, person, record.Id.Value, now);
                 var figure = FigureAt(used);
                 peopleIds[used++] = record.Id;
                 // A per-person offset inside the cell keeps a band from
@@ -444,8 +472,18 @@ namespace KingdomWatch.Game
                 var id = (long)((record.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
                 var jitterX = ((id & 0xff) / 255f - 0.5f) * 0.7f;
                 var jitterY = (((id >> 8) & 0xff) / 255f - 0.5f) * 0.7f;
-                var cellY = at.Y + 0.5f + jitterY;
-                figure.Root.localPosition = new Vector3(OnArtPixel(at.X + 0.5f + jitterX), OnArtPixel(height - cellY), 0f);
+                // Someone at work stands back from the middle of what they
+                // work on, toward where they came from, so it shows beside them;
+                // no jitter along the way they face, which could carry them
+                // back onto it.
+                if (activity.Tool != ArtSet.Tool.None)
+                {
+                    if (activity.Dx != 0) jitterX = 0f;
+                    if (activity.Dy != 0) jitterY = 0f;
+                }
+                var cellX = at.X + 0.5f + jitterX + activity.StandX;
+                var cellY = at.Y + 0.5f + jitterY + activity.StandY;
+                figure.Root.localPosition = new Vector3(OnArtPixel(cellX), OnArtPixel(height - cellY), 0f);
                 // Further south (larger row) is nearer the viewer, so it draws on top.
                 figure.Order = OrderAt(cellY);
                 figure.SetVisible(visible);
@@ -458,7 +496,7 @@ namespace KingdomWatch.Game
                         figure.DressedFor = record.Id;
                         figure.Look = art.LookOf(record.Job, (uint)(record.Id.Value * 0xD6E8FEB86659FD93UL >> 32));
                     }
-                    if (visible) Pose(figure, world, person, now, (int)(tick + (id >> 16)) % ArtSet.FramesPerPose);
+                    if (visible) Pose(figure, activity, (int)(tick + (id >> 16)) % ArtSet.FramesPerPose);
                 }
                 else
                 {
@@ -473,49 +511,171 @@ namespace KingdomWatch.Game
         }
 
         // Walking while on the way out or back, facing where they are going;
+        // at work, swinging their job's tool at what they work on (#126);
         // otherwise standing, facing the viewer.
-        private void Pose(Figure figure, World world, PersonHandle person, SimulationTime now, int frame)
+        private void Pose(Figure figure, Activity activity, int frame)
         {
-            var walking = Walking(world, person, now, out var dx, out var dy);
             var facing = ArtSet.Facing.Down;
             var flip = false;
-            if (walking)
+            if (activity.Dx != 0 || activity.Dy != 0)
             {
-                if (Mathf.Abs(dx) >= Mathf.Abs(dy))
+                if (Mathf.Abs(activity.Dx) >= Mathf.Abs(activity.Dy))
                 {
                     facing = ArtSet.Facing.Side;
-                    flip = dx < 0;
+                    flip = activity.Dx < 0;
                 }
                 else
                 {
                     // Rows count down the map: a larger row is further south.
-                    facing = dy > 0 ? ArtSet.Facing.Down : ArtSet.Facing.Up;
+                    facing = activity.Dy > 0 ? ArtSet.Facing.Down : ArtSet.Facing.Up;
                 }
             }
 
             for (var layer = 0; layer < ArtSet.Layers; layer++)
             {
                 var renderer = figure.Layers[layer];
-                renderer.sprite = art.Frame(figure.Look, layer, walking, facing, frame);
+                renderer.sprite = art.Frame(figure.Look, layer, activity.Motion, facing, frame);
                 renderer.flipX = flip;
+            }
+            figure.Tool.sprite = art.ToolFrame(activity.Tool, facing, frame);
+            figure.Tool.flipX = flip;
+            figure.Tool.enabled = activity.Tool != ArtSet.Tool.None;
+        }
+
+        // What someone is doing at an instant, as drawn: walking out or back
+        // along their task's direction, working, or standing. Reads the task
+        // alone, so it costs nothing for the idle and allocates nothing.
+        private Activity ActivityOf(World world, PersonHandle person, ulong id, SimulationTime now)
+        {
+            if (!world.Jobs.HasTask(person)) return default;
+            var task = world.Jobs.TaskOf(person);
+            int dx = task.Destination.X - task.Origin.X, dy = task.Destination.Y - task.Origin.Y;
+            switch (task.PhaseAt(now))
+            {
+                case TaskPhase.Outbound:
+                    return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, dx, dy, 0f, 0f);
+                case TaskPhase.Returning:
+                    return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, -dx, -dy, 0f, 0f);
+                case TaskPhase.Working:
+                    var building = buildings.At(task.Destination);
+                    if (task.Job == JobKind.Builder && building != null && !building.Cleared
+                        && ClearingSpot(building, (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL, out var cleared, out var clearing))
+                    {
+                        // Clearing a site, which Core does to the whole of it
+                        // at once: each builder is drawn at a cell of their
+                        // own that still has something on it, chopping a tree
+                        // or bush or breaking a rock, from the cell beside it.
+                        var (clearMotion, clearTool) = clearing == TerrainKind.Rocks ? (ArtSet.Motion.Swing, ArtSet.Tool.Pickaxe) : (ArtSet.Motion.Chop, ArtSet.Tool.Axe);
+                        var clearSide = (id & 1) == 0 ? 1 : -1;
+                        return new Activity(clearMotion, clearTool, clearSide, 0, cleared.X - task.Destination.X - (clearSide * StandBack), cleared.Y - task.Destination.Y);
+                    }
+                    var field = building != null && building.Kind == BuildingKind.Field ? building : null;
+                    var (motion, tool) = ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
+                    if (field != null)
+                    {
+                        // Everyone on a field works at its corner, as Core has
+                        // it, so each is drawn at a spot of their own on it for
+                        // the task: a cell picked from their id and the task's
+                        // start, or the next one along that nobody drawn before
+                        // them this frame has, worked from the cell beside it.
+                        var spot = (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL;
+                        var cells = field.Width * field.Height;
+                        var cell = (int)((spot >> 32) % (ulong)cells);
+                        for (var tried = 0; tried < cells; tried++)
+                        {
+                            var next = (cell + tried) % cells;
+                            if (workSpots.Add((field.Anchor.Y + (next / field.Width)) * width + field.Anchor.X + (next % field.Width)))
+                            {
+                                cell = next;
+                                break;
+                            }
+                        }
+                        var side = (spot & 1) == 0 ? 1 : -1;
+                        return new Activity(motion, tool, side, 0, (cell % field.Width) - (side * StandBack), cell / field.Width);
+                    }
+                    // Facing the way the last step of the route went, which is
+                    // toward the work from the cell they stepped off. Work
+                    // where they already stand has no step: they face east,
+                    // from the cell west of it.
+                    var route = world.Jobs.RouteOf(person);
+                    int stepX = 1, stepY = 0;
+                    if (route.Length >= 2)
+                    {
+                        stepX = route[route.Length - 1].X - route[route.Length - 2].X;
+                        stepY = route[route.Length - 1].Y - route[route.Length - 2].Y;
+                    }
+                    // A diagonal step is drawn as the side it faces (Pose
+                    // prefers the side): standing back along both would put
+                    // them off the corner, swinging past what they work on.
+                    if (stepX != 0) stepY = 0;
+                    else if (stepY == 0) stepX = 1;
+                    return new Activity(motion, tool, stepX, stepY, -StandBack * System.Math.Sign(stepX), -StandBack * System.Math.Sign(stepY));
+                default:
+                    return default;
             }
         }
 
-        private static bool Walking(World world, PersonHandle person, SimulationTime now, out int dx, out int dy)
+        // Of the cells a site's clearing takes (its footprint, lane and square),
+        // the one with a tree, bush or rock on it that `spot` picks, or the
+        // next such that nobody drawn before this frame has; if everyone's
+        // taken, the one picked. False when none has anything left on it.
+        private bool ClearingSpot(Building site, ulong spot, out WorldPosition at, out TerrainKind kind)
         {
-            dx = dy = 0;
-            if (!world.Jobs.HasTask(person)) return false;
-            var task = world.Jobs.TaskOf(person);
-            var elapsed = now.Ticks - task.Start.Ticks;
-            if (elapsed < 0) return false;
-            var back = elapsed - task.TravelTicks - task.WorkTicks;
-            int sign;
-            if (elapsed < task.TravelTicks) sign = 1;
-            else if (back >= 0 && back < task.ReturnTicks) sign = -1;
-            else return false;
-            dx = sign * (task.Destination.X - task.Origin.X);
-            dy = sign * (task.Destination.Y - task.Origin.Y);
-            return true;
+            var footprint = site.Width * site.Height;
+            var cells = footprint + site.Lane.Count + site.Square.Count;
+            var start = (int)((spot >> 32) % (ulong)cells);
+            at = default;
+            kind = TerrainKind.Plains;
+            var found = false;
+            for (var tried = 0; tried < cells; tried++)
+            {
+                var n = (start + tried) % cells;
+                var cell = n < footprint ? new WorldPosition(site.Anchor.X + (n % site.Width), site.Anchor.Y + (n / site.Width))
+                    : n < footprint + site.Lane.Count ? site.Lane[n - footprint]
+                    : site.Square[n - footprint - site.Lane.Count];
+                var here = grid[cell];
+                if (here != TerrainKind.Forest && here != TerrainKind.Scrub && here != TerrainKind.Rocks) continue;
+                if (!found)
+                {
+                    at = cell;
+                    kind = here;
+                    found = true;
+                }
+                if (workSpots.Add(cell.Y * width + cell.X))
+                {
+                    at = cell;
+                    kind = here;
+                    return true;
+                }
+            }
+            return found;
+        }
+
+        // How far, in cells, someone at work stands back from the middle of
+        // the cell they work: a whole cell, so what they hit shows beside them.
+        private const float StandBack = 1f;
+
+        // What Pose draws: the motion and tool, which way the person faces
+        // (a step across the map, zero for facing the viewer), and how far
+        // they stand off the middle of their cell.
+        private readonly struct Activity
+        {
+            public Activity(ArtSet.Motion motion, ArtSet.Tool tool, int dx, int dy, float standX, float standY)
+            {
+                Motion = motion;
+                Tool = tool;
+                Dx = dx;
+                Dy = dy;
+                StandX = standX;
+                StandY = standY;
+            }
+
+            public ArtSet.Motion Motion { get; }
+            public ArtSet.Tool Tool { get; }
+            public int Dx { get; }
+            public int Dy { get; }
+            public float StandX { get; }
+            public float StandY { get; }
         }
 
         // A marker per community at Far zoom; with the art, a camp per
@@ -1604,8 +1764,9 @@ namespace KingdomWatch.Game
         private int GrowthOf(TerrainKind kind, int x, int y)
         {
             var at = new WorldPosition(x, y);
-            if (kind == TerrainKind.Scrub) return land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
-            return (int)land.StageOf(at);
+            var worked = beingWorked.Contains(y * width + x);
+            if (kind == TerrainKind.Scrub) return worked || land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
+            return worked ? (int)TreeStage.Standing : (int)land.StageOf(at);
         }
 
         // A felled tree is its own stump, then a small tree of its kind, then
@@ -2033,14 +2194,20 @@ namespace KingdomWatch.Game
             var root = new GameObject("Person");
             root.transform.SetParent(peopleRoot, false);
             var layers = new SpriteRenderer[ArtSet.Layers];
-            for (var i = 0; i < layers.Length; i++)
-            {
-                layers[i] = new GameObject("Layer " + i).AddComponent<SpriteRenderer>();
-                layers[i].transform.SetParent(root.transform, false);
-                layers[i].sharedMaterial = spriteMaterial;
-                layers[i].sortingOrder = i;
-            }
-            return new Figure(root.transform, layers, root.AddComponent<SortingGroup>());
+            for (var i = 0; i < layers.Length; i++) layers[i] = NewLayer(root.transform, "Layer " + i, i);
+            // The tool in hand goes over the whole doll, hair and hands too.
+            var tool = NewLayer(root.transform, "Tool", ArtSet.Layers);
+            tool.enabled = false;
+            return new Figure(root.transform, layers, tool, root.AddComponent<SortingGroup>());
+        }
+
+        private SpriteRenderer NewLayer(Transform root, string name, int order)
+        {
+            var layer = new GameObject(name).AddComponent<SpriteRenderer>();
+            layer.transform.SetParent(root, false);
+            layer.sharedMaterial = spriteMaterial;
+            layer.sortingOrder = order;
+            return layer;
         }
 
         private SpriteRenderer NewMarker(string name, Transform parent)
@@ -2186,8 +2353,9 @@ namespace KingdomWatch.Game
             }
         }
 
-        // One person as drawn: a paper doll of ArtSet.Layers sprites held
-        // together by a sorting group, or without the art a single marker.
+        // One person as drawn: a paper doll of ArtSet.Layers sprites and a
+        // tool held together by a sorting group, or without the art a single
+        // marker.
         private sealed class Figure
         {
             private readonly SortingGroup group;
@@ -2198,15 +2366,20 @@ namespace KingdomWatch.Game
                 Layers = new[] { marker };
             }
 
-            public Figure(Transform root, SpriteRenderer[] layers, SortingGroup group)
+            public Figure(Transform root, SpriteRenderer[] layers, SpriteRenderer tool, SortingGroup group)
             {
                 Root = root;
                 Layers = layers;
+                Tool = tool;
                 this.group = group;
             }
 
             public Transform Root { get; }
             public SpriteRenderer[] Layers { get; }
+
+            // A doll's tool in hand (#126), drawn only while they work; null
+            // for a marker.
+            public SpriteRenderer Tool { get; }
             public bool Doll => group != null;
 
             // What the doll is dressed as, and for whom and which job: the
@@ -2239,9 +2412,12 @@ namespace KingdomWatch.Game
                 }
             }
 
+            // Hiding hides the tool too; showing leaves it to Pose, which
+            // knows whether there is one in hand.
             public void SetVisible(bool visible)
             {
                 foreach (var layer in Layers) layer.enabled = visible;
+                if (!visible && Tool != null) Tool.enabled = false;
             }
         }
     }
