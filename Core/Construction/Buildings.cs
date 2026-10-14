@@ -241,6 +241,12 @@ namespace KingdomWatch.Core.Construction
         private readonly bool[] _forest;
         private readonly bool[] _ground;
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
+
+        // What the store being placed stands by: its settlement's barns' middles
+        // for a Granary, the forest cell its Woodcutters work for a Woodshed
+        // (#167). Empty outside TryPlaceStorage.
+        private readonly List<WorldPosition> _storeBy = new List<WorldPosition>();
+        private readonly Woodland _woodland;
         private readonly Dictionary<EntityId, ReachCount> _forageCounts = new Dictionary<EntityId, ReachCount>();
         private readonly Dictionary<EntityId, ReachCount> _woodCounts = new Dictionary<EntityId, ReachCount>();
         private readonly Dictionary<EntityId, ReachCount> _plantedWoodCounts = new Dictionary<EntityId, ReachCount>();
@@ -290,6 +296,7 @@ namespace KingdomWatch.Core.Construction
             _scorer = new SiteScorer(this);
             _plantable = new PlantableFilter(this, besideForest: false);
             _besideForest = new PlantableFilter(this, besideForest: true);
+            _woodland = new Woodland(land, this);
             _laneGate = new LaneGate(this);
             _networkTarget = new NetworkTarget(this);
             _streetGate = new StreetGate(this);
@@ -1524,15 +1531,98 @@ namespace KingdomWatch.Core.Construction
 
         // Storage is built with any wood in stock, the winter's fuel included:
         // a village that cannot hold its winter's fuel is what a Woodshed is
-        // for, and it could otherwise never afford one (#98).
+        // for, and it could otherwise never afford one (#98). It stands in
+        // one yard with the others of its kind, the first by what fills it
+        // (#167): a Granary by the settlement's barns, a Woodshed by the
+        // forest its Woodcutters work, the nearest a woodcutter's search from
+        // the centre reaches. A first Woodshed with no forest in reach goes
+        // on the barns' ring instead (StorageSite).
         private bool TryPlaceStorage(ICommunity settlement, BuildingKind kind, ReadOnlySpan<bool> known, out WorldPosition anchor)
         {
             var spec = BuildingTable.Of(kind);
             anchor = default;
 
-            return _skills.BestIn(settlement, spec.Skill) >= spec.MinimumTier
-                && settlement.SharedSupplies.Available(ResourceKind.Wood) >= spec.Wood
-                && TryPlace(kind, settlement.Position, settlement.Position, known, settlement.Id, out anchor);
+            if (_skills.BestIn(settlement, spec.Skill) < spec.MinimumTier
+                || settlement.SharedSupplies.Available(ResourceKind.Wood) < spec.Wood)
+            {
+                return false;
+            }
+
+            var from = StorageSite(settlement, kind, known);
+            var placed = TryPlace(kind, from, settlement.Position, known, settlement.Id, out anchor);
+            _storeBy.Clear();
+            return placed;
+        }
+
+        // What a store of this kind stands by, into _storeBy, and where its
+        // search starts. Stores of a kind keep to one yard: once one stands,
+        // the next stands by those already there, searched for from the
+        // first one's door. The first stands by the forest cell, or by the
+        // barns, searched for from the door of the one nearest the centre;
+        // by nothing, from the centre, when there is neither.
+        private WorldPosition StorageSite(ICommunity settlement, BuildingKind kind, ReadOnlySpan<bool> known)
+        {
+            var centre = settlement.Position;
+            var spec = BuildingTable.Of(kind);
+            var yard = centre;
+            _storeBy.Clear();
+
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var standing = _all[i];
+
+                if (standing.Settlement == settlement.Id && standing.Kind == kind)
+                {
+                    if (_storeBy.Count == 0)
+                    {
+                        yard = DoorOf(kind, standing.Anchor);
+                    }
+
+                    _storeBy.Add(MiddleOf(spec, standing.Anchor));
+                }
+            }
+
+            if (_storeBy.Count > 0)
+            {
+                return yard;
+            }
+
+            if (kind == BuildingKind.Woodshed)
+            {
+                if (_pathfinder.TryFindNearest(
+                    centre, Jobs.Mover, _forest, known, _woodland, null, false, int.MaxValue,
+                    Jobs.ReachCost(JobKind.Woodcutter, _clock.Now.Season), _scratchRoute, out _))
+                {
+                    _storeBy.Add(_scratchRoute[_scratchRoute.Count - 1]);
+                }
+
+                return _storeBy.Count > 0 ? _storeBy[0] : centre;
+            }
+
+            var barnSpec = BuildingTable.Of(BuildingKind.Barn);
+            var from = centre;
+            var nearest = int.MaxValue;
+
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var standing = _all[i];
+
+                if (standing.Settlement == settlement.Id && standing.Kind == BuildingKind.Barn)
+                {
+                    var middle = MiddleOf(barnSpec, standing.Anchor);
+                    _storeBy.Add(middle);
+
+                    // From its door: open ground, where its middle is under
+                    // its roof.
+                    if (Chebyshev(middle, centre) < nearest)
+                    {
+                        nearest = Chebyshev(middle, centre);
+                        from = DoorOf(BuildingKind.Barn, standing.Anchor);
+                    }
+                }
+            }
+
+            return from;
         }
 
         // Whether Foragers or Farmers are stopping short for want of room

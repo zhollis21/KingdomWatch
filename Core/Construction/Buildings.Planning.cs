@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Traversal;
 using KingdomWatch.Core.Work;
 
@@ -50,7 +51,13 @@ namespace KingdomWatch.Core.Construction
     /// <item>a field near its barn and away from the centre, and near a
     /// road: as the crow flies to score, then, for the best few, by the
     /// lane it really gets, which can run much further round a barn or
-    /// another field (#169).</item>
+    /// another field (#169);</item>
+    /// <item>a store in one yard with the others of its kind (#167): the
+    /// first Granary near the nearest of its settlement's barns, the first
+    /// Woodshed near the forest its Woodcutters work, and each later one
+    /// near those already standing, searched for from there with its door
+    /// near a road as a house's is; a first Woodshed with no forest in reach
+    /// on the barns' ring.</item>
     /// </list>
     /// The ground does not enter the score (#155): plains, scrub, forest and
     /// rocks are all ground a footprint may stand on, and what grows there
@@ -79,6 +86,16 @@ namespace KingdomWatch.Core.Construction
         /// out to the outskirts rather than crowding the nearest street.
         /// </summary>
         public const int BarnLaneWeight = 2;
+
+        /// <summary>
+        /// Score per cell a Granary's or Woodshed's door stands from what it
+        /// stands by: the stores of its kind already there, or for the first,
+        /// the nearest barn or the forest its Woodcutters work (#167). Twice
+        /// <see cref="LaneWeight"/>, which a store pays per lane cell as a
+        /// house does: a store keeps close to its yard, and takes a lot on a
+        /// street there rather than a track of its own.
+        /// </summary>
+        public const int StorageWeight = 12;
 
         /// <summary>The nearest a barn's ring comes to the centre, in cells.</summary>
         public const int MinimumRing = 12;
@@ -276,9 +293,10 @@ namespace KingdomWatch.Core.Construction
                 var cell = _grid.IndexOf(site);
                 var estimate = _scorer.LaneEstimate(site);
 
-                // A field is searched for from its barn, so it is asked
-                // separately whether a Farmer could walk to it.
-                if ((HasDoor(kind) || _pathfinder.TryFindRoute(centre, site, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _))
+                // A field is searched for from its barn, and a store from
+                // what it stands by, so each is asked separately whether a
+                // Farmer or Builder could walk to it from the centre.
+                if (((HasDoor(kind) && from == centre) || _pathfinder.TryFindRoute(centre, site, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _))
                     && TryJoin(kind, site, centre))
                 {
                     var score = _scorer.BestScore + (_scorer.LaneWeight * (_lane.Count - estimate));
@@ -743,8 +761,14 @@ namespace KingdomWatch.Core.Construction
                 _centre = centre;
                 _barnMiddle = barn is null ? centre : MiddleOf(BuildingTable.Of(BuildingKind.Barn), barn.Anchor);
                 _refusedCount = 0;
-                _ring = kind == BuildingKind.Barn ? RingOf(settlement, centre) : 0;
+                _ring = kind == BuildingKind.Barn || OnRing ? RingOf(settlement, centre) : 0;
             }
+
+            // A store placed by what it stands by (#167).
+            private bool IsStore => _kind == BuildingKind.Granary || _kind == BuildingKind.Woodshed;
+
+            // A store with nothing to stand by goes on the barns' ring.
+            private bool OnRing => IsStore && _owner._storeBy.Count == 0;
 
             public void StartPass()
             {
@@ -786,9 +810,11 @@ namespace KingdomWatch.Core.Construction
                     var lane = (long)ToNetwork(door);
                     var fromCentre = Chebyshev(door, _centre);
 
-                    score = _kind == BuildingKind.Barn
+                    score = _kind == BuildingKind.Barn || OnRing
                         ? (RingWeight * (long)Math.Abs(fromCentre - _ring)) + (BarnLaneWeight * lane)
-                        : (CentreWeight * (long)fromCentre) + (LaneWeight * lane);
+                        : IsStore
+                            ? (StorageWeight * (long)FromStoreBy(door)) + (LaneWeight * lane)
+                            : (CentreWeight * (long)fromCentre) + (LaneWeight * lane);
                 }
                 else
                 {
@@ -819,6 +845,20 @@ namespace KingdomWatch.Core.Construction
                 !HasDoor(_kind) ? FieldRoadWeight
                 : _kind == BuildingKind.Barn ? BarnLaneWeight
                 : Buildings.LaneWeight;
+
+            // Cells from a store's door to the nearest of what it stands by.
+            private int FromStoreBy(WorldPosition door)
+            {
+                var storeBy = _owner._storeBy;
+                var nearest = int.MaxValue;
+
+                for (var i = 0; i < storeBy.Count; i++)
+                {
+                    nearest = Math.Min(nearest, Chebyshev(door, storeBy[i]));
+                }
+
+                return nearest;
+            }
 
             // How far a field anchored here is from a road: none when one
             // lies along an edge, else from its nearest open side; a field
@@ -966,6 +1006,22 @@ namespace KingdomWatch.Core.Construction
 
                 return !_owner.InOtherYard(at, _centre);
             }
+        }
+
+        // Forest a Woodcutter would cut: what Jobs' own search accepts, ripe
+        // and not reserved for a building's clearing.
+        private sealed class Woodland : ISiteFilter
+        {
+            private readonly LandCover _land;
+            private readonly Buildings _owner;
+
+            public Woodland(LandCover land, Buildings owner)
+            {
+                _land = land;
+                _owner = owner;
+            }
+
+            public bool Accepts(int cell) => _land.Ripe.Accepts(cell) && !_owner.IsReserved(cell);
         }
 
         // The network a lane ends on: any road, or the settlement's own yard;

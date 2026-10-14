@@ -35,12 +35,13 @@ namespace KingdomWatch.Core.Tests.Construction
             }
         };
 
-        // Woods twice as deep: as much wood counted as Woods would give if
-        // every tree in it counted whole, since a tree past an hour's walk
-        // counts half.
+        // Woods more than twice as deep: more wood counted than Woods would
+        // give if every tree in it counted whole, since a tree past an hour's
+        // walk counts half, with trees to spare for the Woodshed and houses
+        // that clear their plots in it (#167).
         private static readonly Action<TerrainGrid> DeepWoods = grid =>
         {
-            for (var y = 0; y < 10; y++)
+            for (var y = 0; y < 12; y++)
             {
                 for (var x = 5; x < 35; x++)
                 {

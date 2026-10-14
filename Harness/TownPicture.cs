@@ -21,7 +21,7 @@ namespace KingdomWatch.Harness
         private const int Cell = 12;
 
         // Room under the map for the legend.
-        private const int LegendHeight = 64;
+        private const int LegendHeight = 86;
 
         public static string Draw(World world, Settlement settlement, int radius, string title)
         {
@@ -113,7 +113,7 @@ namespace KingdomWatch.Harness
             {
                 ("#a8cf7c", "plains"), ("#4f7d3f", "forest"), ("#86a35a", "scrub"), ("#a19c86", "rocks"),
                 ("#5d93c4", "water"), ("#c8a46a", "road"), ("#b5583a", "house"), ("#7b2d26", "barn"),
-                ("#e8c84a", "field"), ("#e0582a", "camp"),
+                ("#e8c84a", "field"), ("#3f7f6a", "granary"), ("#6b4a2b", "woodshed"), ("#e0582a", "camp"),
             };
 
             for (var i = 0; i < items.Length; i++)
