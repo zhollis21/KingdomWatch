@@ -351,6 +351,121 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         // A year of food in store, as Grain: not short, and nothing else wanted of it.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void A_woodshed_stands_by_the_forest_its_woodcutters_work(bool east)
+        {
+            // A wood on one side of the village, as far out as the barns'
+            // ring: the shed goes to it, not among the houses (#167).
+            var w = new BuildingsWorld(paint: grid => PaintWood(grid, east));
+            w.Wood(1000);
+            w.BuildNext();
+            var shed = WaitForWoodshed(w);
+            var door = Buildings.DoorOf(BuildingKind.Woodshed, shed.Anchor);
+            var wood = new WorldPosition(east ? WoodEast : WoodWest, BuildingsWorld.Centre.Y);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(shed.Kind, Is.EqualTo(BuildingKind.Woodshed));
+                Assert.That(Chebyshev(door, wood), Is.LessThan(Chebyshev(door, BuildingsWorld.Centre)), shed + " is nearer the wood than the centre");
+                Assert.That(east ? door.X > BuildingsWorld.Centre.X : door.X < BuildingsWorld.Centre.X, shed + " is on the wood's side");
+            });
+        }
+
+        [Test]
+        public void A_woodshed_with_no_forest_in_reach_goes_on_the_barns_ring()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(1000);
+            w.BuildNext();
+            var shed = WaitForWoodshed(w);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(shed.Kind, Is.EqualTo(BuildingKind.Woodshed));
+                Assert.That(Chebyshev(Buildings.DoorOf(BuildingKind.Woodshed, shed.Anchor), BuildingsWorld.Centre), Is.GreaterThanOrEqualTo(Buildings.MinimumRing - 1), shed + " is on the outskirts");
+            });
+        }
+
+        [Test]
+        public void A_granary_stands_by_the_barn_not_on_the_ring_the_houses_have_pushed_out()
+        {
+            // A barn on the ring of the first house, then houses further
+            // out, then a Granary: by the barn, not on the ring as it now
+            // stands (#167).
+            var w = new BuildingsWorld(people: 30, size: 60);
+            w.Wood(5000);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            Fed(w);
+
+            for (var i = 0; i < 6; i++)
+            {
+                w.BuildNext();
+            }
+
+            w.Stores.Consume(ResourceKind.Grain, w.Stores.Available(ResourceKind.Grain));
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood) - 100);
+            w.Stores.Gather(ResourceKind.Grain, Storage.BaseGrain);
+
+            var granary = w.BuildNext();
+            var door = Buildings.DoorOf(BuildingKind.Granary, granary.Anchor);
+            var barnSpec = BuildingTable.Of(BuildingKind.Barn);
+            var barnMiddle = new WorldPosition(barn.Anchor.X + (barnSpec.Width / 2), barn.Anchor.Y + (barnSpec.Height / 2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(barn.Kind, Is.EqualTo(BuildingKind.Barn));
+                Assert.That(granary.Kind, Is.EqualTo(BuildingKind.Granary));
+                Assert.That(Chebyshev(door, barnMiddle), Is.LessThanOrEqualTo(barnSpec.Width), granary + " stands by " + barn);
+            });
+        }
+
+        [Test]
+        public void A_second_granary_joins_the_first_in_one_yard()
+        {
+            var w = new BuildingsWorld(people: 30, size: 60);
+            w.Wood(5000);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood) - 100);
+            w.Stores.Gather(ResourceKind.Grain, Storage.BaseGrain - w.Stores.Available(ResourceKind.Grain));
+            var first = w.BuildNext();
+            w.Stores.Gather(ResourceKind.Grain, Storage.GranaryGrain);
+
+            var second = w.BuildNext();
+            var spec = BuildingTable.Of(BuildingKind.Granary);
+            var door = Buildings.DoorOf(BuildingKind.Granary, second.Anchor);
+            var firstMiddle = new WorldPosition(first.Anchor.X + (spec.Width / 2), first.Anchor.Y + (spec.Height / 2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(barn.Kind, Is.EqualTo(BuildingKind.Barn));
+                Assert.That(first.Kind, Is.EqualTo(BuildingKind.Granary));
+                Assert.That(second.Kind, Is.EqualTo(BuildingKind.Granary));
+                Assert.That(Chebyshev(door, firstMiddle), Is.LessThanOrEqualTo(spec.Width + 1), second + " stands beside " + first);
+            });
+        }
+
+        // A wood five cells deep across the map, its near edge as far from
+        // the centre as the barns' ring.
+        private const int WoodEast = 33;
+        private const int WoodWest = 6;
+
+        private static void PaintWood(TerrainGrid grid, bool east)
+        {
+            for (var y = 0; y < grid.Height; y++)
+            {
+                for (var dx = 0; dx < 5; dx++)
+                {
+                    grid.Set(new WorldPosition(east ? WoodEast + dx : WoodWest - dx, y), TerrainKind.Forest);
+                }
+            }
+        }
+
+        private static int Chebyshev(WorldPosition a, WorldPosition b) =>
+            System.Math.Max(System.Math.Abs(a.X - b.X), System.Math.Abs(a.Y - b.Y));
+
         private static void Fed(BuildingsWorld w) =>
             w.Stores.Gather(ResourceKind.Grain, (int)(Buildings.YearlyNeed(w.Living) / PrimitiveTier.MealsPerGrain));
 
