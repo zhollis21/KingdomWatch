@@ -27,11 +27,14 @@ namespace KingdomWatch.Core.Construction
     /// than behind it.
     ///
     /// **Where.** The nearest plains cell a Forester can reach within
-    /// <see cref="WoodFullReach"/>, where a planted tree counts as whole
-    /// wood: one beside forest first, so a wood grows out from its edge, and
-    /// any other only when none is. Never on a road or a pending lane, under
-    /// a building or its roof, in a settlement's yard, or on a planned
-    /// street (<see cref="IsStreet"/>), any settlement's.
+    /// <see cref="WoodReach"/>: one beside forest first, so a wood grows out
+    /// from its edge, and any other only when none is. Never on a road or a
+    /// pending lane, under a building or its roof, or in any settlement's
+    /// town: the square <see cref="StreetReach"/> out from its centre each
+    /// way, to the ends of its planned spokes, so saplings never crowd its
+    /// streets and houses. That is past <see cref="WoodFullReach"/>, so a
+    /// planted tree mostly counts half (<see cref="WoodPerPlantingAt"/>), as
+    /// any tree that far out does, and a village plants about twice as many.
     ///
     /// The numbers are placeholders.
     /// </remarks>
@@ -55,6 +58,13 @@ namespace KingdomWatch.Core.Construction
         /// a Forester out planting is expected to add.
         /// </summary>
         public long WoodPerPlanting => WoodFromTrees(TreeWeight.Whole) / TreeWeight.Whole;
+
+        /// <summary>
+        /// <see cref="WoodPerPlanting"/> for a tree this far out, in route
+        /// cost: whole out to <see cref="WoodFullReach"/>, half out to
+        /// <see cref="WoodReach"/>, as the forest in reach counts it.
+        /// </summary>
+        public long WoodPerPlantingAt(long cost) => WoodFromTrees(Trees.WeightOf(cost)) / TreeWeight.Whole;
 
         /// <summary>
         /// Cells a Forester may plant: open plains under nothing, off every
@@ -123,9 +133,10 @@ namespace KingdomWatch.Core.Construction
             return true;
         }
 
-        // Plains a tree may go on: under nothing, and off the network, every
-        // pending lane, every yard and every settlement's planned streets -
-        // ground the village is keeping for something else.
+        // Plains a tree may go on: under nothing, off the network and every
+        // pending lane, and outside every town - the square out to the ends
+        // of its spokes (StreetReach), yard and planned streets inside it -
+        // so a wood never grows up between the houses.
         private bool IsPlantable(int cell)
         {
             if (_grid.KindAt(cell) != TerrainKind.Plains
@@ -143,7 +154,7 @@ namespace KingdomWatch.Core.Construction
             {
                 var camp = _camps[i].Position;
 
-                if (WithinYard(at, camp) || IsStreet(at, camp))
+                if (Math.Abs(at.X - camp.X) <= StreetReach && Math.Abs(at.Y - camp.Y) <= StreetReach)
                 {
                     return false;
                 }

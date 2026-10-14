@@ -900,7 +900,10 @@ namespace KingdomWatch.Core.Tests.Construction
         // lane takes, with a track running east through it: the only room
         // for a house is past the river, joined to the yard along the track.
         // River rather than rocks, which since #155 are ground to build on.
+        // Forest from WoodedRadius out, so the village is not so short of
+        // wood that every hand goes out to plant past the river (#155).
         private const int CrowdedRadius = 36;
+        private const int WoodedRadius = CrowdedRadius + 8;
 
         private static void PaintCrowdedCentre(TerrainGrid grid)
         {
@@ -914,6 +917,10 @@ namespace KingdomWatch.Core.Tests.Construction
                     if (ring > Buildings.CampYardRadius && ring <= CrowdedRadius)
                     {
                         grid.Set(at, TerrainKind.SmallRiver);
+                    }
+                    else if (ring >= WoodedRadius)
+                    {
+                        grid.Set(at, TerrainKind.Forest);
                     }
                 }
             }

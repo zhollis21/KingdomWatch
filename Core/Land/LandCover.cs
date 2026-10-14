@@ -47,8 +47,8 @@ namespace KingdomWatch.Core.Land
     /// canonical order for the world hash. Zero is untouched.
     ///
     /// **Foresters plant** (#155). A tree planted on plains turns the cell to
-    /// forest and starts as a stump on the day it went in, so it grows
-    /// through a sapling and stands <see cref="RegrowDays"/> later. Until it
+    /// forest and is a sapling from the day it went in - never a stump, which
+    /// is what felling leaves - and stands <see cref="RegrowDays"/> later. Until it
     /// first stands it is <see cref="IsGrowing(int)"/>: in the ground, but
     /// not yet a tree, and the wood a village counts on (<see cref="Grown"/>)
     /// leaves it out. Once its first cut is taken it is a tree like any
@@ -217,8 +217,8 @@ namespace KingdomWatch.Core.Land
 
         /// <summary>
         /// Plants a tree on a cell of plains (#155): the cell turns to forest,
-        /// and the tree stands <see cref="RegrowDays"/> from now, growing
-        /// through a stump and a sapling. It is
+        /// and the tree stands <see cref="RegrowDays"/> from now, a sapling
+        /// until then. It is
         /// <see cref="IsGrowing(int)"/> until then. Throws for a cell that is
         /// not plains.
         /// </summary>
@@ -430,8 +430,8 @@ namespace KingdomWatch.Core.Land
         public bool HasFruit(WorldPosition at) => IsWorkable(CellOf(at, TerrainKind.Scrub), _clock.Now);
 
         /// <summary>
-        /// How far a tree at this position has grown: a planted one through
-        /// stump and sapling, and a felled one a stump until its trip is home
+        /// How far a tree at this position has grown: a planted one a sapling
+        /// until it stands, and a felled one a stump until its trip is home
         /// (<see cref="Fell"/>). For the view.
         /// Throws for a cell that is not forest.
         /// </summary>
@@ -449,10 +449,9 @@ namespace KingdomWatch.Core.Land
                 return TreeStage.Stump;
             }
 
-            var since = _clock.Now.DayNumber - day;
-            return since >= RegrowDays ? TreeStage.Standing
-                : since >= RegrowDays / 2 ? TreeStage.Sapling
-                : TreeStage.Stump;
+            // A sapling from the day it goes in: a stump is what felling
+            // leaves, and planted ground should not look cut.
+            return _clock.Now.DayNumber - day >= RegrowDays ? TreeStage.Standing : TreeStage.Sapling;
         }
 
         /// <summary>

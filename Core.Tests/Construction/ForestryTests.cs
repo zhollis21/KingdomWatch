@@ -19,12 +19,26 @@ namespace KingdomWatch.Core.Tests.Construction
     public sealed class ForestryTests
     {
         [Test]
-        public void Open_plains_away_from_the_village_are_plantable()
+        public void Open_plains_past_the_town_are_plantable()
         {
-            var w = new BuildingsWorld();
-            var at = new WorldPosition(BuildingsWorld.Centre.X + 5, BuildingsWorld.Centre.Y + 6);
+            var w = new BuildingsWorld(size: PastTheTown);
+            var at = new WorldPosition(BuildingsWorld.Centre.X + Buildings.StreetReach + 1, BuildingsWorld.Centre.Y + 6);
 
-            Assert.That(w.Buildings.Plantable.Accepts(w.World.Grid.IndexOf(at)), Is.True);
+            Assert.That(Plantable(w, at), Is.True);
+        }
+
+        [Test]
+        public void Open_plains_in_the_town_are_not_plantable_out_to_the_end_of_its_spokes()
+        {
+            var w = new BuildingsWorld(size: PastTheTown);
+            var centre = BuildingsWorld.Centre;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Plantable(w, new WorldPosition(centre.X + 5, centre.Y + 6)), Is.False, "between the streets");
+                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetReach, centre.Y + 6)), Is.False, "level with a spoke's end");
+                Assert.That(Plantable(w, new WorldPosition(centre.X - 3, centre.Y + Buildings.StreetReach)), Is.False, "beside a spoke's end");
+            });
         }
 
         [Test]
@@ -76,16 +90,16 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void Beside_forest_takes_only_plantable_cells_touching_a_tree()
         {
-            var tree = new WorldPosition(5, 5);
-            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest));
+            var tree = new WorldPosition(50, 50);
+            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest), size: PastTheTown);
             var beside = w.Buildings.BesideForest;
             var grid = w.World.Grid;
 
             Assert.Multiple(() =>
             {
-                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(6, 6))), Is.True, "diagonal");
-                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(4, 5))), Is.True, "edge");
-                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(7, 5))), Is.False, "two away");
+                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(51, 51))), Is.True, "diagonal");
+                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(49, 50))), Is.True, "edge");
+                Assert.That(beside.Accepts(grid.IndexOf(new WorldPosition(52, 50))), Is.False, "two away");
                 Assert.That(beside.Accepts(grid.IndexOf(tree)), Is.False, "the tree itself");
             });
         }
@@ -269,8 +283,8 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void A_village_with_no_forest_sends_a_Forester_to_plant_beside_the_nearest_wood()
         {
-            var tree = new WorldPosition(BuildingsWorld.Centre.X + 6, BuildingsWorld.Centre.Y + 7);
-            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest));
+            var tree = new WorldPosition(BuildingsWorld.Centre.X + Buildings.StreetReach + 2, BuildingsWorld.Centre.Y + 7);
+            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest), size: PastTheTown);
             w.World.Jobs.Track(w.Settlement);
 
             w.World.AdvanceTo(SimulationTime.FromDays(1).Plus(Jobs.Dawn + 1L));
@@ -288,8 +302,8 @@ namespace KingdomWatch.Core.Tests.Construction
         [Test]
         public void A_planting_trip_vacated_leaves_no_tree_and_one_that_ends_leaves_it_growing()
         {
-            var tree = new WorldPosition(BuildingsWorld.Centre.X + 6, BuildingsWorld.Centre.Y + 7);
-            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest));
+            var tree = new WorldPosition(BuildingsWorld.Centre.X + Buildings.StreetReach + 2, BuildingsWorld.Centre.Y + 7);
+            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest), size: PastTheTown);
             w.World.Jobs.Track(w.Settlement);
             w.World.AdvanceTo(SimulationTime.FromDays(1).Plus(Jobs.Dawn + 1L));
 
@@ -314,17 +328,18 @@ namespace KingdomWatch.Core.Tests.Construction
             // The shortfall is swept at dawn, and each tree planted since
             // comes off it: a village a tree or two short sends that many
             // Foresters, however many have nothing better to do. (A sapling
-            // at the edge of reach counts for less than a whole tree.) A small
-            // village, so its saplings fit near the centre.
-            var w = new BuildingsWorld(people: 3);
+            // past the town counts for half a tree.) A small
+            // village, so its saplings fit just past the town.
+            var w = new BuildingsWorld(people: 3, size: PastTheTown);
             var hearths = Warmth.CountHearths(w.Settlement.Members, w.World.People, new List<EntityId>());
             w.Buildings.TryPlantWork(w.Settlement, hearths, out var shortBy, out _);
-            var perTree = w.Buildings.WoodPerPlanting * Buildings.PlantHeadroomDenominator;
+            // Past the town, where a sapling counts half.
+            var perTree = w.Buildings.WoodPerPlantingAt(Buildings.WoodReach) * Buildings.PlantHeadroomDenominator;
             var saplings = (int)((shortBy - 1L) / perTree);
             var cells = Enumerable.Range(0, w.World.Grid.CellCount)
                 .Where(w.Buildings.Plantable.Accepts)
                 .Select(w.World.Grid.PositionAt)
-                .Where(at => Chebyshev(at, BuildingsWorld.Centre) <= 8)
+                .OrderBy(at => Chebyshev(at, BuildingsWorld.Centre))
                 .Take(saplings)
                 .ToList();
 
@@ -345,6 +360,10 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(Growing(w), Has.Count.EqualTo(saplings + wanted));
             });
         }
+
+        // A map wide enough east and south to have plains past the town,
+        // which covers all of the default one.
+        private const int PastTheTown = 60;
 
         private static List<int> Growing(BuildingsWorld w) =>
             Enumerable.Range(0, w.World.Grid.CellCount).Where(w.World.Land.IsGrowing).ToList();

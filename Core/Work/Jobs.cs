@@ -680,7 +680,7 @@ namespace KingdomWatch.Core.Work
                     // So was a tree planted (#155): one that never gets its
                     // forester's hour is not planted.
                     _land.Unplant(task.Destination);
-                    tracked.PlantShort += RequireBuildings().WoodPerPlanting * Buildings.PlantHeadroomDenominator;
+                    tracked.PlantShort += RequireBuildings().WoodPerPlantingAt(task.TravelTicks / TicksPerCostUnit) * Buildings.PlantHeadroomDenominator;
                 }
                 else
                 {
@@ -914,7 +914,7 @@ namespace KingdomWatch.Core.Work
                 // next Forester's pick finds the next cell. Cannot refuse -
                 // ChooseJob only offers plantable plains.
                 _land.Plant(site.Destination);
-                tracked.PlantShort -= RequireBuildings().WoodPerPlanting * Buildings.PlantHeadroomDenominator;
+                tracked.PlantShort -= RequireBuildings().WoodPerPlantingAt(site.Cost) * Buildings.PlantHeadroomDenominator;
             }
             else if (building is null)
             {
@@ -1113,7 +1113,8 @@ namespace KingdomWatch.Core.Work
         // Whether a Forester has a cell to plant that a trip reaches and is
         // home from by dusk. The site is the nearest plantable plains beside
         // forest, or any plantable plains when none is (Buildings.Forestry.cs),
-        // within WoodFullReach, where a tree counts whole; found again once
+        // within WoodReach - past the town, so mostly out where a tree counts
+        // half (Buildings.WoodPerPlantingAt); found again once
         // the ground has changed or the cell is no longer plantable - planted,
         // or kept for a building or a lane since.
         private bool FitsPlanting(Tracked tracked, long ticksUntilDusk)
@@ -1135,9 +1136,9 @@ namespace KingdomWatch.Core.Work
             var known = _knownMaps.For(tracked.Group.Id);
             site.Rewrites = _grid.Rewrites;
             site.Reachable = _pathfinder.TryFindNearest(
-                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.BesideForest, null, false, int.MaxValue, Buildings.WoodFullReach, site.Route, out var cost)
+                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.BesideForest, null, false, int.MaxValue, Buildings.WoodReach, site.Route, out var cost)
                 || _pathfinder.TryFindNearest(
-                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.Plantable, null, false, int.MaxValue, Buildings.WoodFullReach, site.Route, out cost);
+                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.Plantable, null, false, int.MaxValue, Buildings.WoodReach, site.Route, out cost);
 
             if (!site.Reachable)
             {

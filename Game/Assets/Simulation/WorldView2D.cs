@@ -181,6 +181,14 @@ namespace KingdomWatch.Game
         // out, so until the work is done the view draws it as it stood.
         private readonly HashSet<int> beingWorked = new HashSet<int>();
 
+        // Cells a Forester is on the way to or planting (#155): Core plants
+        // the tree as the trip sets out, so until the work is done the view
+        // draws nothing there.
+        private readonly HashSet<int> beingPlanted = new HashSet<int>();
+
+        // The growth GrowthOf gives a tree not yet planted, as drawn.
+        private const int Unplanted = -1;
+
         // Cells (y * width + x) of a field or a site being cleared that
         // someone has been drawn working this frame, so the next takes another.
         private readonly HashSet<int> workSpots = new HashSet<int>();
@@ -431,17 +439,20 @@ namespace KingdomWatch.Game
             return pixelsPerCell / scale >= nearEdge ? ZoomBand.Near : ZoomBand.Medium;
         }
 
-        // The cells someone is on the way to or at work on, this frame.
+        // The cells someone is on the way to or at work on, this frame: a
+        // Forester's apart (beingPlanted).
         private void NoteWork(World world)
         {
             var now = world.Now;
             beingWorked.Clear();
+            beingPlanted.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone || !world.Jobs.HasTask(record.Handle)) continue;
                 var task = world.Jobs.TaskOf(record.Handle);
                 var phase = task.PhaseAt(now);
-                if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
+                if (phase != TaskPhase.Outbound && phase != TaskPhase.Working) continue;
+                (task.Job == JobKind.Forester ? beingPlanted : beingWorked).Add(task.Destination.Y * width + task.Destination.X);
             }
         }
 
@@ -570,7 +581,9 @@ namespace KingdomWatch.Game
                         return new Activity(clearMotion, clearTool, clearSide, 0, cleared.X - task.Destination.X - (clearSide * StandBack), cleared.Y - task.Destination.Y);
                     }
                     var field = building != null && building.Kind == BuildingKind.Field ? building : null;
-                    var (motion, tool) = ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
+                    var (motion, tool) = task.Job == JobKind.Forester
+                        ? ArtSet.PlantingOf(now.Ticks - task.Start.Ticks - task.TravelTicks < task.WorkTicks / 2)
+                        : ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
                     if (field != null)
                     {
                         // Everyone on a field works at its corner, as Core has
@@ -1766,6 +1779,7 @@ namespace KingdomWatch.Game
             var at = new WorldPosition(x, y);
             var worked = beingWorked.Contains(y * width + x);
             if (kind == TerrainKind.Scrub) return worked || land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
+            if (beingPlanted.Contains(y * width + x)) return Unplanted;
             return worked ? (int)TreeStage.Standing : (int)land.StageOf(at);
         }
 
@@ -1778,6 +1792,7 @@ namespace KingdomWatch.Game
                 var bush = growth * ArtSet.BushSizes + (int)(hash % ArtSet.BushSizes);
                 return (art.Bushes[bush], art.BushTiles[bush]);
             }
+            if (growth == Unplanted) return (null, null);
             var tree = TreeOf(hash);
             switch ((TreeStage)growth)
             {

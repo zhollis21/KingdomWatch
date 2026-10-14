@@ -335,7 +335,7 @@ namespace KingdomWatch.Core.Tests.Land
         }
 
         [Test]
-        public void A_tree_planted_on_plains_is_forest_growing_from_a_stump()
+        public void A_tree_planted_on_plains_is_forest_growing_from_a_sapling()
         {
             _land.Plant(Open);
             var cell = _grid.IndexOf(Open);
@@ -343,7 +343,7 @@ namespace KingdomWatch.Core.Tests.Land
             Assert.Multiple(() =>
             {
                 Assert.That(_grid[Open], Is.EqualTo(TerrainKind.Forest));
-                Assert.That(_land.StageOf(Open), Is.EqualTo(TreeStage.Stump));
+                Assert.That(_land.StageOf(Open), Is.EqualTo(TreeStage.Sapling), "never a stump, which a felled tree leaves");
                 Assert.That(_land.IsGrowing(cell), Is.True);
                 Assert.That(_land.IsWorkable(Open), Is.False, "nothing to cut yet");
                 Assert.That(_land.CutsLeft(Open), Is.Zero);
@@ -460,7 +460,7 @@ namespace KingdomWatch.Core.Tests.Land
 
             _land.Return(Tree);
 
-            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Stump));
+            Assert.That(_land.StageOf(Tree), Is.EqualTo(TreeStage.Sapling));
             Assert.That(_land.IsGrowing(_grid.IndexOf(Tree)), Is.True);
             Assert.That(_land.IsWorkable(Tree), Is.False);
         }
