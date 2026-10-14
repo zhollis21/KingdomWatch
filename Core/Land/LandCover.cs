@@ -218,9 +218,8 @@ namespace KingdomWatch.Core.Land
         /// <summary>
         /// Plants a tree on a cell of plains (#155): the cell turns to forest,
         /// and the tree stands <see cref="RegrowDays"/> from now, a sapling
-        /// until then. It is
-        /// <see cref="IsGrowing(int)"/> until then. Throws for a cell that is
-        /// not plains.
+        /// and <see cref="IsGrowing(int)"/> until then. Throws for a cell
+        /// that is not plains.
         /// </summary>
         public void Plant(WorldPosition at)
         {

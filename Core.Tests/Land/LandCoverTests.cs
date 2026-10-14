@@ -363,6 +363,9 @@ namespace KingdomWatch.Core.Tests.Land
             Assert.That(_land.StageOf(Open), Is.EqualTo(TreeStage.Sapling));
             Assert.That(_land.IsGrowing(cell), Is.True);
 
+            AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays - 1L));
+            Assert.That(_land.StageOf(Open), Is.EqualTo(TreeStage.Sapling), "the day before it stands");
+
             AdvanceTo(SimulationTime.FromDays(LandCover.RegrowDays));
 
             Assert.Multiple(() =>

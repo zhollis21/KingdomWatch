@@ -4,6 +4,7 @@ using System.Linq;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
+using KingdomWatch.Core.Events;
 using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Traversal;
@@ -35,36 +36,52 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
+                Assert.That(Plantable(w, centre), Is.False, "the yard");
+                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetRing, centre.Y + 3)), Is.False, "the ring street");
                 Assert.That(Plantable(w, new WorldPosition(centre.X + 5, centre.Y + 6)), Is.False, "between the streets");
                 Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetReach, centre.Y + 6)), Is.False, "level with a spoke's end");
                 Assert.That(Plantable(w, new WorldPosition(centre.X - 3, centre.Y + Buildings.StreetReach)), Is.False, "beside a spoke's end");
+                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetReach, centre.Y + Buildings.StreetReach)), Is.False, "the town's corner");
+                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetReach + 1, centre.Y + Buildings.StreetReach + 1)), Is.True, "just past the corner");
+                Assert.That(Plantable(w, new WorldPosition(centre.X - 3, centre.Y + Buildings.StreetReach + 1)), Is.True, "just past a spoke's end");
             });
         }
 
         [Test]
-        public void The_yard_planned_streets_roads_and_other_ground_are_not_plantable()
+        public void Every_settlements_town_is_kept_free_of_planting()
         {
-            var w = new BuildingsWorld(paint: grid =>
-            {
-                grid.Set(new WorldPosition(5, 5), TerrainKind.Forest);
-                grid.Set(new WorldPosition(6, 5), TerrainKind.Scrub);
-                grid.Set(new WorldPosition(7, 5), TerrainKind.Rocks);
-            });
-            var grid = w.World.Grid;
-            var road = new WorldPosition(3, 30);
-            grid.SetRoad(road, RoadGrade.Track);
-            var centre = BuildingsWorld.Centre;
+            var w = new BuildingsWorld(size: PastTheTown);
+            var other = new WorldPosition(50, 50);
+            w.World.Founding.Found(
+                w.World.AddBand(4, other),
+                new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
 
             Assert.Multiple(() =>
             {
-                Assert.That(Plantable(w, centre), Is.False, "the yard");
-                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.CampYardRadius, centre.Y + 1)), Is.False, "the yard's edge");
-                Assert.That(Plantable(w, new WorldPosition(centre.X + Buildings.StreetRing, centre.Y + 3)), Is.False, "the ring street");
-                Assert.That(Plantable(w, new WorldPosition(centre.X, centre.Y + Buildings.CampYardRadius + 1)), Is.False, "a spoke");
+                Assert.That(Plantable(w, new WorldPosition(other.X + 5, other.Y + 6)), Is.False, "in the other town");
+                Assert.That(Plantable(w, new WorldPosition(other.X - Buildings.StreetReach, other.Y)), Is.False, "at its edge");
+            });
+        }
+
+        [Test]
+        public void Roads_and_ground_other_than_plains_are_not_plantable()
+        {
+            var w = new BuildingsWorld(size: PastTheTown, paint: grid =>
+            {
+                grid.Set(new WorldPosition(50, 5), TerrainKind.Forest);
+                grid.Set(new WorldPosition(51, 5), TerrainKind.Scrub);
+                grid.Set(new WorldPosition(52, 5), TerrainKind.Rocks);
+            });
+            var road = new WorldPosition(50, 30);
+            w.World.Grid.SetRoad(road, RoadGrade.Track);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Plantable(w, new WorldPosition(53, 5)), Is.True, "open plains beside them");
                 Assert.That(Plantable(w, road), Is.False, "a road");
-                Assert.That(Plantable(w, new WorldPosition(5, 5)), Is.False, "forest");
-                Assert.That(Plantable(w, new WorldPosition(6, 5)), Is.False, "scrub");
-                Assert.That(Plantable(w, new WorldPosition(7, 5)), Is.False, "rocks");
+                Assert.That(Plantable(w, new WorldPosition(50, 5)), Is.False, "forest");
+                Assert.That(Plantable(w, new WorldPosition(51, 5)), Is.False, "scrub");
+                Assert.That(Plantable(w, new WorldPosition(52, 5)), Is.False, "rocks");
             });
         }
 
@@ -75,6 +92,11 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Wood(100);
             w.Dawn();
             var house = w.Buildings.All.Single();
+
+            // A house stands in its own town; with no settlements' towns to
+            // keep, only its footprint and lane are left keeping the ground.
+            w.Buildings.Camps = Array.Empty<ICommunity>();
+            Assert.That(Plantable(w, new WorldPosition(BuildingsWorld.Centre.X + 5, BuildingsWorld.Centre.Y + 6)), Is.True, "open plains in what was the town");
 
             Assert.Multiple(() =>
             {
@@ -171,6 +193,26 @@ namespace KingdomWatch.Core.Tests.Construction
             {
                 Assert.That(w.Buildings.TryPlantWork(w.Settlement, 3, out var shortBy, out _), Is.False);
                 Assert.That(shortBy, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void A_planting_counts_whole_out_to_the_near_walk_half_out_to_dusk_and_nothing_past()
+        {
+            var b = new BuildingsWorld().Buildings;
+            var whole = b.WoodPerPlanting;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(b.WoodPerPlantingAt(0L), Is.EqualTo(whole), "underfoot");
+                Assert.That(b.WoodPerPlantingAt(Buildings.WoodFullReach), Is.EqualTo(whole), "at the near walk");
+                Assert.That(b.WoodPerPlantingAt(Buildings.WoodFullReach + 1L), Is.EqualTo(b.WoodFromTrees(1L) / 2L), "just past it");
+                Assert.That(b.WoodPerPlantingAt(Buildings.WoodReach), Is.EqualTo(b.WoodFromTrees(1L) / 2L), "at dusk's reach");
+                Assert.That(b.WoodPerPlantingAt(Buildings.WoodReach + 1L), Is.Zero, "past it");
+                Assert.That(b.WoodPerPlantingAt(long.MaxValue), Is.Zero, "the longest walk");
+                Assert.That(b.WoodFromTrees(1L) / 2L, Is.GreaterThan(0L).And.LessThan(whole), "half is something, and less than whole");
+                Assert.That(() => b.WoodPerPlantingAt(-1L), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => b.WoodPerPlantingAt(long.MinValue), Throws.TypeOf<ArgumentOutOfRangeException>());
             });
         }
 
@@ -327,15 +369,15 @@ namespace KingdomWatch.Core.Tests.Construction
         {
             // The shortfall is swept at dawn, and each tree planted since
             // comes off it: a village a tree or two short sends that many
-            // Foresters, however many have nothing better to do. (A sapling
-            // past the town counts for half a tree.) A small
+            // Foresters, however many have nothing better to do. A sapling
+            // past the town counts for half a tree, both in the dawn's sweep
+            // and as each one goes in: two halves short sends two. A small
             // village, so its saplings fit just past the town.
             var w = new BuildingsWorld(people: 3, size: PastTheTown);
             var hearths = Warmth.CountHearths(w.Settlement.Members, w.World.People, new List<EntityId>());
             w.Buildings.TryPlantWork(w.Settlement, hearths, out var shortBy, out _);
-            // Past the town, where a sapling counts half.
             var perTree = w.Buildings.WoodPerPlantingAt(Buildings.WoodReach) * Buildings.PlantHeadroomDenominator;
-            var saplings = (int)((shortBy - 1L) / perTree);
+            var saplings = (int)((shortBy - perTree - 1L) / perTree);
             var cells = Enumerable.Range(0, w.World.Grid.CellCount)
                 .Where(w.Buildings.Plantable.Accepts)
                 .Select(w.World.Grid.PositionAt)
@@ -351,12 +393,14 @@ namespace KingdomWatch.Core.Tests.Construction
             w.World.Jobs.Track(w.Settlement);
             w.Buildings.TryPlantWork(w.Settlement, hearths, out var left, out _);
             var wanted = (int)((left + perTree - 1L) / perTree);
-            w.World.AdvanceTo(SimulationTime.FromDays(1).Plus(Jobs.Dawn + 1L));
+
+            // The first dawn alone: a second would sweep again.
+            w.World.AdvanceTo(SimulationTime.Zero.Plus(Jobs.Dawn + 1L));
 
             Assert.Multiple(() =>
             {
                 Assert.That(cells, Has.Count.EqualTo(saplings), "room for the saplings");
-                Assert.That(wanted, Is.InRange(1L, 2L), "a sapling or so short");
+                Assert.That(wanted, Is.EqualTo(2), "two saplings short");
                 Assert.That(Growing(w), Has.Count.EqualTo(saplings + wanted));
             });
         }

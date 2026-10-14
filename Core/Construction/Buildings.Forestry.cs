@@ -62,9 +62,14 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// <see cref="WoodPerPlanting"/> for a tree this far out, in route
         /// cost: whole out to <see cref="WoodFullReach"/>, half out to
-        /// <see cref="WoodReach"/>, as the forest in reach counts it.
+        /// <see cref="WoodReach"/>, as the forest in reach counts it, and
+        /// nothing past it.
         /// </summary>
-        public long WoodPerPlantingAt(long cost) => WoodFromTrees(Trees.WeightOf(cost)) / TreeWeight.Whole;
+        /// <exception cref="ArgumentOutOfRangeException">The cost is negative.</exception>
+        public long WoodPerPlantingAt(long cost) =>
+            cost >= 0L
+                ? WoodFromTrees(Trees.WeightOf(cost)) / TreeWeight.Whole
+                : throw new ArgumentOutOfRangeException(nameof(cost), cost, "A walk costs no less than nothing.");
 
         /// <summary>
         /// Cells a Forester may plant: open plains under nothing, off every

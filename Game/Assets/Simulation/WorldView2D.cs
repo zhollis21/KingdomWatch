@@ -1710,9 +1710,10 @@ namespace KingdomWatch.Game
             if (kind == TerrainKind.Forest || kind == TerrainKind.Scrub)
             {
                 // A tree on every forest cell and a berry bush on every scrub
-                // cell, each as the land has it (#26): a stump or a sapling
-                // where a tree was felled, and the season's fruit or a bare
-                // bush. Kept current by Regrow.
+                // cell, each as the land has it (#26): a stump where a tree's
+                // last cut is on its way home, a sapling a Forester planted
+                // (#155), and the season's fruit or a bare bush. Kept current
+                // by Regrow.
                 var growth = GrowthOf(kind, x, y);
                 var (sprite, tile) = GrowingArt(kind, growth, hash);
                 var renderer = Stand(chunk, sprite, tile, x, y, block, 0.3f);
@@ -1783,8 +1784,9 @@ namespace KingdomWatch.Game
             return worked ? (int)TreeStage.Standing : (int)land.StageOf(at);
         }
 
-        // A felled tree is its own stump, then a small tree of its kind, then
-        // itself again; a bush keeps its size whatever its fruit.
+        // A felled tree is its own stump; a planted one a small tree of its
+        // kind until it stands, then itself; one not yet planted, as drawn,
+        // nothing. A bush keeps its size whatever its fruit.
         private (Sprite Sprite, Tile Tile) GrowingArt(TerrainKind kind, int growth, uint hash)
         {
             if (kind == TerrainKind.Scrub)
