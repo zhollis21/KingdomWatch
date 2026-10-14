@@ -181,6 +181,14 @@ namespace KingdomWatch.Game
         // out, so until the work is done the view draws it as it stood.
         private readonly HashSet<int> beingWorked = new HashSet<int>();
 
+        // Cells a Forester is on the way to or planting (#155): Core plants
+        // the tree as the trip sets out, so until the work is done the view
+        // draws nothing there.
+        private readonly HashSet<int> beingPlanted = new HashSet<int>();
+
+        // The growth GrowthOf gives a tree not yet planted, as drawn.
+        private const int Unplanted = -1;
+
         // Cells (y * width + x) of a field or a site being cleared that
         // someone has been drawn working this frame, so the next takes another.
         private readonly HashSet<int> workSpots = new HashSet<int>();
@@ -431,17 +439,20 @@ namespace KingdomWatch.Game
             return pixelsPerCell / scale >= nearEdge ? ZoomBand.Near : ZoomBand.Medium;
         }
 
-        // The cells someone is on the way to or at work on, this frame.
+        // The cells someone is on the way to or at work on, this frame: a
+        // Forester's apart (beingPlanted).
         private void NoteWork(World world)
         {
             var now = world.Now;
             beingWorked.Clear();
+            beingPlanted.Clear();
             foreach (var record in world.People.RecordSpan())
             {
                 if (record.Id.IsNone || !world.Jobs.HasTask(record.Handle)) continue;
                 var task = world.Jobs.TaskOf(record.Handle);
                 var phase = task.PhaseAt(now);
-                if (phase == TaskPhase.Outbound || phase == TaskPhase.Working) beingWorked.Add(task.Destination.Y * width + task.Destination.X);
+                if (phase != TaskPhase.Outbound && phase != TaskPhase.Working) continue;
+                (task.Job == JobKind.Forester ? beingPlanted : beingWorked).Add(task.Destination.Y * width + task.Destination.X);
             }
         }
 
@@ -570,7 +581,9 @@ namespace KingdomWatch.Game
                         return new Activity(clearMotion, clearTool, clearSide, 0, cleared.X - task.Destination.X - (clearSide * StandBack), cleared.Y - task.Destination.Y);
                     }
                     var field = building != null && building.Kind == BuildingKind.Field ? building : null;
-                    var (motion, tool) = ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
+                    var (motion, tool) = task.Job == JobKind.Forester
+                        ? ArtSet.PlantingOf(now.Ticks - task.Start.Ticks - task.TravelTicks < task.WorkTicks / 2)
+                        : ArtSet.WorkOf(task.Job, field != null ? FieldLook(field) : 0);
                     if (field != null)
                     {
                         // Everyone on a field works at its corner, as Core has
@@ -1208,6 +1221,7 @@ namespace KingdomWatch.Game
                 case JobKind.StoneGatherer: return new Color(0.72f, 0.72f, 0.76f);
                 case JobKind.Farmer: return new Color(0.92f, 0.78f, 0.2f);
                 case JobKind.Builder: return new Color(0.45f, 0.55f, 0.9f);
+                case JobKind.Forester: return new Color(0.3f, 0.62f, 0.32f);
                 default: return new Color(0.95f, 0.62f, 0.35f);
             }
         }
@@ -1696,13 +1710,22 @@ namespace KingdomWatch.Game
             if (kind == TerrainKind.Forest || kind == TerrainKind.Scrub)
             {
                 // A tree on every forest cell and a berry bush on every scrub
-                // cell, each as the land has it (#26): a stump or a sapling
-                // where a tree was felled, and the season's fruit or a bare
-                // bush. Kept current by Regrow.
+                // cell, each as the land has it (#26): a stump where a tree's
+                // last cut is on its way home, a sapling a Forester planted
+                // (#155), and the season's fruit or a bare bush. Kept current
+                // by Regrow.
                 var growth = GrowthOf(kind, x, y);
                 var (sprite, tile) = GrowingArt(kind, growth, hash);
                 var renderer = Stand(chunk, sprite, tile, x, y, block, 0.3f);
-                chunk.Growing.Add(new Growing(x, y, kind == TerrainKind.Scrub, growth, renderer));
+                chunk.Growing.Add(new Growing(x, y, kind == TerrainKind.Scrub, false, growth, renderer));
+            }
+            else if (kind == TerrainKind.Plains && land.ShowsStump(new WorldPosition(x, y)) && !IsRoad(x, y) && buildings.At(new WorldPosition(x, y)) == null)
+            {
+                // A tree felled for good leaves plains, drawn with its stump
+                // for a while (#155). Regrow lets it go to grass.
+                var tree = TreeOf(hash);
+                var renderer = Stand(chunk, art.Stumps[tree], art.StumpTiles[tree], x, y, block, 0.3f);
+                chunk.Growing.Add(new Growing(x, y, false, true, (int)TreeStage.Stump, renderer));
             }
             else if (kind == TerrainKind.Rocks)
             {
@@ -1757,11 +1780,13 @@ namespace KingdomWatch.Game
             var at = new WorldPosition(x, y);
             var worked = beingWorked.Contains(y * width + x);
             if (kind == TerrainKind.Scrub) return worked || land.HasFruit(at) ? ArtSet.BushFruitOf(simNow.Season) : ArtSet.BareBush;
+            if (beingPlanted.Contains(y * width + x)) return Unplanted;
             return worked ? (int)TreeStage.Standing : (int)land.StageOf(at);
         }
 
-        // A felled tree is its own stump, then a small tree of its kind, then
-        // itself again; a bush keeps its size whatever its fruit.
+        // A felled tree is its own stump; a planted one a small tree of its
+        // kind until it stands, then itself; one not yet planted, as drawn,
+        // nothing. A bush keeps its size whatever its fruit.
         private (Sprite Sprite, Tile Tile) GrowingArt(TerrainKind kind, int growth, uint hash)
         {
             if (kind == TerrainKind.Scrub)
@@ -1769,6 +1794,7 @@ namespace KingdomWatch.Game
                 var bush = growth * ArtSet.BushSizes + (int)(hash % ArtSet.BushSizes);
                 return (art.Bushes[bush], art.BushTiles[bush]);
             }
+            if (growth == Unplanted) return (null, null);
             var tree = TreeOf(hash);
             switch ((TreeStage)growth)
             {
@@ -1801,13 +1827,23 @@ namespace KingdomWatch.Game
                 for (var i = 0; i < chunk.Growing.Count; i++)
                 {
                     var growing = chunk.Growing[i];
+                    if (growing.Stump)
+                    {
+                        // A felled tree's stump on plains goes to grass once
+                        // it has stood long enough, and stays gone.
+                        if (growing.Shown < 0 || land.ShowsStump(new WorldPosition(growing.X, growing.Y))) continue;
+                        if (growing.Renderer != null) growing.Renderer.enabled = false;
+                        else changedGrowth.Add(new TileChangeData(new Vector3Int(growing.X, height - 1 - growing.Y, 0), null, Color.white, Matrix4x4.identity));
+                        chunk.Growing[i] = new Growing(growing.X, growing.Y, false, true, -1, growing.Renderer);
+                        continue;
+                    }
                     var kind = growing.Bush ? TerrainKind.Scrub : TerrainKind.Forest;
                     var growth = GrowthOf(kind, growing.X, growing.Y);
                     if (growth == growing.Shown) continue;
                     var (sprite, tile) = GrowingArt(kind, growth, CellHash(growing.X, growing.Y));
                     if (growing.Renderer != null) growing.Renderer.sprite = sprite;
                     else changedGrowth.Add(new TileChangeData(new Vector3Int(growing.X, height - 1 - growing.Y, 0), tile, Color.white, Nudged(growing.X, growing.Y, 0.3f)));
-                    chunk.Growing[i] = new Growing(growing.X, growing.Y, growing.Bush, growth, growing.Renderer);
+                    chunk.Growing[i] = new Growing(growing.X, growing.Y, growing.Bush, false, growth, growing.Renderer);
                 }
                 looked += chunk.Growing.Count;
             }
@@ -2288,14 +2324,17 @@ namespace KingdomWatch.Game
         }
 
         // A tree or bush as drawn: its cell, which, its growth (see
-        // GrowthOf), and its renderer, null when the chunk's scenery is tiled.
+        // GrowthOf; -1 for a felled stump gone to grass), and its renderer,
+        // null when the chunk's scenery is tiled. A stump is one on plains,
+        // where a tree was felled for good (#155).
         private readonly struct Growing
         {
-            public Growing(int x, int y, bool bush, int shown, SpriteRenderer renderer)
+            public Growing(int x, int y, bool bush, bool stump, int shown, SpriteRenderer renderer)
             {
                 X = x;
                 Y = y;
                 Bush = bush;
+                Stump = stump;
                 Shown = shown;
                 Renderer = renderer;
             }
@@ -2303,6 +2342,7 @@ namespace KingdomWatch.Game
             public int X { get; }
             public int Y { get; }
             public bool Bush { get; }
+            public bool Stump { get; }
             public int Shown { get; }
             public SpriteRenderer Renderer { get; }
         }

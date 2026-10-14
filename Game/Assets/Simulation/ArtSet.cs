@@ -108,7 +108,7 @@ namespace KingdomWatch.Game
 
         // Sheets 0 and 1 are the body and the hands, which everyone shares.
         private int[] shoes, pants, hair;
-        private int[] forager, woodcutter, stoneGatherer, farmer, builder, unemployed;
+        private int[] forager, woodcutter, forester, stoneGatherer, farmer, builder, unemployed;
 
         private ArtSet(List<Object> owned) => this.owned = owned;
 
@@ -277,6 +277,12 @@ namespace KingdomWatch.Game
             }
         }
 
+        // What a Forester planting does (#155): digs the hole with the hoe
+        // for the first half of the work, then waters the sapling in. The art
+        // has no spade.
+        public static (Motion Motion, Tool Tool) PlantingOf(bool digging) =>
+            digging ? (Motion.Swing, Tool.Hoe) : (Motion.Water, Tool.WateringCan);
+
         // Which sheets dress someone: the shirt by job, the rest from `seed`,
         // which the caller derives from the person's id so a person always
         // looks the same. Grey hair is left for elders (#125). Allocates, so
@@ -285,6 +291,7 @@ namespace KingdomWatch.Game
         {
             var shirts = job == JobKind.Forager ? forager
                 : job == JobKind.Woodcutter ? woodcutter
+                : job == JobKind.Forester ? forester
                 : job == JobKind.StoneGatherer ? stoneGatherer
                 : job == JobKind.Farmer ? farmer
                 : job == JobKind.Builder ? builder
@@ -846,7 +853,10 @@ namespace KingdomWatch.Game
             shoes = Add(Each(ShoeColours, c => Player + "Feet/Shoes_1_" + c));
             pants = Add(Each(PantsColours, c => Player + "Legs/OG_Pants/Pants_1_" + c));
             forager = Add(Each(new[] { "Blue", "Green", "Orange", "White_and_Brown" }, c => Player + "Chest/Farmer_Shirt/Farmer_Shirt_1_" + c));
-            woodcutter = Add(Each(new[] { "Red", "Green", "Blue", "Brown" }, c => Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_" + c));
+            woodcutter = Add(Each(new[] { "Red", "Blue", "Brown" }, c => Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_" + c));
+            // A Forester (#155) wears the woodcutter's shirt in the one green
+            // no woodcutter does, so the two read apart.
+            forester = Add(new[] { Player + "Chest/Lumberjack_Shirt/Lumberjack_Shirt_1_Green" });
             // Farmers and builders wear the shirts of the trades nearest theirs,
             // in the colours foragers and woodcutters do not, as stone gatherers
             // and the jobless share the plain shirt (#150).

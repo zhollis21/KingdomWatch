@@ -44,5 +44,12 @@ namespace KingdomWatch.Core.Data
         /// harvest days.
         /// </summary>
         Farmer = 5,
+
+        /// <summary>
+        /// Plants trees on a settlement's plains (#155). Not a recipe: the
+        /// work is <see cref="Construction.Buildings.PlantTicks"/> at the
+        /// site, and the tree goes in the ground as the trip sets out.
+        /// </summary>
+        Forester = 6,
     }
 }

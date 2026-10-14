@@ -15,7 +15,9 @@ namespace KingdomWatch.Core.Work
     /// <remarks>
     /// Builders and Farmers (#100) are jobs with neither: their work is
     /// hours put into a building, which <see cref="Construction.Buildings"/>
-    /// owns, so everything here but <see cref="IsJob"/> refuses them.
+    /// owns, so everything here but <see cref="IsJob"/> refuses them. So are
+    /// Foresters (#155), whose work puts a tree in the ground rather than
+    /// anything in store.
     ///
     /// Every gathering job is a recipe from <see cref="PrimitiveTier"/>,
     /// worked at the nearest cell of a terrain that has the thing. Foraging
@@ -40,7 +42,7 @@ namespace KingdomWatch.Core.Work
         /// <see cref="Jobs"/> asks <see cref="Recipe(JobKind, Season)"/>.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// Not a gathering job (<see cref="IsGathering"/>): undefined, <see cref="JobKind.None"/>, or a Builder or Farmer, which run no recipe.
+        /// Not a gathering job (<see cref="IsGathering"/>): undefined, <see cref="JobKind.None"/>, or a Builder, Farmer or Forester, which run no recipe.
         /// </exception>
         public static Recipe Recipe(JobKind job) => Recipe(job, Season.Spring);
 
@@ -124,11 +126,12 @@ namespace KingdomWatch.Core.Work
         /// <summary>
         /// Whether this job runs a gathering recipe on a terrain - every job
         /// but <see cref="JobKind.Builder"/> and <see cref="JobKind.Farmer"/>,
-        /// whose work is hours put into a building (#100) and who have
-        /// neither a recipe nor a terrain here.
+        /// whose work is hours put into a building (#100), and
+        /// <see cref="JobKind.Forester"/>, whose work is a tree planted
+        /// (#155): none of them has a recipe or a terrain here.
         /// </summary>
         public static bool IsGathering(JobKind job) =>
-            IsJob(job) && job != JobKind.Builder && job != JobKind.Farmer;
+            IsJob(job) && job != JobKind.Builder && job != JobKind.Farmer && job != JobKind.Forester;
 
         private static bool[][] BuildTerrainMasks()
         {

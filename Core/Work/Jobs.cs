@@ -281,6 +281,9 @@ namespace KingdomWatch.Core.Work
 
         private static readonly int JobKindCount = EnumGuard.BuildMask(typeof(JobKind)).Length;
 
+        // What a Forester plants on (#155), as the pathfinder's terrain mask.
+        private static readonly bool[] PlainsMask = BuildPlainsMask();
+
         private const int InitialSlots = 64;
 
         private readonly SimulationClock _clock;
@@ -672,6 +675,13 @@ namespace KingdomWatch.Core.Work
                     // never comes home leaves the fruit on the bush.
                     _land.Return(task.Destination);
                 }
+                else if (task.Job == JobKind.Forester)
+                {
+                    // So was a tree planted (#155): one that never gets its
+                    // forester's hour is not planted.
+                    _land.Unplant(task.Destination);
+                    tracked.PlantShort += RequireBuildings().WoodPerPlantingAt(task.TravelTicks / TicksPerCostUnit) * Buildings.PlantHeadroomDenominator;
+                }
                 else
                 {
                     // Hours claimed on a building go back the same way (#100).
@@ -838,12 +848,20 @@ namespace KingdomWatch.Core.Work
                     var kind = recipe.Outputs[i].Kind;
                     Storage.Spill(ledger, kind, CapacityOf(tracked, kind));
                 }
+
+                // A tree's last cut fells it for good, now that its trip is
+                // home and can no longer give the cut back (#155).
+                if (task.Job == JobKind.Woodcutter)
+                {
+                    _land.Fell(task.Destination);
+                }
             }
-            else
+            else if (task.Job != JobKind.Forester)
             {
                 RequireBuildings().Credit(task.Destination, task.Job, task.WorkTicks, tracked.Group.SharedSupplies);
             }
 
+            // A Forester's tree went in as the trip set out: nothing to deliver.
             slot.Clear();
             tracked.OnDuty[(int)task.Job]--;
             _people.SetJob(worker, JobKind.None);
@@ -882,7 +900,7 @@ namespace KingdomWatch.Core.Work
             // neither step can leave the other half done.
             var ledger = tracked.Group.SharedSupplies;
 
-            if (building is null)
+            if (JobTable.IsGathering(job))
             {
                 ledger.BeginRecipe(JobTable.Recipe(job, now.Season));
             }
@@ -890,7 +908,15 @@ namespace KingdomWatch.Core.Work
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
-            if (building is null)
+            if (job == JobKind.Forester)
+            {
+                // The tree goes in now, as a harvest is claimed (#155), so the
+                // next Forester's pick finds the next cell. Cannot refuse -
+                // ChooseJob only offers plantable plains.
+                _land.Plant(site.Destination);
+                tracked.PlantShort -= RequireBuildings().WoodPerPlantingAt(site.Cost) * Buildings.PlantHeadroomDenominator;
+            }
+            else if (building is null)
             {
                 // The harvest is claimed now, not on the way home (#26): whoever
                 // takes a bush's last trip leaves it bare for the next picker,
@@ -1031,7 +1057,19 @@ namespace KingdomWatch.Core.Work
                     && checked(fieldShort * chosenTarget) > checked(chosenShort * fieldTarget))
                 {
                     chosen = JobKind.Farmer;
+                    chosenShort = fieldShort;
+                    chosenTarget = fieldTarget;
                     building = field;
+                }
+
+                // And its Foresters (#155), by the wood a year its forest is
+                // short of, saplings counted, against what its hearths and one
+                // more need.
+                if (tracked.PlantShort > 0L
+                    && FitsPlanting(tracked, ticksUntilDusk)
+                    && checked(tracked.PlantShort * chosenTarget) > checked(chosenShort * tracked.PlantTarget))
+                {
+                    chosen = JobKind.Forester;
                 }
             }
 
@@ -1072,14 +1110,66 @@ namespace KingdomWatch.Core.Work
             return TripTicks(site, WorkTicksOf(job, building, now)) <= ticksUntilDusk;
         }
 
+        // Whether a Forester has a cell to plant that a trip reaches and is
+        // home from by dusk. The site is the nearest plantable plains beside
+        // forest, or any plantable plains when none is (Buildings.Forestry.cs),
+        // within WoodReach - past the town, so mostly out where a tree counts
+        // half (Buildings.WoodPerPlantingAt); found again once
+        // the ground has changed or the cell is no longer plantable - planted,
+        // or kept for a building or a lane since.
+        private bool FitsPlanting(Tracked tracked, long ticksUntilDusk)
+        {
+            var buildings = RequireBuildings();
+            var site = SiteOf(tracked, JobKind.Forester);
+
+            if (site.Rewrites != _grid.Rewrites || (site.Reachable && !buildings.Plantable.Accepts(_grid.IndexOf(site.Destination))))
+            {
+                FindPlantSite(tracked, site);
+            }
+
+            return site.Reachable && TripTicks(site, Buildings.PlantTicks) <= ticksUntilDusk;
+        }
+
+        private void FindPlantSite(Tracked tracked, Site site)
+        {
+            var buildings = RequireBuildings();
+            var known = _knownMaps.For(tracked.Group.Id);
+            site.Rewrites = _grid.Rewrites;
+            site.Reachable = _pathfinder.TryFindNearest(
+                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.BesideForest, null, false, int.MaxValue, Buildings.WoodReach, site.Route, out var cost)
+                || _pathfinder.TryFindNearest(
+                    tracked.SitesFrom, Mover, PlainsMask, known, buildings.Plantable, null, false, int.MaxValue, Buildings.WoodReach, site.Route, out cost);
+
+            if (!site.Reachable)
+            {
+                return;
+            }
+
+            site.Destination = site.Route[site.Route.Count - 1];
+            site.Cost = cost;
+            _scratchRoute.Clear();
+            _scratchRoute.AddRange(site.Route);
+            _scratchRoute.Reverse();
+            site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
+        }
+
         // How long one task of a job works at its site: a gathering recipe's
-        // duration, or a share of a building's hours.
+        // duration, a tree's planting, or a share of a building's hours.
         private long WorkTicksOf(JobKind job, Building? building, SimulationTime now) =>
-            building is null ? JobTable.Recipe(job, now.Season).Duration : RequireBuildings().ShareOf(building, job);
+            job == JobKind.Forester ? Buildings.PlantTicks
+            : building is null ? JobTable.Recipe(job, now.Season).Duration
+            : RequireBuildings().ShareOf(building, job);
+
+        private static bool[] BuildPlainsMask()
+        {
+            var mask = new bool[EnumGuard.BuildMask(typeof(TerrainKind)).Length];
+            mask[(int)TerrainKind.Plains] = true;
+            return mask;
+        }
 
         private Buildings RequireBuildings() =>
             _buildings ?? throw new InvalidOperationException(
-                "A Builder or Farmer task needs the buildings it works on; this Jobs was made without them.");
+                "A Builder, Farmer or Forester task needs the settlement's buildings; this Jobs was made without them.");
 
         // One walk of the membership per band per dawn, where a walk per pick
         // used to be: the pick is what scales with workers, so the scan inside
@@ -1112,6 +1202,19 @@ namespace KingdomWatch.Core.Work
 
             tracked.Living = living;
             tracked.Hearths = Warmth.CountHearths(members, _people, _hearthScratch);
+
+            // Swept once a dawn rather than at every pick: the forest in reach
+            // is a long walk of the map, and the grid it reads is rewritten
+            // through the day by every lane and clearing (#155).
+            tracked.PlantShort = 0L;
+            tracked.PlantTarget = 0L;
+
+            if (_buildings is object && tracked.Group.Id.Kind == EntityKind.Settlement
+                && _buildings.TryPlantWork(tracked.Group, tracked.Hearths, out var plantShort, out var plantTarget))
+            {
+                tracked.PlantShort = plantShort;
+                tracked.PlantTarget = plantTarget;
+            }
         }
 
         /// <summary>
@@ -1445,6 +1548,17 @@ namespace KingdomWatch.Core.Work
             /// </summary>
             public int Hearths { get; set; }
 
+            /// <summary>
+            /// <see cref="Buildings.TryPlantWork"/> as swept at dawn, less
+            /// the wood each tree planted since will give and plus back each
+            /// that was not (#155); zero for a band, or a settlement planted
+            /// enough. What ChooseJob ranks a Forester by.
+            /// </summary>
+            public long PlantShort { get; set; }
+
+            /// <summary>The dawn target <see cref="PlantShort"/> is measured against.</summary>
+            public long PlantTarget { get; set; }
+
             /// <summary>The WorkDayDue booked for this band's next dawn; None when the world ends first.</summary>
             public EventId PendingDawn { get; set; }
 
@@ -1489,9 +1603,11 @@ namespace KingdomWatch.Core.Work
             // LandCover.Returns when this site was last searched for.
             public long LandReturns { get; set; }
 
-            // TerrainGrid.Rewrites when a Builder's or Farmer's route was
-            // last found: clearing changes what the walk costs (#100).
-            public long Rewrites { get; set; }
+            // TerrainGrid.Rewrites when a Builder's or Farmer's route, or a
+            // Forester's cell, was last found: clearing and planting change
+            // what the walk costs and where a tree may go (#100, #155). None
+            // to begin with, so the first ask searches.
+            public long Rewrites { get; set; } = -1L;
 
             public List<WorldPosition> Route { get; } = new List<WorldPosition>();
 

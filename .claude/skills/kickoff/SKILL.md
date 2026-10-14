@@ -550,8 +550,7 @@ name or the eventual PR body.
 Confirm the branch name before creating it; it is annoying to rename later.
 
 Create the branch and carry on: the approved plan is the instruction to
-implement, so start building without asking again. Commits, pushes and the PR
-remain separate explicit asks per `AGENTS.md`; run `/self-review` before
+implement, so start building without asking again. Run `/self-review` before
 presenting the result.
 
 ---

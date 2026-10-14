@@ -29,8 +29,8 @@ namespace KingdomWatch.Core.Construction
     /// rather than cells meeting at their corners, and it prefers open
     /// ground and existing road; it
     /// is laid as <see cref="RoadGrade.Track"/> when the building's ground is
-    /// cleared, and its scrub and trees are cleared with the footprint's and
-    /// priced into the same work. A field has no door, but it must touch a
+    /// cleared, and its scrub, trees and rocks are cleared with the
+    /// footprint's and priced into the same work. A field has no door, but it must touch a
     /// road along one of its edges: one already there, or a lane laid from
     /// the middle of one of its sides, the cheapest of the four. Roads are
     /// never built on, so a field keeps its way in however the village
@@ -52,9 +52,12 @@ namespace KingdomWatch.Core.Construction
     /// lane it really gets, which can run much further round a barn or
     /// another field (#169).</item>
     /// </list>
-    /// Open plains are still preferred outright to clearing, as they were
-    /// (#100): only when no plains footprint scores at all is ground with
-    /// scrub or trees on it considered. Each later kind brings its own row of
+    /// The ground does not enter the score (#155): plains, scrub, forest and
+    /// rocks are all ground a footprint may stand on, and what grows there
+    /// is cleared into stock - a tree's wood, a bush's fruit and brushwood,
+    /// a rock's stone - so a village builds where it is best laid out
+    /// rather than spreading round its own woods, which its Foresters
+    /// replant. Each later kind brings its own row of
     /// preferences with the issue that adds it.
     ///
     /// The weights are placeholders in the <see cref="PrimitiveTier"/> sense.
@@ -96,9 +99,6 @@ namespace KingdomWatch.Core.Construction
         /// along a road already there whenever one is free, and needs no lane.
         /// </summary>
         public const int FieldRoadWeight = 8;
-
-        /// <summary>Score per footprint cell of scrub or forest, once plains have failed.</summary>
-        public const int ClearingWeight = 2;
 
         /// <summary>
         /// How far from the centre, in cells each way, a house or barn is
@@ -191,8 +191,7 @@ namespace KingdomWatch.Core.Construction
         }
 
         // Where a building of this kind goes, and its lane into _lane: the
-        // best-scoring footprint the search reaches, trying plains alone
-        // first. `from` is where the search starts - the centre, or a field's
+        // best-scoring footprint the search reaches. `from` is where the search starts - the centre, or a field's
         // barn - and `centre` the settlement's camp. A house or barn is
         // looked for within NearRadius first, then in boxes twice as wide
         // until one fits or the box holds all of BuildReach; a field within
@@ -257,19 +256,19 @@ namespace KingdomWatch.Core.Construction
         // the lower cell index as in the scoring. All of them: the
         // crow-flies distance is measured against the network near the
         // centre only, so it is no lower bound on a lane, and no site can be
-        // passed over on its score alone. Open plains stay preferred
-        // outright: once a plains site is kept, ground to clear is not
-        // looked at. Into _lane.
+        // passed over on its score alone. Ground to clear scores as open
+        // plains does: once a village plants its own trees (#155), a tree
+        // or a bush in the way is wood and food, not a reason to build
+        // further out. Into _lane.
         private bool TryPlaceByLane(BuildingKind kind, WorldPosition from, WorldPosition centre, ReadOnlySpan<bool> known, int radius, out WorldPosition anchor)
         {
             var keptScore = long.MaxValue;
             var keptCell = -1;
-            var keptPlains = false;
             anchor = default;
 
             for (var attempt = 0; attempt < PlacementAttempts; attempt++)
             {
-                if (!TryBest(from, radius, known, out var site) || (keptPlains && !_scorer.PlainsOnly))
+                if (!TryBest(from, radius, known, out var site))
                 {
                     break;
                 }
@@ -288,7 +287,6 @@ namespace KingdomWatch.Core.Construction
                     {
                         keptScore = score;
                         keptCell = cell;
-                        keptPlains = _scorer.PlainsOnly;
                         anchor = site;
                         _keptLane.Clear();
                         _keptLane.AddRange(_lane);
@@ -304,19 +302,16 @@ namespace KingdomWatch.Core.Construction
             return keptCell >= 0;
         }
 
-        // The best footprint the search reaches: plains first, then any ground.
+        // The best footprint the search reaches, on any ground (#155).
         private bool TryBest(WorldPosition from, int radius, ReadOnlySpan<bool> known, out WorldPosition anchor)
         {
-            for (var pass = 0; pass < 2; pass++)
-            {
-                _scorer.StartPass(plainsOnly: pass == 0);
-                _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _scorer, null, false, radius, BuildReach, _scratchRoute, out _);
+            _scorer.StartPass();
+            _pathfinder.TryFindNearest(from, Jobs.Mover, _ground, known, _scorer, null, false, radius, BuildReach, _scratchRoute, out _);
 
-                if (_scorer.Best >= 0)
-                {
-                    anchor = _grid.PositionAt(_scorer.Best);
-                    return true;
-                }
+            if (_scorer.Best >= 0)
+            {
+                anchor = _grid.PositionAt(_scorer.Best);
+                return true;
             }
 
             anchor = default;
@@ -557,12 +552,13 @@ namespace KingdomWatch.Core.Construction
         }
 
         // Whether a footprint anchored here may stand: every cell on the map,
-        // plains (or, unless plainsOnly, scrub or forest), under no building,
+        // ground a footprint may stand on (plains, scrub, forest or rocks),
+        // under no building,
         // roof, road or pending lane, and out of every settlement's camp yard;
         // its own roof's rows over no building, road, lane or yard (#150,
         // the #153 review); and VillageGap from any other settlement (#154).
         // A roof may hang off the map.
-        private bool Fits(BuildingSpec spec, WorldPosition anchor, WorldPosition keep, bool plainsOnly)
+        private bool Fits(BuildingSpec spec, WorldPosition anchor, WorldPosition keep)
         {
             for (var dy = 0; dy < spec.Height; dy++)
             {
@@ -578,7 +574,7 @@ namespace KingdomWatch.Core.Construction
                     var index = _grid.IndexOf(at);
                     var kind = _grid.KindAt(index);
 
-                    if (!_ground[(int)kind] || (plainsOnly && kind != TerrainKind.Plains) || _onCell.ContainsKey(index)
+                    if (!_ground[(int)kind] || _onCell.ContainsKey(index)
                         || _underRoof.Contains(index) || IsRoadOrLane(index))
                     {
                         return false;
@@ -730,7 +726,6 @@ namespace KingdomWatch.Core.Construction
             private WorldPosition _centre;
             private WorldPosition _barnMiddle;
             private int _ring;
-            private bool _plainsOnly;
             private long _bestScore;
 
             public SiteScorer(Buildings owner) => _owner = owner;
@@ -740,9 +735,6 @@ namespace KingdomWatch.Core.Construction
 
             /// <summary>The best anchor's score this pass.</summary>
             public long BestScore => _bestScore;
-
-            /// <summary>Whether this pass takes open plains only.</summary>
-            public bool PlainsOnly => _plainsOnly;
 
             public void Begin(BuildingKind kind, BuildingSpec spec, WorldPosition centre, Building? barn, EntityId settlement)
             {
@@ -754,9 +746,8 @@ namespace KingdomWatch.Core.Construction
                 _ring = kind == BuildingKind.Barn ? RingOf(settlement, centre) : 0;
             }
 
-            public void StartPass(bool plainsOnly)
+            public void StartPass()
             {
-                _plainsOnly = plainsOnly;
                 Best = -1;
                 _bestScore = long.MaxValue;
             }
@@ -776,7 +767,7 @@ namespace KingdomWatch.Core.Construction
                 var grid = _owner._grid;
                 var anchor = grid.PositionAt(cell);
 
-                if (!_owner.Fits(_spec, anchor, _centre, _plainsOnly))
+                if (!_owner.Fits(_spec, anchor, _centre))
                 {
                     return false;
                 }
@@ -804,11 +795,6 @@ namespace KingdomWatch.Core.Construction
                     var middle = MiddleOf(_spec, anchor);
                     score = (FieldBarnWeight * (long)Chebyshev(middle, _barnMiddle)) - (FieldCentreWeight * (long)Chebyshev(middle, _centre))
                         + (FieldRoadWeight * (long)ToRoad(anchor));
-                }
-
-                if (!_plainsOnly)
-                {
-                    score += ClearingWeight * (long)Uncleared(anchor);
                 }
 
                 if (score < _bestScore || (score == _bestScore && cell < Best))
@@ -893,22 +879,6 @@ namespace KingdomWatch.Core.Construction
                 }
 
                 return nearest == int.MaxValue ? LaneRadius : nearest;
-            }
-
-            private int Uncleared(WorldPosition anchor)
-            {
-                var grid = _owner._grid;
-                var count = 0;
-
-                for (var dy = 0; dy < _spec.Height; dy++)
-                {
-                    for (var dx = 0; dx < _spec.Width; dx++)
-                    {
-                        count += grid[new WorldPosition(anchor.X + dx, anchor.Y + dy)] != TerrainKind.Plains ? 1 : 0;
-                    }
-                }
-
-                return count;
             }
 
             // A barn's ring: RingGap beyond the settlement's furthest house

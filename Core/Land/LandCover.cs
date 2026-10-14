@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Traversal;
@@ -22,8 +23,10 @@ namespace KingdomWatch.Core.Land
     /// **Berries fruit by season.** Every bush is ripe again at the start of
     /// spring, summer and autumn, stripped or not, and bare all winter - the
     /// year cycle (#53) already makes winter foraging too thin to live on, and
-    /// now there is nothing to pick at all. A felled tree is a stump and then
-    /// a sapling, and stands again <see cref="RegrowDays"/> after it fell.
+    /// now there is nothing to pick at all. A felled tree does not grow back
+    /// (#155): its last cut leaves a stump, cleared to plains once the trip
+    /// that took it is home (<see cref="Fell"/>), and only a forester's
+    /// <see cref="Plant"/> puts a tree there again.
     /// Rocks are untouched: stone stays infinite until something decides
     /// otherwise.
     ///
@@ -34,13 +37,22 @@ namespace KingdomWatch.Core.Land
     /// (<see cref="Return"/>).
     ///
     /// **Lazy.** A cell holds the period its count belongs to - the season
-    /// for a bush, the day of the last cut for a tree - and regrowth is read
-    /// off the clock when the cell is next asked about. Nothing is polled and
+    /// for a bush, the day of the last cut for a tree - and a bush's new
+    /// season or a planted tree's growth is read off the clock when the cell
+    /// is next asked about. Nothing is polled and
     /// nothing is booked, so land offscreen costs nothing.
     ///
     /// One long per cell, dense, the stance <see cref="Knowledge.KnownMaps"/>
     /// takes: about nine megabytes on the M1 map, and a dense array has one
     /// canonical order for the world hash. Zero is untouched.
+    ///
+    /// **Foresters plant** (#155). A tree planted on plains turns the cell to
+    /// forest and is a sapling from the day it went in - never a stump, which
+    /// is what felling leaves - and stands <see cref="RegrowDays"/> later. Until it
+    /// first stands it is <see cref="IsGrowing(int)"/>: in the ground, but
+    /// not yet a tree, and the wood a village counts on (<see cref="Grown"/>)
+    /// leaves it out. Once its first cut is taken it is a tree like any
+    /// other, felled for good by its last.
     ///
     /// The numbers are placeholders, set by the harness (#26).
     /// </remarks>
@@ -52,8 +64,11 @@ namespace KingdomWatch.Core.Land
         /// <summary>Woodcutting tasks that fell a tree, unless set otherwise.</summary>
         public const int DefaultTreeCuts = 5;
 
-        /// <summary>Days from a tree's felling until it stands again: five years.</summary>
+        /// <summary>Days from a tree's planting until it stands: five years.</summary>
         public const long RegrowDays = 5L * SimulationTime.DaysPerYear;
+
+        /// <summary>Days a felled tree's stump shows on the plains it left: five years (#155).</summary>
+        public const long StumpDays = 5L * SimulationTime.DaysPerYear;
 
         // A cell's state is (period + 1) << CountBits | count, so zero is a
         // cell nothing has touched and every touched cell is non-zero. A
@@ -71,6 +86,11 @@ namespace KingdomWatch.Core.Land
         private int _bushPicks = DefaultBushPicks;
         private int _treeCuts = DefaultTreeCuts;
 
+        // Trees planted and not yet stood (#155): cell to the day it went in.
+        // Grown ones are dropped when next noticed (NextGrowth, Take), so an
+        // entry is read against the clock rather than trusted.
+        private readonly Dictionary<int, long> _planted = new Dictionary<int, long>();
+
         public LandCover(TerrainGrid grid, SimulationClock clock)
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
@@ -78,6 +98,7 @@ namespace KingdomWatch.Core.Land
             _cells = new long[grid.CellCount];
             Ripe = new RipeFilter(this);
             Promising = new PromisingFilter(this);
+            Grown = new GrownFilter(this);
         }
 
         /// <summary>
@@ -114,6 +135,13 @@ namespace KingdomWatch.Core.Land
         /// </summary>
         public ISiteFilter Promising { get; }
 
+        /// <summary>
+        /// Every cell but a planted tree still growing (<see cref="IsGrowing(int)"/>):
+        /// what a village counts its trees by, since a sapling it planted is
+        /// wood it does not have yet (#155).
+        /// </summary>
+        public ISiteFilter Grown { get; }
+
         /// <summary>Whether the cell at this position can be worked now.</summary>
         public bool IsWorkable(WorldPosition at) => IsWorkable(_grid.IndexOf(at), _clock.Now);
 
@@ -141,16 +169,171 @@ namespace KingdomWatch.Core.Land
                     _cells[cell] = Pack(season, picks + 1);
                     break;
                 case TerrainKind.Forest:
-                    // A tree that has stood again since it fell starts over.
+                    // A planted tree that has grown takes its first cut and
+                    // is an ordinary tree from then on.
                     var cuts = Count(cell) >= TreeCuts ? 0 : Count(cell);
                     _cells[cell] = Pack(now.DayNumber, cuts + 1);
+                    _planted.Remove(cell);
                     break;
             }
         }
 
         /// <summary>
+        /// Clears the stump a tree's last cut left to plains, as the trip
+        /// that took it comes home (#155): nothing grows back on its own, and
+        /// the ground is open for a forester to plant. Kept a stump until
+        /// then so a trip that never comes home can give the cut back
+        /// (<see cref="Return"/>). The plains keep the day, so the view can
+        /// draw the stump on them for <see cref="StumpDays"/>
+        /// (<see cref="ShowsStump"/>). Nothing to do for any other cell - one
+        /// with cuts left, or ground cleared since.
+        /// </summary>
+        public void Fell(WorldPosition at)
+        {
+            var cell = _grid.IndexOf(at);
+
+            if (IsStump(cell))
+            {
+                _cells[cell] = Pack(_clock.Now.DayNumber, 0);
+                _grid.Set(at, TerrainKind.Plains);
+            }
+        }
+
+        /// <summary>
+        /// Whether plains at this position were felled from a tree less than
+        /// <see cref="StumpDays"/> ago (<see cref="Fell"/>): drawn with its
+        /// stump, though open ground to everything else. For the view. False
+        /// for any cell that is not plains, or plains planted or built on
+        /// since; the view still checks for roads and buildings.
+        /// </summary>
+        public bool ShowsStump(WorldPosition at)
+        {
+            var cell = _grid.IndexOf(at);
+
+            return _grid.KindAt(cell) == TerrainKind.Plains
+                && _cells[cell] != 0
+                && _clock.Now.DayNumber - Period(cell) < StumpDays;
+        }
+
+        /// <summary>
+        /// Plants a tree on a cell of plains (#155): the cell turns to forest,
+        /// and the tree stands <see cref="RegrowDays"/> from now, a sapling
+        /// and <see cref="IsGrowing(int)"/> until then. Throws for a cell
+        /// that is not plains.
+        /// </summary>
+        public void Plant(WorldPosition at)
+        {
+            var cell = CellOf(at, TerrainKind.Plains);
+            var today = _clock.Now.DayNumber;
+
+            _grid.Set(at, TerrainKind.Forest);
+            _cells[cell] = Pack(today, TreeCuts);
+            _planted[cell] = today;
+        }
+
+        /// <summary>
+        /// Takes back a tree planted by a trip that never finished - its
+        /// forester died on the way - leaving plains again, as
+        /// <see cref="Return"/> gives back a harvest. Nothing to do when the
+        /// ground has been cleared since, which leaves plains already. Throws
+        /// for any other cell that is not a tree still growing.
+        /// </summary>
+        public void Unplant(WorldPosition at)
+        {
+            var cell = _grid.IndexOf(at);
+
+            if (_grid.KindAt(cell) == TerrainKind.Plains)
+            {
+                return;
+            }
+
+            if (!IsGrowing(cell))
+            {
+                throw new InvalidOperationException(at + " has no planted tree growing to take back.");
+            }
+
+            _cells[cell] = 0;
+            _planted.Remove(cell);
+            _grid.Set(at, TerrainKind.Plains);
+        }
+
+        /// <summary>
+        /// Whether the cell holds a tree planted on plains that has not stood
+        /// yet (#155). Throws for an index off the grid.
+        /// </summary>
+        public bool IsGrowing(int cell)
+        {
+            if (cell < 0 || cell >= _cells.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cell), cell, "Not a cell of the grid.");
+            }
+
+            return _planted.TryGetValue(cell, out var day) && _clock.Now.DayNumber - day < RegrowDays;
+        }
+
+        /// <summary>
+        /// The day a planted tree went in, for one not yet cut - growing or
+        /// grown; false for any other cell. What tells a grown tree from a
+        /// stump, so the world hash folds it in. Throws for an index off the
+        /// grid.
+        /// </summary>
+        public bool TryGetPlanted(int cell, out long day)
+        {
+            if (cell < 0 || cell >= _cells.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cell), cell, "Not a cell of the grid.");
+            }
+
+            return _planted.TryGetValue(cell, out day);
+        }
+
+        /// <summary>
+        /// The day the next planted tree stands, or <see cref="long.MaxValue"/>
+        /// when none is growing: until then, what <see cref="Grown"/> accepts
+        /// changes only with the grid.
+        /// </summary>
+        public long NextGrowth()
+        {
+            var today = _clock.Now.DayNumber;
+            var next = long.MaxValue;
+
+            // The smallest, so the dictionary's order does not matter.
+            foreach (var planted in _planted)
+            {
+                var stands = planted.Value + RegrowDays;
+
+                if (stands > today)
+                {
+                    next = Math.Min(next, stands);
+                }
+            }
+
+            return next;
+        }
+
+        /// <summary>
+        /// Trips a bush has left this season: <see cref="BushPicks"/> less
+        /// those claimed, or none when it has no fruit (<see cref="HasFruit"/>).
+        /// What clearing it gives (#155). Throws for a cell that is not scrub.
+        /// </summary>
+        public int PicksLeft(WorldPosition at)
+        {
+            var cell = CellOf(at, TerrainKind.Scrub);
+            var now = _clock.Now;
+
+            if (!IsWorkable(cell, now))
+            {
+                return 0;
+            }
+
+            return _cells[cell] != 0 && Period(cell) == SeasonIndex(now) ? BushPicks - Count(cell) : BushPicks;
+        }
+
+        /// <summary>
         /// Gives back a claim from a trip that never finished - its worker
-        /// died on the way. A tree its claim had felled stands again.
+        /// died on the way. A stump its claim had made stands again. Nothing
+        /// to give back on ground cleared since: plains, or a tree planted
+        /// there after (#155).
         /// </summary>
         public void Return(WorldPosition at)
         {
@@ -160,6 +343,14 @@ namespace KingdomWatch.Core.Land
             {
                 case TerrainKind.Scrub:
                 case TerrainKind.Forest:
+                    // Ground cleared under the trip and planted since: the
+                    // claim went with the clearing, and the sapling owes it
+                    // nothing (#155).
+                    if (_grid.KindAt(cell) == TerrainKind.Forest && _planted.ContainsKey(cell))
+                    {
+                        break;
+                    }
+
                     if (Count(cell) == 0)
                     {
                         throw new InvalidOperationException(at + " has no claim to give back.");
@@ -176,7 +367,7 @@ namespace KingdomWatch.Core.Land
 
         /// <summary>
         /// Cuts a tree has left before it falls: <see cref="TreeCuts"/> for
-        /// one untouched or grown back, fewer for one already being cut, none
+        /// one untouched or planted and grown, fewer for one already being cut, none
         /// for a stump or a sapling. What clearing it costs and gives (#100).
         /// Throws for a cell that is not forest.
         /// </summary>
@@ -196,13 +387,14 @@ namespace KingdomWatch.Core.Land
                 return TreeCuts - cuts;
             }
 
-            return _clock.Now.DayNumber - Period(cell) >= RegrowDays ? TreeCuts : 0;
+            return IsGrown(cell, _clock.Now) ? TreeCuts : 0;
         }
 
         /// <summary>
         /// Grubs out a bush or fells a tree for good, turning the cell to
         /// plains (#100): the ground a building or field goes on. Plains grow
-        /// nothing, so nothing here regrows. Returns the cuts the tree had
+        /// nothing by themselves; only a forester's <see cref="Plant"/> puts a
+        /// tree back (#155). Returns the cuts the tree had
         /// left (<see cref="CutsLeft"/>) - their wood is the clearer's - or
         /// zero for a bush. Throws for a cell that is neither scrub nor
         /// forest, which has nothing to clear.
@@ -224,6 +416,7 @@ namespace KingdomWatch.Core.Land
 
             var cuts = kind == TerrainKind.Forest ? CutsLeft(at) : 0;
             _cells[cell] = 0;
+            _planted.Remove(cell);
             _grid.Set(at, TerrainKind.Plains);
             return cuts;
         }
@@ -236,7 +429,9 @@ namespace KingdomWatch.Core.Land
         public bool HasFruit(WorldPosition at) => IsWorkable(CellOf(at, TerrainKind.Scrub), _clock.Now);
 
         /// <summary>
-        /// How far a tree at this position has grown back. For the view.
+        /// How far a tree at this position has grown: a planted one a sapling
+        /// until it stands, and a felled one a stump until its trip is home
+        /// (<see cref="Fell"/>). For the view.
         /// Throws for a cell that is not forest.
         /// </summary>
         public TreeStage StageOf(WorldPosition at)
@@ -248,15 +443,19 @@ namespace KingdomWatch.Core.Land
                 return TreeStage.Standing;
             }
 
-            var since = _clock.Now.DayNumber - Period(cell);
-            return since >= RegrowDays ? TreeStage.Standing
-                : since >= RegrowDays / 2 ? TreeStage.Sapling
-                : TreeStage.Stump;
+            if (!_planted.TryGetValue(cell, out var day))
+            {
+                return TreeStage.Stump;
+            }
+
+            // A sapling from the day it goes in: a stump is what felling
+            // leaves, and planted ground should not look cut.
+            return _clock.Now.DayNumber - day >= RegrowDays ? TreeStage.Standing : TreeStage.Sapling;
         }
 
         /// <summary>
         /// Claims given back so far. Time makes land workable again only at a
-        /// season's start or a regrowth, which a dawn's search sees; a claim
+        /// season's start or a planted tree's growth, which a dawn's search sees; a claim
         /// given back does it mid-day, so a search that found nothing compares
         /// this with what it was then and looks again (#141 review).
         /// </summary>
@@ -312,11 +511,20 @@ namespace KingdomWatch.Core.Land
                     return BushesFruitIn(now.Season)
                         && (_cells[cell] == 0 || Period(cell) != SeasonIndex(now) || Count(cell) < BushPicks);
                 case TerrainKind.Forest:
-                    return _cells[cell] == 0 || Count(cell) < TreeCuts || now.DayNumber - Period(cell) >= RegrowDays;
+                    return _cells[cell] == 0 || Count(cell) < TreeCuts || IsGrown(cell, now);
                 default:
                     return true;
             }
         }
+
+        // A planted tree that has stood and not yet been cut.
+        private bool IsGrown(int cell, SimulationTime now) =>
+            _planted.TryGetValue(cell, out var day) && now.DayNumber - day >= RegrowDays;
+
+        // Forest with every cut taken that is no planted tree: what a tree's
+        // last cut leaves until its trip is home.
+        private bool IsStump(int cell) =>
+            _grid.KindAt(cell) == TerrainKind.Forest && _cells[cell] != 0 && Count(cell) >= TreeCuts && !_planted.ContainsKey(cell);
 
         private bool IsPromising(int cell, SimulationTime now) =>
             (now.Season == Season.Winter && _grid.KindAt(cell) == TerrainKind.Scrub) || IsWorkable(cell, now);
@@ -342,6 +550,15 @@ namespace KingdomWatch.Core.Land
             public RipeFilter(LandCover land) => _land = land;
 
             public bool Accepts(int cell) => _land.IsWorkable(cell, _land._clock.Now);
+        }
+
+        private sealed class GrownFilter : ISiteFilter
+        {
+            private readonly LandCover _land;
+
+            public GrownFilter(LandCover land) => _land = land;
+
+            public bool Accepts(int cell) => !_land.IsGrowing(cell);
         }
 
         private sealed class PromisingFilter : ISiteFilter

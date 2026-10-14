@@ -61,18 +61,20 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="FieldRadius"/> of its barn with a road along one of its
     /// edges, each among the footprints the
     /// same bounded search a work site is found by reaches, so it is
-    /// reachable and known. A footprint of open plains is taken if there is
-    /// one; otherwise one of plains, scrub or forest, which Builders clear
-    /// before building starts, along with any scrub or trees on its lane -
+    /// reachable and known. A footprint may stand on plains, scrub, forest
+    /// or rocks alike (#155), which Builders clear before building starts,
+    /// along with whatever is on its lane and its share of the square -
     /// <see cref="TicksPerCut"/> for each cut a standing tree has left, what
     /// woodcutting takes for one, and the wood those cuts would have given
     /// goes into stock; <see cref="ClearTicksPerCell"/> for a bush or a
-    /// stump, and <see cref="TicksPerRock"/> for each rock on the lane or in
-    /// the square, which pays <see cref="StonePerRock"/>. The lane is laid as road when
+    /// stump, a bush paying the fruit it has left this season and
+    /// <see cref="WoodPerBush"/>; and <see cref="TicksPerRock"/> for each
+    /// rock, which pays <see cref="StonePerRock"/>. The lane is laid as road when
     /// the clearing is done. Approved
     /// ground and lanes are reserved: nobody gathers there until they are
     /// cleared (<see cref="IsReserved(WorldPosition)"/>), so they are cleared
-    /// as they were priced. Nothing regrows on cleared ground. Buildings
+    /// as they were priced. Nothing regrows on cleared ground unless a
+    /// Forester plants it (Buildings.Forestry.cs). Buildings
     /// still block nobody's path; that is #25's.
     ///
     /// **Fields.** A field needs <see cref="TendingDays"/> days of
@@ -146,14 +148,20 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public static readonly long TicksPerCut = PrimitiveTier.GatherWood.Duration;
 
-        /// <summary>Quarrying trips a rock in the square takes to clear (#23).</summary>
+        /// <summary>Quarrying trips a rock takes to clear (#23): in the square, on a lane or under a footprint.</summary>
         public const int TripsPerRock = 3;
 
-        /// <summary>Worker-ticks to quarry away a rock in the square: <see cref="TripsPerRock"/> stone-gathering trips.</summary>
+        /// <summary>Worker-ticks to quarry away a rock: <see cref="TripsPerRock"/> stone-gathering trips.</summary>
         public static readonly long TicksPerRock = TripsPerRock * PrimitiveTier.GatherStone.Duration;
 
         /// <summary>Stone a cleared rock gives the clearer: what its <see cref="TripsPerRock"/> trips would have.</summary>
         public static readonly int StonePerRock = TripsPerRock * PrimitiveTier.GatherStone.Outputs[0].Quantity;
+
+        /// <summary>
+        /// Wood a bush gives the clearer, fruit or none (#155): brushwood, half
+        /// what a woodcutting trip brings home.
+        /// </summary>
+        public const int WoodPerBush = 1;
 
         /// <summary>Wood each cut a tree had left gives the clearer: what woodcutting gets for one.</summary>
         public static readonly int WoodPerCut = PrimitiveTier.GatherWood.Outputs[0].Quantity;
@@ -235,6 +243,9 @@ namespace KingdomWatch.Core.Construction
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
         private readonly Dictionary<EntityId, ReachCount> _forageCounts = new Dictionary<EntityId, ReachCount>();
         private readonly Dictionary<EntityId, ReachCount> _woodCounts = new Dictionary<EntityId, ReachCount>();
+        private readonly Dictionary<EntityId, ReachCount> _plantedWoodCounts = new Dictionary<EntityId, ReachCount>();
+        private readonly PlantableFilter _plantable;
+        private readonly PlantableFilter _besideForest;
         private readonly List<EntityId> _scratchHearths = new List<EntityId>();
 
         public Buildings(
@@ -268,6 +279,7 @@ namespace KingdomWatch.Core.Construction
             _ground[(int)TerrainKind.Plains] = true;
             _ground[(int)TerrainKind.Scrub] = true;
             _ground[(int)TerrainKind.Forest] = true;
+            _ground[(int)TerrainKind.Rocks] = true;
             _anyKind = new bool[DefinedTerrainKinds];
 
             for (var kind = (int)TerrainKind.None + 1; kind < DefinedTerrainKinds; kind++)
@@ -276,6 +288,8 @@ namespace KingdomWatch.Core.Construction
             }
 
             _scorer = new SiteScorer(this);
+            _plantable = new PlantableFilter(this, besideForest: false);
+            _besideForest = new PlantableFilter(this, besideForest: true);
             _laneGate = new LaneGate(this);
             _networkTarget = new NetworkTarget(this);
             _streetGate = new StreetGate(this);
@@ -386,17 +400,18 @@ namespace KingdomWatch.Core.Construction
         /// knowing what <paramref name="mapHolder"/> knows, could forage.
         /// </summary>
         public long ForageInReach(WorldPosition at, EntityId mapHolder) =>
-            Weighed(_forageCounts, at, mapHolder, _scrub, ForageReach, null) * BushYearlyFood;
+            Weighed(_forageCounts, at, mapHolder, _scrub, ForageReach, null, null) * BushYearlyFood;
 
         // A holder's bushes or trees in reach, weighed (null counts each
-        // one), counted again only when it asks from somewhere else or the
-        // ground or any map has changed since: food in reach is asked at
+        // one) and filtered (null takes every one), counted again only when
+        // it asks from somewhere else, the ground or any map has changed
+        // since, or a tree it filtered out as growing has grown (#155): food in reach is asked at
         // every courtship and conception, and searching each time - for
         // trees, out to dusk - made a world run several times slower. Kept,
         // never saved: the count is the same whenever it is made, so a world
         // restored without it counts again.
         private long Weighed(
-            Dictionary<EntityId, ReachCount> counts, WorldPosition at, EntityId holder, bool[] kinds, long reach, ICostWeight? weight)
+            Dictionary<EntityId, ReachCount> counts, WorldPosition at, EntityId holder, bool[] kinds, long reach, ICostWeight? weight, ISiteFilter? sites)
         {
             var known = _knownMaps.For(holder);
 
@@ -405,7 +420,8 @@ namespace KingdomWatch.Core.Construction
                 count = new ReachCount();
                 counts.Add(holder, count);
             }
-            else if (count.At == at && count.Rewrites == _grid.Rewrites && count.MapChanges == _knownMaps.Changes)
+            else if (count.At == at && count.Rewrites == _grid.Rewrites && count.MapChanges == _knownMaps.Changes
+                && _clock.Now.DayNumber < count.Until)
             {
                 return count.Weighed;
             }
@@ -413,7 +429,8 @@ namespace KingdomWatch.Core.Construction
             count.At = at;
             count.Rewrites = _grid.Rewrites;
             count.MapChanges = _knownMaps.Changes;
-            count.Weighed = _pathfinder.WeighReachable(at, Jobs.Mover, kinds, known, int.MaxValue, reach, weight);
+            count.Until = sites is null ? long.MaxValue : _land.NextGrowth();
+            count.Weighed = _pathfinder.WeighReachable(at, Jobs.Mover, kinds, known, int.MaxValue, reach, weight, sites);
             return count.Weighed;
         }
 
@@ -422,6 +439,10 @@ namespace KingdomWatch.Core.Construction
             public WorldPosition At;
             public long Rewrites;
             public long MapChanges;
+
+            // The day the count may next change with no rewrite: when a tree
+            // the filter left out as growing stands.
+            public long Until;
             public long Weighed;
         }
 
@@ -566,10 +587,10 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>
         /// Wood a year the forest in a settlement's reach gives back: every
-        /// forest cell its woodcutters could be sent to, felled and grown
-        /// again every <see cref="LandCover.RegrowDays"/>. A cell is counted
-        /// whether its tree stands today or not, since a stump is a tree in
-        /// five years; cleared ground is plains and is not.
+        /// grown tree its woodcutters could be sent to, felled and replanted
+        /// every <see cref="LandCover.RegrowDays"/> (#155: nothing grows back
+        /// unless a Forester plants it). A sapling is left out until it has
+        /// grown, and felled ground is plains and is not counted.
         /// </summary>
         public long WoodInReach(ICommunity settlement)
         {
@@ -578,7 +599,7 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(settlement));
             }
 
-            return WoodFromTrees(Weighed(_woodCounts, settlement.Position, settlement.Id, _forest, WoodReach, Trees)) / TreeWeight.Whole;
+            return WoodFromTrees(Weighed(_woodCounts, settlement.Position, settlement.Id, _forest, WoodReach, Trees, _land.Grown)) / TreeWeight.Whole;
         }
 
         /// <summary>
@@ -590,12 +611,12 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public long WoodInReach(WorldPosition at, ReadOnlySpan<bool> known)
         {
-            return WoodFromTrees(_pathfinder.WeighReachable(at, Jobs.Mover, _forest, known, int.MaxValue, WoodReach, Trees)) / TreeWeight.Whole;
+            return WoodFromTrees(_pathfinder.WeighReachable(at, Jobs.Mover, _forest, known, int.MaxValue, WoodReach, Trees, _land.Grown)) / TreeWeight.Whole;
         }
 
         /// <summary>
         /// Wood a year this many forest cells give back, each felled and
-        /// grown again every <see cref="LandCover.RegrowDays"/>: what
+        /// replanted every <see cref="LandCover.RegrowDays"/>: what
         /// <see cref="WoodInReach(ICommunity)"/> makes of the trees it counts.
         /// Never falls as the count rises, so a bound on the trees is a bound
         /// on the wood (#146).
@@ -1071,15 +1092,41 @@ namespace KingdomWatch.Core.Construction
                     var at = new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + dy);
                     var kind = _grid[at];
 
-                    if (kind == TerrainKind.Scrub || kind == TerrainKind.Forest)
+                    // Bushes are grubbed out below, with their fruit counted.
+                    if (kind == TerrainKind.Forest)
                     {
                         _land.Clear(at);
+                    }
+                    else if (kind == TerrainKind.Rocks)
+                    {
+                        // Quarried away; rocks hold no claims to forget.
+                        _grid.Set(at, TerrainKind.Plains);
                     }
                 }
             }
 
+            // Bushes are grubbed out with the rest, footprint, lane and
+            // square: their fruit, as they stand now, and a little wood each.
+            var bushes = 0;
+            var picks = 0;
+            GrubBushes(building.Anchor, building.Width, building.Height, ref bushes, ref picks);
+            GrubBushes(building.Lane, ref bushes, ref picks);
+            GrubBushes(building.Square, ref bushes, ref picks);
+
             building.Cleared = true;
             LayLane(building);
+
+            if (picks > 0)
+            {
+                stores.Gather(ResourceKind.Food, picks * FoodPerPick(_clock.Now.Season));
+                Storage.Spill(stores, ResourceKind.Food, CapacityOf(building.Settlement, ResourceKind.Food));
+            }
+
+            if (bushes > 0)
+            {
+                stores.Gather(ResourceKind.Wood, bushes * WoodPerBush);
+                Storage.Spill(stores, ResourceKind.Wood, CapacityOf(building.Settlement, ResourceKind.Wood));
+            }
 
             // The Wood of the cuts the clearing was priced at: a claim out at
             // approval and given back since leaves a tree with a cut more than
@@ -1096,6 +1143,45 @@ namespace KingdomWatch.Core.Construction
                 Storage.Spill(stores, ResourceKind.Stone, CapacityOf(building.Settlement, ResourceKind.Stone));
             }
         }
+
+        // Counts and grubs out the bushes of a footprint, adding their fruit
+        // left (LandCover.PicksLeft) to picks.
+        private void GrubBushes(WorldPosition anchor, int width, int height, ref int bushes, ref int picks)
+        {
+            for (var dy = 0; dy < height; dy++)
+            {
+                for (var dx = 0; dx < width; dx++)
+                {
+                    GrubBush(new WorldPosition(anchor.X + dx, anchor.Y + dy), ref bushes, ref picks);
+                }
+            }
+        }
+
+        private void GrubBushes(IReadOnlyList<WorldPosition> cells, ref int bushes, ref int picks)
+        {
+            for (var i = 0; i < cells.Count; i++)
+            {
+                GrubBush(cells[i], ref bushes, ref picks);
+            }
+        }
+
+        private void GrubBush(WorldPosition at, ref int bushes, ref int picks)
+        {
+            if (_grid[at] != TerrainKind.Scrub)
+            {
+                return;
+            }
+
+            bushes++;
+            picks += _land.PicksLeft(at);
+            _land.Clear(at);
+        }
+
+        /// <summary>
+        /// Food a cleared bush gives for each trip it had left this season
+        /// (#155): what a forager's trip would have brought home.
+        /// </summary>
+        public static int FoodPerPick(Season season) => PrimitiveTier.ForageIn(season).Outputs[0].Quantity;
 
         // Winter kills what stands in the settlement's fields: a growing crop,
         // or the part of a harvest not yet brought in - its finished days'
@@ -1523,10 +1609,12 @@ namespace KingdomWatch.Core.Construction
         // The clearing a footprint, its lane and its share of the square need,
         // priced as they stand
         // when approved: a standing tree as long as woodcutting takes for the
-        // cuts it has left, a bush or a stump an hour. Nobody gathers on
-        // approved ground (IsReserved), and a claim already out that comes
-        // back changes nothing: clearing pays the timber priced here
-        // (ClearCuts).
+        // cuts it has left, a bush or a stump an hour, a rock as its quarrying
+        // trips. Nobody gathers on approved ground (IsReserved), and a claim
+        // already out that comes back changes nothing: clearing pays the
+        // timber and stone priced here (ClearCuts, ClearRocks). A bush's
+        // fruit is counted when it is grubbed out, since it ripens and is
+        // stripped with the seasons.
         private long ClearTicksOf(BuildingKind kind, WorldPosition anchor, List<WorldPosition> lane, out int timber, out int rocks)
         {
             var spec = BuildingTable.Of(kind);
@@ -1538,48 +1626,38 @@ namespace KingdomWatch.Core.Construction
             {
                 for (var dx = 0; dx < spec.Width; dx++)
                 {
-                    ticks += ClearTicksAt(new WorldPosition(anchor.X + dx, anchor.Y + dy), ref timber);
+                    ticks += ClearTicksAt(new WorldPosition(anchor.X + dx, anchor.Y + dy), ref timber, ref rocks);
                 }
             }
 
-            // Rocks on the lane and in the square are quarried away;
-            // footprints never stand on rock.
             for (var i = 0; i < lane.Count; i++)
             {
-                if (_grid[lane[i]] == TerrainKind.Rocks)
-                {
-                    ticks += TicksPerRock;
-                    rocks++;
-                }
-                else
-                {
-                    ticks += ClearTicksAt(lane[i], ref timber);
-                }
+                ticks += ClearTicksAt(lane[i], ref timber, ref rocks);
             }
 
             for (var i = 0; i < _square.Count; i++)
             {
-                if (_grid[_square[i]] == TerrainKind.Rocks)
-                {
-                    ticks += TicksPerRock;
-                    rocks++;
-                }
-                else
-                {
-                    ticks += ClearTicksAt(_square[i], ref timber);
-                }
+                ticks += ClearTicksAt(_square[i], ref timber, ref rocks);
             }
 
             return ticks;
         }
 
-        // Ground a lane may cross: what a footprint may stand on, and rocks,
-        // which its clearing quarries away (#172).
-        private bool IsLaneGround(TerrainKind kind) => _ground[(int)kind] || kind == TerrainKind.Rocks;
+        // Ground a lane may cross: what a footprint may stand on, rocks
+        // included, which clearing quarries away (#172, #155).
+        private bool IsLaneGround(TerrainKind kind) => _ground[(int)kind];
 
-        private long ClearTicksAt(WorldPosition at, ref int timber)
+        // A rock is quarried away, footprint, lane or square alike (#155).
+        private long ClearTicksAt(WorldPosition at, ref int timber, ref int rocks)
         {
             var terrain = _grid[at];
+
+            if (terrain == TerrainKind.Rocks)
+            {
+                rocks++;
+                return TicksPerRock;
+            }
+
             var cuts = terrain == TerrainKind.Forest ? _land.CutsLeft(at) : 0;
 
             if (cuts > 0)
