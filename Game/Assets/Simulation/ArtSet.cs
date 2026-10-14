@@ -34,13 +34,35 @@ namespace KingdomWatch.Game
         private const string Decor = Pack + "Outdoor decoration/";
 
         // Villager sheets are 64 px frames with the figure in the middle;
-        // only this 32 px square of each is ever drawn, and only the first
-        // six rows: idle then walk, each facing down, side and up.
+        // only this 32 px square of each is ever drawn, and only the rows
+        // Update-Resources.ps1 in the art repository keeps: a Motion's three
+        // in turn, each facing down, side and up.
         private const int SheetFrame = 64;
         private const int CropLeft = 16, CropTop = 12, Crop = 32;
         // The feet sit 3 px above the crop's bottom edge.
         private static readonly Vector2 FeetPivot = new Vector2(0.5f, 3f / Crop);
-        private const int Poses = 6;
+        private const int Motions = 5;
+        private const int Poses = Motions * 3;
+
+        // A tool swings well outside the figure's square, so tools are cut
+        // wider, from the same 64 px frames: this 40x44 box holds every
+        // tool's pixels, centred on the figure's, with the feet at the same
+        // height (41 px down the frame) as the doll's.
+        private const int ToolLeft = 12, ToolTop = 8, ToolWidth = 40, ToolHeight = 44;
+        private static readonly Vector2 ToolPivot = new Vector2(0.5f, (float)(ToolTop + ToolHeight - (CropTop + Crop - 3)) / ToolHeight);
+
+        // Each Tool's sheet and first row, in Tool order after None: the
+        // pack's sheet holds four tools, three rows each; the hammer and the
+        // sickle were drawn for the art repository over its hoe (#126).
+        private static readonly (string Sheet, int Row)[] ToolSheets =
+        {
+            (Player + "Tools/Iron/Iron_Tools", 0),
+            (Player + "Tools/Iron/Iron_Tools", 3),
+            (Player + "Tools/Iron/Iron_Tools", 6),
+            (Player + "Tools/Iron/Iron_Tools", 9),
+            (Player + "Tools/Iron/Iron_Hammer", 0),
+            (Player + "Tools/Iron/Iron_Sickle", 0),
+        };
 
         private static readonly string[] HairColours = { "Black", "Blonde", "Brown", "Ginger" };
         private static readonly string[] PantsColours = { "Brown", "Blue", "Green", "Black" };
@@ -81,6 +103,8 @@ namespace KingdomWatch.Game
 
         private readonly List<Object> owned;
         private readonly List<Sprite[]> sheets = new List<Sprite[]>();
+        // By Tool - 1, then facing, then frame.
+        private Sprite[][] tools;
 
         // Sheets 0 and 1 are the body and the hands, which everyone shares.
         private int[] shoes, pants, hair;
@@ -211,16 +235,46 @@ namespace KingdomWatch.Game
         {
             if (Resources.Load<Texture2D>(Player + "Player_Base/Player_Base_animations") == null) return null;
             var art = new ArtSet(owned);
-            return art.LoadTerrain() && art.LoadScenery() && art.PackScenery() && art.LoadBuildings() && art.LoadVillagers() ? art : null;
+            return art.LoadTerrain() && art.LoadScenery() && art.PackScenery() && art.LoadBuildings() && art.LoadVillagers() && art.LoadTools() ? art : null;
         }
 
         public Ground GroundOf(Season season) => Seasons[(int)season];
 
         // The sprite for one layer of one person's doll. `look` is from LookOf.
-        public Sprite Frame(Look look, int layer, bool walking, Facing facing, int frame)
+        public Sprite Frame(Look look, int layer, Motion motion, Facing facing, int frame)
         {
             var sheet = sheets[look.Sheets[layer]];
-            return sheet[((walking ? 3 : 0) + (int)facing) * FramesPerPose + frame];
+            return sheet[((int)motion * 3 + (int)facing) * FramesPerPose + frame];
+        }
+
+        // The sprite for a tool in hand, drawn over the doll and standing
+        // on the same spot; null for Tool.None.
+        public Sprite ToolFrame(Tool tool, Facing facing, int frame) =>
+            tool == Tool.None ? null : tools[(int)tool - 1][(int)facing * FramesPerPose + frame];
+
+        // What someone at work does, by job (#126). A farmer goes by the
+        // field: the hoe on bare soil, the watering can while the wheat
+        // grows, the hoe again once it is ripe. A builder raising a field is
+        // sowing it, so takes the hoe too, and the hammer to anything else.
+        // `field` is the stage FieldLook draws: 1 bare, 2-4 growing, 5 ripe;
+        // 0 when the work is not on a field.
+        public static (Motion Motion, Tool Tool) WorkOf(JobKind job, int field)
+        {
+            switch (job)
+            {
+                case JobKind.Woodcutter:
+                    return (Motion.Chop, Tool.Axe);
+                case JobKind.StoneGatherer:
+                    return (Motion.Swing, Tool.Pickaxe);
+                case JobKind.Forager:
+                    return (Motion.Swing, Tool.Sickle);
+                case JobKind.Builder:
+                    return (Motion.Swing, field == 0 ? Tool.Hammer : Tool.Hoe);
+                case JobKind.Farmer:
+                    return field >= 2 && field <= 4 ? (Motion.Water, Tool.WateringCan) : (Motion.Swing, Tool.Hoe);
+                default:
+                    return (Motion.Idle, Tool.None);
+            }
         }
 
         // Which sheets dress someone: the shirt by job, the rest from `seed`,
@@ -810,30 +864,30 @@ namespace KingdomWatch.Game
 
         // Every villager frame in one texture, so a crowd is one texture and
         // not forty: the size #18's stress test has to match. Each sheet holds
-        // 64 px frames (the art repository keeps only the six poses drawn), so
+        // 64 px frames (the art repository keeps only the poses drawn), so
         // each frame's middle is copied into the atlas on the GPU and the
         // sheet unloaded.
         private bool BuildAtlas(List<string> paths)
         {
-            const int block = Poses * Crop;
-            var across = Mathf.CeilToInt(Mathf.Sqrt(paths.Count));
+            // A sheet's block is a pose to a row: taller than it is wide, so
+            // more go across than down to keep the atlas roughly square.
+            const int blockWidth = FramesPerPose * Crop, blockHeight = Poses * Crop;
+            var across = Mathf.CeilToInt(Mathf.Sqrt(paths.Count * (float)blockHeight / blockWidth));
             var down = Mathf.CeilToInt(paths.Count / (float)across);
-            var atlas = Own(new Texture2D(across * block, down * block, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Villager atlas" });
+            var atlas = Own(new Texture2D(across * blockWidth, down * blockHeight, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Villager atlas" });
 
             for (var i = 0; i < paths.Count; i++)
             {
-                var source = Texture(paths[i]);
+                var source = CopyableTexture(paths[i]);
                 if (source == null) return false;
-                if (source.format != TextureFormat.RGBA32)
+                if (source.height < Poses * SheetFrame)
                 {
-                    // PixelArtImport keeps these uncompressed RGBA32, which the
-                    // GPU copy below needs. Anything else is a stale import.
-                    Debug.LogError("ArtSet: " + paths[i] + " is " + source.format + ", not RGBA32; reimport Assets/Art.");
+                    Debug.LogError("ArtSet: " + paths[i] + " has " + source.height / SheetFrame + " rows, not " + Poses + "; rerun Update-Resources.ps1 in Assets/Art.");
                     return false;
                 }
 
-                var blockX = i % across * block;
-                var blockY = (down - 1 - i / across) * block;
+                var blockX = i % across * blockWidth;
+                var blockY = (down - 1 - i / across) * blockHeight;
                 var sprites = new Sprite[Poses * FramesPerPose];
                 for (var pose = 0; pose < Poses; pose++)
                 {
@@ -850,6 +904,51 @@ namespace KingdomWatch.Game
                 Resources.UnloadAsset(source);
             }
             return true;
+        }
+
+        // Every tool's frames in one small texture of their own, cut wider
+        // than the doll's (ToolLeft and the rest), as BuildAtlas cuts the doll.
+        private bool LoadTools()
+        {
+            var rows = ToolSheets.Length * 3;
+            var atlas = Own(new Texture2D(FramesPerPose * ToolWidth, rows * ToolHeight, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Tool atlas" });
+            tools = new Sprite[ToolSheets.Length][];
+            var loaded = new Dictionary<string, Texture2D>();
+            for (var t = 0; t < ToolSheets.Length; t++)
+            {
+                var (path, first) = ToolSheets[t];
+                if (!loaded.TryGetValue(path, out var source))
+                {
+                    source = CopyableTexture(path);
+                    if (source == null) return false;
+                    loaded.Add(path, source);
+                }
+                tools[t] = new Sprite[3 * FramesPerPose];
+                for (var facing = 0; facing < 3; facing++)
+                {
+                    var row = t * 3 + facing;
+                    for (var frame = 0; frame < FramesPerPose; frame++)
+                    {
+                        var from = FromTop(source, frame * SheetFrame + ToolLeft, (first + facing) * SheetFrame + ToolTop, ToolWidth, ToolHeight);
+                        var toX = frame * ToolWidth;
+                        var toY = (rows - 1 - row) * ToolHeight;
+                        Graphics.CopyTexture(source, 0, 0, (int)from.x, (int)from.y, ToolWidth, ToolHeight, atlas, 0, 0, toX, toY);
+                        tools[t][facing * FramesPerPose + frame] = Own(Sprite.Create(atlas, new Rect(toX, toY, ToolWidth, ToolHeight), ToolPivot, PixelsPerCell, 0, SpriteMeshType.FullRect));
+                    }
+                }
+            }
+            foreach (var source in loaded.Values) Resources.UnloadAsset(source);
+            return true;
+        }
+
+        // A sheet the GPU copies above can read: PixelArtImport keeps these
+        // uncompressed RGBA32, and anything else is a stale import.
+        private static Texture2D CopyableTexture(string path)
+        {
+            var source = Texture(path);
+            if (source == null || source.format == TextureFormat.RGBA32) return source;
+            Debug.LogError("ArtSet: " + path + " is " + source.format + ", not RGBA32; reimport Assets/Art.");
+            return null;
         }
 
         // A copy of `source` with each colour in RedBerries swapped for the
@@ -951,6 +1050,32 @@ namespace KingdomWatch.Game
         {
             owned.Add(asset);
             return asset;
+        }
+
+        // A doll's rows, three to a motion (Facing order): idle and walk,
+        // then the swings people work with (#126), which the pack draws
+        // tool-less for a Tool to go over. Swing is one overhead stroke for
+        // every long-handled tool; the pack's separate pickaxe swing differs
+        // from it by a few pixels, so it is not kept.
+        public enum Motion
+        {
+            Idle,
+            Walk,
+            Water,
+            Chop,
+            Swing,
+        }
+
+        // What someone holds while working; None while idle or walking.
+        public enum Tool
+        {
+            None,
+            Axe,
+            Pickaxe,
+            Hoe,
+            WateringCan,
+            Hammer,
+            Sickle,
         }
 
         public enum Facing
