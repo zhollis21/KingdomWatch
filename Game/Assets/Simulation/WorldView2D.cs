@@ -608,6 +608,7 @@ namespace KingdomWatch.Game
                     // prefers the side): standing back along both would put
                     // them off the corner, swinging past what they work on.
                     if (stepX != 0) stepY = 0;
+                    else if (stepY == 0) stepX = 1;
                     return new Activity(motion, tool, stepX, stepY, -StandBack * System.Math.Sign(stepX), -StandBack * System.Math.Sign(stepY));
                 default:
                     return default;
