@@ -58,10 +58,11 @@ namespace KingdomWatch.Game
         // Clamps and applies. Called every frame, so a rotation or resize
         // re-clamps; the first call frames the whole map.
         // `reserved` is the panel's footprint in GUI coordinates (origin top-left, y down),
-        // and `topInset` the height of the bar across the whole top of the screen.
-        public void Apply(Rect reserved, float topInset)
+        // `topInset` the height of the bar across the whole top of the screen, and
+        // `bottomInset` the height kept clear along the bottom below the panel.
+        public void Apply(Rect reserved, float topInset, float bottomInset)
         {
-            var home = HomeFraming(reserved, topInset, out var homeScale);
+            var home = HomeFraming(reserved, topInset, bottomInset, out var homeScale);
             FarthestPixelsPerCell = homeScale;
             if (!framed)
             {
@@ -186,14 +187,14 @@ namespace KingdomWatch.Game
         // The whole map, with a one-cell margin, fitted into whichever part of
         // the screen the panel leaves larger: beside it in landscape, below it
         // in portrait. Returns the camera centre that puts the map there.
-        private Vector2 HomeFraming(Rect reserved, float topInset, out float scale)
+        private Vector2 HomeFraming(Rect reserved, float topInset, float bottomInset, out float scale)
         {
             float screenWidth = Screen.width, screenHeight = Screen.height;
             var fitWidth = mapWidth + 2f;
             var fitHeight = mapHeight + 2f;
 
             var beside = Rect.MinMaxRect(reserved.xMax, topInset, screenWidth, screenHeight);
-            var below = Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight);
+            var below = Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight - bottomInset);
             var besideScale = Fit(beside, fitWidth, fitHeight);
             var belowScale = Fit(below, fitWidth, fitHeight);
             var area = besideScale >= belowScale ? beside : below;

@@ -339,6 +339,15 @@ namespace KingdomWatch.Game
 
         public float TopInset => TopInsetOfSafeArea + barHeight * Pixel;
 
+        // Upright, what the whole map keeps clear of along the bottom, in
+        // screen pixels: the tallest the selection card gets, a person's with
+        // its stock on two rows, so the map does not move as the selection does.
+        public float BottomInset => Upright ? SafeArea.yMin + (TallestUprightCard + 2f * Gap) * Pixel : 0f;
+
+        // Name, age, job and status, health, two rows of stock and Follow, as
+        // RefreshSelection lays them out on an upright screen.
+        private const float TallestUprightCard = 46f + 2f * StockRow + 1f + ButtonSize + Pad;
+
         // The middle of what the bar and the cards on show leave of the map.
         public Vector2 OpenCentreOffset
         {

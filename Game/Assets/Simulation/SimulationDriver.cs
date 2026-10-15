@@ -120,7 +120,7 @@ namespace KingdomWatch.Game
             hud = new Hud((flatPanel ? null : HudArt.Load(hudOwned)) ?? HudArt.Flat(hudOwned), Commands(), view, new Vector2(world.Grid.Width, world.Grid.Height));
             // Framed now, so input in the first frame never meets an unframed
             // rig (zoom 0, where a pan divides by zero).
-            rig.Apply(hud.Reserved, hud.TopInset);
+            rig.Apply(hud.Reserved, hud.TopInset, hud.BottomInset);
 #if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
             scriptedRun = ScriptedRun.FromCommandLine(rig, view, world);
             // -hud-demo selects someone and opens the debug card, so a run's
@@ -186,7 +186,7 @@ namespace KingdomWatch.Game
             // Last frame's layer: snapping moves the zoom shown, never the zoom
             // the layers switch on, so this cannot feed back into the layer.
             rig.Snap = view.Band != ZoomBand.Far;
-            rig.Apply(hud.Reserved, hud.TopInset);
+            rig.Apply(hud.Reserved, hud.TopInset, hud.BottomInset);
             view.Refresh(world, rig.RequestedPixelsPerCell, UiScale, paused);
             DropVanishedSelection();
 #if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
