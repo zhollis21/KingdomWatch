@@ -82,12 +82,17 @@ namespace KingdomWatch.Game
         // buttons take at the right of one row, and the buttons alone.
         private const float TwoRowHeight = 44f;
         private const float SecondRow = 18f;
-        private const float RightControls = 140f;
-        private const float RightButtons = 4f * ButtonSize + 3f * 4f + Pad;
+        private const float RightControls = 152f;
+        private const float RightButtons = 4f * ButtonSize + 3f * ButtonGap + Pad;
 
-        // The narrowest an upright screen may be, in art pixels, and still fit
-        // the date and the buttons on the bar's first row.
-        private const float UprightWidth = 190f;
+        // Between the bar's buttons: wide enough that each one's touch area,
+        // 24 art pixels across (48dp at 2dp each), stays clear of the next.
+        private const float ButtonGap = 8f;
+
+        // The narrowest an upright screen may be, in art pixels: a 360dp
+        // phone at 2dp an art pixel, which fits the speed and the buttons on
+        // the bar's first row and the date and the people on its second.
+        private const float UprightWidth = 170f;
 
         // A stock entry's height when the four wrap onto more rows.
         private const float StockRow = 18f;
@@ -302,13 +307,12 @@ namespace KingdomWatch.Game
                 var preferred = Mathf.Max(1, byDensity, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
                 if (cards == null) return preferred;
 
-                // Across an upright screen, the bar's first row; down a wide one,
-                // the bar (one row: a wide screen has the room) and the cards on
-                // show, counting the minimap whether or not it shows, so the
-                // scale does not change as a zoom shows or hides it.
+                // Across an upright screen, the bar; down a wide one, the bar
+                // (one row: a wide screen has the room) and the column. The
+                // minimap sits apart from the column, so it is not counted.
                 var safe = SafeArea;
                 if (Upright) return Mathf.Clamp(Mathf.Floor(safe.width / UprightWidth), 1, preferred);
-                var need = BarHeight + Gap + MinimapCardHeight + Gap;
+                var need = BarHeight + Gap;
                 foreach (var card in cards)
                 {
                     if (card == minimapCard || !card.gameObject.activeSelf) continue;
@@ -396,17 +400,17 @@ namespace KingdomWatch.Game
             // Built right to left from the edge of the bar.
             var debugButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "i", "Debug information (F3)", ToggleDebug, out _);
             AnchorRight(debugButton, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var faster = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, ">>", "Faster (.)", commands.Faster, out _);
             AnchorRight(faster, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var pauseButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, art.Pause, art.Pause == null ? "II" : null, "Pause (Space)", commands.TogglePause, out pauseLabel, out pauseIcon);
             pauseTip = pauseButton.GetComponent<Tip>();
             AnchorRight(pauseButton, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var slower = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "<<", "Slower (,)", commands.Slower, out _);
             AnchorRight(slower, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var speedLabel = new Label(bar, art, TextAlign.Right, Ink);
             speedLabel.Rect.anchorMin = speedLabel.Rect.anchorMax = new Vector2(1f, 1f);
             speedLabel.Rect.pivot = new Vector2(1f, 1f);
@@ -569,23 +573,29 @@ namespace KingdomWatch.Game
             if (Changed(ref peopleSeen, s.People)) peopleCount.Value = s.People.ToString();
         }
 
-        // The world's people after the date, and the speed left of its
-        // buttons; on a narrow screen both drop to a second row, under the
-        // date and under the buttons.
+        // The date, the world's people after it, and the speed left of its
+        // buttons, on one row when they fit. Narrower, the people and the
+        // speed drop to a second row, under the date and under the buttons;
+        // narrower still, the date drops too, leaving the first row to the
+        // speed and its buttons.
         private void LayOutBar()
         {
             var nameWidth = art.WidthOf(peopleName.Value);
             var peopleWidth = nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value);
-            var firstRow = Pad + art.WidthOf(date.Value) + BarGap;
+            var dateWidth = Pad + art.WidthOf(date.Value) + BarGap;
+            var width = safeRoot.rect.width;
 
-            var oneRow = firstRow + peopleWidth <= safeRoot.rect.width - RightControls;
+            var oneRow = dateWidth + peopleWidth <= width - RightControls;
+            var dateFirst = oneRow || dateWidth <= width - RightButtons;
             barHeight = oneRow ? BarHeight : TwoRowHeight;
             bar.sizeDelta = new Vector2(0f, barHeight);
 
-            peopleGroup.anchoredPosition = new Vector2(oneRow ? firstRow : Pad, oneRow ? 0f : -SecondRow);
+            var secondRow = -SecondRow;
+            date.Rect.anchoredPosition = new Vector2(Pad, dateFirst ? -9f : secondRow - 9f);
+            peopleGroup.anchoredPosition = oneRow ? new Vector2(dateWidth, 0f) : dateFirst ? new Vector2(Pad, secondRow) : new Vector2(dateWidth, secondRow);
             peopleIcon.anchoredPosition = new Vector2(nameWidth + 6f, peopleIcon.anchoredPosition.y);
             peopleCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, peopleCount.Rect.anchoredPosition.y);
-            speed.Rect.anchoredPosition = oneRow ? new Vector2(-(RightButtons + 4f), -9f) : new Vector2(-Pad, -(SecondRow + 9f));
+            speed.Rect.anchoredPosition = oneRow || !dateFirst ? new Vector2(-(RightButtons + ButtonGap), -9f) : new Vector2(-Pad, secondRow - 9f);
         }
 
         // The four stock entries, left to right, onto as many rows of the
@@ -805,9 +815,9 @@ namespace KingdomWatch.Game
         // selection goes along the bottom instead.
         private static bool Upright => Screen.height > Screen.width;
 
-        // The cards, stacked down the left. On an upright screen the selection
-        // spans the bottom, in reach of a thumb, and the others sit side by
-        // side under the bar.
+        // The cards, stacked down the left, with the minimap in the bottom
+        // right corner. On an upright screen the selection spans the bottom,
+        // in reach of a thumb, and the others sit side by side under the bar.
         private void LayOutCards()
         {
             var x = Gap;
@@ -821,6 +831,14 @@ namespace KingdomWatch.Game
                 if (Upright && card == selectionCard)
                 {
                     card.anchoredPosition = new Vector2(Gap, -(safeRoot.rect.height - Gap - card.sizeDelta.y));
+                    continue;
+                }
+                // Wide, the minimap takes the bottom right corner of the map
+                // rather than a place in the column, which is then short enough
+                // for the panel's full size on a phone held sideways.
+                if (!Upright && card == minimapCard)
+                {
+                    card.anchoredPosition = new Vector2(safeRoot.rect.width - Gap - ColumnWidth, -(safeRoot.rect.height - Gap - MinimapCardHeight));
                     continue;
                 }
                 card.anchoredPosition = new Vector2(x, -y);
@@ -948,9 +966,10 @@ namespace KingdomWatch.Game
         {
             var rect = Frame(parent, text ?? "Button", art.Button, x, y, w, h, Tint(true));
             var image = rect.GetComponent<Image>();
-            // A finger is wider than the art: the hit area reaches past the frame,
-            // a little sideways (the gaps between buttons are 4 px) and more up and down.
-            image.raycastPadding = new Vector4(-2f, -4f, -2f, -4f);
+            // A finger is wider than the art: the hit area reaches 4 px past the
+            // frame all round, so a 16 px button is 24 across, 48dp at 2dp a
+            // pixel, and the bar's 8 px gaps keep neighbours from overlapping.
+            image.raycastPadding = new Vector4(-4f, -4f, -4f, -4f);
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
             button.navigation = new Navigation { mode = Navigation.Mode.None };
