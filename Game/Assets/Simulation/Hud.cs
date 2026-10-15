@@ -82,8 +82,9 @@ namespace KingdomWatch.Game
         // buttons take at the right of one row, and the buttons alone.
         private const float TwoRowHeight = 44f;
         private const float SecondRow = 18f;
-        private const float RightControls = 152f;
+        private const float RightControls = RightButtons + ButtonGap + SpeedWidth;
         private const float RightButtons = 4f * ButtonSize + 3f * ButtonGap + Pad;
+        private const float SpeedWidth = 50f;
 
         // Between the bar's buttons: wide enough that each one's touch area,
         // 24 art pixels across (48dp at 2dp each), stays clear of the next.
@@ -304,32 +305,37 @@ namespace KingdomWatch.Game
             get
             {
                 var byDensity = Screen.dpi > 0f ? Mathf.RoundToInt(Screen.dpi / 80f) : 0;
-                var preferred = Mathf.Max(1, byDensity, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
+                // Two-argument calls: Unity's longer Max takes a params array,
+                // which would allocate on every read.
+                var preferred = Mathf.Max(Mathf.Max(1, byDensity), Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
                 if (cards == null) return preferred;
 
-                // Across an upright screen, the bar; down a wide one, the bar
-                // (one row: a wide screen has the room) and the column. The
+                // Across an upright screen, the bar; down a wide one, the bar,
+                // as tall as it is at each scale tried, and the column. The
                 // minimap sits apart from the column, so it is not counted.
                 var safe = SafeArea;
                 if (Upright) return Mathf.Clamp(Mathf.Floor(safe.width / UprightWidth), 1, preferred);
-                var need = BarHeight + Gap;
+                var column = Gap;
                 foreach (var card in cards)
                 {
                     if (card == minimapCard || !card.gameObject.activeSelf) continue;
-                    need += card.sizeDelta.y + Gap;
+                    column += card.sizeDelta.y + Gap;
                 }
-                return Mathf.Clamp(Mathf.Floor(safe.height / need), 1, preferred);
+                var scale = preferred;
+                while (scale > 1 && ((OneRow(safe.width / scale) ? BarHeight : TwoRowHeight) + column) * scale > safe.height) scale--;
+                return scale;
             }
         }
 
         // The footprint of what the camera must keep the map clear of, in GUI
         // coordinates (origin top-left, y down): the bar across the top, and on
-        // a wide screen the column down the left. The bottom card and the
-        // minimap come and go with the selection and the zoom, so the whole
-        // map is framed clear of neither, and does not jump as they do.
+        // a wide screen the column down the left, all the way down, so the
+        // whole map always goes beside it. The bottom card and the minimap come
+        // and go with the selection and the zoom, so the whole map is framed
+        // clear of neither, and does not jump as they do.
         public Rect Reserved => Upright
             ? new Rect(0f, 0f, Screen.width, TopInset + Gap * Pixel)
-            : new Rect(0f, 0f, SafeArea.xMin + (ColumnWidth + 2f * Gap) * Pixel, TopInset + (Gap + MinimapCardHeight + Gap) * Pixel);
+            : new Rect(0f, 0f, SafeArea.xMin + (ColumnWidth + 2f * Gap) * Pixel, Screen.height);
 
         public float TopInset => TopInsetOfSafeArea + barHeight * Pixel;
 
@@ -415,7 +421,7 @@ namespace KingdomWatch.Game
             speedLabel.Rect.anchorMin = speedLabel.Rect.anchorMax = new Vector2(1f, 1f);
             speedLabel.Rect.pivot = new Vector2(1f, 1f);
             speedLabel.Rect.anchoredPosition = new Vector2(-right, -9f);
-            speedLabel.Rect.sizeDelta = new Vector2(50f, HudArt.LineHeight);
+            speedLabel.Rect.sizeDelta = new Vector2(SpeedWidth, HudArt.LineHeight);
             return speedLabel;
         }
 
@@ -584,11 +590,11 @@ namespace KingdomWatch.Game
         private void LayOutBar()
         {
             var nameWidth = art.WidthOf(peopleName.Value);
-            var peopleWidth = nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value);
-            var dateWidth = Pad + art.WidthOf(date.Value) + BarGap;
+            var peopleWidth = PeopleWidth;
+            var dateWidth = DateWidth;
             var width = safeRoot.rect.width;
 
-            var oneRow = dateWidth + peopleWidth <= width - RightControls;
+            var oneRow = OneRow(width);
             var dateFirst = oneRow || dateWidth <= width - RightButtons;
             barHeight = oneRow ? BarHeight : TwoRowHeight;
             bar.sizeDelta = new Vector2(0f, barHeight);
@@ -600,6 +606,14 @@ namespace KingdomWatch.Game
             peopleCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, peopleCount.Rect.anchoredPosition.y);
             speed.Rect.anchoredPosition = oneRow || !dateFirst ? new Vector2(-(RightButtons + ButtonGap), -9f) : new Vector2(-Pad, secondRow - 9f);
         }
+
+        // Whether the date, the people and the speed with its buttons share
+        // one row of a bar `width` art pixels wide.
+        private bool OneRow(float width) => DateWidth + PeopleWidth <= width - RightControls;
+
+        private float DateWidth => Pad + art.WidthOf(date.Value) + BarGap;
+
+        private float PeopleWidth => art.WidthOf(peopleName.Value) + 6f + 18f + art.WidthOf(peopleCount.Value);
 
         // The four stock entries, left to right, onto as many rows of the
         // card's width as they need. Returns the height they take.
