@@ -458,12 +458,15 @@ namespace KingdomWatch.Game
         }
 
         // Shown only once zoomed in: with the whole map on screen it would
-        // repeat what is beside it.
+        // repeat what is beside it. Never on a phone, where it would take a
+        // good part of a small screen, and a pinch out and a tap on a
+        // settlement goes anywhere it could.
         private void RefreshMinimap(Rect visible, IReadOnlyList<Vector2> settlements, IReadOnlyList<Vector2> bands, float mapWidth, float mapHeight)
         {
             var whole = visible.xMin <= 0f && visible.yMin <= 0f && visible.xMax >= mapWidth && visible.yMax >= mapHeight;
-            minimapCard.gameObject.SetActive(!whole);
-            if (whole) return;
+            var shown = !whole && !Application.isMobilePlatform;
+            minimapCard.gameObject.SetActive(shown);
+            if (!shown) return;
             var sx = MinimapSize / mapWidth;
             var sy = MinimapSize / mapHeight;
             var left = Mathf.Clamp(visible.xMin * sx, 0f, MinimapSize);
