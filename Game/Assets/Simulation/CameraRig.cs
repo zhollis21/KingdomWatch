@@ -62,11 +62,17 @@ namespace KingdomWatch.Game
         // `bottomInset` the height kept clear along the bottom below the panel.
         public void Apply(Rect reserved, float topInset, float bottomInset)
         {
-            var home = HomeFraming(reserved, topInset, bottomInset, out var homeScale);
+            // The bottom card lies over the map rather than pushing it: the
+            // farthest zoom fits the whole map above the card, but the camera
+            // may rest anywhere from there to where the map would sit with no
+            // card, so a card coming or going never slides the map.
+            var home = HomeFraming(reserved, topInset, bottomInset, out var homeScale, out var open);
+            var low = Vector2.Min(home, open);
+            var high = Vector2.Max(home, open);
             FarthestPixelsPerCell = homeScale;
             if (!framed)
             {
-                focus = home;
+                focus = open;
                 pixelsPerCell = homeScale;
                 framed = true;
             }
@@ -78,8 +84,8 @@ namespace KingdomWatch.Game
             // rather than jumping there on the last notch. `home` can lie past
             // the map's edge on a small portrait screen, which lerping allows.
             var t = Mathf.Clamp01(Mathf.Log(pixelsPerCell / FarthestPixelsPerCell) / Mathf.Log(FreePanZoom));
-            focus.x = Mathf.Clamp(focus.x, Mathf.Lerp(home.x, 0f, t), Mathf.Lerp(home.x, mapWidth, t));
-            focus.y = Mathf.Clamp(focus.y, Mathf.Lerp(home.y, 0f, t), Mathf.Lerp(home.y, mapHeight, t));
+            focus.x = Mathf.Clamp(focus.x, Mathf.Lerp(low.x, 0f, t), Mathf.Lerp(high.x, mapWidth, t));
+            focus.y = Mathf.Clamp(focus.y, Mathf.Lerp(low.y, 0f, t), Mathf.Lerp(high.y, mapHeight, t));
 
             var shown = PixelsPerCell;
             var at = Snap ? new Vector2(OnScreenPixel(focus.x, shown, Screen.width), OnScreenPixel(focus.y, shown, Screen.height)) : focus;
@@ -186,8 +192,9 @@ namespace KingdomWatch.Game
 
         // The whole map, with a one-cell margin, fitted into whichever part of
         // the screen the panel leaves larger: beside it in landscape, below it
-        // in portrait. Returns the camera centre that puts the map there.
-        private Vector2 HomeFraming(Rect reserved, float topInset, float bottomInset, out float scale)
+        // in portrait. Returns the camera centre that puts the map there, and
+        // in `open` the centre at the same scale as if there were no bottom inset.
+        private Vector2 HomeFraming(Rect reserved, float topInset, float bottomInset, out float scale, out Vector2 open)
         {
             float screenWidth = Screen.width, screenHeight = Screen.height;
             var fitWidth = mapWidth + 2f;
@@ -197,11 +204,17 @@ namespace KingdomWatch.Game
             var below = Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight - bottomInset);
             var besideScale = Fit(beside, fitWidth, fitHeight);
             var belowScale = Fit(below, fitWidth, fitHeight);
-            var area = besideScale >= belowScale ? beside : below;
+            var useBeside = besideScale >= belowScale;
             scale = Mathf.Max(besideScale, belowScale);
+            open = Centre(useBeside ? beside : Rect.MinMaxRect(0f, reserved.yMax, screenWidth, screenHeight), scale);
+            return Centre(useBeside ? beside : below, scale);
+        }
 
-            // Shift so the map's centre lands on the area's centre; screen y
-            // runs up where GUI y runs down.
+        // The camera centre that puts the map's centre on `area`'s at `scale`;
+        // screen y runs up where GUI y runs down.
+        private Vector2 Centre(Rect area, float scale)
+        {
+            float screenWidth = Screen.width, screenHeight = Screen.height;
             var offsetX = area.center.x - screenWidth / 2f;
             var offsetY = (screenHeight - area.center.y) - screenHeight / 2f;
             return new Vector2(mapWidth / 2f - offsetX / scale, mapHeight / 2f - offsetY / scale);
