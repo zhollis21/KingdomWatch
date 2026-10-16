@@ -35,5 +35,27 @@ namespace KingdomWatch.Game.Editor
             Debug.Log("DevBuild: " + report.summary.result + ", " + report.summary.totalErrors + " errors, " + options.locationPathName);
             EditorApplication.Exit(report.summary.result == BuildResult.Succeeded ? 0 : 1);
         }
+
+        // The same for Android, as an APK for an emulator or a phone over USB:
+        // -buildTarget Android -executeMethod KingdomWatch.Game.Editor.DevBuild.Android.
+        // The managed code variant is left alone, since the release build reads
+        // the same player settings, so the scripted run is not compiled in.
+        // Unity builds ARM64 only, so an emulator needs an image that
+        // translates ARM (Android 16's x86_64 ones do).
+        public static void Android()
+        {
+            EditorUserBuildSettings.buildAppBundle = false;
+            var project = Directory.GetParent(Application.dataPath).FullName;
+            var options = new BuildPlayerOptions
+            {
+                scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray(),
+                locationPathName = Path.Combine(project, "Builds", "Android", "KingdomWatch.apk"),
+                target = BuildTarget.Android,
+                options = BuildOptions.Development,
+            };
+            var report = BuildPipeline.BuildPlayer(options);
+            Debug.Log("DevBuild: " + report.summary.result + ", " + report.summary.totalErrors + " errors, " + options.locationPathName);
+            EditorApplication.Exit(report.summary.result == BuildResult.Succeeded ? 0 : 1);
+        }
     }
 }
