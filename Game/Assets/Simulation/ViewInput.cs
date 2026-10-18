@@ -23,11 +23,13 @@ namespace KingdomWatch.Game
     // Needs EnhancedTouchSupport enabled, which SimulationDriver does.
     public sealed class ViewInput
     {
-        // All in UI-scaled pixels, so a phone and a monitor feel the same.
+        // All in UI-scaled pixels, so a phone and a monitor feel the same;
+        // the touch distances are at least as many dp, so a finger has the
+        // same room on any phone (24 across a pick is a 48dp target).
         private const float TapSlop = 10f;
         private const float CycleRadius = 25f;
         private const float CycleSeconds = 1.5f;
-        private const float PersonPickRadius = 22f;
+        private const float PersonPickRadius = 24f;
         private const float CommunityPickRadius = 24f;
         private const float KeyPanSpeed = 600f;
         private const float KeyZoomRate = 2f;
@@ -62,7 +64,7 @@ namespace KingdomWatch.Game
             ReadKeyboard(uiScale, deltaTime);
 
             if (!Following) return;
-            if (!view.Selected.IsNone && view.TryGetDrawnPosition(view.Selected, out var at)) rig.CentreOn(at);
+            if (!view.Selected.IsNone && view.TryGetDrawnPosition(view.Selected, out var at)) rig.CentreOn(at, panel.OpenCentreOffset);
             else Following = false;
         }
 
@@ -175,7 +177,7 @@ namespace KingdomWatch.Game
 
             if (down && dragging)
             {
-                if (Vector2.Distance(pointerStart, p) > TapSlop * uiScale) moved = true;
+                if (Vector2.Distance(pointerStart, p) > TouchDistance(TapSlop, uiScale)) moved = true;
                 if (moved)
                 {
                     rig.PanBy(p - pointerLast);
@@ -218,11 +220,14 @@ namespace KingdomWatch.Game
             if (keys.homeKey.wasPressedThisFrame) WholeMap();
         }
 
+        // A touch distance in screen pixels: UI-scaled, or as many dp, whichever is more.
+        private static float TouchDistance(float distance, float uiScale) => distance * Mathf.Max(uiScale, Screen.dpi / 160f);
+
         private void Tap(Vector2 p, float uiScale)
         {
-            var radius = (view.Band == ZoomBand.Far ? CommunityPickRadius : PersonPickRadius) * uiScale;
+            var radius = TouchDistance(view.Band == ZoomBand.Far ? CommunityPickRadius : PersonPickRadius, uiScale);
             view.Pick(p, radius, candidates);
-            var again = Vector2.Distance(p, lastTap) < CycleRadius * uiScale && Time.unscaledTime - lastTapTime < CycleSeconds;
+            var again = Vector2.Distance(p, lastTap) < TouchDistance(CycleRadius, uiScale) && Time.unscaledTime - lastTapTime < CycleSeconds;
             // A repeat tap takes whoever follows the current selection in this
             // tap's list, not a count into the last one: people move between
             // taps and the order shifts. Nothing selected starts at the nearest.

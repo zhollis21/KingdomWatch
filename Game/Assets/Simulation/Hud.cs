@@ -49,7 +49,7 @@ namespace KingdomWatch.Game
     // What the panel's controls do; the driver supplies each.
     public sealed class HudCommands
     {
-        public Action Slower, Faster, TogglePause, WholeMap, ToggleFollow, Deselect;
+        public Action Slower, Faster, TogglePause, ToggleFollow;
 
         // The minimap was clicked: a point in world units.
         public Action<Vector2> MoveTo;
@@ -59,24 +59,44 @@ namespace KingdomWatch.Game
     {
         // `screenPoint` is in screen pixels, y up.
         bool Blocks(Vector2 screenPoint);
+
+        // How far the middle of the map the panel leaves open is from the
+        // middle of the screen, in screen pixels (y up): following centres there.
+        Vector2 OpenCentreOffset { get; }
     }
 
-    // The panel, in uGUI (#128): a bar across the top with the date and the
-    // speed controls, and a column down the left with a minimap, the stock of
-    // the selected community and a card for the selection. Everything is laid
-    // out in art pixels and drawn at a whole number of screen pixels each, so
-    // the pack's art stays crisp. Built in code, as ArtSet builds the map's
-    // sprites, so nothing depends on a prefab that could drift from it.
+    // The panel, in uGUI (#128): a bar across the top with the date, the
+    // world's people and the speed controls, and cards for the minimap (once
+    // zoomed in), the selection with its community's stock, and the debug
+    // readout. On a wide screen the cards stack down the left; on an upright
+    // one the selection sits along the bottom, in reach of a thumb. Everything
+    // is laid out in art pixels and drawn at a whole number of screen pixels
+    // each, so the pack's art stays crisp. Built in code, as ArtSet builds the
+    // map's sprites, so nothing depends on a prefab that could drift from it.
     public sealed class Hud : IPointerBlocker
     {
         public const float BarHeight = 26f;
 
-        // A narrow screen puts the people and the stock on a second row: its
-        // height, how far down that row starts, and the room the speed controls
-        // take at the right of the first.
+        // A narrow screen puts the people and the speed on a second row: its
+        // height, how far down that row starts, the room the speed and its
+        // buttons take at the right of one row, and the buttons alone.
         private const float TwoRowHeight = 44f;
         private const float SecondRow = 18f;
-        private const float RightControls = 140f;
+        private const float RightControls = RightButtons + ButtonGap + SpeedWidth;
+        private const float RightButtons = 4f * ButtonSize + 3f * ButtonGap + Pad;
+        private const float SpeedWidth = 50f;
+
+        // Between the bar's buttons: wide enough that each one's touch area,
+        // 24 art pixels across (48dp at 2dp each), stays clear of the next.
+        private const float ButtonGap = 8f;
+
+        // The narrowest an upright screen may be, in art pixels: a 360dp
+        // phone at 2dp an art pixel, which fits the speed and the buttons on
+        // the bar's first row and the date and the people on its second.
+        private const float UprightWidth = 170f;
+
+        // A stock entry's height when the four wrap onto more rows.
+        private const float StockRow = 18f;
         private const float Gap = 3f;
         private const float ColumnWidth = 104f;
         private const float Pad = 8f;
@@ -84,7 +104,7 @@ namespace KingdomWatch.Game
         private const int MinimapSize = 90;
         private const float ButtonSize = 16f;
         private const float BarEase = 8f;
-        private const float MinimapCardHeight = 124f;
+        private const float MinimapCardHeight = Pad - 1f + MinimapSize + Pad;
         private const float PlateHeight = 19f;
         // From a plate's foot to the top of its marker: the tail hangs 3 of it.
         private const float PlateGap = 5f;
@@ -129,7 +149,7 @@ namespace KingdomWatch.Game
         private readonly Image[] cameraEdges = new Image[4];
         private readonly List<Image> dots = new List<Image>();
 
-        // The selected community's stock, in the bar.
+        // The selected community's stock, in the selection card.
         private readonly RectTransform stockGroup;
         private readonly Label foodNumber, grainNumber, woodNumber, stoneNumber;
         private readonly RectTransform[] stockIcons = new RectTransform[4];
@@ -137,11 +157,10 @@ namespace KingdomWatch.Game
         private readonly Tip foodTip, grainTip, woodTip, stoneTip;
         private (int, int, int, int, int, int, int, int, int) stockSeen = (int.MinValue, 0, 0, 0, 0, 0, 0, 0, 0);
 
-        // People: the selected community's with its name, or the world's.
+        // The world's people, in the bar.
         private readonly RectTransform peopleGroup, peopleIcon;
         private readonly Label peopleName, peopleCount;
-        private readonly Tip peopleTip;
-        private (bool, EntityKind, ulong, int) peopleSeen = (false, EntityKind.None, ulong.MaxValue, -1);
+        private int peopleSeen = -1;
 
         // Names over the communities at Far zoom.
         private readonly WorldView2D view;
@@ -157,9 +176,13 @@ namespace KingdomWatch.Game
         private readonly Image healthFill;
         private readonly Tip healthTip;
         private readonly GameObject buttonRow;
-        private readonly RectTransform followButton, clearButton;
+        private readonly RectTransform followButton;
         private readonly Label followLabel;
         private readonly RectTransform[] cards;
+
+        // The selection card's width: the column's, or across an upright screen.
+        private float cardWidth = ColumnWidth;
+        private float CardInner => cardWidth - 2f * Pad;
         private (ulong, EntityKind, int, AgeStage, JobKind, bool, int, ulong, EntityKind) selectionSeen = (ulong.MaxValue, EntityKind.None, int.MinValue, AgeStage.None, JobKind.None, false, 0, 0, EntityKind.None);
         private float shownHealth;
         private int shownHealthTip = -1;
@@ -211,21 +234,23 @@ namespace KingdomWatch.Game
             speed = AddBarControls();
             peopleGroup = Child(bar, "People", 0f, 0f, 200f, BarHeight);
             peopleName = BarText(peopleGroup, 0f);
-            peopleIcon = PeopleIcon(peopleGroup, out peopleTip);
+            peopleName.Value = "World";
+            peopleIcon = PeopleIcon(peopleGroup, out var peopleTip);
+            peopleTip.Text = "People in the world";
             peopleCount = BarText(peopleGroup, 0f);
-            stockGroup = Child(bar, "Stock", 0f, 0f, 300f, BarHeight);
+
+            // The cards. The minimap has no Whole map button: pinching out, or
+            // Home, shows the whole map, and then the minimap hides.
+            minimapCard = Card("Minimap", 0f, MinimapCardHeight);
+            minimap = Child(minimapCard, "Map", Pad, Pad - 1f, MinimapSize, MinimapSize);
+            BuildMinimap(view, mapSize);
+
+            selectionCard = Card("Selection", 0f, 70f);
+            stockGroup = Child(selectionCard, "Stock", Pad, 0f, 300f, BarHeight);
             foodNumber = BuildStock(0, art.Berries, out foodTip);
             grainNumber = BuildStock(1, art.Grain, out grainTip);
             woodNumber = BuildStock(2, art.Wood, out woodTip);
             stoneNumber = BuildStock(3, art.Stone, out stoneTip);
-
-            // The column.
-            minimapCard = Card("Minimap", 0f, MinimapCardHeight);
-            minimap = Child(minimapCard, "Map", Pad, Pad - 1f, MinimapSize, MinimapSize);
-            BuildMinimap(view, mapSize);
-            MakeButton(minimapCard, Pad, Pad + MinimapSize + 1f, MinimapSize, ButtonSize, null, "Whole map", "Show the whole map (Home)", commands.WholeMap, out _);
-
-            selectionCard = Card("Selection", 0f, 70f);
             selectionName = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionTitle = Text(selectionCard, Pad, 7f, InnerWidth, Ink);
             selectionLine = Text(selectionCard, Pad, 7f + 10f, InnerWidth, Ink);
@@ -247,10 +272,10 @@ namespace KingdomWatch.Game
             row.anchorMin = row.anchorMax = row.pivot = new Vector2(0f, 1f);
             row.anchoredPosition = Vector2.zero;
             row.sizeDelta = new Vector2(ColumnWidth, 140f);
-            var half = (InnerWidth - 4f) / 2f;
-            followButton = MakeButton(row, Pad, 7f + 61f, half, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
+            // Tapping empty map, or Esc, clears the selection, so Follow has
+            // the row to itself.
+            followButton = MakeButton(row, Pad, 7f + 61f, InnerWidth, ButtonSize, null, "Follow", "Follow the selection (F)", commands.ToggleFollow, out followLabel);
             followTip = followButton.GetComponent<Tip>();
-            clearButton = MakeButton(row, Pad + half + 4f, 7f + 61f, half, ButtonSize, null, "Clear", "Clear the selection (Esc)", commands.Deselect, out _);
 
             debugCard = Card("Debug", 0f, 14f + debugLines.Length * 9f);
             for (var i = 0; i < debugLines.Length; i++) debugLines[i] = Text(debugCard, Pad, 7f + i * 9f, InnerWidth, Ink);
@@ -269,46 +294,79 @@ namespace KingdomWatch.Game
             if (root != null) Object.Destroy(root);
         }
 
-        // Screen pixels to an art pixel: the shorter side holds about 360 of
-        // them, rounded to whole pixels so every art pixel is one flat square.
-        // A smaller scale is used when the cards on show would not fit the
-        // screen at that one, so every card stays reachable.
+        // Screen pixels to an art pixel, rounded to whole pixels so every art
+        // pixel is one flat square: about 2dp, so a button is a size a finger
+        // can hit on any phone, and never less than a 360th of the shorter
+        // side, the size a monitor, whose density says little, has always had.
+        // A smaller scale is used when the panel would not fit the screen at
+        // that one, so everything stays reachable.
         public float Pixel
         {
             get
             {
-                var preferred = Mathf.Max(1, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
+                var byDensity = Screen.dpi > 0f ? Mathf.RoundToInt(Screen.dpi / 80f) : 0;
+                // Two-argument calls: Unity's longer Max takes a params array,
+                // which would allocate on every read.
+                var preferred = Mathf.Max(Mathf.Max(1, byDensity), Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 360f));
                 if (cards == null) return preferred;
 
-                // What the cards need across an upright screen, or down a wide one
-                // (counting the bar at its tallest, so the scale does not depend on
-                // which row layout the bar has picked).
+                // Across an upright screen, the bar; down a wide one, the bar,
+                // as tall as it is at each scale tried, and the column. The
+                // minimap sits apart from the column, so it is not counted.
                 var safe = SafeArea;
-                var need = Gap;
-                var room = safe.width;
-                if (!Upright)
-                {
-                    need = TwoRowHeight + Gap;
-                    room = safe.height;
-                }
+                if (Upright) return Mathf.Clamp(Mathf.Floor(safe.width / UprightWidth), 1, preferred);
+                var column = Gap;
                 foreach (var card in cards)
                 {
-                    if (!card.gameObject.activeSelf) continue;
-                    need += (Upright ? ColumnWidth : card.sizeDelta.y) + Gap;
+                    if (card == minimapCard || !card.gameObject.activeSelf) continue;
+                    column += card.sizeDelta.y + Gap;
                 }
-                return Mathf.Clamp(Mathf.Floor(room / need), 1, preferred);
+                var scale = preferred;
+                while (scale > 1 && ((OneRow(safe.width / scale) ? BarHeight : TwoRowHeight) + column) * scale > safe.height) scale--;
+                return scale;
             }
         }
 
         // The footprint of what the camera must keep the map clear of, in GUI
-        // coordinates (origin top-left, y down): the column, or the strip of
-        // cards across an upright screen, under the bar across the top.
-        public Rect Reserved => new Rect(0f, 0f, Upright ? Screen.width : SafeArea.xMin + (ColumnWidth + 2f * Gap) * Pixel, TopInsetOfSafeArea + (barHeight + Gap + MinimapCardHeight + Gap) * Pixel);
+        // coordinates (origin top-left, y down): the bar across the top, and on
+        // a wide screen the column down the left, all the way down, so the
+        // whole map always goes beside it. The bottom card and the minimap come
+        // and go with the selection and the zoom, so the whole map is framed
+        // clear of neither, and does not jump as they do.
+        public Rect Reserved => Upright
+            ? new Rect(0f, 0f, Screen.width, TopInset + Gap * Pixel)
+            : new Rect(0f, 0f, SafeArea.xMin + (ColumnWidth + 2f * Gap) * Pixel, Screen.height);
 
         public float TopInset => TopInsetOfSafeArea + barHeight * Pixel;
 
-        // The part of the screen the panel may use, in screen pixels (y up).
-        private static Rect SafeArea => SafeAreaOverride ?? Screen.safeArea;
+        // Upright, what the whole map keeps clear of along the bottom, in
+        // screen pixels: the card there now. A taller card lets the camera
+        // zoom out further, so the whole map still fits above it, while a
+        // short one leaves the map the most room.
+        public float BottomInset => Upright ? SafeArea.yMin + (selectionCard.sizeDelta.y + 2f * Gap) * Pixel : 0f;
+
+        // The middle of what the bar and the cards on show leave of the map.
+        public Vector2 OpenCentreOffset
+        {
+            get
+            {
+                var scale = Pixel;
+                var top = TopInset + Gap * scale;
+                var left = 0f;
+                var bottom = 0f;
+                if (Upright)
+                {
+                    if (minimapCard.gameObject.activeSelf) top += (MinimapCardHeight + Gap) * scale;
+                    if (selectionCard.gameObject.activeSelf) bottom = SafeArea.yMin + (selectionCard.sizeDelta.y + 2f * Gap) * scale;
+                }
+                else left = SafeArea.xMin + (ColumnWidth + 2f * Gap) * scale;
+                return new Vector2(left / 2f, (bottom - top) / 2f);
+            }
+        }
+
+        // The part of the screen the panel may use, in screen pixels (y up),
+        // clear of the cutout and the rounded corners.
+        private static Rect SafeArea => SafeAreaOverride ?? RoundedCorners.Inside(Screen.safeArea, Upright);
 
         // How far down from the top of the screen the safe area starts, in pixels.
         private static float TopInsetOfSafeArea => Screen.height - SafeArea.yMax;
@@ -337,7 +395,7 @@ namespace KingdomWatch.Game
             RefreshMinimap(visible, settlements, bands, mapWidth, mapHeight);
             RefreshStock(state);
             RefreshPeople(state);
-            LayOutBar(state);
+            LayOutBar();
             RefreshMapLabels();
             RefreshSelection(state);
             RefreshDebug(state);
@@ -354,22 +412,22 @@ namespace KingdomWatch.Game
             // Built right to left from the edge of the bar.
             var debugButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "i", "Debug information (F3)", ToggleDebug, out _);
             AnchorRight(debugButton, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var faster = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, ">>", "Faster (.)", commands.Faster, out _);
             AnchorRight(faster, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var pauseButton = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, art.Pause, art.Pause == null ? "II" : null, "Pause (Space)", commands.TogglePause, out pauseLabel, out pauseIcon);
             pauseTip = pauseButton.GetComponent<Tip>();
             AnchorRight(pauseButton, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var slower = MakeButton(bar, 0f, y, ButtonSize, ButtonSize, null, "<<", "Slower (,)", commands.Slower, out _);
             AnchorRight(slower, right);
-            right += ButtonSize + 4f;
+            right += ButtonSize + ButtonGap;
             var speedLabel = new Label(bar, art, TextAlign.Right, Ink);
             speedLabel.Rect.anchorMin = speedLabel.Rect.anchorMax = new Vector2(1f, 1f);
             speedLabel.Rect.pivot = new Vector2(1f, 1f);
             speedLabel.Rect.anchoredPosition = new Vector2(-right, -9f);
-            speedLabel.Rect.sizeDelta = new Vector2(50f, HudArt.LineHeight);
+            speedLabel.Rect.sizeDelta = new Vector2(SpeedWidth, HudArt.LineHeight);
             return speedLabel;
         }
 
@@ -411,8 +469,16 @@ namespace KingdomWatch.Game
             for (var i = 0; i < cameraEdges.Length; i++) cameraEdges[i] = Fill(minimap, "Edge", Color.white, art.White);
         }
 
+        // Shown only once zoomed in: with the whole map on screen it would
+        // repeat what is beside it. Never on a phone, where it would take a
+        // good part of a small screen, and a pinch out and a tap on a
+        // settlement goes anywhere it could.
         private void RefreshMinimap(Rect visible, IReadOnlyList<Vector2> settlements, IReadOnlyList<Vector2> bands, float mapWidth, float mapHeight)
         {
+            var whole = visible.xMin <= 0f && visible.yMin <= 0f && visible.xMax >= mapWidth && visible.yMax >= mapHeight;
+            var shown = !whole && !Application.isMobilePlatform;
+            minimapCard.gameObject.SetActive(shown);
+            if (!shown) return;
             var sx = MinimapSize / mapWidth;
             var sy = MinimapSize / mapHeight;
             var left = Mathf.Clamp(visible.xMin * sx, 0f, MinimapSize);
@@ -467,8 +533,7 @@ namespace KingdomWatch.Game
             return number;
         }
 
-        // Whose stock it is shows in the selection card beneath, so the bar
-        // keeps to the numbers.
+        // Whose stock it is shows above it in the selection card.
         private void RefreshStock(HudState s)
         {
             stockGroup.gameObject.SetActive(s.HasCommunity);
@@ -518,49 +583,62 @@ namespace KingdomWatch.Game
             return rect;
         }
 
-        // The selected community's people, named, or the world's when nothing
-        // is selected.
         private void RefreshPeople(HudState s)
         {
-            var count = s.HasCommunity ? s.CommunityPeople : s.People;
-            if (!Changed(ref peopleSeen, (s.HasCommunity, s.CommunityKind, s.CommunityId, count))) return;
-            var name = s.HasCommunity ? (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId : "World";
-            peopleName.Value = name;
-            peopleCount.Value = (s.HasCommunity ? s.CommunityPeople : s.People).ToString();
-            peopleTip.Text = "People in " + (s.HasCommunity ? name : "the world");
+            if (Changed(ref peopleSeen, s.People)) peopleCount.Value = s.People.ToString();
         }
 
-        // The bar's groups, left to right after the date: the people, then the
-        // selected community's stock.
-        private void LayOutBar(HudState s)
+        // The date, the world's people after it, and the speed left of its
+        // buttons, on one row when they fit. Narrower, the people and the
+        // speed drop to a second row, under the date and under the buttons;
+        // narrower still, the date drops too, leaving the first row to the
+        // speed and its buttons.
+        private void LayOutBar()
         {
             var nameWidth = art.WidthOf(peopleName.Value);
-            var peopleWidth = nameWidth + 6f + 18f + art.WidthOf(peopleCount.Value);
-            var stockWidth = 0f;
-            if (s.HasCommunity)
-            {
-                var at = 0f;
-                for (var i = 0; i < stockIcons.Length; i++)
-                {
-                    stockIcons[i].anchoredPosition = new Vector2(at, stockIcons[i].anchoredPosition.y);
-                    stockNumbers[i].Rect.anchoredPosition = new Vector2(at + 18f, stockNumbers[i].Rect.anchoredPosition.y);
-                    at += 18f + art.WidthOf(stockNumbers[i].Value) + StockGap;
-                }
-                stockWidth = BarGap + at - StockGap;
-            }
-            var firstRow = Pad + art.WidthOf(date.Value) + BarGap;
+            var peopleWidth = PeopleWidth;
+            var dateWidth = DateWidth;
+            var width = safeRoot.rect.width;
 
-            // One row when the people and stock fit left of the speed controls.
-            var oneRow = firstRow + peopleWidth + stockWidth <= safeRoot.rect.width - RightControls;
+            var oneRow = OneRow(width);
+            var dateFirst = oneRow || dateWidth <= width - RightButtons;
             barHeight = oneRow ? BarHeight : TwoRowHeight;
             bar.sizeDelta = new Vector2(0f, barHeight);
-            var x = oneRow ? firstRow : Pad;
-            var y = oneRow ? 0f : -SecondRow;
 
-            peopleGroup.anchoredPosition = new Vector2(x, y);
+            var secondRow = -SecondRow;
+            date.Rect.anchoredPosition = new Vector2(Pad, dateFirst ? -9f : secondRow - 9f);
+            peopleGroup.anchoredPosition = oneRow ? new Vector2(dateWidth, 0f) : dateFirst ? new Vector2(Pad, secondRow) : new Vector2(dateWidth, secondRow);
             peopleIcon.anchoredPosition = new Vector2(nameWidth + 6f, peopleIcon.anchoredPosition.y);
             peopleCount.Rect.anchoredPosition = new Vector2(nameWidth + 6f + 18f, peopleCount.Rect.anchoredPosition.y);
-            stockGroup.anchoredPosition = new Vector2(x + peopleWidth + BarGap, y);
+            speed.Rect.anchoredPosition = oneRow || !dateFirst ? new Vector2(-(RightButtons + ButtonGap), -9f) : new Vector2(-Pad, secondRow - 9f);
+        }
+
+        // Whether the date, the people and the speed with its buttons share
+        // one row of a bar `width` art pixels wide.
+        private bool OneRow(float width) => DateWidth + PeopleWidth <= width - RightControls;
+
+        private float DateWidth => Pad + art.WidthOf(date.Value) + BarGap;
+
+        private float PeopleWidth => art.WidthOf(peopleName.Value) + 6f + 18f + art.WidthOf(peopleCount.Value);
+
+        // The four stock entries, left to right, onto as many rows of the
+        // card's width as they need. Returns the height they take.
+        private float LayOutStock()
+        {
+            float x = 0f, y = 0f;
+            for (var i = 0; i < stockIcons.Length; i++)
+            {
+                var width = 18f + art.WidthOf(stockNumbers[i].Value);
+                if (x > 0f && x + width > CardInner)
+                {
+                    x = 0f;
+                    y += StockRow;
+                }
+                stockIcons[i].anchoredPosition = new Vector2(x, -y);
+                stockNumbers[i].Rect.anchoredPosition = new Vector2(x + 18f, -(y + 5f));
+                x += width + StockGap;
+            }
+            return y + StockRow;
         }
 
         // ---- Names over the map ----
@@ -648,23 +726,16 @@ namespace KingdomWatch.Game
             selectionCommunity.Object.SetActive(s.SelectedKind == EntityKind.Person && s.HasCommunity);
             healthBar.gameObject.SetActive(s.SelectedKind == EntityKind.Person);
             buttonRow.SetActive(!none);
-            selectionCard.sizeDelta = new Vector2(ColumnWidth, none ? 36f : s.SelectedKind == EntityKind.Person ? 92f : 54f);
-            if (none) return;
-
-            var buttonY = s.SelectedKind == EntityKind.Person ? 7f + 61f : 7f + 22f;
-            followButton.anchoredPosition = new Vector2(followButton.anchoredPosition.x, -buttonY);
-            clearButton.anchoredPosition = new Vector2(clearButton.anchoredPosition.x, -buttonY);
-            followLabel.Value = s.Following ? "Stop" : "Follow";
-            followTip.Text = s.Following ? "Stop following (F)" : "Follow the selection (F)";
+            stockGroup.gameObject.SetActive(!none && s.HasCommunity);
+            cardWidth = Upright ? safeRoot.rect.width - 2f * Gap : ColumnWidth;
+            if (none)
+            {
+                selectionCard.sizeDelta = new Vector2(cardWidth, 36f);
+                return;
+            }
 
             var person = s.SelectedKind == EntityKind.Person;
-            // A person has a name line above the rest; Core gives no names yet, so
-            // it is their id, as a band or a settlement is named by its own.
-            var line = person ? 17f : 7f;
-            selectionTitle.Place(Pad, line, InnerWidth);
-            selectionLine.Place(Pad, line + 10f, InnerWidth);
-            selectionStatus.Place(Pad, line + 20f, InnerWidth);
-            selectionCommunity.Place(Pad, line + 30f, InnerWidth);
+            var inner = CardInner;
             if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
             {
                 if (person)
@@ -682,13 +753,61 @@ namespace KingdomWatch.Game
                 }
             }
 
+            // A person has a name line above the rest; Core gives no names yet, so
+            // it is their id, as a band or a settlement is named by its own.
+            selectionName.Place(Pad, 7f, inner);
+            var y = person ? 17f : 7f;
+            selectionTitle.Place(Pad, y, inner);
+            selectionLine.Place(Pad, y + 10f, inner);
+            y += 20f;
+            if (person && Upright)
+            {
+                // Across the screen there is room for the job, what they are
+                // doing and their community on the one line, which keeps the
+                // card low enough to leave the map most of the screen.
+                y -= 10f;
+                var x = Pad + art.WidthOf(selectionLine.Value) + BarGap;
+                selectionStatus.Place(x, y, inner);
+                selectionCommunity.Place(x + art.WidthOf(selectionStatus.Value) + BarGap, y, inner);
+                y += 10f;
+            }
+            else if (person)
+            {
+                selectionStatus.Place(Pad, y, inner);
+                y += 10f;
+                if (s.HasCommunity)
+                {
+                    selectionCommunity.Place(Pad, y, inner);
+                    y += 10f;
+                }
+            }
+            if (person)
+            {
+                healthBar.anchoredPosition = new Vector2(Pad, -(y + 1f));
+                healthBar.sizeDelta = new Vector2(inner, 5f);
+                healthBar.Find("Back").GetComponent<RectTransform>().sizeDelta = new Vector2(inner, 5f);
+                y += 9f;
+            }
+            if (s.HasCommunity)
+            {
+                stockGroup.anchoredPosition = new Vector2(Pad, -y);
+                y += LayOutStock();
+            }
+
+            followButton.anchoredPosition = new Vector2(Pad, -(y + 1f));
+            followButton.sizeDelta = new Vector2(inner, ButtonSize);
+            followLabel.Rect.sizeDelta = new Vector2(inner - 2f, HudArt.LineHeight);
+            followLabel.Value = s.Following ? "Stop following" : "Follow";
+            followTip.Text = s.Following ? "Stop following (F)" : "Follow the selection (F)";
+            selectionCard.sizeDelta = new Vector2(cardWidth, y + 1f + ButtonSize + Pad);
+
             if (person)
             {
                 // Eased, so a health change reads as movement rather than a jump.
                 var target = Mathf.Clamp01(s.Health / 100f);
                 shownHealth = Mathf.Abs(shownHealth - target) < 0.002f ? target : Mathf.Lerp(shownHealth, target, 1f - Mathf.Exp(-BarEase * Time.unscaledDeltaTime));
                 var fill = healthFill.rectTransform;
-                fill.sizeDelta = new Vector2(Mathf.Round(InnerWidth * shownHealth), 5f);
+                fill.sizeDelta = new Vector2(Mathf.Round(inner * shownHealth), 5f);
                 healthFill.color = Color.Lerp(new Color(0.85f, 0.2f, 0.2f), new Color(0.35f, 0.75f, 0.3f), shownHealth);
                 if (s.Health != shownHealthTip)
                 {
@@ -716,13 +835,12 @@ namespace KingdomWatch.Game
         // ---- Cards ----
 
         // A screen taller than it is wide has no room beside the map, so the
-        // cards sit side by side in a strip under the bar instead.
+        // selection goes along the bottom instead.
         private static bool Upright => Screen.height > Screen.width;
 
-        // The cards, stacked down the left, or in a strip under the bar when
-        // the screen is upright. The strip is as tall as its tallest card, the
-        // minimap, whichever cards show, so the camera's reserved space never
-        // changes with the selection.
+        // The cards, stacked down the left, with the minimap in the bottom
+        // right corner. On an upright screen the selection spans the bottom,
+        // in reach of a thumb, and the others sit side by side under the bar.
         private void LayOutCards()
         {
             var x = Gap;
@@ -732,10 +850,23 @@ namespace KingdomWatch.Game
             foreach (var card in cards)
             {
                 if (!card.gameObject.activeSelf) continue;
+                blocking.Add(card);
+                if (Upright && card == selectionCard)
+                {
+                    card.anchoredPosition = new Vector2(Gap, -(safeRoot.rect.height - Gap - card.sizeDelta.y));
+                    continue;
+                }
+                // Wide, the minimap takes the bottom right corner of the map
+                // rather than a place in the column, which is then short enough
+                // for the panel's full size on a phone held sideways.
+                if (!Upright && card == minimapCard)
+                {
+                    card.anchoredPosition = new Vector2(safeRoot.rect.width - Gap - ColumnWidth, -(safeRoot.rect.height - Gap - MinimapCardHeight));
+                    continue;
+                }
                 card.anchoredPosition = new Vector2(x, -y);
                 if (Upright) x += ColumnWidth + Gap;
                 else y += card.sizeDelta.y + Gap;
-                blocking.Add(card);
             }
         }
 
@@ -858,9 +989,10 @@ namespace KingdomWatch.Game
         {
             var rect = Frame(parent, text ?? "Button", art.Button, x, y, w, h, Tint(true));
             var image = rect.GetComponent<Image>();
-            // A finger is wider than the art: the hit area reaches past the frame,
-            // a little sideways (the gaps between buttons are 4 px) and more up and down.
-            image.raycastPadding = new Vector4(-2f, -4f, -2f, -4f);
+            // A finger is wider than the art: the hit area reaches 4 px past the
+            // frame all round, so a 16 px button is 24 across, 48dp at 2dp a
+            // pixel, and the bar's 8 px gaps keep neighbours from overlapping.
+            image.raycastPadding = new Vector4(-4f, -4f, -4f, -4f);
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
             button.navigation = new Navigation { mode = Navigation.Mode.None };
