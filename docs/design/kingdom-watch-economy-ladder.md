@@ -108,7 +108,8 @@ survival-critical:
 - **Stone** and **Ore** are building and smelting material; nobody dies of
   either. Without Ore a settlement works untooled. Stone is not optional
   for a settlement (#166): every house, barn and store takes some, so a
-  village with no rocks in reach could never build. Rocks are never used
+  village with no rocks in reach could never build. Each takes twice its
+  wood in stone (House 40, Barn 60, Granary and Woodshed 50). Rocks are never used
   up, so a starting site and a band's settling place both need one in reach,
   as they need food; that one is then stone for good.
 - **Grain** exists only to become Food, which Forage and Hunt also supply
@@ -328,11 +329,10 @@ woodpile too small for the winter is exactly what a Woodshed answers.
 | Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
 
 #98 built the Granary and the Woodshed. #166 gave Stone a use - houses,
-barns and stores are built with it - but the Stoneyard still waits: its
-demand is the Stone store full while more is wanted, and StoneGatherers
-stop at a reserve below the base capacity, so that never happens until
-something costs more Stone than the base holds (the Hall, #142); that is
-#178. The Vault and the Armory wait for the kinds they hold (#37, #99).
+barns and stores are built with it - and a want that grows with the
+village, so past four houses the Stone store sits full while more is
+wanted, which is the Stoneyard's demand. Building it is #178. The Vault
+and the Armory wait for the kinds they hold (#37, #99).
 
 A Granary is wanted when the Food is full and the food wanted going into a
 winter, less the Grain in store, is more than it holds; or when the Grain
@@ -383,8 +383,10 @@ covering two resources. #98 replaced both with one rule for every kind
 
 **Wants, held to capacity.** Each store has a want: food for ten days plus
 the winter ahead; `Jobs.WoodReserve` (200) of wood plus the winter's fuel;
-`Jobs.StoneReserve` of stone, what building draws on (#166; before it,
-as much as there was room for). Workers aim for the lesser of the want
+60 stone and 10 more for each finished house (`Jobs.StoneWant`, #166),
+what building draws on: never less than the dearest building takes, and
+held at the 100 the store has at four houses until a Stoneyard (#178)
+raises it. Before #166 stone was gathered as long as there was room. Workers aim for the lesser of the want
 and the capacity, counting what's on its way home. Farmers stop once the
 Grain is full, and the fields stand idle.
 
@@ -415,7 +417,7 @@ The numbers #98 set are placeholders for the harness to tune, like
 | Wood | 250 | | 250 |
 | Stone | 100 | | |
 
-Both buildings cost 25 wood and take 24 work-hours.
+Both buildings cost 25 wood and 50 stone and take 24 work-hours.
 
 ---
 

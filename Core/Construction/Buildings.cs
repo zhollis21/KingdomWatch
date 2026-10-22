@@ -733,6 +733,32 @@ namespace KingdomWatch.Core.Construction
         }
 
         /// <summary>
+        /// A community's finished houses: none for a band, which builds
+        /// nothing. What its stone reserve grows with (<see cref="Jobs.StoneWant"/>, #166).
+        /// </summary>
+        public int FinishedHouses(EntityId community)
+        {
+            var houses = 0;
+
+            if (community.Kind != EntityKind.Settlement)
+            {
+                return houses;
+            }
+
+            for (var i = 0; i < _all.Count; i++)
+            {
+                var building = _all[i];
+
+                if (building.Settlement == community && building.Kind == BuildingKind.House && building.IsComplete)
+                {
+                    houses++;
+                }
+            }
+
+            return houses;
+        }
+
+        /// <summary>
         /// Whether a settlement has a home for a new household: a finished
         /// house nobody lives in, and no household of its own still in a
         /// tent - those are housed first, oldest first (#69).

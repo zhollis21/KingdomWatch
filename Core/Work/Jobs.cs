@@ -190,11 +190,21 @@ namespace KingdomWatch.Core.Work
         public const int WoodReserve = 200;
 
         /// <summary>
-        /// Stone a community keeps on hand: what building draws on, a few
-        /// buildings' worth (#166). StoneGatherers stop there rather than
-        /// fill the store, so its capacity is not read as a want for more.
+        /// The stone a community keeps on hand with no house built, what
+        /// building draws on (#166): no less than the dearest building's
+        /// stone, or that building could never be afforded, and less than
+        /// the store holds with no Stoneyard (#178). Each finished house adds
+        /// <see cref="StonePerHouse"/> (<see cref="StoneWant"/>).
         /// </summary>
-        public const int StoneReserve = 30;
+        public const int StoneReserve = 60;
+
+        /// <summary>
+        /// Stone each finished house adds to the reserve (#166): a bigger
+        /// village builds more, and keeps more on hand for it. Held to the
+        /// store's capacity like every want, so with no Stoneyard it stops
+        /// rising at four houses.
+        /// </summary>
+        public const int StonePerHouse = 10;
 
         /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
@@ -1209,6 +1219,7 @@ namespace KingdomWatch.Core.Work
 
             tracked.Living = living;
             tracked.Hearths = Warmth.CountHearths(members, _people, _hearthScratch);
+            tracked.Houses = _buildings is null ? 0 : _buildings.FinishedHouses(tracked.Group.Id);
 
             // Swept once a dawn rather than at every pick: the forest in reach
             // is a long walk of the map, and the grid it reads is rewritten
@@ -1241,6 +1252,15 @@ namespace KingdomWatch.Core.Work
         public static long WoodWant(int hearths, long winterDays) =>
             WoodReserve + ((long)RequireCount(hearths, nameof(hearths)) * Warmth.FuelPerFire * RequireWinter(winterDays));
 
+        /// <summary>
+        /// The stone a community wants in store: <see cref="StoneReserve"/>,
+        /// and <see cref="StonePerHouse"/> for each finished house (#166).
+        /// StoneGatherers stop there rather than fill the store. Refuses a
+        /// negative count.
+        /// </summary>
+        public static long StoneWant(int houses) =>
+            StoneReserve + ((long)StonePerHouse * RequireCount(houses, nameof(houses)));
+
         private static int RequireCount(int count, string name) =>
             count >= 0 ? count : throw new ArgumentOutOfRangeException(name, count, "Nobody is fewer than nobody.");
 
@@ -1261,7 +1281,7 @@ namespace KingdomWatch.Core.Work
                 case JobKind.Woodcutter:
                     return WoodWant(tracked.Hearths, winterDays);
                 case JobKind.StoneGatherer:
-                    return StoneReserve;
+                    return StoneWant(tracked.Houses);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
             }
@@ -1553,6 +1573,12 @@ namespace KingdomWatch.Core.Work
             /// reserve.
             /// </summary>
             public int Hearths { get; set; }
+
+            /// <summary>
+            /// Finished houses, as counted at dawn - a snapshot for the same
+            /// reason as <see cref="Living"/>. Sizes the stone reserve (#166).
+            /// </summary>
+            public int Houses { get; set; }
 
             /// <summary>
             /// <see cref="Buildings.TryPlantWork"/> as swept at dawn, less

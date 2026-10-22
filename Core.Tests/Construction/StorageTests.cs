@@ -287,11 +287,11 @@ namespace KingdomWatch.Core.Tests.Construction
             w.StoneLeft(spec.Stone - 1);
             var count = w.Buildings.All.Count;
 
-            w.Dawn();
+            w.DawnAsIs();
             Assert.That(w.Buildings.All.Count, Is.EqualTo(count), "one stone short");
 
             w.Stone(1);
-            w.Dawn();
+            w.DawnAsIs();
             Assert.That(w.Latest?.Kind, Is.EqualTo(BuildingKind.Granary));
         }
 

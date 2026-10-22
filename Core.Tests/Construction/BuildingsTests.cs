@@ -91,11 +91,11 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Wood(100);
             w.StoneLeft(spec.Stone - 1);
 
-            w.Dawn();
+            w.DawnAsIs();
             Assert.That(w.Buildings.All, Is.Empty, "one stone short");
 
             w.Stone(1);
-            w.Dawn();
+            w.DawnAsIs();
 
             Assert.Multiple(() =>
             {
@@ -119,6 +119,48 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void The_stone_reserve_covers_every_building_and_fits_the_store()
+        {
+            // StoneGatherers stop at the reserve, so a building dearer than it
+            // could never be afforded; and the reserve past the base store is
+            // a store always full, wanting a Stoneyard nobody builds (#178).
+            Assert.Multiple(() =>
+            {
+                foreach (BuildingKind kind in System.Enum.GetValues(typeof(BuildingKind)))
+                {
+                    if (kind != BuildingKind.None)
+                    {
+                        Assert.That(BuildingTable.Of(kind).Stone, Is.LessThanOrEqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve), kind.ToString());
+                    }
+                }
+
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneReserve, Is.LessThan(Storage.BaseStone));
+            });
+        }
+
+        [Test]
+        public void The_stone_wanted_grows_by_each_finished_house()
+        {
+            // #166: sixty with no house, ten more for each finished one; a
+            // house still going up does not count.
+            var w = new BuildingsWorld();
+            w.Wood(100);
+            var house = w.BuildNext();
+            w.Dawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneWant(0), Is.EqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve));
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneWant(3), Is.EqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve + (3 * KingdomWatch.Core.Work.Jobs.StonePerHouse)));
+                Assert.That(() => KingdomWatch.Core.Work.Jobs.StoneWant(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(house.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(w.Latest, Is.Not.SameAs(house), "a second building going up");
+                Assert.That(w.Buildings.FinishedHouses(w.Settlement.Id), Is.EqualTo(1));
+                Assert.That(w.Buildings.FinishedHouses(w.World.AddBand(2, new WorldPosition(2, 2)).Id), Is.Zero, "a band builds nothing");
+            });
+        }
+
+        [Test]
         public void A_field_is_laid_out_with_no_stone_in_store()
         {
             var w = new BuildingsWorld();
@@ -127,7 +169,7 @@ namespace KingdomWatch.Core.Tests.Construction
             var barn = w.BuildNext();
             w.StoneLeft(0);
 
-            w.Dawn();
+            w.DawnAsIs();
 
             Assert.Multiple(() =>
             {

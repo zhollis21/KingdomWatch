@@ -57,8 +57,17 @@ namespace KingdomWatch.Core.Tests.Construction
 
         internal int Living => Settlement.Members.Count;
 
-        // A dawn with hands to spare.
-        internal void Dawn() => Buildings.AtDawn(Settlement, 1, Living);
+        // A dawn with hands to spare, and the store's fill of stone: what
+        // the tests count is wood (#166).
+        internal void Dawn()
+        {
+            StoneFull();
+            DawnAsIs();
+        }
+
+        // A dawn with hands to spare and the stone as it stands, for the
+        // tests about stone.
+        internal void DawnAsIs() => Buildings.AtDawn(Settlement, 1, Living);
 
         // Every hour a building has left, claimed and done in one go.
         internal void Finish(Building building)
@@ -71,12 +80,10 @@ namespace KingdomWatch.Core.Tests.Construction
         // The building approved last, or null.
         internal Building? Latest => Buildings.All.Count == 0 ? null : Buildings.All[Buildings.All.Count - 1];
 
-        // Approves and finishes the next building the settlement wants, with
-        // the stone for it.
+        // Approves and finishes the next building the settlement wants.
         internal Building BuildNext()
         {
             var before = Buildings.All.Count;
-            StoneFull();
             Dawn();
 
             if (Buildings.All.Count == before)

@@ -303,7 +303,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             // Only the house's own stone, so what the rocks pay has room.
             w.StoneLeft(BuildingTable.Of(BuildingKind.House).Stone);
-            w.Dawn();
+            w.DawnAsIs();
             var house = w.Buildings.All.Single();
             var underfoot = Footprint(house).Where(at => w.World.Grid[at] == TerrainKind.Rocks).ToList();
             var rocks = CellsOf(house).Count(at => w.World.Grid[at] == TerrainKind.Rocks);
