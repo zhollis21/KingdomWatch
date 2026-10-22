@@ -739,6 +739,9 @@ namespace KingdomWatch.Harness
 
                 // Its far cells' hours are a share of its own (#180), each
                 // bounded by its price, and one cleared has nothing left on it.
+                var spotsClaimed = 0L;
+                var spotsWorked = 0L;
+
                 for (var j = 0; j < building.Spots.Count; j++)
                 {
                     var spot = building.Spots[j];
@@ -750,6 +753,13 @@ namespace KingdomWatch.Harness
                         Add(ValidationRule.BuildingLabour, now, building.Id,
                             "has " + spot.Claimed + " claimed and " + spot.Worked + " worked of " + spot.Ticks + " at " + spot.At + ".");
                     }
+                    else
+                    {
+                        // Each bounded by its price, so the sums stay far
+                        // inside a long before they are compared below.
+                        spotsClaimed += spot.Claimed;
+                        spotsWorked += spot.Worked;
+                    }
 
                     // Once the building's ground is cleared its lane is
                     // checked as paved instead, below.
@@ -758,6 +768,14 @@ namespace KingdomWatch.Harness
                     {
                         Add(ValidationRule.BuildingFootprint, now, building.Id, "cleared " + spot.At + ", but it is " + grid[spot.At] + ".");
                     }
+                }
+
+                // And together they are a share of those totals: the rest was
+                // claimed and done at the anchor.
+                if (spotsClaimed > building.Claimed || spotsWorked > building.Worked)
+                {
+                    Add(ValidationRule.BuildingLabour, now, building.Id,
+                        "has " + spotsClaimed + " claimed and " + spotsWorked + " worked at its far cells, of " + building.Claimed + " and " + building.Worked + " in all.");
                 }
 
                 for (var dy = 0; dy < building.Height; dy++)

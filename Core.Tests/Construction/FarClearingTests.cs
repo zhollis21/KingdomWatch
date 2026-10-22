@@ -110,6 +110,74 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_far_rock_is_quarried_where_it_is_and_pays_its_stone_as_it_clears()
+        {
+            var w = new BuildingsWorld(paint: grid => BuildingsWorld.PaintBelt(grid, 4, TerrainKind.Rocks));
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assume.That(house.Spots, Is.Not.Empty, "the causeway runs past reach of the house");
+            var spot = house.Spots[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(spot.Ticks, Is.EqualTo(Buildings.TicksPerRock));
+                Assert.That(spot.Rocks, Is.EqualTo(1));
+                Assert.That(spot.Cuts, Is.Zero);
+            });
+
+            // Room in the store for what it pays.
+            w.StoneLeft(0);
+            w.Buildings.Claim(house, JobKind.Builder, spot.Ticks);
+            w.Buildings.Credit(spot.At, JobKind.Builder, spot.Ticks, w.Stores);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Grid[spot.At], Is.EqualTo(TerrainKind.Plains));
+                Assert.That(w.Stores.Available(ResourceKind.Stone), Is.EqualTo(Buildings.StonePerRock));
+            });
+
+            var rocks = house.ClearRocks;
+            w.Finish(house);
+
+            Assert.That(w.Stores.Available(ResourceKind.Stone), Is.EqualTo(rocks * Buildings.StonePerRock), "every rock paid once");
+        }
+
+        [Test]
+        public void A_far_bush_is_grubbed_out_where_it_is_and_pays_its_fruit_and_brushwood_as_it_clears()
+        {
+            var w = new BuildingsWorld(paint: grid => BuildingsWorld.PaintBelt(grid, 4, TerrainKind.Scrub));
+            w.Wood(100);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            Assume.That(house.Spots, Is.Not.Empty, "the causeway runs past reach of the house");
+            var spot = house.Spots[0];
+            var picks = w.World.Land.PicksLeft(spot.At);
+
+            Assert.That(spot.Ticks, Is.EqualTo(Buildings.ClearTicksPerCell));
+
+            var wood = w.Stores.Available(ResourceKind.Wood);
+            var food = w.Stores.Available(ResourceKind.Food);
+            w.Buildings.Claim(house, JobKind.Builder, spot.Ticks);
+            w.Buildings.Credit(spot.At, JobKind.Builder, spot.Ticks, w.Stores);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Grid[spot.At], Is.EqualTo(TerrainKind.Plains));
+                Assert.That(w.Stores.Available(ResourceKind.Wood) - wood, Is.EqualTo(Buildings.WoodPerBush));
+                Assert.That(w.Stores.Available(ResourceKind.Food) - food, Is.EqualTo(picks * Buildings.FoodPerPick(Season.Spring)));
+            });
+
+            // The rest of the lane's bushes pay theirs when the ground clears,
+            // and this one nothing again.
+            var bushes = house.Lane.Concat(house.Square).Count(at => w.World.Grid[at] == TerrainKind.Scrub);
+            wood = w.Stores.Available(ResourceKind.Wood);
+            w.Finish(house);
+
+            Assert.That(w.Stores.Available(ResourceKind.Wood) - wood, Is.EqualTo(bushes * Buildings.WoodPerBush));
+        }
+
+        [Test]
         public void A_trip_to_a_far_cell_that_never_comes_home_gives_its_hours_back_to_that_cell()
         {
             var w = Causeway(out var house);
