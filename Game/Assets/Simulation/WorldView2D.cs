@@ -681,10 +681,10 @@ namespace KingdomWatch.Game
             }
         }
 
-        // Of the cells a site's clearing takes (its footprint, lane and square),
-        // the one with a tree, bush or rock on it that `spot` picks, or the
-        // next such that nobody drawn before this frame has; if everyone's
-        // taken, the one picked. False when none has anything left on it.
+        // Of the cells a site's clearing takes (its footprint, and its lane
+        // and square within ClearingReach of it), the one with a tree, bush
+        // or rock on it that `spot` picks, or the next such that nobody
+        // drawn before this frame has; if everyone's taken, the one picked. False when none has anything left on it.
         private bool ClearingSpot(Building site, ulong spot, out WorldPosition at, out TerrainKind kind)
         {
             var footprint = site.Width * site.Height;
@@ -699,6 +699,12 @@ namespace KingdomWatch.Game
                 var cell = n < footprint ? new WorldPosition(site.Anchor.X + (n % site.Width), site.Anchor.Y + (n / site.Width))
                     : n < footprint + site.Lane.Count ? site.Lane[n - footprint]
                     : site.Square[n - footprint - site.Lane.Count];
+                // A lane can run on along the streets far from the site;
+                // a builder drawn out there would cross the village in one
+                // frame from where Core has them, at its anchor.
+                var outX = Mathf.Max(site.Anchor.X - cell.X, cell.X - (site.Anchor.X + site.Width - 1));
+                var outY = Mathf.Max(site.Anchor.Y - cell.Y, cell.Y - (site.Anchor.Y + site.Height - 1));
+                if (Mathf.Max(outX, outY) > ClearingReach) continue;
                 var here = grid[cell];
                 if (here != TerrainKind.Forest && here != TerrainKind.Scrub && here != TerrainKind.Rocks) continue;
                 if (!found)
@@ -716,6 +722,10 @@ namespace KingdomWatch.Game
             }
             return found;
         }
+
+        // How far past a site's footprint, in cells, a builder is drawn
+        // clearing its lane or square (ClearingSpot).
+        private const int ClearingReach = 1;
 
         // How far, in cells, someone at work stands back from the middle of
         // the cell they work: a whole cell, so what they hit shows beside them.

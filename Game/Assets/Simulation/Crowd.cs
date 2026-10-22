@@ -49,11 +49,11 @@ namespace KingdomWatch.Game
         // Setting to work or off from it, someone's base point can jump: a
         // field hand works a spot of their own, a woodcutter stands back
         // from the tree, and the walk starts from the cell itself. A jump up
-        // to this many cells is carried into the drawn offset and eased out,
-        // so they step across rather than vanish and reappear; a longer one
-        // (a fast clock) is drawn as it is, and so is what a fast clock
-        // piles up past that.
-        private const float MaxCarry = 3f;
+        // to this many cells (a builder at the far side of a site, a step
+        // back) is carried into the drawn offset and eased out, so they step
+        // across rather than vanish and reappear; a longer one, and what a
+        // fast clock piles up past that, is drawn as it is.
+        private const float MaxCarry = 5f;
 
         private readonly int width, height;
         private readonly Func<int, int, bool> standable;
