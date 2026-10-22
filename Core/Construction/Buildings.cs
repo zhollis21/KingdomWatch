@@ -69,8 +69,11 @@ namespace KingdomWatch.Core.Construction
     /// goes into stock; <see cref="ClearTicksPerCell"/> for a bush or a
     /// stump, a bush paying the fruit it has left this season and
     /// <see cref="WoodPerBush"/>; and <see cref="TicksPerRock"/> for each
-    /// rock, which pays <see cref="StonePerRock"/>. The lane is laid as road when
-    /// the clearing is done. Approved
+    /// rock, which pays <see cref="StonePerRock"/>. A lane or square cell
+    /// farther than <see cref="ClearingReach"/> from the footprint with
+    /// something on it is a <see cref="ClearingSpot"/>: Builders walk out to
+    /// it, before the footprint, and it clears when its own hours are done
+    /// (#180). The lane is laid as road when the clearing is done. Approved
     /// ground and lanes are reserved: nobody gathers there until they are
     /// cleared (<see cref="IsReserved(WorldPosition)"/>), so they are cleared
     /// as they were priced. Nothing regrows on cleared ground unless a
@@ -139,6 +142,14 @@ namespace KingdomWatch.Core.Construction
         /// first tents stand in (#150).
         /// </summary>
         public const int CampYardRadius = 3;
+
+        /// <summary>
+        /// How far past a footprint, in cells each way, its lane and square are
+        /// cleared from the footprint itself; a cell farther out with something
+        /// on it is a <see cref="ClearingSpot"/>, cleared by trips of its own
+        /// (#180).
+        /// </summary>
+        public const int ClearingReach = 1;
 
         /// <summary>Worker-ticks to grub out a bush or clear a stump for good.</summary>
         public const long ClearTicksPerCell = Hour;
@@ -228,6 +239,10 @@ namespace KingdomWatch.Core.Construction
         private readonly Dictionary<int, Building> _onCell = new Dictionary<int, Building>();
         private readonly Dictionary<EntityId, Building> _homeOf = new Dictionary<EntityId, Building>();
 
+        // Cells of a lane or square to the clearing spot on them, until it is
+        // cleared (#180). Looked up, never iterated.
+        private readonly Dictionary<int, ClearingSpot> _spotAt = new Dictionary<int, ClearingSpot>();
+
         // Cells under a roof (BuildingSpec.Clearance), which no footprint may
         // take. Looked up, never iterated.
         private readonly HashSet<int> _underRoof = new HashSet<int>();
@@ -242,6 +257,7 @@ namespace KingdomWatch.Core.Construction
         private readonly bool[] _forest;
         private readonly bool[] _ground;
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
+        private readonly List<ClearingSpot> _scratchSpots = new List<ClearingSpot>();
 
         // What the store being placed stands by: its settlement's barns' middles
         // for a Granary, the forest cell its Woodcutters work for a Woodshed
@@ -382,6 +398,26 @@ namespace KingdomWatch.Core.Construction
         /// <summary>The building whose footprint covers this cell, or null.</summary>
         public Building? At(WorldPosition at) =>
             _onCell.TryGetValue(_grid.IndexOf(at), out var building) ? building : null;
+
+        /// <summary>The clearing spot still to clear on a cell, or null (#180).</summary>
+        public ClearingSpot? SpotAt(WorldPosition at) =>
+            _spotAt.TryGetValue(_grid.IndexOf(at), out var spot) ? spot : null;
+
+        /// <summary>
+        /// Where the next trip to work this building goes (#180): the first of
+        /// its <see cref="Building.Spots"/> with hours nobody has claimed, or
+        /// failing that its anchor. A field's work, and a building with no
+        /// spot left to claim, is at the anchor.
+        /// </summary>
+        public WorldPosition WorkPlaceOf(Building building)
+        {
+            if (building is null)
+            {
+                throw new ArgumentNullException(nameof(building));
+            }
+
+            return OpenSpot(building)?.At ?? building.Anchor;
+        }
 
         /// <summary>
         /// Whether a cell is ground approved for a building, or for its lane,
@@ -949,6 +985,15 @@ namespace KingdomWatch.Core.Construction
             }
             else
             {
+                // At the place WorkPlaceOf named: a spot's hours, while one
+                // has any left (#180).
+                var spot = OpenSpot(building);
+
+                if (spot is object)
+                {
+                    spot.Claimed += ticks;
+                }
+
                 building.Claimed += ticks;
             }
         }
@@ -961,6 +1006,14 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public void Unclaim(WorldPosition at, JobKind job, long ticks)
         {
+            if (_spotAt.TryGetValue(_grid.IndexOf(at), out var spot))
+            {
+                RequireWorks(spot.Building, job);
+                spot.Claimed -= RequireClaimed(spot.Building, ticks, spot.Claimed);
+                spot.Building.Claimed -= ticks;
+                return;
+            }
+
             var building = RequireAt(at);
             RequireWorks(building, job);
 
@@ -973,7 +1026,7 @@ namespace KingdomWatch.Core.Construction
             }
             else
             {
-                building.Claimed -= RequireClaimed(building, ticks, building.Claimed);
+                building.Claimed -= RequireClaimed(building, ticks, AnchorClaimed(building));
             }
         }
 
@@ -991,6 +1044,12 @@ namespace KingdomWatch.Core.Construction
                 throw new ArgumentNullException(nameof(stores));
             }
 
+            if (_spotAt.TryGetValue(_grid.IndexOf(at), out var spot))
+            {
+                CreditSpot(spot, job, ticks, stores);
+                return;
+            }
+
             var building = RequireAt(at);
             RequireWorks(building, job);
 
@@ -1002,11 +1061,38 @@ namespace KingdomWatch.Core.Construction
                 return;
             }
 
-            RequireClaimed(building, ticks, building.Claimed);
+            RequireClaimed(building, ticks, AnchorClaimed(building));
+            building.Claimed -= ticks;
+            building.Worked += ticks;
+            Advance(building, stores);
+        }
+
+        // A trip home from one of a building's far cells (#180): the cell
+        // clears as its own hours are done, paying what was on it.
+        private void CreditSpot(ClearingSpot spot, JobKind job, long ticks, ResourceLedger stores)
+        {
+            var building = spot.Building;
+            RequireWorks(building, job);
+            RequireClaimed(building, ticks, spot.Claimed);
+            spot.Claimed -= ticks;
+            spot.Worked += ticks;
             building.Claimed -= ticks;
             building.Worked += ticks;
 
-            if (!building.Cleared && building.Worked >= building.ClearTicks)
+            if (spot.IsCleared)
+            {
+                ClearSpot(spot, stores);
+            }
+
+            Advance(building, stores);
+        }
+
+        // The ground clears once the footprint's share of the clearing is
+        // worked and every far cell is cleared, and the building stands
+        // once every hour is.
+        private void Advance(Building building, ResourceLedger stores)
+        {
+            if (!building.Cleared && AnchorWorked(building) >= building.ClearTicks - SpotTicks(building) && AllSpotsCleared(building))
             {
                 ClearGround(building, stores);
             }
@@ -1015,6 +1101,72 @@ namespace KingdomWatch.Core.Construction
             {
                 _bus.Publish(DomainEventKind.BuildingCompleted, building.Id, building.Settlement);
             }
+        }
+
+        // The first far cell with hours nobody has claimed; null when there is none.
+        private static ClearingSpot? OpenSpot(Building building)
+        {
+            var spots = building.Spots;
+
+            for (var i = 0; i < spots.Count; i++)
+            {
+                if (spots[i].Left > 0L)
+                {
+                    return spots[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static long SpotTicks(Building building)
+        {
+            var ticks = 0L;
+
+            for (var i = 0; i < building.Spots.Count; i++)
+            {
+                ticks += building.Spots[i].Ticks;
+            }
+
+            return ticks;
+        }
+
+        // Hours claimed and done at the anchor: the building's totals less its spots'.
+        private static long AnchorClaimed(Building building)
+        {
+            var claimed = building.Claimed;
+
+            for (var i = 0; i < building.Spots.Count; i++)
+            {
+                claimed -= building.Spots[i].Claimed;
+            }
+
+            return claimed;
+        }
+
+        private static long AnchorWorked(Building building)
+        {
+            var worked = building.Worked;
+
+            for (var i = 0; i < building.Spots.Count; i++)
+            {
+                worked -= building.Spots[i].Worked;
+            }
+
+            return worked;
+        }
+
+        private static bool AllSpotsCleared(Building building)
+        {
+            for (var i = 0; i < building.Spots.Count; i++)
+            {
+                if (!building.Spots[i].IsCleared)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public void On(in DomainEvent published)
@@ -1065,7 +1217,9 @@ namespace KingdomWatch.Core.Construction
                 return FieldDayTicks - building.ClaimedToday - building.WorkedToday;
             }
 
-            return building.LabourTicks - building.Worked - building.Claimed;
+            // A spot's hours while one has any left (#180). Once none has, the
+            // building's total is what is left at the anchor.
+            return OpenSpot(building)?.Left ?? building.LabourTicks - building.Worked - building.Claimed;
         }
 
         // A Builder works what is still going up, a Farmer a finished field;
@@ -1184,17 +1338,75 @@ namespace KingdomWatch.Core.Construction
 
             // The Wood of the cuts the clearing was priced at: a claim out at
             // approval and given back since leaves a tree with a cut more than
-            // anyone was charged for, and that cut is not paid.
-            if (building.ClearCuts > 0)
+            // anyone was charged for, and that cut is not paid. The far cells'
+            // were paid as each cleared (ClearSpot).
+            var cuts = building.ClearCuts;
+            var rocks = building.ClearRocks;
+
+            for (var i = 0; i < building.Spots.Count; i++)
             {
-                stores.Gather(ResourceKind.Wood, building.ClearCuts * WoodPerCut);
-                Storage.Spill(stores, ResourceKind.Wood, CapacityOf(building.Settlement, ResourceKind.Wood));
+                cuts -= building.Spots[i].Cuts;
+                rocks -= building.Spots[i].Rocks;
             }
 
-            if (building.ClearRocks > 0)
+            PayQuote(building.Settlement, cuts, rocks, stores);
+        }
+
+        // One far cell cleared by its own trips (#180): what grows on it
+        // grubbed out or felled, a rock quarried away, and paid for as the
+        // whole site's clearing pays. It stays its lane's, reserved, until
+        // the lane is laid with the rest.
+        private void ClearSpot(ClearingSpot spot, ResourceLedger stores)
+        {
+            var at = spot.At;
+            var kind = _grid[at];
+            var bushes = 0;
+            var picks = 0;
+
+            if (kind == TerrainKind.Scrub)
             {
-                stores.Gather(ResourceKind.Stone, building.ClearRocks * StonePerRock);
-                Storage.Spill(stores, ResourceKind.Stone, CapacityOf(building.Settlement, ResourceKind.Stone));
+                GrubBush(at, ref bushes, ref picks);
+            }
+            else if (kind == TerrainKind.Forest)
+            {
+                _land.Clear(at);
+            }
+            else if (kind == TerrainKind.Rocks)
+            {
+                _grid.Set(at, TerrainKind.Plains);
+            }
+
+            _spotAt.Remove(_grid.IndexOf(at));
+            var settlement = spot.Building.Settlement;
+
+            if (picks > 0)
+            {
+                stores.Gather(ResourceKind.Food, picks * FoodPerPick(_clock.Now.Season));
+                Storage.Spill(stores, ResourceKind.Food, CapacityOf(settlement, ResourceKind.Food));
+            }
+
+            if (bushes > 0)
+            {
+                stores.Gather(ResourceKind.Wood, bushes * WoodPerBush);
+                Storage.Spill(stores, ResourceKind.Wood, CapacityOf(settlement, ResourceKind.Wood));
+            }
+
+            PayQuote(settlement, spot.Cuts, spot.Rocks, stores);
+        }
+
+        // The timber and stone a clearing was priced at.
+        private void PayQuote(EntityId settlement, int cuts, int rocks, ResourceLedger stores)
+        {
+            if (cuts > 0)
+            {
+                stores.Gather(ResourceKind.Wood, cuts * WoodPerCut);
+                Storage.Spill(stores, ResourceKind.Wood, CapacityOf(settlement, ResourceKind.Wood));
+            }
+
+            if (rocks > 0)
+            {
+                stores.Gather(ResourceKind.Stone, rocks * StonePerRock);
+                Storage.Spill(stores, ResourceKind.Stone, CapacityOf(settlement, ResourceKind.Stone));
             }
         }
 
@@ -1541,6 +1753,8 @@ namespace KingdomWatch.Core.Construction
                 _laneOf.Add(_grid.IndexOf(building.Square[i]), building);
             }
 
+            AddSpots(building);
+
             // Nothing to clear: the lane is laid at once.
             if (building.Cleared)
             {
@@ -1790,6 +2004,48 @@ namespace KingdomWatch.Core.Construction
             }
 
             return ticks;
+        }
+
+        // The lane and square cells beyond ClearingReach of the footprint with
+        // something on them, each its own clearing trips' destination (#180),
+        // priced cell by cell as ClearTicksOf priced them.
+        private void AddSpots(Building building)
+        {
+            _scratchSpots.Clear();
+            AddSpots(building, building.Lane);
+            AddSpots(building, building.Square);
+
+            if (_scratchSpots.Count > 0)
+            {
+                building.SetSpots(_scratchSpots.ToArray());
+                _scratchSpots.Clear();
+            }
+        }
+
+        private void AddSpots(Building building, IReadOnlyList<WorldPosition> cells)
+        {
+            for (var i = 0; i < cells.Count; i++)
+            {
+                var at = cells[i];
+                var outX = Math.Max(building.Anchor.X - at.X, at.X - (building.Anchor.X + building.Width - 1));
+                var outY = Math.Max(building.Anchor.Y - at.Y, at.Y - (building.Anchor.Y + building.Height - 1));
+
+                if (Math.Max(outX, outY) <= ClearingReach)
+                {
+                    continue;
+                }
+
+                var cuts = 0;
+                var rocks = 0;
+                var ticks = ClearTicksAt(at, ref cuts, ref rocks);
+
+                if (ticks > 0L)
+                {
+                    var spot = new ClearingSpot(building, at, ticks, cuts, rocks);
+                    _scratchSpots.Add(spot);
+                    _spotAt.Add(_grid.IndexOf(at), spot);
+                }
+            }
         }
 
         // Ground a lane may cross: what a footprint may stand on, rocks

@@ -1123,22 +1123,25 @@ namespace KingdomWatch.Core.Work
         // Whether a trip to work this building can be routed and is home by
         // dusk. The route is the job's site, kept until the target or the
         // ground changes - clearing rewrites cells, and with them the cost.
+        // The target is its anchor, or one of its far cells to clear while
+        // any has hours unclaimed (#180).
         private bool Fits(Tracked tracked, JobKind job, Building building, SimulationTime now, long ticksUntilDusk)
         {
             var site = SiteOf(tracked, job);
+            var place = RequireBuildings().WorkPlaceOf(building);
 
-            if (!site.Reachable || site.Destination != building.Anchor || site.Rewrites != _grid.Rewrites)
+            if (!site.Reachable || site.Destination != place || site.Rewrites != _grid.Rewrites)
             {
                 site.Rewrites = _grid.Rewrites;
                 site.Reachable = _pathfinder.TryFindRoute(
-                    tracked.SitesFrom, building.Anchor, Mover, int.MaxValue, ReachCost(Buildings.ShareTicks), site.Route, out var cost);
+                    tracked.SitesFrom, place, Mover, int.MaxValue, ReachCost(Buildings.ShareTicks), site.Route, out var cost);
 
                 if (!site.Reachable)
                 {
                     return false;
                 }
 
-                site.Destination = building.Anchor;
+                site.Destination = place;
                 site.Cost = cost;
                 _scratchRoute.Clear();
                 _scratchRoute.AddRange(site.Route);

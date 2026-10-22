@@ -112,13 +112,27 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public IReadOnlyList<WorldPosition> Square { get; }
 
+        /// <summary>
+        /// The cells of <see cref="Lane"/> and <see cref="Square"/> farther than
+        /// <see cref="Buildings.ClearingReach"/> from the footprint that had
+        /// something to clear when it was approved, each cleared by trips of
+        /// its own (#180), lane before square, each in its own order.
+        /// Builders are sent to them before the footprint. Empty when every
+        /// cell to clear is near enough to clear from the footprint.
+        /// </summary>
+        public IReadOnlyList<ClearingSpot> Spots { get; private set; } = Array.Empty<ClearingSpot>();
+
         /// <summary>Cells across, from <see cref="BuildingTable"/>.</summary>
         public int Width => BuildingTable.Of(Kind).Width;
 
         /// <summary>Cells down, from <see cref="BuildingTable"/>.</summary>
         public int Height => BuildingTable.Of(Kind).Height;
 
-        /// <summary>Worker-ticks of clearing scrub and forest off the footprint, its lane and its share of the square before building starts.</summary>
+        /// <summary>
+        /// Worker-ticks of clearing scrub and forest off the footprint, its lane
+        /// and its share of the square before building starts: its
+        /// <see cref="Spots"/>' hours included, worked out where they are.
+        /// </summary>
         public long ClearTicks { get; }
 
         /// <summary>
@@ -149,7 +163,9 @@ namespace KingdomWatch.Core.Construction
         /// <summary>
         /// Whether its clearing is done: the footprint cleared to plains, and
         /// its <see cref="Lane"/> and <see cref="Square"/> cleared and laid as
-        /// road (#23).
+        /// road (#23) - once the hours worked at the footprint cover its own
+        /// share of <see cref="ClearTicks"/>, and every one of its
+        /// <see cref="Spots"/> is cleared.
         /// </summary>
         public bool Cleared { get; internal set; }
 
@@ -173,6 +189,9 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Worker-ticks of today's field work done.</summary>
         public long WorkedToday { get; internal set; }
+
+        // Set once, at approval, since a spot names its building.
+        internal void SetSpots(ClearingSpot[] spots) => Spots = Array.AsReadOnly(spots);
 
         /// <summary>Whether a cell lies inside the footprint.</summary>
         public bool Covers(WorldPosition at) =>

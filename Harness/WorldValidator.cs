@@ -737,6 +737,29 @@ namespace KingdomWatch.Harness
                         + ", and " + building.ClaimedToday + " claimed and " + building.WorkedToday + " worked today.");
                 }
 
+                // Its far cells' hours are a share of its own (#180), each
+                // bounded by its price, and one cleared has nothing left on it.
+                for (var j = 0; j < building.Spots.Count; j++)
+                {
+                    var spot = building.Spots[j];
+
+                    if (!ReferenceEquals(spot.Building, building) || spot.Ticks <= 0L || spot.Cuts < 0 || spot.Rocks < 0
+                        || !WithinLimit(spot.Worked, spot.Claimed, spot.Ticks)
+                        || spot.Worked > building.Worked || spot.Claimed > building.Claimed)
+                    {
+                        Add(ValidationRule.BuildingLabour, now, building.Id,
+                            "has " + spot.Claimed + " claimed and " + spot.Worked + " worked of " + spot.Ticks + " at " + spot.At + ".");
+                    }
+
+                    // Once the building's ground is cleared its lane is
+                    // checked as paved instead, below.
+                    if (spot.IsCleared && !building.Cleared && grid.Contains(spot.At)
+                        && (grid[spot.At] == TerrainKind.Scrub || grid[spot.At] == TerrainKind.Forest || grid[spot.At] == TerrainKind.Rocks))
+                    {
+                        Add(ValidationRule.BuildingFootprint, now, building.Id, "cleared " + spot.At + ", but it is " + grid[spot.At] + ".");
+                    }
+                }
+
                 for (var dy = 0; dy < building.Height; dy++)
                 {
                     for (var dx = 0; dx < building.Width; dx++)
