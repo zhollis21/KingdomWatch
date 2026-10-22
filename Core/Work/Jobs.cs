@@ -919,6 +919,16 @@ namespace KingdomWatch.Core.Work
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
+            var slot = SlotFor(worker.Index);
+            slot.Task = new WorkTask(
+                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
+                tracked.Group.Position, site.Destination, completion);
+            slot.CopyRoute(site.Route);
+            // Priced before the ground is claimed below: a Forester's plot
+            // turns to forest as the tree goes in, and the walk there was
+            // charged on plains.
+            PriceRoute(slot);
+
             if (job == JobKind.Forester)
             {
                 // The tree goes in now, as a harvest is claimed (#155), so the
@@ -942,12 +952,6 @@ namespace KingdomWatch.Core.Work
                 RequireBuildings().Claim(building, job, work);
             }
 
-            var slot = SlotFor(worker.Index);
-            slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
-                tracked.Group.Position, site.Destination, completion);
-            slot.CopyRoute(site.Route);
-            PriceRoute(slot);
             _people.SetJob(worker, job);
             tracked.OnDuty[(int)job]++;
 
