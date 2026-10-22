@@ -27,8 +27,12 @@ namespace KingdomWatch.Core.Construction
         /// <summary>Wood a community holds with no storage built.</summary>
         public const int BaseWood = 250;
 
-        /// <summary>Stone a community holds with no storage built.</summary>
-        public const int BaseStone = 100;
+        /// <summary>
+        /// Stone a community holds with no storage built: the dearest
+        /// building's stone and no more (#178), so a growing village wants a
+        /// Stoneyard for the reserve it keeps (<see cref="Work.Jobs.StoneWant"/>).
+        /// </summary>
+        public const int BaseStone = 50;
 
         /// <summary>Food each finished Granary adds.</summary>
         public const int GranaryFood = 500;
@@ -38,6 +42,9 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Wood each finished Woodshed adds.</summary>
         public const int WoodshedWood = 250;
+
+        /// <summary>Stone each finished Stoneyard adds (#178).</summary>
+        public const int StoneyardStone = 50;
 
         /// <summary>
         /// Whether a store counts as full for the demand for more storage:
@@ -94,6 +101,8 @@ namespace KingdomWatch.Core.Construction
                     return kind == ResourceKind.Food ? GranaryFood : kind == ResourceKind.Grain ? GranaryGrain : 0;
                 case BuildingKind.Woodshed:
                     return kind == ResourceKind.Wood ? WoodshedWood : 0;
+                case BuildingKind.Stoneyard:
+                    return kind == ResourceKind.Stone ? StoneyardStone : 0;
                 default:
                     return 0;
             }
@@ -107,20 +116,33 @@ namespace KingdomWatch.Core.Construction
         /// ledger keeps one total, not one per building; this is how the view
         /// draws each yard's logs. Throws for a negative amount or order.
         /// </summary>
-        public static long WoodInShed(long wood, int order)
+        public static long WoodInShed(long wood, int order) =>
+            HeldBy(wood, order, BaseWood, WoodshedWood, nameof(wood));
+
+        /// <summary>
+        /// The share of a settlement's <paramref name="stone"/> its Stoneyard
+        /// <paramref name="order"/> holds, as <see cref="WoodInShed"/> shares
+        /// out wood (#178): the base holds the first <see cref="BaseStone"/>,
+        /// and each Stoneyard in turn the next <see cref="StoneyardStone"/>.
+        /// Throws for a negative amount or order.
+        /// </summary>
+        public static long StoneInYard(long stone, int order) =>
+            HeldBy(stone, order, BaseStone, StoneyardStone, nameof(stone));
+
+        private static long HeldBy(long amount, int order, int baseHolds, int eachHolds, string name)
         {
-            if (wood < 0L)
+            if (amount < 0L)
             {
-                throw new ArgumentOutOfRangeException(nameof(wood), wood, "Wood cannot be negative.");
+                throw new ArgumentOutOfRangeException(name, amount, "A store cannot hold less than nothing.");
             }
 
             if (order < 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(order), order, "The first Woodshed is 0.");
+                throw new ArgumentOutOfRangeException(nameof(order), order, "The first is 0.");
             }
 
-            var before = BaseWood + (long)order * WoodshedWood;
-            return wood <= before ? 0L : Math.Min(wood - before, WoodshedWood);
+            var before = baseHolds + (long)order * eachHolds;
+            return amount <= before ? 0L : Math.Min(amount - before, eachHolds);
         }
 
         /// <summary>

@@ -111,9 +111,16 @@ namespace KingdomWatch.Core.Tests.Construction
             }
         }
 
-        // Leaves exactly this much stone in store.
-        internal void StoneLeft(int amount) =>
-            Stores.Consume(ResourceKind.Stone, (int)Stores.Available(ResourceKind.Stone) - amount);
+        // Leaves exactly this much stone in store, or no more than it holds.
+        internal void StoneLeft(int amount)
+        {
+            var take = (int)Stores.Available(ResourceKind.Stone) - amount;
+
+            if (take > 0)
+            {
+                Stores.Consume(ResourceKind.Stone, take);
+            }
+        }
 
         // A belt of river this wide round the yard, crossed west to east by
         // a causeway one cell wide of `causeway`, two rows south of the

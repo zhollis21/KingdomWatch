@@ -41,10 +41,12 @@ namespace KingdomWatch.Core.Construction
     /// while more is wanted going into a winter is demand for the building
     /// that holds more of it: a Granary, once there is a barn, for Food or
     /// for Grain, which Farmers stop at; a Woodshed, once there is a house,
-    /// for Wood. A hungry village whose stores are full
-    /// builds a Granary rather than more farmland; otherwise a Woodshed
-    /// comes before a Granary, and both before houses. Storage is built from
-    /// any wood in stock, the winter's fuel included.
+    /// for Wood; a Stoneyard, once there is a house, for Stone, wanted by
+    /// the reserve that grows with the houses (#178). A hungry village whose
+    /// stores are full builds a Granary rather than more farmland; otherwise
+    /// a Woodshed comes before a Granary, a Granary before a Stoneyard, and
+    /// all of them before houses. Storage is built from any wood in stock,
+    /// the winter's fuel included.
     ///
     /// **The work competes with gathering.** An approved building's
     /// unclaimed hours, and each field's unclaimed hours today, are needs
@@ -1497,6 +1499,15 @@ namespace KingdomWatch.Core.Construction
                     return;
                 }
             }
+            else if (hasHouse && WantsStoneyard(settlement))
+            {
+                kind = BuildingKind.Stoneyard;
+
+                if (!TryPlaceStorage(settlement, kind, known, out anchor))
+                {
+                    return;
+                }
+            }
             else if (TryFirstUnhoused(settlement, out _) || WantsSpareHouse(settlement))
             {
                 kind = BuildingKind.House;
@@ -1593,8 +1604,10 @@ namespace KingdomWatch.Core.Construction
         // one yard with the others of its kind, the first by what fills it
         // (#167): a Granary by the settlement's barns, a Woodshed by the
         // forest its Woodcutters work, the nearest a woodcutter's search from
-        // the centre reaches. A first Woodshed with no forest in reach goes
-        // on the barns' ring instead (StorageSite).
+        // the centre reaches, and a Stoneyard by the rocks its StoneGatherers
+        // work, though never on them (#178). A first Woodshed or Stoneyard
+        // with nothing of its kind in reach goes on the barns' ring instead
+        // (StorageSite).
         private bool TryPlaceStorage(ICommunity settlement, BuildingKind kind, ReadOnlySpan<bool> known, out WorldPosition anchor)
         {
             var spec = BuildingTable.Of(kind);
@@ -1651,6 +1664,18 @@ namespace KingdomWatch.Core.Construction
                 if (_pathfinder.TryFindNearest(
                     centre, Jobs.Mover, _forest, known, _woodland, null, false, int.MaxValue,
                     Jobs.ReachCost(JobKind.Woodcutter, _clock.Now.Season), _scratchRoute, out _))
+                {
+                    _storeBy.Add(_scratchRoute[_scratchRoute.Count - 1]);
+                }
+
+                return _storeBy.Count > 0 ? _storeBy[0] : centre;
+            }
+
+            if (kind == BuildingKind.Stoneyard)
+            {
+                if (_pathfinder.TryFindNearest(
+                    centre, Jobs.Mover, JobTable.Terrain(JobKind.StoneGatherer), known, null, null, false, int.MaxValue,
+                    Jobs.ReachCost(JobKind.StoneGatherer, _clock.Now.Season), _scratchRoute, out _))
                 {
                     _storeBy.Add(_scratchRoute[_scratchRoute.Count - 1]);
                 }
@@ -1716,6 +1741,17 @@ namespace KingdomWatch.Core.Construction
 
             var hearths = Warmth.CountHearths(settlement.Members, _people, _scratchHearths);
             return Jobs.WoodWant(hearths, SimulationTime.DaysPerSeason) > capacity;
+        }
+
+        // Whether StoneGatherers are stopping short for want of room (#178):
+        // the Stone is full, and the stone the village's houses want kept
+        // (Jobs.StoneWant) is more.
+        private bool WantsStoneyard(ICommunity settlement)
+        {
+            var capacity = CapacityOf(settlement.Id, ResourceKind.Stone);
+
+            return Storage.IsFull(settlement.SharedSupplies.Available(ResourceKind.Stone), capacity)
+                && Jobs.StoneWant(FinishedHouses(settlement.Id)) > capacity;
         }
 
         // The next field and the barn it belongs to: the first of the

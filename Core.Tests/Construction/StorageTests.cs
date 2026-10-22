@@ -10,7 +10,8 @@ using NUnit.Framework;
 
 namespace KingdomWatch.Core.Tests.Construction
 {
-    // Storage capacity, and the Granary and Woodshed that raise it (#98).
+    // Storage capacity, and the Granary, Woodshed (#98) and Stoneyard (#178)
+    // that raise it.
     [TestFixture]
     public sealed class StorageTests
     {
@@ -31,6 +32,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(Storage.AddedBy(BuildingKind.Granary, ResourceKind.Wood), Is.Zero);
                 Assert.That(Storage.AddedBy(BuildingKind.Woodshed, ResourceKind.Wood), Is.EqualTo(Storage.WoodshedWood));
                 Assert.That(Storage.AddedBy(BuildingKind.Woodshed, ResourceKind.Food), Is.Zero);
+                Assert.That(Storage.AddedBy(BuildingKind.Stoneyard, ResourceKind.Stone), Is.EqualTo(Storage.StoneyardStone));
+                Assert.That(Storage.AddedBy(BuildingKind.Stoneyard, ResourceKind.Wood), Is.Zero);
                 Assert.That(Storage.AddedBy(BuildingKind.House, ResourceKind.Food), Is.Zero);
                 Assert.That(() => Storage.AddedBy(BuildingKind.None, ResourceKind.Food), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => Storage.AddedBy((BuildingKind)99, ResourceKind.Food), Throws.TypeOf<System.ArgumentOutOfRangeException>());
@@ -103,6 +106,168 @@ namespace KingdomWatch.Core.Tests.Construction
             {
                 Assert.That(() => Storage.WoodInShed(-1L, 0), Throws.TypeOf<System.ArgumentOutOfRangeException>());
                 Assert.That(() => Storage.WoodInShed(0L, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+            });
+        }
+
+        [TestCase(0L, 0, 0L)]
+        [TestCase(50L, 0, 0L)]
+        [TestCase(51L, 0, 1L)]
+        [TestCase(51L, 1, 0L)]
+        [TestCase(100L, 0, 50L)]
+        [TestCase(101L, 0, 50L)]
+        [TestCase(101L, 1, 1L)]
+        [TestCase(125L, 1, 25L)]
+        [TestCase(long.MaxValue, 0, 50L)]
+        [TestCase(long.MaxValue, int.MaxValue, 50L)]
+        [TestCase(1000L, int.MaxValue, 0L)]
+        public void Stone_past_the_base_fills_the_stoneyards_in_turn(long stone, int order, long held)
+        {
+            Assert.That(Storage.StoneInYard(stone, order), Is.EqualTo(held));
+        }
+
+        [Test]
+        public void Stoneyard_shares_refuse_negative_stone_or_order()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => Storage.StoneInYard(-1L, 0), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(() => Storage.StoneInYard(0L, -1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void A_full_stone_store_short_of_the_houses_reserve_wants_a_stoneyard_before_more_houses()
+        {
+            // #178: one finished house wants sixty stone kept, and the store
+            // holds fifty. Wood with room, so no Woodshed comes first.
+            var w = new BuildingsWorld();
+            w.Wood(1000);
+            var house = w.BuildNext();
+            Fed(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood) - 100);
+
+            var yard = w.BuildNext();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(house.Kind, Is.EqualTo(BuildingKind.House), "a Stoneyard needs a house");
+                Assert.That(Jobs.StoneWant(1), Is.GreaterThan(Storage.BaseStone));
+                Assert.That(yard.Kind, Is.EqualTo(BuildingKind.Stoneyard));
+                Assert.That(w.Stores.Flows(ResourceKind.Stone).Embodied, Is.EqualTo(BuildingTable.Of(BuildingKind.House).Stone), "a Stoneyard is built of wood alone");
+                Assert.That(w.Stores.Flows(ResourceKind.Wood).Embodied, Is.EqualTo(BuildingTable.Of(BuildingKind.House).Wood + BuildingTable.Of(BuildingKind.Stoneyard).Wood));
+                Assert.That(w.Buildings.CapacityOf(w.Settlement.Id, ResourceKind.Stone), Is.EqualTo(Storage.BaseStone + Storage.StoneyardStone));
+            });
+        }
+
+        [Test]
+        public void A_stone_store_with_room_wants_no_stoneyard()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(1000);
+            w.BuildNext();
+            Fed(w);
+            WoodTo(w, 100);
+            w.StoneFull();
+            w.StoneLeft((Storage.BaseStone * 9 / 10) - 1);
+
+            w.DawnAsIs();
+
+            Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b.Kind == BuildingKind.Stoneyard));
+        }
+
+        [Test]
+        public void A_full_stone_store_wants_no_stoneyard_before_the_first_house()
+        {
+            // The reserve with no house is the base store: full, but nothing
+            // more is wanted.
+            var w = new BuildingsWorld();
+            w.Wood(1000);
+            Fed(w);
+
+            var first = w.BuildNext();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Jobs.StoneWant(0), Is.EqualTo(Storage.BaseStone));
+                Assert.That(first.Kind, Is.EqualTo(BuildingKind.House));
+            });
+        }
+
+        [Test]
+        public void A_second_stoneyard_waits_until_the_houses_want_more_than_the_first_holds()
+        {
+            // 50 + 50 holds a hundred: the reserve passes that at the sixth
+            // house (50 + 6 * 10).
+            var w = new BuildingsWorld(people: 40, size: 60);
+            w.Wood(5000);
+            Fed(w);
+            w.BuildNext();
+            WoodTo(w, 100);
+            var yard = w.BuildNext();
+            w.Wood(5000);
+            var houses = 1;
+
+            while (houses < 5)
+            {
+                Fed(w);
+                WoodTo(w, 200);
+                StoneFullTo(w);
+                Assert.That(w.BuildNext().Kind, Is.EqualTo(BuildingKind.House), "house " + (houses + 1));
+                houses++;
+            }
+
+            WoodTo(w, 200);
+            StoneFullTo(w);
+            Assert.That(w.BuildNext().Kind, Is.EqualTo(BuildingKind.House), "five houses want ninety, and a hundred are held");
+
+            WoodTo(w, 200);
+            StoneFullTo(w);
+            w.DawnAsIs();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(yard.Kind, Is.EqualTo(BuildingKind.Stoneyard));
+                Assert.That(w.Buildings.FinishedHouses(w.Settlement.Id), Is.EqualTo(6));
+                Assert.That(w.Latest?.Kind, Is.EqualTo(BuildingKind.Stoneyard));
+                Assert.That(w.Latest, Is.Not.SameAs(yard));
+            });
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void A_stoneyard_stands_by_the_rocks_its_gatherers_work_but_never_on_them(bool east)
+        {
+            var w = new BuildingsWorld(paint: grid => PaintBelt(grid, east, TerrainKind.Rocks));
+            w.Wood(1000);
+            w.BuildNext();
+            Fed(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood) - 100);
+
+            w.Dawn();
+            var yard = w.Latest!;
+            var door = Buildings.DoorOf(BuildingKind.Stoneyard, yard.Anchor);
+            var rocks = new WorldPosition(east ? WoodEast : WoodWest, BuildingsWorld.Centre.Y);
+            var spec = BuildingTable.Of(BuildingKind.Stoneyard);
+            var grid = w.World.Grid;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(yard.Kind, Is.EqualTo(BuildingKind.Stoneyard));
+                Assert.That(Chebyshev(door, rocks), Is.LessThan(Chebyshev(door, BuildingsWorld.Centre)), yard + " is nearer the rocks than the centre");
+                Assert.That(east ? door.X > BuildingsWorld.Centre.X : door.X < BuildingsWorld.Centre.X, yard + " is on the rocks' side");
+
+                for (var dy = 0; dy < spec.Height; dy++)
+                {
+                    for (var dx = 0; dx < spec.Width; dx++)
+                    {
+                        Assert.That(grid[new WorldPosition(yard.Anchor.X + dx, yard.Anchor.Y + dy)], Is.Not.EqualTo(TerrainKind.Rocks), yard + " stands on no rocks");
+                    }
+                }
+
+                foreach (var cell in yard.Lane)
+                {
+                    Assert.That(grid[cell], Is.Not.EqualTo(TerrainKind.Rocks), yard + "'s lane crosses no rocks at " + cell);
+                }
             });
         }
 
@@ -479,19 +644,47 @@ namespace KingdomWatch.Core.Tests.Construction
         private const int WoodEast = 33;
         private const int WoodWest = 6;
 
-        private static void PaintWood(TerrainGrid grid, bool east)
+        private static void PaintWood(TerrainGrid grid, bool east) => PaintBelt(grid, east, TerrainKind.Forest);
+
+        private static void PaintBelt(TerrainGrid grid, bool east, TerrainKind kind)
         {
             for (var y = 0; y < grid.Height; y++)
             {
                 for (var dx = 0; dx < 5; dx++)
                 {
-                    grid.Set(new WorldPosition(east ? WoodEast + dx : WoodWest - dx, y), TerrainKind.Forest);
+                    grid.Set(new WorldPosition(east ? WoodEast + dx : WoodWest - dx, y), kind);
                 }
             }
         }
 
         private static int Chebyshev(WorldPosition a, WorldPosition b) =>
             System.Math.Max(System.Math.Abs(a.X - b.X), System.Math.Abs(a.Y - b.Y));
+
+        // Exactly this much wood in store.
+        private static void WoodTo(BuildingsWorld w, int amount)
+        {
+            var have = (int)w.Stores.Available(ResourceKind.Wood);
+
+            if (have > amount)
+            {
+                w.Stores.Consume(ResourceKind.Wood, have - amount);
+            }
+            else if (have < amount)
+            {
+                w.Wood(amount - have);
+            }
+        }
+
+        // The stone store filled to what the settlement's storage holds.
+        private static void StoneFullTo(BuildingsWorld w)
+        {
+            var room = w.Buildings.CapacityOf(w.Settlement.Id, ResourceKind.Stone) - w.Stores.Available(ResourceKind.Stone);
+
+            if (room > 0)
+            {
+                w.Stone((int)room);
+            }
+        }
 
         private static void Fed(BuildingsWorld w) =>
             w.Stores.Gather(ResourceKind.Grain, (int)(Buildings.YearlyNeed(w.Living) / PrimitiveTier.MealsPerGrain));

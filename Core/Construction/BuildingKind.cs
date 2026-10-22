@@ -28,5 +28,8 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Storage for Wood (<see cref="Storage"/>, #98).</summary>
         Woodshed = 5,
+
+        /// <summary>Storage for Stone (<see cref="Storage"/>, #178).</summary>
+        Stoneyard = 6,
     }
 }

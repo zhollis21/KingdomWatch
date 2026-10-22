@@ -293,11 +293,13 @@ namespace KingdomWatch.Game
         private readonly List<TileChangeData> cropTiles = new List<TileChangeData>();
         // Settlements with a finished house, which leave their tents behind.
         private readonly HashSet<EntityId> housed = new HashSet<EntityId>();
-        // Each settlement's wood, read from its stores, and how many of its
-        // finished Woodsheds this frame has drawn so far: the order the logs
-        // fill them in (Storage.WoodInShed).
+        // Each settlement's wood and stone, read from its stores, and how
+        // many of its finished Woodsheds and Stoneyards this frame has drawn
+        // so far: the order the logs and stone fill them in
+        // (Storage.WoodInShed, Storage.StoneInYard).
         private Founding founding;
         private readonly Dictionary<EntityId, int> shedsDrawn = new Dictionary<EntityId, int>();
+        private readonly Dictionary<EntityId, int> stoneyardsDrawn = new Dictionary<EntityId, int>();
         private Transform peopleRoot;
         private Transform communityRoot;
         private SpriteRenderer highlight;
@@ -945,13 +947,15 @@ namespace KingdomWatch.Game
         // bare soil while it is sown. A sprite fits its
         // footprint's width, and its roof stands over the rows north of it
         // that Core keeps clear (BuildingSpec.Clearance); a Woodshed's yard
-        // shows its share of the settlement's wood (YardLevel). Without the
+        // shows its share of the settlement's wood, and a Stoneyard's its
+        // share of the stone (YardLevel). Without the
         // art, each is a block of colour on its footprint. Hidden at Far
         // zoom, where the settlement's marker stands for them all.
         private void DrawBuildings()
         {
             housed.Clear();
             shedsDrawn.Clear();
+            stoneyardsDrawn.Clear();
             var all = buildings.All;
             var visible = Band != ZoomBand.Far;
             for (var i = 0; i < all.Count; i++)
@@ -970,6 +974,7 @@ namespace KingdomWatch.Game
                     : building.Kind == BuildingKind.Barn ? art.Barns
                     : building.Kind == BuildingKind.Granary ? art.Granaries
                     : building.Kind == BuildingKind.Woodshed ? art.Woodsheds
+                    : building.Kind == BuildingKind.Stoneyard ? art.Stoneyards
                     : null;
                 if (art != null && building.Kind == BuildingKind.Field) LayField(i, building);
                 // A field draws in the tilemaps, and a kind with no art yet
@@ -984,7 +989,9 @@ namespace KingdomWatch.Game
                 {
                     // Picked from the id, so a building always looks the same.
                     var pick = (int)((building.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
-                    sprite.sprite = building.Kind == BuildingKind.Woodshed ? looks[YardLevel(building)] : looks[pick % looks.Length];
+                    sprite.sprite = building.Kind == BuildingKind.Woodshed || building.Kind == BuildingKind.Stoneyard
+                        ? looks[YardLevel(building)]
+                        : looks[pick % looks.Length];
                     sprite.transform.localPosition = new Vector3(OnArtPixel(middle), OnArtPixel(height - south), 0f);
                     sprite.sortingOrder = OrderAt(south);
                     sprite.color = new Color(1f, 1f, 1f, alpha);
@@ -1009,24 +1016,29 @@ namespace KingdomWatch.Game
             cropTiles.Clear();
         }
 
-        // How full a Woodshed's yard is drawn, 0 to ArtSet.YardLevels: its
-        // share of the settlement's wood, the finished ones filling in the
-        // order they stand in All, oldest first. Any wood at all shows a
-        // stack. An unbuilt one is empty.
-        private int YardLevel(Building shed)
+        // How full a Woodshed's or Stoneyard's yard is drawn, 0 to
+        // ArtSet.YardLevels: its share of the settlement's wood or stone,
+        // the finished ones of a kind filling in the order they stand in
+        // All, oldest first. Any at all shows a pile. An unbuilt one is empty.
+        private int YardLevel(Building yard)
         {
-            if (!shed.IsComplete) return 0;
-            shedsDrawn.TryGetValue(shed.Settlement, out var order);
-            shedsDrawn[shed.Settlement] = order + 1;
-            var held = Storage.WoodInShed(WoodOf(shed.Settlement), order);
-            return (int)((held * ArtSet.YardLevels + Storage.WoodshedWood - 1) / Storage.WoodshedWood);
+            if (!yard.IsComplete) return 0;
+            var stone = yard.Kind == BuildingKind.Stoneyard;
+            var drawn = stone ? stoneyardsDrawn : shedsDrawn;
+            drawn.TryGetValue(yard.Settlement, out var order);
+            drawn[yard.Settlement] = order + 1;
+            var held = stone
+                ? Storage.StoneInYard(StockOf(yard.Settlement, ResourceKind.Stone), order)
+                : Storage.WoodInShed(StockOf(yard.Settlement, ResourceKind.Wood), order);
+            var holds = stone ? Storage.StoneyardStone : Storage.WoodshedWood;
+            return (int)((held * ArtSet.YardLevels + holds - 1) / holds);
         }
 
-        private long WoodOf(EntityId settlement)
+        private long StockOf(EntityId settlement, ResourceKind kind)
         {
             var all = founding.All;
             for (var i = 0; i < all.Count; i++)
-                if (all[i].Id == settlement) return all[i].SharedSupplies.Available(ResourceKind.Wood);
+                if (all[i].Id == settlement) return all[i].SharedSupplies.Available(kind);
             return 0L;
         }
 
@@ -1371,6 +1383,7 @@ namespace KingdomWatch.Game
                 case BuildingKind.Field: return new Color(0.88f, 0.76f, 0.38f);
                 case BuildingKind.Granary: return new Color(0.25f, 0.5f, 0.42f);
                 case BuildingKind.Woodshed: return new Color(0.42f, 0.29f, 0.17f);
+                case BuildingKind.Stoneyard: return new Color(0.54f, 0.54f, 0.5f);
                 default: return new Color(0.6f, 0.6f, 0.6f);
             }
         }

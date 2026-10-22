@@ -140,7 +140,7 @@ namespace KingdomWatch.Harness
 
         private static string Summary(World world, Settlement settlement)
         {
-            int houses = 0, barns = 0, fields = 0, granaries = 0, woodsheds = 0, lanes = 0;
+            int houses = 0, barns = 0, fields = 0, granaries = 0, woodsheds = 0, stoneyards = 0, lanes = 0;
 
             foreach (var building in world.Buildings.All)
             {
@@ -155,9 +155,10 @@ namespace KingdomWatch.Harness
                 fields += building.Kind == BuildingKind.Field ? 1 : 0;
                 granaries += building.Kind == BuildingKind.Granary ? 1 : 0;
                 woodsheds += building.Kind == BuildingKind.Woodshed ? 1 : 0;
+                stoneyards += building.Kind == BuildingKind.Stoneyard ? 1 : 0;
             }
 
-            return $"{settlement.Members.Count} people, {houses} houses, {barns} barns, {fields} fields, {granaries} granaries, {woodsheds} woodsheds, {lanes} lane cells";
+            return $"{settlement.Members.Count} people, {houses} houses, {barns} barns, {fields} fields, {granaries} granaries, {woodsheds} woodsheds, {stoneyards} stoneyards, {lanes} lane cells";
         }
 
         private static void Report(string name, WorldRun run)

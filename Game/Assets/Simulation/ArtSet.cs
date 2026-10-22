@@ -209,11 +209,13 @@ namespace KingdomWatch.Game
 
         // Storage (#98): the silo for a Granary, and for a Woodshed a fenced
         // log yard on its footprint at each fill level, Woodsheds[level] for
-        // level 0 (empty) to YardLevels (full).
+        // level 0 (empty) to YardLevels (full); a Stoneyard (#178) is the
+        // same yard with stone heaps for logs, Stoneyards[level].
         public Sprite[] Granaries { get; private set; }
         public Sprite[] Woodsheds { get; private set; }
+        public Sprite[] Stoneyards { get; private set; }
 
-        // A yard's three log slots each hold a small stack, then a tall pile.
+        // A yard's three slots each hold a small pile, then a tall one.
         public const int YardLevels = 6;
 
         // Tilled soil, the nine pieces of a bordered patch: FarmLand[row * 3 +
@@ -727,17 +729,22 @@ namespace KingdomWatch.Game
         // The Woodshed (#98) is a fenced log yard drawn for its 5x4 footprint:
         // Fences.png's 16 px pieces round the edge, a cell to each, with a gate
         // in the middle of the front; and three log slots along the middle,
-        // each Outdoor_Decor's small stack and then its tall pile. Composed
-        // once for every fill level, side by side in one texture.
+        // each Outdoor_Decor's small stack and then its tall pile. The
+        // Stoneyard (#178) is the same yard, its slots holding Ores.png's
+        // grey heap (the camp's stone pile), then a second heap stacked on
+        // the first. Each composed once for every fill level, side by side
+        // in one texture.
         private const int YardWidth = 5, YardHeight = 4;
-        private const int YardBase = 46; // where the logs stand, from the yard's top
+        private const int YardBase = 46; // where the piles stand, from the yard's top
         private static readonly int[] YardSlots = { 11, 30, 49 }; // the tall piles' left edges
         private static readonly RectInt SmallStack = new RectInt(1, 197, 14, 24);
         private static readonly RectInt TallPile = new RectInt(7, 259, 20, 42);
+        private static readonly RectInt StoneHeap = new RectInt(16, 0, 16, 16); // its foot 1 px above its bottom
+        private const int HeapRise = 7; // how far the second heap stands over the first
 
         // Each cell of the fence, from the top left: (cell, piece) pairs, the
         // piece as its column and row on Fences.png. Back row and sides first,
-        // so the logs stand in front of them, then the front row over the logs.
+        // so the piles stand in front of them, then the front row over the piles.
         private static readonly (Vector2Int cell, Vector2Int piece)[] BackFence =
         {
             (new Vector2Int(0, 0), new Vector2Int(1, 1)), (new Vector2Int(1, 0), new Vector2Int(2, 0)),
@@ -752,20 +759,48 @@ namespace KingdomWatch.Game
             (new Vector2Int(3, 3), new Vector2Int(1, 0)), (new Vector2Int(4, 3), new Vector2Int(3, 3)),
         };
 
+        // Pastes what one slot of a yard holds, its left edge at `left`:
+        // fill 1 the small pile, 2 the tall one.
+        private delegate void SlotPile(Sheet yards, int left, int fill);
+
         private bool LoadYards()
         {
-            var spec = BuildingTable.Of(BuildingKind.Woodshed);
-            if (spec.Width != YardWidth || spec.Height != YardHeight)
+            foreach (var kind in new[] { BuildingKind.Woodshed, BuildingKind.Stoneyard })
             {
-                Debug.LogError("ArtSet: the Woodshed's yard is drawn for " + YardWidth + "x" + YardHeight + " cells, not " + spec.Width + "x" + spec.Height + ".");
-                return false;
+                var spec = BuildingTable.Of(kind);
+                if (spec.Width != YardWidth || spec.Height != YardHeight)
+                {
+                    Debug.LogError("ArtSet: the " + kind + "'s yard is drawn for " + YardWidth + "x" + YardHeight + " cells, not " + spec.Width + "x" + spec.Height + ".");
+                    return false;
+                }
             }
             var fences = Texture(Decor + "Fences");
             var decor = Texture(Decor + "Outdoor_Decor");
-            if (fences == null || decor == null) return false;
+            var ores = Texture(Decor + "Ores");
+            if (fences == null || decor == null || ores == null) return false;
             var fence = new Sheet(ReadPixels(fences), fences.width, fences.height);
             var logs = new Sheet(ReadPixels(decor), decor.width, decor.height);
+            var stone = new Sheet(ReadPixels(ores), ores.width, ores.height);
 
+            Woodsheds = Yards("Woodshed yards", fence, (yards, left, fill) =>
+            {
+                if (fill > 1) Paste(yards, left, YardBase - TallPile.height, logs, TallPile);
+                else Paste(yards, left + (TallPile.width - SmallStack.width) / 2, YardBase - SmallStack.height, logs, SmallStack);
+            });
+            Stoneyards = Yards("Stoneyard yards", fence, (yards, left, fill) =>
+            {
+                var x = left + (TallPile.width - StoneHeap.width) / 2;
+                var foot = YardBase - StoneHeap.height + 1;
+                if (fill > 1) Paste(yards, x, foot - HeapRise, stone, StoneHeap);
+                Paste(yards, x, foot, stone, StoneHeap);
+            });
+            return true;
+        }
+
+        // A yard at every fill level, side by side in one texture: each slot
+        // fills once with its small pile, and again with its tall one.
+        private Sprite[] Yards(string name, Sheet fence, SlotPile pile)
+        {
             const int width = YardWidth * PixelsPerCell, height = YardHeight * PixelsPerCell;
             var yards = new Sheet(new Color32[width * (YardLevels + 1) * height], width * (YardLevels + 1), height);
             for (var level = 0; level <= YardLevels; level++)
@@ -774,21 +809,19 @@ namespace KingdomWatch.Game
                 foreach (var (cell, piece) in BackFence) Fence(yards, left, cell, fence, piece);
                 for (var slot = 0; slot < YardSlots.Length; slot++)
                 {
-                    // A slot fills once with a small stack, and again with a tall pile.
-                    var x = left + YardSlots[slot];
-                    if (level > YardSlots.Length + slot) Paste(yards, x, YardBase - TallPile.height, logs, TallPile);
-                    else if (level > slot) Paste(yards, x + (TallPile.width - SmallStack.width) / 2, YardBase - SmallStack.height, logs, SmallStack);
+                    var fill = level > YardSlots.Length + slot ? 2 : level > slot ? 1 : 0;
+                    if (fill > 0) pile(yards, left + YardSlots[slot], fill);
                 }
                 foreach (var (cell, piece) in FrontFence) Fence(yards, left, cell, fence, piece);
             }
 
-            var texture = Own(new Texture2D(yards.Width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "Woodshed yards" });
+            var texture = Own(new Texture2D(yards.Width, height, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = name });
             texture.SetPixels32(yards.Pixels);
             texture.Apply(false, true);
-            Woodsheds = new Sprite[YardLevels + 1];
+            var sprites = new Sprite[YardLevels + 1];
             for (var level = 0; level <= YardLevels; level++)
-                Woodsheds[level] = Own(Sprite.Create(texture, new Rect(level * width, 0, width, height), new Vector2(0.5f, 0f), PixelsPerCell, 0, SpriteMeshType.FullRect));
-            return true;
+                sprites[level] = Own(Sprite.Create(texture, new Rect(level * width, 0, width, height), new Vector2(0.5f, 0f), PixelsPerCell, 0, SpriteMeshType.FullRect));
+            return sprites;
         }
 
         private static void Fence(Sheet to, int left, Vector2Int cell, Sheet fence, Vector2Int piece) =>

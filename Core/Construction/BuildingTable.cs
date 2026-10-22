@@ -71,9 +71,11 @@ namespace KingdomWatch.Core.Construction
 
         // Stone (#166) is footings, and a house's hearth; a field has none.
         // Twice each building's wood, decided at #166's kickoff: stone has
-        // no sink but building, so its one-off cost carries its weight.
+        // no sink but building, so its one-off cost carries its weight. The
+        // Barn's was cut to 25 wood and 50 stone at #178's, so that no
+        // building wants more stone than the base store holds.
         private static readonly BuildingSpec House = new BuildingSpec(Capability.Construction, SkillTier.Novice, 20, 40, 5, 5, 2, 24 * Hour);
-        private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 30, 60, 7, 5, 3, 32 * Hour);
+        private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 25, 50, 7, 5, 3, 32 * Hour);
         private static readonly BuildingSpec Field = new BuildingSpec(Capability.Farming, SkillTier.Novice, 5, 0, 5, 5, 0, 8 * Hour);
 
         // The ladder gates storage at Apprentice construction; Novice until
@@ -82,6 +84,11 @@ namespace KingdomWatch.Core.Construction
         // stand inside the fence and need no clearance, as a field's crop.
         private static readonly BuildingSpec Granary = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 50, 3, 2, 3, 24 * Hour);
         private static readonly BuildingSpec Woodshed = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 50, 5, 4, 0, 24 * Hour);
+
+        // The Stoneyard (#178) is a fenced yard of stone piles, laid out as
+        // the Woodshed's log yard is; built of wood alone, as the ladder has
+        // it, since a yard has no footings.
+        private static readonly BuildingSpec Stoneyard = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 0, 5, 4, 0, 24 * Hour);
 
         /// <summary>The spec of a kind. Throws for <see cref="BuildingKind.None"/> or an undefined kind.</summary>
         public static BuildingSpec Of(BuildingKind kind)
@@ -98,6 +105,8 @@ namespace KingdomWatch.Core.Construction
                     return Granary;
                 case BuildingKind.Woodshed:
                     return Woodshed;
+                case BuildingKind.Stoneyard:
+                    return Stoneyard;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a defined BuildingKind, or None.");
             }
