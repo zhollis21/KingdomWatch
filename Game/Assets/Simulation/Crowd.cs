@@ -46,6 +46,15 @@ namespace KingdomWatch.Game
         // swing at air.
         private const float AtWork = 0.3f;
 
+        // Setting to work or off from it, someone's base point can jump: a
+        // field hand works a spot of their own, a woodcutter stands back
+        // from the tree, and the walk starts from the cell itself. A jump up
+        // to this many cells is carried into the drawn offset and eased out,
+        // so they step across rather than vanish and reappear; a longer one
+        // (a fast clock) is drawn as it is, and so is what a fast clock
+        // piles up past that.
+        private const float MaxCarry = 3f;
+
         private readonly int width, height;
         private readonly Func<int, int, bool> standable;
 
@@ -86,6 +95,11 @@ namespace KingdomWatch.Game
                 owner[slot] = who;
                 lean[slot] = Vector2.zero;
                 drawn[slot] = Vector2.zero;
+            }
+            else if ((give[slot] == AtWork) != working)
+            {
+                var jump = cell - at[slot];
+                if (jump.magnitude <= MaxCarry) drawn[slot] = Vector2.ClampMagnitude(drawn[slot] - jump, MaxCarry);
             }
             at[slot] = cell;
             this.heading[slot] = heading.sqrMagnitude > 0f ? heading.normalized : Vector2.zero;
