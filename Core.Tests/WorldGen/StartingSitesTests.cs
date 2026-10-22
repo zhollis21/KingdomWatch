@@ -241,6 +241,9 @@ namespace KingdomWatch.Core.Tests.WorldGen
                 }
             }
 
+            // Stone in reach (#166), so the trees are all it lacks.
+            grid.Set(new WorldPosition(14, 20), TerrainKind.Rocks);
+
             var world = new World(1UL, grid, DemographicSettings.Default);
             var west = new WorldPosition(20, 20);
 
@@ -249,6 +252,54 @@ namespace KingdomWatch.Core.Tests.WorldGen
                 Assert.That(world.Buildings.ForageInReach(west, ReadOnlySpan<bool>.Empty), Is.GreaterThanOrEqualTo(Buildings.YearlyNeed(20)), "bushes enough");
                 Assert.That(world.Buildings.CanSettle(west, ReadOnlySpan<bool>.Empty, 20), Is.True, "passes the founding check");
                 Assert.That(() => StartingSites.Pick(world, 1, 20, 0), Throws.InvalidOperationException.With.Message.Contains("room for 0"));
+            });
+        }
+
+        [Test]
+        public void A_site_with_no_rocks_in_reach_is_never_picked()
+        {
+            // Bushes for a year, a stand of trees and room for a barn, and not
+            // a rock (#166): every house, barn and store needs stone, so the
+            // village could never build. One rock, and it is a site.
+            static TerrainGrid Map(bool rock)
+            {
+                var grid = new TerrainGrid(80, 40, TerrainKind.Plains);
+
+                for (var y = 0; y < grid.Height; y++)
+                {
+                    grid.Set(new WorldPosition(40, y), TerrainKind.SmallRiver);
+
+                    for (var x = 0; x < grid.Width; x++)
+                    {
+                        if (x != 40 && (x + y) % 3 == 0 && Math.Abs(y - 20) > 4)
+                        {
+                            grid.Set(new WorldPosition(x, y), TerrainKind.Scrub);
+                        }
+                    }
+                }
+
+                for (var x = 26; x < 32; x++)
+                {
+                    grid.Set(new WorldPosition(x, 20), TerrainKind.Forest);
+                    grid.Set(new WorldPosition(x + 30, 20), TerrainKind.Forest);
+                }
+
+                if (rock)
+                {
+                    grid.Set(new WorldPosition(14, 20), TerrainKind.Rocks);
+                    grid.Set(new WorldPosition(66, 20), TerrainKind.Rocks);
+                }
+
+                return grid;
+            }
+
+            var bare = new World(1UL, Map(rock: false), DemographicSettings.Default);
+            var rocky = new World(1UL, Map(rock: true), DemographicSettings.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => StartingSites.Pick(bare, 1, 20, 0), Throws.InvalidOperationException.With.Message.Contains("room for 0"));
+                Assert.That(StartingSites.Pick(rocky, 1, 20, 0), Has.Count.EqualTo(2));
             });
         }
 

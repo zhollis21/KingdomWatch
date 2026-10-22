@@ -190,6 +190,13 @@ namespace KingdomWatch.Core.Work
         public const int WoodReserve = 200;
 
         /// <summary>
+        /// Stone a community keeps on hand: what building draws on, a few
+        /// buildings' worth (#166). StoneGatherers stop there rather than
+        /// fill the store, so its capacity is not read as a want for more.
+        /// </summary>
+        public const int StoneReserve = 30;
+
+        /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
         /// "foragers and hunters working out from a settlement" among the
         /// things that reveal, and this is how far they reveal.
@@ -1245,7 +1252,6 @@ namespace KingdomWatch.Core.Work
         // The stock a job's store would be worked up to with room for all of
         // it; ChooseJob holds it to the capacity. Living is at least one
         // wherever this is reached (see ChooseJob), so food's is never zero.
-        // Stone has no use yet, so it is gathered until there is no room.
         private static long WantOf(Tracked tracked, JobKind job, int living, long winterDays)
         {
             switch (job)
@@ -1255,7 +1261,7 @@ namespace KingdomWatch.Core.Work
                 case JobKind.Woodcutter:
                     return WoodWant(tracked.Hearths, winterDays);
                 case JobKind.StoneGatherer:
-                    return long.MaxValue;
+                    return StoneReserve;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(job), job, "Not a job with a need.");
             }

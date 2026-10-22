@@ -36,6 +36,11 @@ namespace KingdomWatch.Core.Tests.Construction
             // Nobody works on their own: the tests are the only builders and
             // farmers, so a day advanced is a day nothing else was approved.
             World.Jobs.Untrack(Settlement);
+
+            // A full store of stone (#166), so what the tests count is wood;
+            // the ones about stone take it away. No more than the store
+            // holds, or the first clearing spills the rest.
+            StoneFull();
         }
 
         internal World World { get; }
@@ -66,10 +71,12 @@ namespace KingdomWatch.Core.Tests.Construction
         // The building approved last, or null.
         internal Building? Latest => Buildings.All.Count == 0 ? null : Buildings.All[Buildings.All.Count - 1];
 
-        // Approves and finishes the next building the settlement wants.
+        // Approves and finishes the next building the settlement wants, with
+        // the stone for it.
         internal Building BuildNext()
         {
             var before = Buildings.All.Count;
+            StoneFull();
             Dawn();
 
             if (Buildings.All.Count == before)
@@ -83,6 +90,23 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         internal void Wood(int amount) => Stores.Gather(ResourceKind.Wood, amount);
+
+        internal void Stone(int amount) => Stores.Gather(ResourceKind.Stone, amount);
+
+        // Fills the stone back to what the store holds.
+        internal void StoneFull()
+        {
+            var room = (int)(Storage.BaseStone - Stores.Available(ResourceKind.Stone));
+
+            if (room > 0)
+            {
+                Stone(room);
+            }
+        }
+
+        // Leaves exactly this much stone in store.
+        internal void StoneLeft(int amount) =>
+            Stores.Consume(ResourceKind.Stone, (int)Stores.Available(ResourceKind.Stone) - amount);
 
         // A belt of river this wide round the yard, crossed west to east by
         // a causeway one cell wide of `causeway`, two rows south of the

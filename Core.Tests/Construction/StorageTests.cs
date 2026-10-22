@@ -269,6 +269,33 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_granary_waits_for_its_stone()
+        {
+            // #166: storage takes any wood in stock, but its stone it must
+            // have, as any building.
+            var w = new BuildingsWorld(people: 20);
+            w.Wood(1000);
+
+            while (w.Buildings.IsFoodShort(w.Settlement, w.Living) || w.Buildings.All.Count == 0)
+            {
+                w.BuildNext();
+            }
+
+            w.Stores.Gather(ResourceKind.Food, Storage.BaseFood);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood) - 100);
+            var spec = BuildingTable.Of(BuildingKind.Granary);
+            w.StoneLeft(spec.Stone - 1);
+            var count = w.Buildings.All.Count;
+
+            w.Dawn();
+            Assert.That(w.Buildings.All.Count, Is.EqualTo(count), "one stone short");
+
+            w.Stone(1);
+            w.Dawn();
+            Assert.That(w.Latest?.Kind, Is.EqualTo(BuildingKind.Granary));
+        }
+
+        [Test]
         public void Farmers_leave_the_fields_while_the_grain_is_full()
         {
             var w = new BuildingsWorld();

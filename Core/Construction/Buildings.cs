@@ -99,8 +99,9 @@ namespace KingdomWatch.Core.Construction
     ///
     /// **Settling.** <see cref="CanSettle"/> is the band's half of the
     /// bargain: early spring, bushes in reach whose year's fruit would cover
-    /// half as much again as a season's eating, and ground for a barn - so a
-    /// new village can feed itself to its first harvest.
+    /// half as much again as a season's eating, ground for a barn - so a
+    /// new village can feed itself to its first harvest - and a rock in
+    /// reach, since every house, barn and store needs stone (#166).
     ///
     /// The numbers are placeholders, set by the harness.
     /// </remarks>
@@ -364,6 +365,12 @@ namespace KingdomWatch.Core.Construction
         /// </summary>
         public static readonly long WoodFullReach = Jobs.NearWalk(PrimitiveTier.GatherWood.Duration);
 
+        /// <summary>
+        /// How far, in route cost, <see cref="HasRocksInReach"/> looks: as far
+        /// as a stone gatherer goes (<see cref="Jobs.ReachCost(long)"/>).
+        /// </summary>
+        public static readonly long StoneReach = Jobs.ReachCost(PrimitiveTier.GatherStone.Duration);
+
         private static readonly TreeWeight Trees = new TreeWeight();
 
         /// <summary>A year of meals for this many people.</summary>
@@ -468,7 +475,8 @@ namespace KingdomWatch.Core.Construction
         /// cover half as much again as one season's eating, the camp's yard
         /// keeps <see cref="VillageGap"/> from every settlement's buildings
         /// and yard - so nothing stands in or roofs over it either (the #153
-        /// review, #154) - and there is ground for a barn. That is a third of
+        /// review, #154) - there is ground for a barn, and a rock in reach
+        /// (<see cref="HasRocksInReach"/>, #166). The bushes are a third of
         /// what the words "a season of bushes" would suggest, since a bush
         /// gives a year's fruit over three seasons; it is the measure the
         /// #100 harness runs were tuned
@@ -515,7 +523,8 @@ namespace KingdomWatch.Core.Construction
                 && now.DayOfSeason < SimulationTime.DaysPerSeason / 2
                 && ForageInReach(at, known) * SettleDenominator * SimulationTime.SeasonsPerYear >= need * SettleNumerator
                 && YardIsApart(at)
-                && TryPlace(BuildingKind.Barn, at, at, known, EntityId.None, out _);
+                && TryPlace(BuildingKind.Barn, at, at, known, EntityId.None, out _)
+                && HasRocksInReach(at, known);
         }
 
         /// <summary>
@@ -620,6 +629,18 @@ namespace KingdomWatch.Core.Construction
         {
             return WoodFromTrees(_pathfinder.WeighReachable(at, Jobs.Mover, _forest, known, int.MaxValue, WoodReach, Trees, _land.Grown)) / TreeWeight.Whole;
         }
+
+        /// <summary>
+        /// Whether a stone gatherer from a place, knowing a map as
+        /// <see cref="ForageInReach(WorldPosition, ReadOnlySpan{bool})"/>
+        /// reads it, could walk to a rock within <see cref="StoneReach"/>.
+        /// One rock is enough: rocks are never used up (<see cref="LandCover"/>),
+        /// so a village with one in reach has stone for good, and one with
+        /// none could never build (#166).
+        /// </summary>
+        public bool HasRocksInReach(WorldPosition at, ReadOnlySpan<bool> known) =>
+            _pathfinder.TryFindNearest(
+                at, Jobs.Mover, JobTable.Terrain(JobKind.StoneGatherer), known, null, null, false, int.MaxValue, StoneReach, _scratchRoute, out _);
 
         /// <summary>
         /// Wood a year this many forest cells give back, each felled and
@@ -1469,6 +1490,12 @@ namespace KingdomWatch.Core.Construction
             var stores = settlement.SharedSupplies;
 
             stores.Embody(ResourceKind.Wood, spec.Wood);
+
+            if (spec.Stone > 0)
+            {
+                stores.Embody(ResourceKind.Stone, spec.Stone);
+            }
+
             CollectSquare(settlement.Position);
             AddLinks(kind, anchor, settlement.Position);
             var clearTicks = ClearTicksOf(kind, anchor, _lane, out var clearCuts, out var clearRocks);
@@ -1516,9 +1543,9 @@ namespace KingdomWatch.Core.Construction
             }
         }
 
-        // Someone has the skill, and the wood is spare: what is left must
-        // still light every hearth through the coming winter, the reserve
-        // Jobs stocks for.
+        // Someone has the skill, the stone is in stock (#166), and the wood
+        // is spare: what is left must still light every hearth through the
+        // coming winter, the reserve Jobs stocks for.
         private bool CanAfford(ICommunity settlement, BuildingKind kind)
         {
             var spec = BuildingTable.Of(kind);
@@ -1526,12 +1553,17 @@ namespace KingdomWatch.Core.Construction
                 * Warmth.FuelPerFire * Jobs.WinterDaysAhead(_clock.Now);
 
             return _skills.BestIn(settlement, spec.Skill) >= spec.MinimumTier
+                && HasStoneFor(settlement, spec)
                 && settlement.SharedSupplies.Available(ResourceKind.Wood) - winterFuel >= spec.Wood;
         }
 
-        // Storage is built with any wood in stock, the winter's fuel included:
-        // a village that cannot hold its winter's fuel is what a Woodshed is
-        // for, and it could otherwise never afford one (#98). It stands in
+        private static bool HasStoneFor(ICommunity settlement, BuildingSpec spec) =>
+            settlement.SharedSupplies.Available(ResourceKind.Stone) >= spec.Stone;
+
+        // Storage is built with any wood in stock, the winter's fuel included
+        // (its stone it needs like any building, #166): a village that cannot
+        // hold its winter's fuel is what a Woodshed is for, and it could
+        // otherwise never afford one (#98). It stands in
         // one yard with the others of its kind, the first by what fills it
         // (#167): a Granary by the settlement's barns, a Woodshed by the
         // forest its Woodcutters work, the nearest a woodcutter's search from
@@ -1543,6 +1575,7 @@ namespace KingdomWatch.Core.Construction
             anchor = default;
 
             if (_skills.BestIn(settlement, spec.Skill) < spec.MinimumTier
+                || !HasStoneFor(settlement, spec)
                 || settlement.SharedSupplies.Available(ResourceKind.Wood) < spec.Wood)
             {
                 return false;

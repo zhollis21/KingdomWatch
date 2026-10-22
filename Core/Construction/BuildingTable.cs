@@ -9,11 +9,12 @@ namespace KingdomWatch.Core.Construction
     /// </summary>
     public readonly struct BuildingSpec
     {
-        internal BuildingSpec(Capability skill, SkillTier minimumTier, int wood, int width, int height, int clearance, long buildTicks)
+        internal BuildingSpec(Capability skill, SkillTier minimumTier, int wood, int stone, int width, int height, int clearance, long buildTicks)
         {
             Skill = skill;
             MinimumTier = minimumTier;
             Wood = wood;
+            Stone = stone;
             Width = width;
             Height = height;
             Clearance = clearance;
@@ -28,6 +29,13 @@ namespace KingdomWatch.Core.Construction
 
         /// <summary>Wood built into it, taken from stock when work is approved.</summary>
         public int Wood { get; }
+
+        /// <summary>
+        /// Stone built into it, taken from stock with the wood (#166): a
+        /// building that needs any is not approved without it. Holding stone
+        /// does not make it stone construction; that is masonry's.
+        /// </summary>
+        public int Stone { get; }
 
         /// <summary>Cells across.</summary>
         public int Width { get; }
@@ -61,16 +69,17 @@ namespace KingdomWatch.Core.Construction
     {
         private const long Hour = SimulationTime.TicksPerHour;
 
-        private static readonly BuildingSpec House = new BuildingSpec(Capability.Construction, SkillTier.Novice, 20, 5, 5, 2, 24 * Hour);
-        private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 30, 7, 5, 3, 32 * Hour);
-        private static readonly BuildingSpec Field = new BuildingSpec(Capability.Farming, SkillTier.Novice, 5, 5, 5, 0, 8 * Hour);
+        // Stone (#166) is footings, and a house's hearth; a field has none.
+        private static readonly BuildingSpec House = new BuildingSpec(Capability.Construction, SkillTier.Novice, 20, 10, 5, 5, 2, 24 * Hour);
+        private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 30, 15, 7, 5, 3, 32 * Hour);
+        private static readonly BuildingSpec Field = new BuildingSpec(Capability.Farming, SkillTier.Novice, 5, 0, 5, 5, 0, 8 * Hour);
 
         // The ladder gates storage at Apprentice construction; Novice until
         // skills exist (#22), so that it is built at all (#98). Sized to the
         // art's silo, and for a Woodshed to a fenced log yard, whose piles
         // stand inside the fence and need no clearance, as a field's crop.
-        private static readonly BuildingSpec Granary = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 3, 2, 3, 24 * Hour);
-        private static readonly BuildingSpec Woodshed = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 5, 4, 0, 24 * Hour);
+        private static readonly BuildingSpec Granary = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 10, 3, 2, 3, 24 * Hour);
+        private static readonly BuildingSpec Woodshed = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 10, 5, 4, 0, 24 * Hour);
 
         /// <summary>The spec of a kind. Throws for <see cref="BuildingKind.None"/> or an undefined kind.</summary>
         public static BuildingSpec Of(BuildingKind kind)

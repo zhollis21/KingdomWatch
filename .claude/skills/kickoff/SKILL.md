@@ -397,6 +397,14 @@ Before the first `AskUserQuestion`, all of these must hold:
       compressed into option descriptions the user reads inside the widget,
       at the moment they are choosing, with no way to compare them
       side by side.
+- [ ] **Every gameplay number the plan adds or changes is in the brief, and
+      asked about.** Costs, rates, capacities, reserves, radii, thresholds:
+      each with its value and a line of scale (what it means in trips, days
+      or buildings). "Placeholders, for the harness to tune" is still a
+      number the user has not agreed, and a plan that settles the approach
+      but not its numbers is not agreed. On #166 the Stone costs went into
+      code as placeholders the question never covered, and had to be asked
+      for after the fact.
 
       This does not conflict with *never list options in plain text*. That rule
       stops prose being used **instead of** the popup — it does not license
@@ -483,6 +491,8 @@ Present the plan in the conversation and end at an explicit approval gate
 - **What we're solving** — restated in your own words, reflecting what you
   verified in Step 2, not just the issue's title
 - **Approach chosen, and what it beat** — with the reasoning
+- **Numbers** — every gameplay value the plan introduces or changes, with
+  the value the user agreed in Step 4; the approval covers these too
 - **Steps** — ordered, each concrete enough to act on, naming the files involved
 - **Tradeoffs and risks** — what could go wrong, what is hard to undo
 - **Verification** — how we'll confirm it works (harness/NUnit for `Core`, the

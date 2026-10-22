@@ -179,6 +179,7 @@ namespace KingdomWatch.Core.Tests.Construction
             for (var i = 0; i < 60; i++)
             {
                 var before = w.Buildings.All.Count;
+                w.StoneFull();
                 w.Dawn();
 
                 if (w.Buildings.All.Count == before)
