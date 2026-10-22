@@ -181,6 +181,43 @@ namespace KingdomWatch.Core.Traversal
             return cost;
         }
 
+        /// <summary>
+        /// What one step costs a mover, as <see cref="CostOfRoute"/> prices
+        /// it: the cell entered, times 10 straight or 14 diagonal. Zero
+        /// rather than a refusal when the mover cannot enter the cell or
+        /// the diagonal cuts a corner, because the caller is pacing a route
+        /// it already holds (<see cref="Work.Jobs.PlaceAt"/>), whose cells
+        /// the grid may have changed under since it was found.
+        /// </summary>
+        /// <exception cref="ArgumentException">The two cells are not adjacent.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// A cell is off the map, or the mover has no defined transport.
+        /// </exception>
+        public long CostOfStep(WorldPosition from, WorldPosition to, Transport mover)
+        {
+            TransportGuard.RequireMover(mover);
+            _grid.IndexOf(from);
+            var toIndex = _grid.IndexOf(to);
+            var dx = to.X - from.X;
+            var dy = to.Y - from.Y;
+
+            if (dx == 0 && dy == 0 || Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
+            {
+                throw new ArgumentException(from + " to " + to + " is not a step.", nameof(to));
+            }
+
+            var diagonal = dx != 0 && dy != 0;
+
+            if (diagonal
+                && (!Passable(_grid.IndexOf(new WorldPosition(to.X, from.Y)), mover)
+                    || !Passable(_grid.IndexOf(new WorldPosition(from.X, to.Y)), mover)))
+            {
+                return 0L;
+            }
+
+            return (long)(diagonal ? DiagonalCost : StraightCost) * EntryCost(toIndex, mover);
+        }
+
         /// <summary>Whether a mover with these transports may stand on this cell.</summary>
         public bool IsPassable(WorldPosition position, Transport mover)
         {
