@@ -108,6 +108,21 @@ namespace KingdomWatch.Harness
         /// has no road along any of its edges (#23).
         /// </summary>
         BuildingLane = 25,
+
+        /// <summary>
+        /// A reservation nothing owns (#24): hours claimed on a building, or
+        /// inputs held in process, beyond what the tasks out hold; ground held
+        /// back for no uncleared building; or stock reserved or carried, which
+        /// no task holds yet.
+        /// </summary>
+        ReservationUnowned = 26,
+
+        /// <summary>
+        /// A task out without the reservation it set out holding (#24): its
+        /// bush or tree, its planted tree, its hours on a building, its inputs,
+        /// or - for a building not yet cleared - the ground it is clearing.
+        /// </summary>
+        ReservationLost = 27,
     }
 
     /// <summary>

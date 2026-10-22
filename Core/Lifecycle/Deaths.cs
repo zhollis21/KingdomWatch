@@ -46,10 +46,13 @@ namespace KingdomWatch.Core.Lifecycle
     /// 6's "work manager reposts it" happens implicitly rather than as a step:
     /// the next free hand sees the shortfall (see <see cref="Jobs"/>).
     ///
-    /// **What is not here, and where it is.** Cancelling reservations (#24),
-    /// breaking an apprenticeship (#22), destroying a master's checked-out
-    /// Tools/Weapons/Armor rather than passing them on (#78), and folding
-    /// personal wealth into the household (#68) each join this cascade when
+    /// Reservations need no step of their own: every claim a person holds -
+    /// a harvest, a planted tree, hours on a building, inputs in process -
+    /// is held by their task, and the vacate gives it back (#24).
+    ///
+    /// **What is not here, and where it is.** Breaking an apprenticeship
+    /// (#22), destroying a master's checked-out Tools/Weapons/Armor rather
+    /// than passing them on (#78), and folding personal wealth into the household (#68) each join this cascade when
     /// the thing they act on exists. A step is added here, not subscribed.
     ///
     /// Allocation-free after <see cref="Track"/>: genealogy walks are over

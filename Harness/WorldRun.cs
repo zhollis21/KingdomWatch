@@ -234,7 +234,8 @@ namespace KingdomWatch.Harness
                 .CheckJobs(world.Jobs, world.People, world.Clock)
                 .CheckCommunities(_communities, world.People, world.Clock)
                 .CheckLand(world.Land, world.Grid, world.Clock)
-                .CheckBuildings(world.Buildings, world.Founding, world.Households, world.Grid, world.Clock);
+                .CheckBuildings(world.Buildings, world.Founding, world.Households, world.Grid, world.Clock)
+                .CheckReservations(world.Jobs, world.Buildings, world.Land, world.Grid, _communities, world.Clock);
 
             // Each system's own tracked set: a community one system still has
             // events booked for and another has let go has no other symptom.
