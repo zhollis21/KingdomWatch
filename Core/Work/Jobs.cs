@@ -630,6 +630,12 @@ namespace KingdomWatch.Core.Work
         public int HearthsAtDawn(ICommunity group) => TrackedFor(group).Hearths;
 
         /// <summary>
+        /// Finished houses as counted at the band's last dawn - the snapshot
+        /// that sizes the stone reserve (#166), not a live count.
+        /// </summary>
+        public int HousesAtDawn(ICommunity group) => TrackedFor(group).Houses;
+
+        /// <summary>
         /// Finds the band's sites again from where it stands now. The dawn
         /// pass does this; a band that moves between dawns does it itself.
         /// Tasks under way keep the route they left with.

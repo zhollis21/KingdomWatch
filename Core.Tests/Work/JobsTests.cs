@@ -557,6 +557,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(unsurveyed.Reachable, Is.False, "nothing searched before the first dawn");
                 Assert.That(w.Jobs.LivingAtDawn(band), Is.EqualTo(2), "the dawn's count, not today's");
                 Assert.That(w.Jobs.HearthsAtDawn(band), Is.EqualTo(hearths));
+                Assert.That(w.Jobs.HousesAtDawn(band), Is.Zero, "a band builds nothing");
                 Assert.That(w.Jobs.SitesFoundFrom(band), Is.EqualTo(WorkWorld.Camp));
                 Assert.That(w.Jobs.OnDuty(band, JobKind.Woodcutter), Is.EqualTo(1), "the adult; the child does not work");
                 Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.Zero);
@@ -577,12 +578,14 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(() => w.Jobs.LivingAtDawn(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.HearthsAtDawn(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.HousesAtDawn(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SitesFoundFrom(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.OnDuty(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SurveyOf(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SiteRouteOf(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.LivingAtDawn(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.HearthsAtDawn(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.HousesAtDawn(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.SitesFoundFrom(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.OnDuty(null!, JobKind.Forager), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.SurveyOf(null!, JobKind.Forager), Throws.ArgumentNullException);
