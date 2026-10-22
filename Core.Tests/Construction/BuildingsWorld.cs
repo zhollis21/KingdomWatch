@@ -36,6 +36,11 @@ namespace KingdomWatch.Core.Tests.Construction
             // Nobody works on their own: the tests are the only builders and
             // farmers, so a day advanced is a day nothing else was approved.
             World.Jobs.Untrack(Settlement);
+
+            // A full store of stone (#166), so what the tests count is wood;
+            // the ones about stone take it away. No more than the store
+            // holds, or the first clearing spills the rest.
+            StoneFull();
         }
 
         internal World World { get; }
@@ -52,8 +57,17 @@ namespace KingdomWatch.Core.Tests.Construction
 
         internal int Living => Settlement.Members.Count;
 
-        // A dawn with hands to spare.
-        internal void Dawn() => Buildings.AtDawn(Settlement, 1, Living);
+        // A dawn with hands to spare, and the store's fill of stone: what
+        // the tests count is wood (#166).
+        internal void Dawn()
+        {
+            StoneFull();
+            DawnAsIs();
+        }
+
+        // A dawn with hands to spare and the stone as it stands, for the
+        // tests about stone.
+        internal void DawnAsIs() => Buildings.AtDawn(Settlement, 1, Living);
 
         // Every hour a building has left, claimed and done in one go.
         internal void Finish(Building building)
@@ -83,6 +97,23 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         internal void Wood(int amount) => Stores.Gather(ResourceKind.Wood, amount);
+
+        internal void Stone(int amount) => Stores.Gather(ResourceKind.Stone, amount);
+
+        // Fills the stone back to what the store holds.
+        internal void StoneFull()
+        {
+            var room = (int)(Storage.BaseStone - Stores.Available(ResourceKind.Stone));
+
+            if (room > 0)
+            {
+                Stone(room);
+            }
+        }
+
+        // Leaves exactly this much stone in store.
+        internal void StoneLeft(int amount) =>
+            Stores.Consume(ResourceKind.Stone, (int)Stores.Available(ResourceKind.Stone) - amount);
 
         // A belt of river this wide round the yard, crossed west to east by
         // a causeway one cell wide of `causeway`, two rows south of the

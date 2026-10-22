@@ -82,6 +82,103 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_house_waits_for_its_stone_and_takes_it_with_the_wood()
+        {
+            // #166: wood to spare and one stone short, nothing is approved;
+            // one more and the house is, built of both.
+            var w = new BuildingsWorld();
+            var spec = BuildingTable.Of(BuildingKind.House);
+            w.Wood(100);
+            w.StoneLeft(spec.Stone - 1);
+
+            w.DawnAsIs();
+            Assert.That(w.Buildings.All, Is.Empty, "one stone short");
+
+            w.Stone(1);
+            w.DawnAsIs();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.All.Single().Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(w.Stores.Available(ResourceKind.Stone), Is.Zero);
+                Assert.That(w.Stores.Flows(ResourceKind.Stone).Embodied, Is.EqualTo(spec.Stone));
+            });
+        }
+
+        [Test]
+        public void Houses_barns_and_stores_need_stone_and_fields_do_not()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(BuildingTable.Of(BuildingKind.House).Stone, Is.GreaterThan(0));
+                Assert.That(BuildingTable.Of(BuildingKind.Barn).Stone, Is.GreaterThan(0));
+                Assert.That(BuildingTable.Of(BuildingKind.Granary).Stone, Is.GreaterThan(0));
+                Assert.That(BuildingTable.Of(BuildingKind.Woodshed).Stone, Is.GreaterThan(0));
+                Assert.That(BuildingTable.Of(BuildingKind.Field).Stone, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void The_stone_reserve_covers_every_building_and_fits_the_store()
+        {
+            // StoneGatherers stop at the reserve, so a building dearer than it
+            // could never be afforded; and the reserve past the base store is
+            // a store always full, wanting a Stoneyard nobody builds (#178).
+            Assert.Multiple(() =>
+            {
+                foreach (BuildingKind kind in System.Enum.GetValues(typeof(BuildingKind)))
+                {
+                    if (kind != BuildingKind.None)
+                    {
+                        Assert.That(BuildingTable.Of(kind).Stone, Is.LessThanOrEqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve), kind.ToString());
+                    }
+                }
+
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneReserve, Is.LessThan(Storage.BaseStone));
+            });
+        }
+
+        [Test]
+        public void The_stone_wanted_grows_by_each_finished_house()
+        {
+            // #166: sixty with no house, ten more for each finished one; a
+            // house still going up does not count.
+            var w = new BuildingsWorld();
+            w.Wood(100);
+            var house = w.BuildNext();
+            w.Dawn();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneWant(0), Is.EqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve));
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneWant(3), Is.EqualTo(KingdomWatch.Core.Work.Jobs.StoneReserve + (3 * KingdomWatch.Core.Work.Jobs.StonePerHouse)));
+                Assert.That(() => KingdomWatch.Core.Work.Jobs.StoneWant(-1), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+                Assert.That(house.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(w.Latest, Is.Not.SameAs(house), "a second building going up");
+                Assert.That(w.Buildings.FinishedHouses(w.Settlement.Id), Is.EqualTo(1));
+                Assert.That(w.Buildings.FinishedHouses(w.World.AddBand(2, new WorldPosition(2, 2)).Id), Is.Zero, "a band builds nothing");
+            });
+        }
+
+        [Test]
+        public void A_field_is_laid_out_with_no_stone_in_store()
+        {
+            var w = new BuildingsWorld();
+            w.Wood(500);
+            w.BuildNext();
+            var barn = w.BuildNext();
+            w.StoneLeft(0);
+
+            w.DawnAsIs();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(barn.Kind, Is.EqualTo(BuildingKind.Barn));
+                Assert.That(w.Latest?.Kind, Is.EqualTo(BuildingKind.Field));
+            });
+        }
+
+        [Test]
         public void No_skill_no_building()
         {
             var w = new BuildingsWorld();
@@ -637,6 +734,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(12 + (i % 15), 68 + (i / 15)), TerrainKind.Scrub);
                 }
+
+                grid.Set(new WorldPosition(11, 68), TerrainKind.Rocks);
             });
             w.Wood(100);
             var house = w.BuildNext();
@@ -667,6 +766,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(12 + (i % 15), 10 + (i / 15)), TerrainKind.Scrub);
                 }
+
+                grid.Set(new WorldPosition(11, 10), TerrainKind.Rocks);
             });
             w.Wood(100);
             var house = w.BuildNext();
@@ -1072,6 +1173,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(SettleAt.X - 5 + (i % 10), SettleAt.Y + 5 + (i / 10)), TerrainKind.Scrub);
                 }
+
+                grid.Set(SettleRock, TerrainKind.Rocks);
             });
             var at = SettleAt;
             var map = w.Settlement.Id;
@@ -1089,10 +1192,43 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(w.Buildings.CanSettle(at, map, 12), Is.False, "the first day of summer");
         }
 
+        [Test]
+        public void A_band_settles_only_with_a_rock_in_reach()
+        {
+            // #166: every house, barn and store needs stone, and a rock is the
+            // only source until a quarry, so a village with none in reach
+            // could never build. Bushes and barn ground as the season test.
+            var bushes = (int)(((Buildings.YearlyNeed(12) * 3 / 2 / SimulationTime.SeasonsPerYear) / 42) + 1);
+            System.Action<TerrainGrid> paintBushes = grid =>
+            {
+                for (var i = 0; i < bushes; i++)
+                {
+                    grid.Set(new WorldPosition(SettleAt.X - 5 + (i % 10), SettleAt.Y + 5 + (i / 10)), TerrainKind.Scrub);
+                }
+            };
+            var bare = new BuildingsWorld(size: 100, paint: paintBushes);
+            var rocky = new BuildingsWorld(size: 100, paint: grid =>
+            {
+                paintBushes(grid);
+                grid.Set(SettleRock, TerrainKind.Rocks);
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bare.Buildings.HasRocksInReach(SettleAt, System.ReadOnlySpan<bool>.Empty), Is.False);
+                Assert.That(bare.Buildings.CanSettle(SettleAt, bare.Settlement.Id, 12), Is.False, "food and barn ground, but no stone");
+                Assert.That(rocky.Buildings.HasRocksInReach(SettleAt, System.ReadOnlySpan<bool>.Empty), Is.True);
+                Assert.That(rocky.Buildings.CanSettle(SettleAt, rocky.Settlement.Id, 12), Is.True, "one rock is stone for good");
+            });
+        }
+
         // Where the settling fixtures ask about, on a map a hundred across:
         // VillageGap clear of the fixture's own settlement, and inside what
         // its band saw.
         private static readonly WorldPosition SettleAt = new WorldPosition(66, 20);
+
+        // A rock in reach of SettleAt, beside its bushes (#166).
+        private static readonly WorldPosition SettleRock = new WorldPosition(SettleAt.X - 6, SettleAt.Y + 5);
 
         [Test]
         public void Skills_and_food_questions_refuse_what_is_not_a_question()
@@ -1158,6 +1294,8 @@ namespace KingdomWatch.Core.Tests.Construction
                 {
                     grid.Set(new WorldPosition(SettleAt.X - 5 + (i % 10), SettleAt.Y + 5 + (i / 10)), TerrainKind.Scrub);
                 }
+
+                grid.Set(SettleRock, TerrainKind.Rocks);
 
                 for (var x = SettleAt.X + 10; x < SettleAt.X + 16; x++)
                 {

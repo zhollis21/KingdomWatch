@@ -784,6 +784,7 @@ namespace KingdomWatch.Core.Validation
                 Mix(band.Id);
                 Mix(jobs.LivingAtDawn(band));
                 Mix(jobs.HearthsAtDawn(band));
+                Mix(jobs.HousesAtDawn(band));
                 Mix(jobs.SitesFoundFrom(band));
 
                 // Over the enum's own numbering, as supplies are, and only

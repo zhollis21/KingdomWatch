@@ -179,8 +179,11 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToRocks));
             Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack));
 
-            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone);
+            // The reserve, not the store's capacity (#166): stone is wanted
+            // for building, and a store filled for its own sake is not.
+            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneReserve);
             w.Advance(SimulationTime.TicksPerDay);
+            Assert.That(Jobs.StoneReserve, Is.LessThan(Storage.BaseStone));
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.None), "everything covered: labour surplus");
             Assert.That(w.Jobs.HasTask(adult), Is.False);
         }
@@ -554,6 +557,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(unsurveyed.Reachable, Is.False, "nothing searched before the first dawn");
                 Assert.That(w.Jobs.LivingAtDawn(band), Is.EqualTo(2), "the dawn's count, not today's");
                 Assert.That(w.Jobs.HearthsAtDawn(band), Is.EqualTo(hearths));
+                Assert.That(w.Jobs.HousesAtDawn(band), Is.Zero, "a band builds nothing");
                 Assert.That(w.Jobs.SitesFoundFrom(band), Is.EqualTo(WorkWorld.Camp));
                 Assert.That(w.Jobs.OnDuty(band, JobKind.Woodcutter), Is.EqualTo(1), "the adult; the child does not work");
                 Assert.That(w.Jobs.OnDuty(band, JobKind.Forager), Is.Zero);
@@ -574,12 +578,14 @@ namespace KingdomWatch.Core.Tests.Work
             {
                 Assert.That(() => w.Jobs.LivingAtDawn(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.HearthsAtDawn(band), Throws.InvalidOperationException);
+                Assert.That(() => w.Jobs.HousesAtDawn(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SitesFoundFrom(band), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.OnDuty(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SurveyOf(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.SiteRouteOf(band, JobKind.Forager), Throws.InvalidOperationException);
                 Assert.That(() => w.Jobs.LivingAtDawn(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.HearthsAtDawn(null!), Throws.ArgumentNullException);
+                Assert.That(() => w.Jobs.HousesAtDawn(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.SitesFoundFrom(null!), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.OnDuty(null!, JobKind.Forager), Throws.ArgumentNullException);
                 Assert.That(() => w.Jobs.SurveyOf(null!, JobKind.Forager), Throws.ArgumentNullException);
@@ -1428,16 +1434,18 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void A_death_takes_its_task_off_the_tally_as_well()
         {
-            // 198 wood and 99 stone, each a hundredth short: the tie goes to
-            // wood, the cutter's two fill it, so the gatherer goes to the
-            // rocks for the last stone. The cutter then dies on the road and
-            // his two never arrive, so by the time the gatherer is home with
-            // stone full, wood is wanted again. A dead worker still counted
+            // 196 wood, four short of 200, and stone one short of its
+            // reserve of 60: wood is the shorter share, so the cutter goes for
+            // it, and with his two counted it is no longer (2/200 against
+            // 1/60), so the gatherer goes to the rocks for the last stone.
+            // The cutter then dies on the road and his two never arrive, so
+            // by the time the gatherer is home with the stone in, wood is
+            // wanted again. A dead worker still counted
             // as on his way would keep the store looking full all day.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
-            band.SharedSupplies.Gather(ResourceKind.Wood, 198);
-            band.SharedSupplies.Gather(ResourceKind.Stone, Storage.BaseStone - 1);
+            band.SharedSupplies.Gather(ResourceKind.Wood, 196);
+            band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneReserve - 1);
             var cutter = w.Join(band, 30L);
             var gatherer = w.Join(band, 31L);
 
@@ -1445,7 +1453,7 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.Multiple(() =>
             {
                 Assert.That(w.People.GetJob(cutter), Is.EqualTo(JobKind.Woodcutter));
-                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.StoneGatherer), "the cutter's two fill the store");
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.StoneGatherer), "the cutter's two make wood the lesser share");
             });
 
             var stoneTrip = w.Jobs.TaskOf(gatherer);
@@ -1455,8 +1463,8 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(198L), "the dead deliver nothing");
-                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "198 and nobody cutting is under the reserve again");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(196L), "the dead deliver nothing");
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "196 and nobody cutting is the shorter share again");
             });
         }
 

@@ -22,7 +22,8 @@ namespace KingdomWatch.Core.WorldGen
     /// estimate of it (<see cref="Buildings.WoodEstimate"/>) from how many
     /// trees stand how far off in a straight line, since counting what
     /// woodcutters could walk to out to dusk for every candidate took
-    /// seconds. Stone is not scored: nothing spends it yet.
+    /// seconds. Stone is not scored: one rock in reach is stone for good,
+    /// and the founding check below gates on one (#166).
     ///
     /// Bushes gate instead, and so does having any forest in reach at all,
     /// counted as the village will walk to them.

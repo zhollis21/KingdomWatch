@@ -105,8 +105,13 @@ settlement that loses its farm forages or hunts instead.
 Every other kind has a single source, and all but one of them are not
 survival-critical:
 
-- **Stone** and **Ore** are building and smelting material. Without them a
-  settlement builds in Wood and works untooled; nobody dies of either.
+- **Stone** and **Ore** are building and smelting material; nobody dies of
+  either. Without Ore a settlement works untooled. Stone is not optional
+  for a settlement (#166): every house, barn and store takes some, so a
+  village with no rocks in reach could never build. Each takes twice its
+  wood in stone (House 40, Barn 60, Granary and Woodshed 50). Rocks are never used
+  up, so a starting site and a band's settling place both need one in reach,
+  as they need food; that one is then stone for good.
 - **Grain** exists only to become Food, which Forage and Hunt also supply
   directly. Losing farmland costs population capacity, not survival.
 - **Charcoal** comes only from Wood and has no substitute for smelting, but
@@ -234,8 +239,8 @@ fixed numbers, so they are described rather than tabulated.
 | Building | Min skill | Inputs | Prerequisite | Enables |
 |---|---|---|---|---|
 | Camp | — | Wood | — | A band's temporary shelter, pitched at every stop and kept on settling (#54); housing until houses exist |
-| House | Novice construction | Wood | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
-| Barn | Novice farming | Wood | a house | The farmstead fields are laid out around, up to four (#100) |
+| House | Novice construction | Wood, Stone | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
+| Barn | Novice farming | Wood, Stone | a house | The farmstead fields are laid out around, up to four (#100) |
 | Field | Novice farming | Wood | a barn with room, ground within reach of it | Grain, worked by Farmers (#100) |
 | Lumber camp | Apprentice woodcraft | Wood | forest in reach | Wood at rate |
 | Quarry | Apprentice masonry | Wood | rocks in reach | Stone at rate |
@@ -317,15 +322,17 @@ woodpile too small for the winter is exactly what a Woodshed answers.
 
 | Building | Min skill | Inputs | Prerequisite | Raises capacity for |
 |---|---|---|---|---|
-| Granary | Apprentice construction (Novice until #22) | Wood | a barn | Food, Grain |
-| Woodshed | Apprentice construction (Novice until #22) | Wood | a house | Wood, Charcoal |
+| Granary | Apprentice construction (Novice until #22) | Wood, Stone | a barn | Food, Grain |
+| Woodshed | Apprentice construction (Novice until #22) | Wood, Stone | a house | Wood, Charcoal |
 | Stoneyard | Apprentice construction | Wood | a house | Stone, Ore |
 | Vault | Journeyman construction | Stone | a smeltery or a smithy | Metal, Tools |
 | Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
 
-#98 built the Granary and the Woodshed. The Stoneyard waits for #166,
-which gives Stone a use, since nothing consumes Stone yet; the Vault and
-the Armory wait for the kinds they hold (#37, #99).
+#98 built the Granary and the Woodshed. #166 gave Stone a use - houses,
+barns and stores are built with it - and a want that grows with the
+village, so past four houses the Stone store sits full while more is
+wanted, which is the Stoneyard's demand. Building it is #178. The Vault
+and the Armory wait for the kinds they hold (#37, #99).
 
 A Granary is wanted when the Food is full and the food wanted going into a
 winter, less the Grain in store, is more than it holds; or when the Grain
@@ -376,7 +383,10 @@ covering two resources. #98 replaced both with one rule for every kind
 
 **Wants, held to capacity.** Each store has a want: food for ten days plus
 the winter ahead; `Jobs.WoodReserve` (200) of wood plus the winter's fuel;
-stone as much as there is room for. Workers aim for the lesser of the want
+60 stone and 10 more for each finished house (`Jobs.StoneWant`, #166),
+what building draws on: never less than the dearest building takes, and
+held at the 100 the store has at four houses until a Stoneyard (#178)
+raises it. Before #166 stone was gathered as long as there was room. Workers aim for the lesser of the want
 and the capacity, counting what's on its way home. Farmers stop once the
 Grain is full, and the fields stand idle.
 
@@ -407,7 +417,7 @@ The numbers #98 set are placeholders for the harness to tune, like
 | Wood | 250 | | 250 |
 | Stone | 100 | | |
 
-Both buildings cost 25 wood and take 24 work-hours.
+Both buildings cost 25 wood and 50 stone and take 24 work-hours.
 
 ---
 
