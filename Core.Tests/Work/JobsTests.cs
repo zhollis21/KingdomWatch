@@ -829,6 +829,37 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_walk_keeps_the_pace_it_set_out_with_when_the_ground_changes_under_it()
+        {
+            // Priced as the trip sets out, as its legs were: a road laid or
+            // a forest grown across the route since does not stretch or
+            // squeeze steps the leg's length never counted.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+            var route = w.Jobs.RouteOf(adult).ToArray();
+            w.Grid.Set(route[2], TerrainKind.Forest);
+
+            var ticks = new long[route.Length - 1];
+            for (var t = 0L; t < task.TravelTicks; t++)
+            {
+                ticks[Array.IndexOf(route, w.Jobs.PlaceAt(adult, task.Start.Plus(t)).From)]++;
+            }
+
+            Assert.Multiple(() =>
+            {
+                // Three plains entered at 100 and the forest at 200: a fifth
+                // of the walk each, and two fifths for the last.
+                Assert.That(ticks[0], Is.EqualTo(task.TravelTicks / 5L).Within(1L));
+                Assert.That(ticks[1], Is.EqualTo(task.TravelTicks / 5L).Within(1L), "the cell turned to forest");
+                Assert.That(ticks[2], Is.EqualTo(task.TravelTicks / 5L).Within(1L));
+                Assert.That(ticks[3], Is.EqualTo(task.TravelTicks * 2L / 5L).Within(1L));
+            });
+        }
+
+        [Test]
         public void A_walk_still_places_its_walker_across_a_cell_closed_since_it_set_out()
         {
             // The route is the one walked (A_task_keeps_the_route_it_left_with),

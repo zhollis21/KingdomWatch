@@ -309,6 +309,10 @@ namespace KingdomWatch.Game
         // they showed last frame, so coming into view starts them parted.
         private Crowd crowd;
         private bool peopleShown;
+        // Each figure's slot in the crowd: its person's place in the store.
+        private readonly List<int> crowdSlots = new List<int>();
+        // The instant drawn last frame, for how fast the clock runs.
+        private SimulationTime drewAt;
         private Jobs jobs;
         private float uiScale = 1f;
 
@@ -478,8 +482,16 @@ namespace KingdomWatch.Game
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
             workSpots.Clear();
-            foreach (var record in world.People.RecordSpan())
+            var records = world.People.RecordSpan();
+            crowd.Begin(records.Length);
+            // Easing people into and out of work only reads at the slower
+            // speeds; past CarryUpTo it would outlast the work.
+            var carry = frameSeconds > 0f && drewAt.TicksUntil(now) <= frameSeconds * CarryUpTo;
+            drewAt = now;
+            var index = -1;
+            foreach (var record in records)
             {
+                index++;
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
                 var at = WhereDrawn(world, person, record.Position, now, out var step);
@@ -511,7 +523,8 @@ namespace KingdomWatch.Game
                     if (activity.Dy != 0) jitterY = 0f;
                 }
                 var cell = at + new Vector2(0.5f + jitterX + activity.StandX, 0.5f + jitterY + activity.StandY);
-                crowd.Place(slot, record.Id, cell, step, activity.Tool != ArtSet.Tool.None);
+                crowd.Place(index, record.Id, cell, step, activity.Tool != ArtSet.Tool.None, carry);
+                crowdSlots[slot] = index;
                 figure.SetVisible(visible);
 
                 if (figure.Doll)
@@ -534,12 +547,12 @@ namespace KingdomWatch.Game
 
             // Parted only while people show: nobody sees it zoomed out, and
             // coming back into view starts them where they would have got to.
-            if (visible && !peopleShown) crowd.Snap(used);
-            else if (visible) crowd.Settle(used, frameSeconds);
+            if (visible && !peopleShown) crowd.Snap();
+            else if (visible) crowd.Settle(frameSeconds);
             peopleShown = visible;
             for (var i = 0; i < used; i++)
             {
-                var drawn = crowd.Drawn(i);
+                var drawn = crowd.Drawn(crowdSlots[i]);
                 people[i].Root.localPosition = new Vector3(OnArtPixel(drawn.x), OnArtPixel(height - drawn.y), 0f);
                 // Further south (larger row) is nearer the viewer, so it draws on top.
                 people[i].Order = OrderAt(drawn.y);
@@ -548,6 +561,12 @@ namespace KingdomWatch.Game
             for (var i = used; i < people.Count; i++) people[i].SetVisible(false);
             usedPeople = used;
         }
+
+        // Simulated ticks a real second up to which a jump into or out of
+        // work is eased (Crowd's MaxCarry): between the 20x and 100x speed
+        // steps, at 1x's 180 a second, so a frame's jitter at 20x does not
+        // flicker it.
+        private const float CarryUpTo = 50f * 180f;
 
         // How much of the per-person jitter a walker keeps (DrawPeople).
         private const float WalkJitter = 0.4f;
@@ -2274,6 +2293,7 @@ namespace KingdomWatch.Game
             if (index < people.Count) return people[index];
             people.Add(art != null ? NewDoll() : new Figure(NewMarker("Person", peopleRoot)));
             peopleIds.Add(EntityId.None);
+            crowdSlots.Add(0);
             return people[index];
         }
 

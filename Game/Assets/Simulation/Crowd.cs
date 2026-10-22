@@ -12,10 +12,11 @@ namespace KingdomWatch.Game
     // pass each other. Presentation only: it reads where Core puts people and
     // never writes back, so it cannot change what happens, only how it looks.
     //
-    // Each figure slot has a base point (where the simulation has them, in
-    // cells, rows counting south) and an offset this adds. The offsets are
-    // worked out SolvesPerSecond times a real second, section 4's local
-    // avoidance cadence, and the drawn offset eases toward them every frame.
+    // Each slot (a person's place in the store) has a base point, where the
+    // simulation has them in cells, rows counting south, and an offset this
+    // adds. The offsets are worked out SolvesPerSecond times a real second,
+    // section 4's local avoidance cadence, and the drawn offset eases toward
+    // them every frame.
     internal sealed class Crowd
     {
         // Two figures closer than this, in cells, lean apart: about a doll's
@@ -52,7 +53,9 @@ namespace KingdomWatch.Game
         // to this many cells (a builder at the far side of a site, a step
         // back) is carried into the drawn offset and eased out, so they step
         // across rather than vanish and reappear; a longer one, and what a
-        // fast clock piles up past that, is drawn as it is.
+        // fast clock piles up past that, is drawn as it is. Only on a slow
+        // clock (Place's `carry`): at 100x a work spell is a second, and
+        // easing out a few cells would take all of it.
         private const float MaxCarry = 5f;
 
         private readonly int width, height;
@@ -65,6 +68,8 @@ namespace KingdomWatch.Game
         private EntityId[] owner = new EntityId[0];
         private Vector2[] at = new Vector2[0], heading = new Vector2[0], lean = new Vector2[0], goal = new Vector2[0], drawn = new Vector2[0];
         private float[] give = new float[0];
+        private bool[] placed = new bool[0];
+        private int slots;
 
         // The cells' first slot and each slot's next in its cell, for one
         // solve; and the cells written, to clear after.
@@ -84,13 +89,25 @@ namespace KingdomWatch.Game
             for (var i = 0; i < first.Length; i++) first[i] = -1;
         }
 
-        // Where the simulation has someone this frame, by figure slot.
-        // `heading` is the step they are taking, zero standing still;
-        // `working`, whether they are at work. A slot that has passed to
-        // someone else starts with no lean of the last owner's.
-        public void Place(int slot, EntityId who, Vector2 cell, Vector2 heading, bool working)
+        // Starts a frame of `count` slots, none placed yet. A slot is the
+        // person's place in the people store, which stays theirs for life:
+        // numbered by drawing order instead, one death would shift everyone
+        // after it into someone else's lean.
+        public void Begin(int count)
         {
-            if (slot >= owner.Length) Grow(slot + 1);
+            if (count > owner.Length) Grow(count);
+            slots = count;
+            Array.Clear(placed, 0, count);
+        }
+
+        // Where the simulation has someone this frame, by slot (Begin).
+        // `heading` is the step they are taking, zero standing still;
+        // `working`, whether they are at work; `carry`, whether a jump into
+        // or out of work is eased (MaxCarry). A slot that has passed to
+        // someone else starts with no lean of the last owner's.
+        public void Place(int slot, EntityId who, Vector2 cell, Vector2 heading, bool working, bool carry)
+        {
+            placed[slot] = true;
             if (owner[slot] != who)
             {
                 owner[slot] = who;
@@ -98,7 +115,7 @@ namespace KingdomWatch.Game
                 goal[slot] = Vector2.zero;
                 drawn[slot] = Vector2.zero;
             }
-            else if ((give[slot] == AtWork) != working)
+            else if (carry && (give[slot] == AtWork) != working)
             {
                 var jump = cell - at[slot];
                 if (jump.magnitude <= MaxCarry) drawn[slot] = Vector2.ClampMagnitude(drawn[slot] - jump, MaxCarry);
@@ -111,28 +128,28 @@ namespace KingdomWatch.Game
         // Where a slot is drawn, after Settle.
         public Vector2 Drawn(int slot) => at[slot] + drawn[slot];
 
-        // Works out the leans for the first `count` slots when a solve is
+        // Works out the leans of everyone placed this frame when a solve is
         // due, then eases every drawn offset toward its lean and lane by
         // `seconds` of real time. Zero seconds (paused) moves nobody.
-        public void Settle(int count, float seconds)
+        public void Settle(float seconds)
         {
             if (seconds <= 0f) return;
             sinceSolve += seconds;
             if (sinceSolve >= 1f / SolvesPerSecond)
             {
                 sinceSolve = 0f;
-                Solve(count);
+                Solve();
             }
             var step = Follow * seconds;
-            for (var i = 0; i < count; i++) drawn[i] = Vector2.MoveTowards(drawn[i], goal[i], step);
+            for (var i = 0; i < slots; i++) if (placed[i]) drawn[i] = Vector2.MoveTowards(drawn[i], goal[i], step);
         }
 
         // Puts everyone straight onto their lean, as after a jump: used when
         // people come into view, so they do not drift apart in front of you.
-        public void Snap(int count)
+        public void Snap()
         {
-            Solve(count);
-            for (var i = 0; i < count; i++) drawn[i] = goal[i];
+            Solve();
+            for (var i = 0; i < slots; i++) if (placed[i]) drawn[i] = goal[i];
             sinceSolve = 0f;
         }
 
@@ -140,10 +157,11 @@ namespace KingdomWatch.Game
         // heading a quarter clockwise on screen is (x, y) -> (-y, x).
         private Vector2 LaneOf(int i) => new Vector2(-heading[i].y, heading[i].x) * Lane;
 
-        private void Solve(int count)
+        private void Solve()
         {
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < slots; i++)
             {
+                if (!placed[i]) continue;
                 var p = at[i] + drawn[i];
                 var x = Mathf.FloorToInt(p.x);
                 var y = Mathf.FloorToInt(p.y);
@@ -158,8 +176,9 @@ namespace KingdomWatch.Game
                 first[cell] = i;
             }
 
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < slots; i++)
             {
+                if (!placed[i]) continue;
                 var p = at[i] + drawn[i];
                 var cx = Mathf.FloorToInt(p.x);
                 var cy = Mathf.FloorToInt(p.y);
@@ -243,6 +262,7 @@ namespace KingdomWatch.Game
             Array.Resize(ref goal, size);
             Array.Resize(ref drawn, size);
             Array.Resize(ref give, size);
+            Array.Resize(ref placed, size);
             Array.Resize(ref next, size);
         }
     }
