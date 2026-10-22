@@ -60,9 +60,10 @@ namespace KingdomWatch.Game
 
         // Per slot: who is in it, where the simulation has them, which way
         // they walk (zero standing), how readily they give way, the lean the
-        // last solve settled on, and the offset drawn.
+        // last solve settled on, that lean with their lane as it may be
+        // drawn, and the offset drawn.
         private EntityId[] owner = new EntityId[0];
-        private Vector2[] at = new Vector2[0], heading = new Vector2[0], lean = new Vector2[0], drawn = new Vector2[0];
+        private Vector2[] at = new Vector2[0], heading = new Vector2[0], lean = new Vector2[0], goal = new Vector2[0], drawn = new Vector2[0];
         private float[] give = new float[0];
 
         // The cells' first slot and each slot's next in its cell, for one
@@ -94,6 +95,7 @@ namespace KingdomWatch.Game
             {
                 owner[slot] = who;
                 lean[slot] = Vector2.zero;
+                goal[slot] = Vector2.zero;
                 drawn[slot] = Vector2.zero;
             }
             else if ((give[slot] == AtWork) != working)
@@ -122,7 +124,7 @@ namespace KingdomWatch.Game
                 Solve(count);
             }
             var step = Follow * seconds;
-            for (var i = 0; i < count; i++) drawn[i] = Vector2.MoveTowards(drawn[i], Target(i), step);
+            for (var i = 0; i < count; i++) drawn[i] = Vector2.MoveTowards(drawn[i], goal[i], step);
         }
 
         // Puts everyone straight onto their lean, as after a jump: used when
@@ -130,13 +132,13 @@ namespace KingdomWatch.Game
         public void Snap(int count)
         {
             Solve(count);
-            for (var i = 0; i < count; i++) drawn[i] = Target(i);
+            for (var i = 0; i < count; i++) drawn[i] = goal[i];
             sinceSolve = 0f;
         }
 
         // The lane: to the walker's right. Rows count south, so turning a
         // heading a quarter clockwise on screen is (x, y) -> (-y, x).
-        private Vector2 Target(int i) => lean[i] + new Vector2(-heading[i].y, heading[i].x) * Lane;
+        private Vector2 LaneOf(int i) => new Vector2(-heading[i].y, heading[i].x) * Lane;
 
         private void Solve(int count)
         {
@@ -188,6 +190,10 @@ namespace KingdomWatch.Game
 
                 var leant = Vector2.ClampMagnitude(lean[i] * Keep + push * Push, MaxLean);
                 lean[i] = OnStandable(at[i], leant);
+                // The lane is checked with the lean, not after it: either
+                // alone can stay on the ground while the two together cross
+                // into a building beside the road.
+                goal[i] = OnStandable(at[i], lean[i] + LaneOf(i));
             }
 
             foreach (var cell in filled) first[cell] = -1;
@@ -234,6 +240,7 @@ namespace KingdomWatch.Game
             Array.Resize(ref at, size);
             Array.Resize(ref heading, size);
             Array.Resize(ref lean, size);
+            Array.Resize(ref goal, size);
             Array.Resize(ref drawn, size);
             Array.Resize(ref give, size);
             Array.Resize(ref next, size);
