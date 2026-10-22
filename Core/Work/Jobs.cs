@@ -110,7 +110,8 @@ namespace KingdomWatch.Core.Work
     /// <see cref="ICommunity.Destination"/> at dawn starts nobody - everyone
     /// walks with the band, and tomorrow's pass finds sites from the new
     /// camp. Nothing here reads or writes a person's own position, because
-    /// nothing moves one step by step yet (#25).
+    /// nothing in the simulation moves step by step: where a walker's feet
+    /// are, and how a crowd parts, is drawn from the task (#25).
     ///
     /// **Settlements also build and farm** (#100). A settlement's approved
     /// building and its fields are two more needs, ranked by the same
@@ -533,18 +534,28 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>
         /// Where this person's task puts them at an instant: section 4's
-        /// reconstruction. On a walking leg, the route cell reached by the
-        /// fraction of the leg elapsed; at work, the destination. Throws if
+        /// reconstruction. On a walking leg, the route cell last stepped
+        /// onto (<see cref="PlaceAt"/>); at work, the destination. Throws if
         /// they have no task, or the instant is outside it.
         /// </summary>
+        public WorldPosition PositionAt(PersonHandle person, SimulationTime now) => PlaceAt(person, now).From;
+
+        /// <summary>
+        /// <see cref="PositionAt"/> finer than a cell: on a walking leg, the
+        /// step of the route under way and how far through it; at work,
+        /// standing on the destination. Throws if they have no task, or the
+        /// instant is outside it.
+        /// </summary>
         /// <remarks>
-        /// Progress along a leg is by cell count rather than by each cell's
-        /// cost, so a walk that crosses a forest is placed a little ahead of
-        /// where the terrain would have it. Close enough for a coarse route;
-        /// the stepped simulation that cares (#25) will have its own idea of
-        /// where feet go.
+        /// The leg is shared between its steps by what each costs - the cell
+        /// entered, times 10 straight or 14 diagonal, priced on the grid as
+        /// it was when the task began - so a walk keeps one pace over open
+        /// ground, slows in forest and quickens on a road, the way the leg's
+        /// length was charged (#25), and ground changed under it since does
+        /// not move anyone. A cell already closed then (the route was found
+        /// at dawn) is priced as one cost unit rather than refused.
         /// </remarks>
-        public WorldPosition PositionAt(PersonHandle person, SimulationTime now)
+        public RoutePlace PlaceAt(PersonHandle person, SimulationTime now)
         {
             var slot = RequireSlot(person);
             var task = slot.Task;
@@ -555,7 +566,7 @@ namespace KingdomWatch.Core.Work
                 case TaskPhase.Outbound:
                     return AlongRoute(slot, elapsed, task.TravelTicks, forward: true);
                 case TaskPhase.Working:
-                    return task.Destination;
+                    return RoutePlace.Standing(task.Destination);
                 case TaskPhase.Returning:
                     return AlongRoute(slot, elapsed - task.TravelTicks - task.WorkTicks, task.ReturnTicks, forward: false);
                 default:
@@ -931,6 +942,16 @@ namespace KingdomWatch.Core.Work
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
+            var slot = SlotFor(worker.Index);
+            slot.Task = new WorkTask(
+                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
+                tracked.Group.Position, site.Destination, completion);
+            slot.CopyRoute(site.Route);
+            // Priced before the ground is claimed below: a Forester's plot
+            // turns to forest as the tree goes in, and the walk there was
+            // charged on plains.
+            PriceRoute(slot);
+
             if (job == JobKind.Forester)
             {
                 // The tree goes in now, as a harvest is claimed (#155), so the
@@ -954,11 +975,6 @@ namespace KingdomWatch.Core.Work
                 RequireBuildings().Claim(building, job, work);
             }
 
-            var slot = SlotFor(worker.Index);
-            slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
-                tracked.Group.Position, site.Destination, completion);
-            slot.CopyRoute(site.Route);
             _people.SetJob(worker, job);
             tracked.OnDuty[(int)job]++;
 
@@ -1389,23 +1405,65 @@ namespace KingdomWatch.Core.Work
         private bool IsWorker(PersonHandle member) =>
             _people.IsAlive(member) && Works(_people.GetAgeStage(member));
 
-        private static WorldPosition AlongRoute(Slot slot, long elapsed, long leg, bool forward)
+        private static RoutePlace AlongRoute(Slot slot, long elapsed, long leg, bool forward)
         {
             var last = slot.RouteCount - 1;
 
-            // A leg of no length is a route of one cell: origin and
-            // destination coincide, and the worker is on it.
+            // A route of one cell: origin and destination coincide, and the
+            // worker is on it.
+            if (last == 0) return RoutePlace.Standing(slot.Route[0]);
+
+            var walkedTo = forward ? slot.Out : slot.Back;
+            var total = walkedTo[last];
+
+            // A leg of no length is walked the instant it starts.
             //
             // Plain 64-bit arithmetic: elapsed is at most the leg, the leg is
-            // the route's cost times TicksPerCostUnit, and a route's cost is
+            // under a day's ticks (no task runs past dusk), and the total is
             // at most 14 * TerrainRule.MaxCost per cell - so the product
-            // exceeds a long only past some 800 million cells, a grid whose
-            // search arrays alone run to tens of gigabytes. A wider multiply
-            // here would be a guard nothing can exercise, the stance the
-            // ledger takes on its flow counters.
-            var step = leg == 0L ? last : (int)(elapsed * last / leg);
-            return slot.Route[forward ? step : last - step];
+            // exceeds a long only on a route millions of cells long, past any
+            // grid the pathfinder could search. A wider multiply here would
+            // be a guard nothing can exercise, the stance the ledger takes on
+            // its flow counters.
+            var walked = leg == 0L ? total : elapsed * total / leg;
+            if (walked >= total) return RoutePlace.Standing(CellOf(slot, last, forward));
+
+            // The first cell whose running cost is past what has been
+            // walked: the one being stepped onto.
+            int low = 1, high = last;
+            while (low < high)
+            {
+                var middle = (low + high) / 2;
+                if (walkedTo[middle] > walked) high = middle;
+                else low = middle + 1;
+            }
+
+            return new RoutePlace(
+                CellOf(slot, low - 1, forward), CellOf(slot, low, forward), walked - walkedTo[low - 1], walkedTo[low] - walkedTo[low - 1]);
         }
+
+        // The i-th cell walked, from whichever end the leg starts.
+        private static WorldPosition CellOf(Slot slot, int i, bool forward) =>
+            slot.Route[forward ? i : slot.RouteCount - 1 - i];
+
+        // Prices the task's route both ways as it sets out, the way its legs
+        // were charged, so PlaceAt is a lookup a frame rather than a walk of
+        // the route, and a grid changed under it since (a road laid, a cell
+        // closed) does not stretch steps the leg never counted. Each step
+        // costs at least one unit, so none takes no time.
+        private void PriceRoute(Slot slot)
+        {
+            slot.Out[0] = 0L;
+            slot.Back[0] = 0L;
+            for (var i = 1; i < slot.RouteCount; i++)
+            {
+                slot.Out[i] = slot.Out[i - 1] + StepCost(slot, i, forward: true);
+                slot.Back[i] = slot.Back[i - 1] + StepCost(slot, i, forward: false);
+            }
+        }
+
+        private long StepCost(Slot slot, int i, bool forward) =>
+            Math.Max(1L, _pathfinder.CostOfStep(CellOf(slot, i - 1, forward), CellOf(slot, i, forward), Mover));
 
         // Off the map is the grid's refusal (the indexer throws); a cell the
         // mover cannot stand on is this one. No site is reachable from such
@@ -1664,11 +1722,20 @@ namespace KingdomWatch.Core.Work
 
             public int RouteCount;
 
+            // The route's running cost from each end, cell by cell, as it
+            // was priced when the task began (PriceRoute): presentation
+            // only, derived from the route and never hashed.
+            public long[] Out = Array.Empty<long>();
+
+            public long[] Back = Array.Empty<long>();
+
             public void CopyRoute(List<WorldPosition> route)
             {
                 if (Route.Length < route.Count)
                 {
                     Route = new WorldPosition[Math.Max(route.Count, Route.Length * 2)];
+                    Out = new long[Route.Length];
+                    Back = new long[Route.Length];
                 }
 
                 route.CopyTo(Route);
