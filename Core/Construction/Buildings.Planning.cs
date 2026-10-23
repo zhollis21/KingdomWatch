@@ -59,8 +59,9 @@ namespace KingdomWatch.Core.Construction
     /// near those already standing, searched for from there with its door
     /// near a road as a house's is; a first Woodshed or Stoneyard with
     /// nothing of its kind in reach on the barns' ring. A Stoneyard never
-    /// stands, nor runs its lane, on rocks: clearing would quarry away the
-    /// stone it is there to hold.</item>
+    /// stands on rocks, which clearing would quarry away; its lane may cross
+    /// them as any lane does (#178: rejecting such lanes left a village by a
+    /// rock field retrying the same few sites every dawn).</item>
     /// </list>
     /// The ground does not enter the score (#155): plains, scrub, forest and
     /// rocks are all ground a footprint may stand on, and what grows there
@@ -301,8 +302,7 @@ namespace KingdomWatch.Core.Construction
                 // what it stands by, so each is asked separately whether a
                 // Farmer or Builder could walk to it from the centre.
                 if (((HasDoor(kind) && from == centre) || _pathfinder.TryFindRoute(centre, site, Jobs.Mover, int.MaxValue, BuildReach, _scratchRoute, out _))
-                    && TryJoin(kind, site, centre)
-                    && (kind != BuildingKind.Stoneyard || !LaneCrossesRocks()))
+                    && TryJoin(kind, site, centre))
                 {
                     var score = _scorer.BestScore + (_scorer.LaneWeight * (_lane.Count - estimate));
 
@@ -323,21 +323,6 @@ namespace KingdomWatch.Core.Construction
             _lane.AddRange(_keptLane);
             _keptLane.Clear();
             return keptCell >= 0;
-        }
-
-        // Whether the lane in _lane runs over rocks: a Stoneyard's may not
-        // (#178), since laying it would quarry them away.
-        private bool LaneCrossesRocks()
-        {
-            for (var i = 0; i < _lane.Count; i++)
-            {
-                if (_grid[_lane[i]] == TerrainKind.Rocks)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         // Whether any cell of a footprint anchored here is rocks.

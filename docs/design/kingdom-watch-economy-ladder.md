@@ -346,9 +346,11 @@ wanted when the Wood is full and the wood wanted going into a winter is
 more. A Stoneyard is wanted when the Stone is full and the stone the
 houses want kept (§5) is more: with the base store at 50, from the first
 house, and every five houses after. It stands in a yard by the rocks its
-StoneGatherers work, as a Woodshed does by the forest, but never on rocks
-nor with its lane across them, since clearing would quarry away the stone it
-is there to hold. Otherwise the planner goes Woodshed, then Granary, then
+StoneGatherers work, as a Woodshed does by the forest, but never on rocks,
+which clearing would quarry away; its lane may cross them, as any lane
+does. A store that is wanted and affordable but has nowhere to stand is
+passed over for the next store wanted, or a house, so it never holds off a
+village's housing. Otherwise the planner goes Woodshed, then Granary, then
 Stoneyard, then houses.
 
 The Vault and the Armory are built in Stone because they hold the most

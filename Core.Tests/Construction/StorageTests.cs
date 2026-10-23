@@ -233,6 +233,39 @@ namespace KingdomWatch.Core.Tests.Construction
             });
         }
 
+        [Test]
+        public void A_store_with_nowhere_to_stand_lets_a_house_go_up_instead()
+        {
+            // Rocks everywhere but the camp yard: a house may stand on them,
+            // a Stoneyard may not (#178). Wanted and with nowhere to go, it
+            // held off every house after the first, and the village ran the
+            // same failing search every dawn.
+            var w = new BuildingsWorld(paint: grid =>
+            {
+                for (var y = 0; y < grid.Height; y++)
+                {
+                    for (var x = 0; x < grid.Width; x++)
+                    {
+                        grid.Set(new WorldPosition(x, y), TerrainKind.Rocks);
+                    }
+                }
+            });
+            w.Wood(1000);
+            var first = w.BuildNext();
+            Fed(w);
+            WoodTo(w, 100);
+
+            var next = w.BuildNext();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(Jobs.StoneWant(1), Is.GreaterThan(Storage.BaseStone), "a Stoneyard is wanted");
+                Assert.That(next.Kind, Is.EqualTo(BuildingKind.House));
+                Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b.Kind == BuildingKind.Stoneyard));
+            });
+        }
+
         [TestCase(true)]
         [TestCase(false)]
         public void A_stoneyard_stands_by_the_rocks_its_gatherers_work_but_never_on_them(bool east)
@@ -264,10 +297,6 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
 
-                foreach (var cell in yard.Lane)
-                {
-                    Assert.That(grid[cell], Is.Not.EqualTo(TerrainKind.Rocks), yard + "'s lane crosses no rocks at " + cell);
-                }
             });
         }
 
