@@ -479,6 +479,21 @@ namespace KingdomWatch.Core.Validation
                 Mix(building.Claimed);
                 Mix(building.Worked);
                 Mix(building.Cleared ? 1 : 0);
+                Mix(building.Spots.Count);
+
+                // In the building's own order, which is its lane's and then
+                // its square's (#180).
+                for (var j = 0; j < building.Spots.Count; j++)
+                {
+                    var spot = building.Spots[j];
+                    Mix(spot.At);
+                    Mix(spot.Ticks);
+                    Mix(spot.Cuts);
+                    Mix(spot.Rocks);
+                    Mix(spot.Claimed);
+                    Mix(spot.Worked);
+                }
+
                 Mix(building.Occupant);
                 Mix((int)building.Stage);
                 Mix(building.DaysDone);

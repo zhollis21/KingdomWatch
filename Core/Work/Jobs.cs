@@ -1123,22 +1123,28 @@ namespace KingdomWatch.Core.Work
         // Whether a trip to work this building can be routed and is home by
         // dusk. The route is the job's site, kept until the target or the
         // ground changes - clearing rewrites cells, and with them the cost.
+        // The target is its anchor, or one of its far cells to clear while
+        // any has hours unclaimed (#180); the search reaches as far as the
+        // trip's own work leaves time to walk, so a far bush's hour is not
+        // refused for a walk only a full share would not fit.
         private bool Fits(Tracked tracked, JobKind job, Building building, SimulationTime now, long ticksUntilDusk)
         {
             var site = SiteOf(tracked, job);
+            var place = RequireBuildings().WorkPlaceOf(building);
+            var work = WorkTicksOf(job, building, now);
 
-            if (!site.Reachable || site.Destination != building.Anchor || site.Rewrites != _grid.Rewrites)
+            if (!site.Reachable || site.Destination != place || site.Rewrites != _grid.Rewrites)
             {
                 site.Rewrites = _grid.Rewrites;
                 site.Reachable = _pathfinder.TryFindRoute(
-                    tracked.SitesFrom, building.Anchor, Mover, int.MaxValue, ReachCost(Buildings.ShareTicks), site.Route, out var cost);
+                    tracked.SitesFrom, place, Mover, int.MaxValue, ReachCost(work), site.Route, out var cost);
 
                 if (!site.Reachable)
                 {
                     return false;
                 }
 
-                site.Destination = building.Anchor;
+                site.Destination = place;
                 site.Cost = cost;
                 _scratchRoute.Clear();
                 _scratchRoute.AddRange(site.Route);
@@ -1146,7 +1152,7 @@ namespace KingdomWatch.Core.Work
                 site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
             }
 
-            return TripTicks(site, WorkTicksOf(job, building, now)) <= ticksUntilDusk;
+            return TripTicks(site, work) <= ticksUntilDusk;
         }
 
         // Whether a Forester has a cell to plant that a trip reaches and is

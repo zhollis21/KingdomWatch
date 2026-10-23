@@ -69,12 +69,18 @@ namespace KingdomWatch.Core.Tests.Construction
         // tests about stone.
         internal void DawnAsIs() => Buildings.AtDawn(Settlement, 1, Living);
 
-        // Every hour a building has left, claimed and done in one go.
+        // Every hour a building has left, claimed and done: each far cell's
+        // in one go where it is (#180), then the rest at the anchor.
         internal void Finish(Building building)
         {
-            var left = building.LabourTicks - building.Worked - building.Claimed;
-            Buildings.Claim(building, JobKind.Builder, left);
-            Buildings.Credit(building.Anchor, JobKind.Builder, left, Stores);
+            while (!building.IsComplete)
+            {
+                var place = Buildings.WorkPlaceOf(building);
+                var spot = Buildings.SpotAt(place);
+                var left = spot is object ? spot.Left : building.LabourTicks - building.Worked - building.Claimed;
+                Buildings.Claim(building, JobKind.Builder, left);
+                Buildings.Credit(place, JobKind.Builder, left, Stores);
+            }
         }
 
         // The building approved last, or null.

@@ -640,6 +640,16 @@ namespace KingdomWatch.Game
                 case TaskPhase.Returning:
                     return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, dx, dy, 0f, 0f);
                 case TaskPhase.Working:
+                    if (task.Job == JobKind.Builder && buildings.SpotAt(task.Destination) != null)
+                    {
+                        // Out at one of a site's far cells (#180), which Core
+                        // clears on its own: chopping or breaking what is on
+                        // it from the cell beside it.
+                        var onSpot = grid[task.Destination];
+                        var (spotMotion, spotTool) = onSpot == TerrainKind.Rocks ? (ArtSet.Motion.Swing, ArtSet.Tool.Pickaxe) : (ArtSet.Motion.Chop, ArtSet.Tool.Axe);
+                        var spotSide = (id & 1) == 0 ? 1 : -1;
+                        return new Activity(spotMotion, spotTool, spotSide, 0, -spotSide * StandBack, 0f);
+                    }
                     var building = buildings.At(task.Destination);
                     if (task.Job == JobKind.Builder && building != null && !building.Cleared
                         && ClearingSpot(building, (id ^ (ulong)task.Start.Ticks) * 0x9E3779B97F4A7C15UL, out var cleared, out var clearing))
@@ -701,7 +711,7 @@ namespace KingdomWatch.Game
         }
 
         // Of the cells a site's clearing takes (its footprint, and its lane
-        // and square within ClearingReach of it), the one with a tree, bush
+        // and square within Buildings.ClearingReach of it), the one with a tree, bush
         // or rock on it that `spot` picks, or the next such that nobody
         // drawn before this frame has; if everyone's taken, the one picked. False when none has anything left on it.
         private bool ClearingSpot(Building site, ulong spot, out WorldPosition at, out TerrainKind kind)
@@ -719,11 +729,11 @@ namespace KingdomWatch.Game
                     : n < footprint + site.Lane.Count ? site.Lane[n - footprint]
                     : site.Square[n - footprint - site.Lane.Count];
                 // A lane can run on along the streets far from the site;
-                // a builder drawn out there would cross the village in one
-                // frame from where Core has them, at its anchor.
+                // its cells out there are cleared by trips of their own
+                // (#180), and drawn where those builders stand.
                 var outX = Mathf.Max(site.Anchor.X - cell.X, cell.X - (site.Anchor.X + site.Width - 1));
                 var outY = Mathf.Max(site.Anchor.Y - cell.Y, cell.Y - (site.Anchor.Y + site.Height - 1));
-                if (Mathf.Max(outX, outY) > ClearingReach) continue;
+                if (Mathf.Max(outX, outY) > Buildings.ClearingReach) continue;
                 var here = grid[cell];
                 if (here != TerrainKind.Forest && here != TerrainKind.Scrub && here != TerrainKind.Rocks) continue;
                 if (!found)
@@ -741,10 +751,6 @@ namespace KingdomWatch.Game
             }
             return found;
         }
-
-        // How far past a site's footprint, in cells, a builder is drawn
-        // clearing its lane or square (ClearingSpot).
-        private const int ClearingReach = 1;
 
         // How far, in cells, someone at work stands back from the middle of
         // the cell they work: a whole cell, so what they hit shows beside them.
