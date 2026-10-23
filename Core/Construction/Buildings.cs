@@ -1633,7 +1633,8 @@ namespace KingdomWatch.Core.Construction
         // the centre reaches, and a Stoneyard by the rocks its StoneGatherers
         // work, though never on them (#178). A first Woodshed or Stoneyard
         // with nothing of its kind in reach goes on the barns' ring instead
-        // (StorageSite).
+        // (StorageSite), and so does any store with nowhere to stand by what
+        // it would stand by.
         private bool TryPlaceStorage(ICommunity settlement, BuildingKind kind, ReadOnlySpan<bool> known, out WorldPosition anchor)
         {
             anchor = default;
@@ -1645,6 +1646,16 @@ namespace KingdomWatch.Core.Construction
 
             var from = StorageSite(settlement, kind, known);
             var placed = TryPlace(kind, from, settlement.Position, known, settlement.Id, out anchor);
+
+            // Nowhere by what it stands by - the rocks too far out for a lane
+            // to join the roads, say: on the barns' ring, as with nothing in
+            // reach, rather than the same failing search at every dawn (#178).
+            if (!placed && _storeBy.Count > 0)
+            {
+                _storeBy.Clear();
+                placed = TryPlace(kind, settlement.Position, settlement.Position, known, settlement.Id, out anchor);
+            }
+
             _storeBy.Clear();
             return placed;
         }

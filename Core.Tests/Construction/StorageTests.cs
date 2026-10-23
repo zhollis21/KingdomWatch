@@ -266,6 +266,42 @@ namespace KingdomWatch.Core.Tests.Construction
             });
         }
 
+        [Test]
+        public void A_stoneyard_whose_rocks_are_too_far_for_a_lane_goes_on_the_barns_ring()
+        {
+            // Rocks a gatherer walks to, but too far out for a yard there to
+            // join the roads: it failed at every dawn, a search that took a
+            // quarter of a second each time, on seed 3 thousands of times (#178).
+            var w = new BuildingsWorld(size: 90, paint: grid =>
+            {
+                for (var y = 0; y < grid.Height; y++)
+                {
+                    for (var x = FarRocks; x < FarRocks + 5; x++)
+                    {
+                        grid.Set(new WorldPosition(x, y), TerrainKind.Rocks);
+                    }
+                }
+            });
+            w.Wood(1000);
+            w.BuildNext();
+            Fed(w);
+            WoodTo(w, 100);
+
+            w.Dawn();
+            var yard = w.Latest!;
+            var door = Buildings.DoorOf(yard.Kind, yard.Anchor);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Buildings.HasRocksInReach(BuildingsWorld.Centre, default), Is.True, "the gatherers reach the rocks");
+                Assert.That(yard.Kind, Is.EqualTo(BuildingKind.Stoneyard));
+                Assert.That(Chebyshev(door, BuildingsWorld.Centre), Is.LessThan(FarRocks - BuildingsWorld.Centre.X - Buildings.LaneRadius), yard + " is not out by the rocks");
+                Assert.That(Chebyshev(door, BuildingsWorld.Centre), Is.GreaterThanOrEqualTo(Buildings.MinimumRing - 1), yard + " is on the outskirts");
+            });
+        }
+
+        private const int FarRocks = 70;
+
         [TestCase(true)]
         [TestCase(false)]
         public void A_stoneyard_stands_by_the_rocks_its_gatherers_work_but_never_on_them(bool east)
