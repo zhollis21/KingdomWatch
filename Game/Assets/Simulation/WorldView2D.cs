@@ -236,6 +236,8 @@ namespace KingdomWatch.Game
         private bool turnedChanged;
         private int turnedSentFrame = -TurnedSendFrames;
         private float animationTime;
+        // Real seconds this frame moves things on by: zero while paused.
+        private float frameSeconds;
         // Every chunk by (row * chunksAcross + column), null while not built;
         // and the built ones, in the order they were built.
         private Chunk[] chunks;
@@ -305,6 +307,15 @@ namespace KingdomWatch.Game
         private SpriteRenderer highlight;
         private int width, height;
         private int usedPeople, usedCommunities;
+        // How people part around each other as drawn (#25), and whether
+        // they showed last frame, so coming into view starts them parted.
+        private Crowd crowd;
+        private bool peopleShown;
+        // Each figure's slot in the crowd: its person's place in the store.
+        private readonly List<int> crowdSlots = new List<int>();
+        // The instant drawn last frame, for how fast the clock runs.
+        private SimulationTime drewAt;
+        private Jobs jobs;
         private float uiScale = 1f;
 
         public ZoomBand Band { get; private set; } = ZoomBand.Far;
@@ -354,6 +365,8 @@ namespace KingdomWatch.Game
             rewritesSeen = grid.Rewrites;
             buildings = world.Buildings;
             founding = world.Founding;
+            jobs = world.Jobs;
+            crowd = new Crowd(width, height, DrawableOn);
             land = world.Land;
             simNow = world.Now;
             shoreMasks = new byte[(width + 1) * (height + 1)];
@@ -381,7 +394,8 @@ namespace KingdomWatch.Game
             uiScale = scale;
             simNow = world.Now;
             Band = BandFor(pixelsPerCell, scale);
-            if (!paused) animationTime += Time.unscaledDeltaTime;
+            frameSeconds = paused ? 0f : Time.unscaledDeltaTime;
+            animationTime += frameSeconds;
             var tiled = art != null && Band != ZoomBand.Far;
             if (tiledGround != null && tiledGround.activeSelf != tiled)
             {
@@ -470,12 +484,21 @@ namespace KingdomWatch.Game
             // per call, and this runs every frame. Free slots have no id.
             // Placed even when hidden, so following someone survives a zoom out.
             workSpots.Clear();
-            foreach (var record in world.People.RecordSpan())
+            var records = world.People.RecordSpan();
+            crowd.Begin(records.Length);
+            // Easing people into and out of work only reads at the slower
+            // speeds; past CarryUpTo it would outlast the work.
+            var carry = frameSeconds > 0f && drewAt.TicksUntil(now) <= frameSeconds * CarryUpTo;
+            drewAt = now;
+            var index = -1;
+            foreach (var record in records)
             {
+                index++;
                 if (record.Id.IsNone) continue;
                 var person = record.Handle;
-                var at = PositionOf(world, person, record.Position, now);
-                var activity = ActivityOf(world, person, record.Id.Value, now);
+                var at = WhereDrawn(world, person, record.Position, now, out var step);
+                var activity = ActivityOf(world, person, record.Id.Value, now, step);
+                var slot = used;
                 var figure = FigureAt(used);
                 peopleIds[used++] = record.Id;
                 // A per-person offset inside the cell keeps a band from
@@ -485,6 +508,13 @@ namespace KingdomWatch.Game
                 var id = (long)((record.Id.Value * 0x9E3779B97F4A7C15UL) >> 40);
                 var jitterX = ((id & 0xff) / 255f - 0.5f) * 0.7f;
                 var jitterY = (((id >> 8) & 0xff) / 255f - 0.5f) * 0.7f;
+                // A walker keeps nearer their route: the crowd parts them,
+                // and the lane they keep sets them to one side of it.
+                if (activity.Motion == ArtSet.Motion.Walk)
+                {
+                    jitterX *= WalkJitter;
+                    jitterY *= WalkJitter;
+                }
                 // Someone at work stands back from the middle of what they
                 // work on, toward where they came from, so it shows beside them;
                 // no jitter along the way they face, which could carry them
@@ -494,11 +524,9 @@ namespace KingdomWatch.Game
                     if (activity.Dx != 0) jitterX = 0f;
                     if (activity.Dy != 0) jitterY = 0f;
                 }
-                var cellX = at.X + 0.5f + jitterX + activity.StandX;
-                var cellY = at.Y + 0.5f + jitterY + activity.StandY;
-                figure.Root.localPosition = new Vector3(OnArtPixel(cellX), OnArtPixel(height - cellY), 0f);
-                // Further south (larger row) is nearer the viewer, so it draws on top.
-                figure.Order = OrderAt(cellY);
+                var cell = at + new Vector2(0.5f + jitterX + activity.StandX, 0.5f + jitterY + activity.StandY);
+                crowd.Place(index, record.Id, cell, step, activity.Tool != ArtSet.Tool.None, carry);
+                crowdSlots[slot] = index;
                 figure.SetVisible(visible);
 
                 if (figure.Doll)
@@ -519,8 +547,41 @@ namespace KingdomWatch.Game
                 }
             }
 
+            // Parted only while people show: nobody sees it zoomed out, and
+            // coming back into view starts them where they would have got to.
+            if (visible && !peopleShown) crowd.Snap();
+            else if (visible) crowd.Settle(frameSeconds);
+            peopleShown = visible;
+            for (var i = 0; i < used; i++)
+            {
+                var drawn = crowd.Drawn(crowdSlots[i]);
+                people[i].Root.localPosition = new Vector3(OnArtPixel(drawn.x), OnArtPixel(height - drawn.y), 0f);
+                // Further south (larger row) is nearer the viewer, so it draws on top.
+                people[i].Order = OrderAt(drawn.y);
+            }
+
             for (var i = used; i < people.Count; i++) people[i].SetVisible(false);
             usedPeople = used;
+        }
+
+        // Simulated ticks a real second up to which a jump into or out of
+        // work is eased (Crowd's MaxCarry): between the 20x and 100x speed
+        // steps, at 1x's 180 a second, so a frame's jitter at 20x does not
+        // flicker it.
+        private const float CarryUpTo = 50f * 180f;
+
+        // How much of the per-person jitter a walker keeps (DrawPeople).
+        private const float WalkJitter = 0.4f;
+
+        // Whether the crowd may lean someone onto a cell: ground a walker
+        // can stand on, and no building on it but a field, which people
+        // work in.
+        private bool DrawableOn(int x, int y)
+        {
+            var at = new WorldPosition(x, y);
+            if (!jobs.CanStandAt(at)) return false;
+            var building = buildings.At(at);
+            return building == null || building.Kind == BuildingKind.Field;
         }
 
         // Walking while on the way out or back, facing where they are going;
@@ -558,17 +619,28 @@ namespace KingdomWatch.Game
         // What someone is doing at an instant, as drawn: walking out or back
         // along their task's direction, working, or standing. Reads the task
         // alone, so it costs nothing for the idle and allocates nothing.
-        private Activity ActivityOf(World world, PersonHandle person, ulong id, SimulationTime now)
+        private Activity ActivityOf(World world, PersonHandle person, ulong id, SimulationTime now, Vector2 step)
         {
             if (!world.Jobs.HasTask(person)) return default;
             var task = world.Jobs.TaskOf(person);
-            int dx = task.Destination.X - task.Origin.X, dy = task.Destination.Y - task.Origin.Y;
+            // Facing the step under way; at a route's end, between one leg
+            // and the next, the way the whole walk goes.
+            int dx = (int)step.x, dy = (int)step.y;
+            if (dx == 0 && dy == 0)
+            {
+                dx = task.Destination.X - task.Origin.X;
+                dy = task.Destination.Y - task.Origin.Y;
+                if (task.PhaseAt(now) == TaskPhase.Returning)
+                {
+                    dx = -dx;
+                    dy = -dy;
+                }
+            }
             switch (task.PhaseAt(now))
             {
                 case TaskPhase.Outbound:
-                    return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, dx, dy, 0f, 0f);
                 case TaskPhase.Returning:
-                    return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, -dx, -dy, 0f, 0f);
+                    return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, dx, dy, 0f, 0f);
                 case TaskPhase.Working:
                     var building = buildings.At(task.Destination);
                     if (task.Job == JobKind.Builder && building != null && !building.Cleared
@@ -630,10 +702,10 @@ namespace KingdomWatch.Game
             }
         }
 
-        // Of the cells a site's clearing takes (its footprint, lane and square),
-        // the one with a tree, bush or rock on it that `spot` picks, or the
-        // next such that nobody drawn before this frame has; if everyone's
-        // taken, the one picked. False when none has anything left on it.
+        // Of the cells a site's clearing takes (its footprint, and its lane
+        // and square within ClearingReach of it), the one with a tree, bush
+        // or rock on it that `spot` picks, or the next such that nobody
+        // drawn before this frame has; if everyone's taken, the one picked. False when none has anything left on it.
         private bool ClearingSpot(Building site, ulong spot, out WorldPosition at, out TerrainKind kind)
         {
             var footprint = site.Width * site.Height;
@@ -648,6 +720,12 @@ namespace KingdomWatch.Game
                 var cell = n < footprint ? new WorldPosition(site.Anchor.X + (n % site.Width), site.Anchor.Y + (n / site.Width))
                     : n < footprint + site.Lane.Count ? site.Lane[n - footprint]
                     : site.Square[n - footprint - site.Lane.Count];
+                // A lane can run on along the streets far from the site;
+                // a builder drawn out there would cross the village in one
+                // frame from where Core has them, at its anchor.
+                var outX = Mathf.Max(site.Anchor.X - cell.X, cell.X - (site.Anchor.X + site.Width - 1));
+                var outY = Mathf.Max(site.Anchor.Y - cell.Y, cell.Y - (site.Anchor.Y + site.Height - 1));
+                if (Mathf.Max(outX, outY) > ClearingReach) continue;
                 var here = grid[cell];
                 if (here != TerrainKind.Forest && here != TerrainKind.Scrub && here != TerrainKind.Rocks) continue;
                 if (!found)
@@ -665,6 +743,10 @@ namespace KingdomWatch.Game
             }
             return found;
         }
+
+        // How far past a site's footprint, in cells, a builder is drawn
+        // clearing its lane or square (ClearingSpot).
+        private const int ClearingReach = 1;
 
         // How far, in cells, someone at work stands back from the middle of
         // the cell they work: a whole cell, so what they hit shows beside them.
@@ -1205,16 +1287,24 @@ namespace KingdomWatch.Game
             return new Vector2(p.x, p.y + marker.transform.lossyScale.y / 2f);
         }
 
-        // Where someone is drawn: part-way along their route while a task is
-        // under way (Jobs.PositionAt), otherwise the cell they are stored at.
-        private static WorldPosition PositionOf(World world, PersonHandle person, WorldPosition stored, SimulationTime now)
+        // Where someone is, in cells (their cell's corner): part-way through
+        // the step of their route under way while a task is (Jobs.PlaceAt),
+        // so a walk slides rather than hops a cell at a time (#25); otherwise
+        // the cell they are stored at. `step` is that step, zero standing.
+        private static Vector2 WhereDrawn(World world, PersonHandle person, WorldPosition stored, SimulationTime now, out Vector2 step)
         {
+            step = Vector2.zero;
             if (world.Jobs.HasTask(person))
             {
                 var task = world.Jobs.TaskOf(person);
-                if (task.Start.CompareTo(now) <= 0 && now.CompareTo(task.End) < 0) return world.Jobs.PositionAt(person, now);
+                if (task.Start.CompareTo(now) <= 0 && now.CompareTo(task.End) < 0)
+                {
+                    var place = world.Jobs.PlaceAt(person, now);
+                    step = new Vector2(place.To.X - place.From.X, place.To.Y - place.From.Y);
+                    return new Vector2(place.From.X, place.From.Y) + step * ((float)place.Along / place.Step);
+                }
             }
-            return stored;
+            return new Vector2(stored.X, stored.Y);
         }
 
         // Sorting by row, in art pixels so things within a cell still sort.
@@ -2216,6 +2306,7 @@ namespace KingdomWatch.Game
             if (index < people.Count) return people[index];
             people.Add(art != null ? NewDoll() : new Figure(NewMarker("Person", peopleRoot)));
             peopleIds.Add(EntityId.None);
+            crowdSlots.Add(0);
             return people[index];
         }
 

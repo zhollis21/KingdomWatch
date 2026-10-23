@@ -746,6 +746,151 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void The_reconstruction_places_a_walker_part_way_along_a_step()
+        {
+            // Out: entering three plains (100 each) and the forest (200).
+            // Half the walk is 250 of the 500: half way from the second
+            // plains cell to the third.
+            const long Walk = WorkWorld.TicksToForest;
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+
+            var halfway = w.Jobs.PlaceAt(adult, task.Start.Plus(Walk / 2L));
+            var setOut = w.Jobs.PlaceAt(adult, task.Start);
+            var working = w.Jobs.PlaceAt(adult, task.Start.Plus(Walk + 100L));
+            var home = w.Jobs.PlaceAt(adult, task.End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(halfway.From, Is.EqualTo(new WorldPosition(4, 2)));
+                Assert.That(halfway.To, Is.EqualTo(new WorldPosition(5, 2)));
+                Assert.That(halfway.Along, Is.EqualTo(50L));
+                Assert.That(halfway.Step, Is.EqualTo(100L));
+
+                Assert.That(setOut.From, Is.EqualTo(WorkWorld.Camp));
+                Assert.That(setOut.To, Is.EqualTo(new WorldPosition(3, 2)));
+                Assert.That(setOut.Along, Is.Zero);
+
+                Assert.That(working.From, Is.EqualTo(WorkWorld.ForestCell), "at work, standing on it");
+                Assert.That(working.To, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(working.Along, Is.Zero);
+
+                Assert.That(home.From, Is.EqualTo(WorkWorld.Camp), "home at the end");
+                Assert.That(home.To, Is.EqualTo(WorkWorld.Camp));
+
+                Assert.That(() => w.Jobs.PlaceAt(adult, task.Start.Plus(-1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => w.Jobs.PlaceAt(adult, task.End.Plus(1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void A_walker_takes_each_step_at_the_pace_its_cost_sets()
+        {
+            // Forest one row down and three across: a route with a diagonal
+            // in it, ending in the forest. A diagonal step takes 1.4 times a
+            // straight one, and a step into forest twice a step onto plains,
+            // so a walk drawn from this keeps one speed over the ground and
+            // slows in the trees, as the simulation charged it.
+            var grid = WorkWorld.DefaultMap();
+            grid.Set(WorkWorld.ForestCell, TerrainKind.Plains);
+            var forest = new WorldPosition(5, 3);
+            grid.Set(forest, TerrainKind.Forest);
+            var w = new WorkWorld(1UL, grid);
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+            var route = w.Jobs.RouteOf(adult).ToArray();
+
+            var costs = new long[route.Length - 1];
+            var total = 0L;
+            for (var i = 1; i < route.Length; i++)
+            {
+                var diagonal = route[i].X != route[i - 1].X && route[i].Y != route[i - 1].Y;
+                costs[i - 1] = (diagonal ? 14L : 10L) * (route[i] == forest ? 20L : 10L);
+                total += costs[i - 1];
+            }
+
+            var ticks = new long[route.Length - 1];
+            for (var t = 0L; t < task.TravelTicks; t++)
+            {
+                var place = w.Jobs.PlaceAt(adult, task.Start.Plus(t));
+                var step = Array.IndexOf(route, place.From);
+                Assert.That(place.To, Is.EqualTo(route[step + 1]), "walking the stored route, in order");
+                ticks[step]++;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(route[route.Length - 1], Is.EqualTo(forest));
+                Assert.That(Array.Exists(costs, c => c == 140L || c == 280L), Is.True, "the route has a diagonal in it");
+                for (var i = 0; i < ticks.Length; i++)
+                {
+                    Assert.That(ticks[i], Is.EqualTo(task.TravelTicks * costs[i] / total).Within(1L), "step " + i);
+                }
+            });
+        }
+
+        [Test]
+        public void A_walk_keeps_the_pace_it_set_out_with_when_the_ground_changes_under_it()
+        {
+            // Priced as the trip sets out, as its legs were: a road laid or
+            // a forest grown across the route since does not stretch or
+            // squeeze steps the leg's length never counted.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+            var route = w.Jobs.RouteOf(adult).ToArray();
+            w.Grid.Set(route[2], TerrainKind.Forest);
+
+            var ticks = new long[route.Length - 1];
+            for (var t = 0L; t < task.TravelTicks; t++)
+            {
+                ticks[Array.IndexOf(route, w.Jobs.PlaceAt(adult, task.Start.Plus(t)).From)]++;
+            }
+
+            Assert.Multiple(() =>
+            {
+                // Three plains entered at 100 and the forest at 200: a fifth
+                // of the walk each, and two fifths for the last.
+                Assert.That(ticks[0], Is.EqualTo(task.TravelTicks / 5L).Within(1L));
+                Assert.That(ticks[1], Is.EqualTo(task.TravelTicks / 5L).Within(1L), "the cell turned to forest");
+                Assert.That(ticks[2], Is.EqualTo(task.TravelTicks / 5L).Within(1L));
+                Assert.That(ticks[3], Is.EqualTo(task.TravelTicks * 2L / 5L).Within(1L));
+            });
+        }
+
+        [Test]
+        public void A_walk_still_places_its_walker_across_a_cell_closed_since_it_set_out()
+        {
+            // The route is the one walked (A_task_keeps_the_route_it_left_with),
+            // so a cell closed under it is still crossed, in order, without
+            // the reconstruction refusing to price it.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var task = w.Jobs.TaskOf(adult);
+            var route = w.Jobs.RouteOf(adult).ToArray();
+            w.Grid.Set(route[2], TerrainKind.DeepWater);
+
+            var reached = 0;
+            for (var t = 0L; t < task.TravelTicks; t++)
+            {
+                var step = Array.IndexOf(route, w.Jobs.PlaceAt(adult, task.Start.Plus(t)).From);
+                Assert.That(step, Is.GreaterThanOrEqualTo(reached), "never back along the route");
+                reached = step;
+            }
+
+            Assert.That(reached, Is.EqualTo(route.Length - 2), "out to the last step before the forest");
+        }
+
+        [Test]
         public void A_task_keeps_the_route_it_left_with()
         {
             var w = new WorkWorld();

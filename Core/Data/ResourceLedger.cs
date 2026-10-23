@@ -37,10 +37,11 @@ namespace KingdomWatch.Core.Data
     /// span, a migration - which is the same reasoning as the PersonStore
     /// invariants recorded on #13.
     ///
-    /// Reserved and carried are defined here so that the reservation system
-    /// (#24) and hauling (M3) extend this class rather than growing a second
-    /// representation. Moving straight from reserved to carried is #24's to
-    /// define. Quantities are integers because the sim branches on them.
+    /// Reserved and carried are defined here so that hauling (#181) extends
+    /// this class rather than growing a second representation; nothing
+    /// reserves or carries stock until it does (#24). Moving straight from
+    /// reserved to carried is #181's to define. Quantities are integers
+    /// because the sim branches on them.
     ///
     /// Flat arrays indexed by <see cref="ResourceKind"/>, nothing allocated
     /// after construction. Every check that can refuse an operation - room,

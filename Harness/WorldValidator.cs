@@ -34,9 +34,9 @@ namespace KingdomWatch.Harness
     /// makes the hazard smaller but not different in kind.
     ///
     /// **Not every rule in section 5 is here yet.** The ones needing systems
-    /// nobody has built - polities and rulers, reservation ownership - belong
-    /// with the issues that introduce them (#39, #24), and a rule that cannot
-    /// fail is worse than an absent one because it reads as coverage.
+    /// nobody has built - polities and rulers - belong with the issues that
+    /// introduce them (#39), and a rule that cannot fail is worse than an
+    /// absent one because it reads as coverage.
     ///
     /// Checks are separate methods rather than one <c>Validate(world)</c>:
     /// <see cref="Core.World"/> (#17) is one world, but the test fixtures
@@ -76,6 +76,13 @@ namespace KingdomWatch.Harness
         private readonly List<PersonHandle> _workers = new List<PersonHandle>();
         private readonly HashSet<int> _footprints = new HashSet<int>();
         private readonly Dictionary<EntityId, Building> _buildingsById = new Dictionary<EntityId, Building>();
+        // The reservation pass (#24): what the tasks out hold - hours by
+        // building and job, trips by cell, inputs by holder and kind - and
+        // the ground the buildings not yet cleared hold.
+        private readonly Dictionary<(EntityId Building, JobKind Job), long> _hoursOut = new Dictionary<(EntityId Building, JobKind Job), long>();
+        private readonly Dictionary<int, int> _tripsOut = new Dictionary<int, int>();
+        private readonly Dictionary<(EntityId Holder, ResourceKind Kind), long> _inputsOut = new Dictionary<(EntityId Holder, ResourceKind Kind), long>();
+        private readonly HashSet<int> _heldGround = new HashSet<int>();
 
         // Wrapped, not handed out raw: a List cast back from IReadOnlyList
         // could have findings removed behind the report (the #103 review).
@@ -806,6 +813,204 @@ namespace KingdomWatch.Harness
             }
 
             return this;
+        }
+
+        /// <summary>
+        /// Every reservation has an owner, and every owner its reservation
+        /// (#24, section 5). A task holds what it claimed as it set out - a
+        /// harvest of its bush or tree (#26), the tree it planted (#155), its
+        /// share of a building's hours (#100), its recipe's inputs - and an
+        /// approved building holds its footprint, lane and share of the
+        /// square until they are cleared. Each is checked from both ends:
+        /// hours or inputs held beyond the tasks out, or ground held for no
+        /// building, belong to nobody; a task out whose claim is not there
+        /// will give back what it never took.
+        /// </summary>
+        /// <remarks>
+        /// A harvest is only checked one way. Claims on a bush or tree are
+        /// what it has given this season or since it was first cut, and a
+        /// trip home leaves its claim counted, so a cell's claims beyond the
+        /// trips out are harvests taken, not orphans. Stock reserved or
+        /// carried belongs to nobody at all: nothing reserves stock or
+        /// carries it yet, and hauling will name its owners when it does.
+        /// Between work days - where <see cref="WorldRun"/> validates -
+        /// nobody is out, so any hours or inputs still held are orphans.
+        /// </remarks>
+        public WorldValidator CheckReservations(
+            Jobs jobs, Buildings buildings, LandCover land, TerrainGrid grid,
+            IReadOnlyList<ICommunity> communities, SimulationClock clock)
+        {
+            Require(jobs, nameof(jobs));
+            Require(buildings, nameof(buildings));
+            Require(land, nameof(land));
+            Require(grid, nameof(grid));
+            Require(communities, nameof(communities));
+            Require(clock, nameof(clock));
+
+            var now = clock.Now;
+            _hoursOut.Clear();
+            _tripsOut.Clear();
+            _inputsOut.Clear();
+            _heldGround.Clear();
+
+            jobs.CopyTaskWorkersTo(_workers);
+
+            for (var i = 0; i < _workers.Count; i++)
+            {
+                var task = jobs.TaskOf(_workers[i]);
+                var cell = grid.IndexOf(task.Destination);
+
+                if (JobTable.IsGathering(task.Job))
+                {
+                    _tripsOut[cell] = _tripsOut.TryGetValue(cell, out var trips) ? trips + 1 : 1;
+                    var inputs = JobTable.Recipe(task.Job, task.Start.Season).Inputs;
+
+                    for (var j = 0; j < inputs.Count; j++)
+                    {
+                        var key = (task.Holder, inputs[j].Kind);
+                        _inputsOut[key] = (_inputsOut.TryGetValue(key, out var held) ? held : 0L) + inputs[j].Quantity;
+                    }
+                }
+                else if (task.Job == JobKind.Forester)
+                {
+                    // Planted as the trip set out. Ground cleared under it
+                    // since took the tree with it, and nothing to give back.
+                    if (grid[grid.PositionAt(cell)] == TerrainKind.Forest && !land.IsGrowing(cell))
+                    {
+                        Add(ValidationRule.ReservationLost, now, task.Holder,
+                            task.Worker + " is out planting " + task.Destination + ", where no tree is growing.");
+                    }
+                }
+                else if (buildings.At(task.Destination) is Building building)
+                {
+                    var key = (building.Id, task.Job);
+                    _hoursOut[key] = (_hoursOut.TryGetValue(key, out var held) ? held : 0L) + task.WorkTicks;
+                }
+                else
+                {
+                    Add(ValidationRule.ReservationLost, now, task.Holder,
+                        task.Worker + " is out on " + task.Job + " at " + task.Destination + ", which no building covers.");
+                }
+            }
+
+            // A bush or tree holds at least a claim for every trip out on it.
+            // Ground cleared under a trip since - plains, or a tree planted
+            // there after (#155) - holds nothing, and the trip owes nothing.
+            foreach (var trips in _tripsOut)
+            {
+                var kind = grid[grid.PositionAt(trips.Key)];
+
+                if ((kind == TerrainKind.Scrub || kind == TerrainKind.Forest)
+                    && !land.IsGrowing(trips.Key) && land.ClaimsAt(trips.Key) < trips.Value)
+                {
+                    Add(ValidationRule.ReservationLost, now, EntityId.None,
+                        grid.PositionAt(trips.Key) + " is " + kind + " with " + land.ClaimsAt(trips.Key)
+                        + " claims and " + trips.Value + " trips out on it.");
+                }
+            }
+
+            var all = buildings.All;
+
+            for (var i = 0; i < all.Count; i++)
+            {
+                var building = all[i];
+                CheckHours(building, JobKind.Builder, building.Claimed, now);
+
+                // A field's day turns lazily, at its next claim or credit: a
+                // count from an earlier day is nobody's today.
+                CheckHours(building, JobKind.Farmer, building.CountsDay == now.DayNumber ? building.ClaimedToday : 0L, now);
+
+                if (building.Cleared)
+                {
+                    continue;
+                }
+
+                for (var dy = 0; dy < building.Height; dy++)
+                {
+                    for (var dx = 0; dx < building.Width; dx++)
+                    {
+                        HoldGround(building, new WorldPosition(building.Anchor.X + dx, building.Anchor.Y + dy), "footprint", buildings, grid, now);
+                    }
+                }
+
+                for (var j = 0; j < building.Lane.Count; j++)
+                {
+                    HoldGround(building, building.Lane[j], "lane", buildings, grid, now);
+                }
+
+                for (var j = 0; j < building.Square.Count; j++)
+                {
+                    HoldGround(building, building.Square[j], "square", buildings, grid, now);
+                }
+            }
+
+            for (var cell = 0; cell < grid.CellCount; cell++)
+            {
+                if (buildings.IsReserved(cell) && !_heldGround.Contains(cell))
+                {
+                    Add(ValidationRule.ReservationUnowned, now, EntityId.None,
+                        grid.PositionAt(cell) + " is held back from gathering for no building still clearing.");
+                }
+            }
+
+            for (var i = 0; i < communities.Count; i++)
+            {
+                var community = communities[i];
+                var supplies = community.SharedSupplies;
+
+                foreach (var kind in Kinds)
+                {
+                    if (supplies.Reserved(kind) != 0 || supplies.Carried(kind) != 0)
+                    {
+                        Add(ValidationRule.ReservationUnowned, now, community.Id,
+                            kind + " has " + supplies.Reserved(kind) + " reserved and " + supplies.Carried(kind)
+                            + " carried, and nothing reserves or carries stock yet.");
+                    }
+
+                    var held = _inputsOut.TryGetValue((community.Id, kind), out var inputs) ? inputs : 0L;
+
+                    if (supplies.InProcess(kind) != held)
+                    {
+                        Add(supplies.InProcess(kind) > held ? ValidationRule.ReservationUnowned : ValidationRule.ReservationLost,
+                            now, community.Id,
+                            kind + " has " + supplies.InProcess(kind) + " in process and the trips out hold " + held + ".");
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        // A building's hours claimed by one job against what that job's
+        // trips out hold on it.
+        private void CheckHours(Building building, JobKind job, long claimed, SimulationTime now)
+        {
+            var held = _hoursOut.TryGetValue((building.Id, job), out var hours) ? hours : 0L;
+
+            if (claimed != held)
+            {
+                Add(claimed > held ? ValidationRule.ReservationUnowned : ValidationRule.ReservationLost, now, building.Id,
+                    "has " + claimed + " ticks claimed by " + job + "s and their trips out hold " + held + ".");
+            }
+        }
+
+        // Ground a building not yet cleared is clearing: held back from
+        // gatherers until it is.
+        private void HoldGround(Building building, WorldPosition at, string what, Buildings buildings, TerrainGrid grid, SimulationTime now)
+        {
+            if (!grid.Contains(at))
+            {
+                return;
+            }
+
+            var cell = grid.IndexOf(at);
+            _heldGround.Add(cell);
+
+            if (!buildings.IsReserved(cell))
+            {
+                Add(ValidationRule.ReservationLost, now, building.Id,
+                    "is not cleared, but its " + what + " cell " + at + " is open to gatherers.");
+            }
         }
 
         private static bool TouchesRoad(Building field, TerrainGrid grid)

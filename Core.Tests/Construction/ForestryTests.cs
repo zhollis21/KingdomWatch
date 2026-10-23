@@ -348,6 +348,39 @@ namespace KingdomWatch.Core.Tests.Construction
         }
 
         [Test]
+        public void A_Forester_is_drawn_walking_onto_the_plot_at_the_pace_its_plains_were_charged()
+        {
+            // The tree goes in as the trip sets out (#155), turning the plot
+            // to forest; the walk there was charged on plains, and is paced
+            // that way (#25): the last step takes what a plains step takes.
+            var tree = new WorldPosition(BuildingsWorld.Centre.X + Buildings.StreetReach + 2, BuildingsWorld.Centre.Y + 7);
+            var w = new BuildingsWorld(paint: grid => grid.Set(tree, TerrainKind.Forest), size: PastTheTown);
+            w.World.Jobs.Track(w.Settlement);
+            w.World.AdvanceTo(SimulationTime.FromDays(1).Plus(Jobs.Dawn + 1L));
+
+            var forester = w.Settlement.Members.First(m => w.World.People.GetJob(m) == JobKind.Forester);
+            var task = w.World.Jobs.TaskOf(forester);
+            var route = w.World.Jobs.RouteOf(forester).ToArray();
+            var plot = route[route.Length - 1];
+            var before = route[route.Length - 2];
+            var diagonal = plot.X != before.X && plot.Y != before.Y;
+            var lastStep = 0L;
+            for (var t = 0L; t < task.TravelTicks; t++)
+            {
+                if (w.World.Jobs.PlaceAt(forester, task.Start.Plus(t)).From == before)
+                {
+                    lastStep++;
+                }
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Grid[plot], Is.EqualTo(TerrainKind.Forest), "planted as it set out");
+                Assert.That(lastStep, Is.EqualTo((diagonal ? 140L : 100L) * Jobs.TicksPerCostUnit).Within(1L));
+            });
+        }
+
+        [Test]
         public void A_planting_trip_vacated_leaves_no_tree_and_one_that_ends_leaves_it_growing()
         {
             var tree = new WorldPosition(BuildingsWorld.Centre.X + Buildings.StreetReach + 2, BuildingsWorld.Centre.Y + 7);

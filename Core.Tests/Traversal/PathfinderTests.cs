@@ -494,6 +494,50 @@ namespace KingdomWatch.Core.Tests.Traversal
             });
         }
 
+        [Test]
+        public void A_single_step_is_priced_the_way_a_route_prices_it()
+        {
+            var finder = new Pathfinder(Map("..f", "..W"), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.CostOfStep(Origin, new WorldPosition(1, 0), Transport.Foot), Is.EqualTo(100L), "straight onto plains");
+                Assert.That(finder.CostOfStep(Origin, new WorldPosition(1, 1), Transport.Foot), Is.EqualTo(140L), "diagonal onto plains");
+                Assert.That(finder.CostOfStep(new WorldPosition(1, 0), new WorldPosition(2, 0), Transport.Foot), Is.EqualTo(200L), "into forest");
+            });
+        }
+
+        [Test]
+        public void A_step_the_mover_cannot_take_costs_nothing_rather_than_throwing()
+        {
+            // A stored route can cross a cell the grid has since closed; the
+            // reconstruction prices it, and a refusal there would throw out
+            // of a frame of the view.
+            var finder = new Pathfinder(Map("..", ".W"), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finder.CostOfStep(new WorldPosition(1, 0), new WorldPosition(1, 1), Transport.Foot), Is.Zero, "into water");
+                Assert.That(finder.CostOfStep(new WorldPosition(1, 0), new WorldPosition(0, 1), Transport.Foot), Is.Zero, "a diagonal past water");
+                Assert.That(finder.CostOfStep(Origin, new WorldPosition(1, 0), Transport.Foot), Is.EqualTo(100L), "the step beside them still prices");
+            });
+        }
+
+        [Test]
+        public void Pricing_a_step_refuses_what_is_not_a_step()
+        {
+            var finder = new Pathfinder(Map("...", "..."), TerrainRules.Default);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(() => finder.CostOfStep(Origin, Origin, Transport.Foot), Throws.ArgumentException, "standing still");
+                Assert.That(() => finder.CostOfStep(Origin, new WorldPosition(2, 0), Transport.Foot), Throws.ArgumentException, "a jump");
+                Assert.That(() => finder.CostOfStep(Origin, new WorldPosition(-1, 0), Transport.Foot), Throws.TypeOf<ArgumentOutOfRangeException>(), "off the map");
+                Assert.That(() => finder.CostOfStep(Origin, new WorldPosition(1, 0), Transport.None), Throws.TypeOf<ArgumentOutOfRangeException>());
+                Assert.That(() => finder.CostOfStep(Origin, new WorldPosition(1, 0), (Transport)4), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
         // A mask over TerrainKind: which cells count as "found".
         private static bool[] Wanting(params TerrainKind[] kinds)
         {
