@@ -541,17 +541,22 @@ namespace KingdomWatch.Core.Tests.Validation
             // The PR #165 review: a settlement founded in year 2 is not in the
             // founding list, and the year before it existed is not a year it
             // was empty. Its range starts at its first year's end. The map has
-            // room for a house between the streets (#171), and the band
-            // carries the stone for one (#166: the map has no rocks), so the
-            // village lives through its first winter.
+            // room for a house between the streets (#171), and the village
+            // is given the stone for it and for the barn that feeds it (#166:
+            // the map has no rocks), so it lives through its first winter.
+            // Given after founding, which holds a band's stores to the base:
+            // since #178 the base Stone is less than the two take.
             var world = new World(1UL, new TerrainGrid(24, 24, TerrainKind.Plains), DemographicSettings.Default);
             world.Nomads.Settles = false;
             var band = world.AddBand(12, new WorldPosition(12, 12));
             band.SharedSupplies.Gather(ResourceKind.Food, 100_000);
             band.SharedSupplies.Gather(ResourceKind.Wood, 10_000);
-            band.SharedSupplies.Gather(ResourceKind.Stone, KingdomWatch.Core.Construction.Storage.BaseStone);
             var run = new WorldRun(world).RunYears(1L);
             var settlement = world.Founding.Found(band, new Reasons(ReasonCode.PopulationPressure, ReasonCode.LandSuitable));
+            settlement.SharedSupplies.Gather(
+                ResourceKind.Stone,
+                KingdomWatch.Core.Construction.BuildingTable.Of(KingdomWatch.Core.Construction.BuildingKind.House).Stone
+                    + KingdomWatch.Core.Construction.BuildingTable.Of(KingdomWatch.Core.Construction.BuildingKind.Barn).Stone);
             run.RunYears(1L);
 
             var village = run.RangeOf(settlement.Id);

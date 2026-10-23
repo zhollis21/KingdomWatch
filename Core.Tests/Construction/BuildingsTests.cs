@@ -122,8 +122,9 @@ namespace KingdomWatch.Core.Tests.Construction
         public void The_stone_reserve_covers_every_building_and_fits_the_store()
         {
             // StoneGatherers stop at the reserve, so a building dearer than it
-            // could never be afforded; and the reserve past the base store is
-            // a store always full, wanting a Stoneyard nobody builds (#178).
+            // could never be afforded; and the reserve past the base store
+            // would want a Stoneyard before there is a house to build one by
+            // (#178).
             Assert.Multiple(() =>
             {
                 foreach (BuildingKind kind in System.Enum.GetValues(typeof(BuildingKind)))
@@ -134,14 +135,14 @@ namespace KingdomWatch.Core.Tests.Construction
                     }
                 }
 
-                Assert.That(KingdomWatch.Core.Work.Jobs.StoneReserve, Is.LessThan(Storage.BaseStone));
+                Assert.That(KingdomWatch.Core.Work.Jobs.StoneReserve, Is.LessThanOrEqualTo(Storage.BaseStone));
             });
         }
 
         [Test]
         public void The_stone_wanted_grows_by_each_finished_house()
         {
-            // #166: sixty with no house, ten more for each finished one; a
+            // #166: fifty with no house (#178), ten more for each finished one; a
             // house still going up does not count.
             var w = new BuildingsWorld();
             w.Wood(100);
@@ -1361,7 +1362,10 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.Multiple(() =>
             {
                 Assert.That(w.Buildings.All.Count, Is.EqualTo(count));
-                Assert.That(w.Buildings.All.Where(b => b.Kind != BuildingKind.House).Select(b => b.Kind), Is.EqualTo(new[] { BuildingKind.Woodshed }), "the full woodpile's Woodshed, before the houses after the first (#98)");
+                Assert.That(
+                    w.Buildings.All.Where(b => b.Kind != BuildingKind.House).Select(b => b.Kind),
+                    Is.EqualTo(new[] { BuildingKind.Woodshed, BuildingKind.Stoneyard }),
+                    "the full woodpile's Woodshed (#98) and the full stone store's Stoneyard (#178), before the houses after the first");
             });
         }
 

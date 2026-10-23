@@ -40,6 +40,11 @@ namespace KingdomWatch.Core.Tests.Validation
 
             w.World.Jobs.Track(w.Settlement);
             w.Wood(Jobs.WoodReserve);
+
+            // The map has no rocks, and since #178 the base store holds less
+            // stone than a house and a barn take: without the barn's, no
+            // field goes in and no Farmer goes out.
+            w.Stone(BuildingTable.Of(BuildingKind.Barn).Stone);
             return w;
         }
 

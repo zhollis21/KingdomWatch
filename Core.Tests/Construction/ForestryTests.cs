@@ -301,7 +301,8 @@ namespace KingdomWatch.Core.Tests.Construction
             var w = new BuildingsWorld(paint: grid => Ring(grid, Buildings.CampYardRadius + 1, Buildings.CampYardRadius + 8, TerrainKind.Rocks));
             w.Wood(100);
 
-            // Only the house's own stone, so what the rocks pay has room.
+            // Only the house's own stone, so the store is empty once it is
+            // spent, and what the rocks pay fills it from nothing.
             w.StoneLeft(BuildingTable.Of(BuildingKind.House).Stone);
             w.DawnAsIs();
             var house = w.Buildings.All.Single();
@@ -320,7 +321,9 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Stores.Available(ResourceKind.Stone) - stone, Is.EqualTo(rocks * Buildings.StonePerRock));
+                Assert.That(stone, Is.Zero);
+                Assert.That(w.Stores.Available(ResourceKind.Stone), Is.EqualTo(System.Math.Min(rocks * Buildings.StonePerRock, Storage.BaseStone)));
+                Assert.That(w.Stores.Flows(ResourceKind.Stone).Gathered - Storage.BaseStone, Is.EqualTo(rocks * Buildings.StonePerRock), "every rock paid, what has no room spilled");
                 Assert.That(underfoot.All(at => w.World.Grid[at] == TerrainKind.Plains), Is.True, "quarried away");
             });
         }

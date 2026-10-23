@@ -109,7 +109,9 @@ survival-critical:
   either. Without Ore a settlement works untooled. Stone is not optional
   for a settlement (#166): every house, barn and store takes some, so a
   village with no rocks in reach could never build. Each takes twice its
-  wood in stone (House 40, Barn 60, Granary and Woodshed 50). Rocks are never used
+  wood in stone (House 40, Barn, Granary and Woodshed 50; the Barn was cut
+  from 30 wood and 60 stone at #178, so that nothing costs more stone than
+  the base store holds; a Stoneyard takes none). Rocks are never used
   up, so a starting site and a band's settling place both need one in reach,
   as they need food; that one is then stone for good.
 - **Grain** exists only to become Food, which Forage and Hunt also supply
@@ -324,15 +326,15 @@ woodpile too small for the winter is exactly what a Woodshed answers.
 |---|---|---|---|---|
 | Granary | Apprentice construction (Novice until #22) | Wood, Stone | a barn | Food, Grain |
 | Woodshed | Apprentice construction (Novice until #22) | Wood, Stone | a house | Wood, Charcoal |
-| Stoneyard | Apprentice construction | Wood | a house | Stone, Ore |
+| Stoneyard | Apprentice construction (Novice until #22) | Wood | a house | Stone, Ore |
 | Vault | Journeyman construction | Stone | a smeltery or a smithy | Metal, Tools |
 | Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
 
 #98 built the Granary and the Woodshed. #166 gave Stone a use - houses,
 barns and stores are built with it - and a want that grows with the
-village, so past four houses the Stone store sits full while more is
-wanted, which is the Stoneyard's demand. Building it is #178. The Vault
-and the Armory wait for the kinds they hold (#37, #99).
+village, and #178 built the Stoneyard that answers it. Ore is not in the
+game yet, so a Stoneyard holds Stone alone for now. The Vault and the
+Armory wait for the kinds they hold (#37, #99).
 
 A Granary is wanted when the Food is full and the food wanted going into a
 winter, less the Grain in store, is more than it holds; or when the Grain
@@ -341,7 +343,15 @@ more farmland, since more fields can't help a village with nowhere to put
 the crop. Grain has no want of its own (Farmers fill whatever room there
 is), so a full Grain store in a fed village wants nothing. A Woodshed is
 wanted when the Wood is full and the wood wanted going into a winter is
-more. Otherwise the planner goes Woodshed, then Granary, then houses.
+more. A Stoneyard is wanted when the Stone is full and the stone the
+houses want kept (§5) is more: with the base store at 50, from the first
+house, and every five houses after. It stands in a yard by the rocks its
+StoneGatherers work, as a Woodshed does by the forest, but never on rocks,
+which clearing would quarry away; its lane may cross them, as any lane
+does. A store that is wanted and affordable but has nowhere to stand is
+passed over for the next store wanted, or a house, so it never holds off a
+village's housing. Otherwise the planner goes Woodshed, then Granary, then
+Stoneyard, then houses.
 
 The Vault and the Armory are built in Stone because they hold the most
 costly thing a settlement makes. Like the smeltery and the smithy, they are
@@ -383,10 +393,10 @@ covering two resources. #98 replaced both with one rule for every kind
 
 **Wants, held to capacity.** Each store has a want: food for ten days plus
 the winter ahead; `Jobs.WoodReserve` (200) of wood plus the winter's fuel;
-60 stone and 10 more for each finished house (`Jobs.StoneWant`, #166),
-what building draws on: never less than the dearest building takes, and
-held at the 100 the store has at four houses until a Stoneyard (#178)
-raises it. Before #166 stone was gathered as long as there was room. Workers aim for the lesser of the want
+50 stone and 10 more for each finished house (`Jobs.StoneWant`, #166,
+#178), what building draws on: never less than the dearest building
+takes, and held to the 50 the base store holds until a Stoneyard (#178)
+raises it, 50 at a time. Before #166 stone was gathered as long as there was room. Workers aim for the lesser of the want
 and the capacity, counting what's on its way home. Farmers stop once the
 Grain is full, and the fields stand idle.
 
@@ -410,14 +420,16 @@ mechanism worth building; capacity is.
 The numbers #98 set are placeholders for the harness to tune, like
 `PrimitiveTier`'s quantities:
 
-| | Base | Granary adds | Woodshed adds |
-|---|---|---|---|
-| Food | 500 | 500 | |
-| Grain | 100 | 100 | |
-| Wood | 250 | | 250 |
-| Stone | 100 | | |
+| | Base | Granary adds | Woodshed adds | Stoneyard adds |
+|---|---|---|---|---|
+| Food | 500 | 500 | | |
+| Grain | 100 | 100 | | |
+| Wood | 250 | | 250 | |
+| Stone | 50 | | | 50 |
 
-Both buildings cost 25 wood and 50 stone and take 24 work-hours.
+The Granary and the Woodshed cost 25 wood and 50 stone, the Stoneyard 25
+wood alone (agreed with Zach at #178), and each takes 24 work-hours. The
+base Stone was cut from 100 to 50 at #178, with each Stoneyard adding 50.
 
 ---
 

@@ -25,10 +25,12 @@ namespace KingdomWatch.Core.Tests.Performance
             var w = new BuildingsWorld(people: 20);
             w.World.Jobs.Track(w.Settlement);
             w.Wood(Jobs.WoodReserve + 2000);
-            w.Stores.Gather(ResourceKind.Stone, Storage.BaseStone);
+            // Stone for everything the wood raises, its Stoneyards (#178)
+            // among them: the map has no rocks to fetch more from.
+            w.Stores.Gather(ResourceKind.Stone, 10 * Storage.BaseStone);
             w.Stores.Gather(ResourceKind.Food, w.Living * 60);
 
-            // Long enough to raise a house, a barn and fields and to bring a
+            // Long enough to raise a house, a barn and fields, and more, and to bring a
             // crop in, so every path the measured span takes has run.
             w.World.Advance(40L * SimulationTime.TicksPerDay);
             Assert.That(w.Buildings.All, Has.Some.Matches<Building>(b => b.Kind == BuildingKind.Field && b.IsComplete));
@@ -40,6 +42,16 @@ namespace KingdomWatch.Core.Tests.Performance
             // Jobs' contract, and a new field further out is a longer one.
             w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
             w.Stores.Gather(ResourceKind.Wood, Jobs.WoodReserve);
+
+            // Then stone as much as is wanted, short of full: a
+            // StoneGatherer looking for rocks that are not there is not what
+            // is measured, nor another Stoneyard going up.
+            var stoneWanted = System.Math.Min(
+                Jobs.StoneWant(w.Buildings.FinishedHouses(w.Settlement.Id)),
+                w.Buildings.CapacityOf(w.Settlement.Id, ResourceKind.Stone));
+            Assert.That(Storage.IsFull(stoneWanted, w.Buildings.CapacityOf(w.Settlement.Id, ResourceKind.Stone)), Is.False);
+            w.Stores.Consume(ResourceKind.Stone, (int)w.Stores.Available(ResourceKind.Stone));
+            w.Stores.Gather(ResourceKind.Stone, (int)stoneWanted);
             EmptyGrain(w);
             w.World.Advance(20L * SimulationTime.TicksPerDay);
             EmptyGrain(w);

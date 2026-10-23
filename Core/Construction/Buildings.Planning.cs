@@ -54,10 +54,14 @@ namespace KingdomWatch.Core.Construction
     /// another field (#169);</item>
     /// <item>a store in one yard with the others of its kind (#167): the
     /// first Granary near the nearest of its settlement's barns, the first
-    /// Woodshed near the forest its Woodcutters work, and each later one
+    /// Woodshed near the forest its Woodcutters work, the first Stoneyard
+    /// near the rocks its StoneGatherers work (#178), and each later one
     /// near those already standing, searched for from there with its door
-    /// near a road as a house's is; a first Woodshed with no forest in reach
-    /// on the barns' ring.</item>
+    /// near a road as a house's is; a first Woodshed or Stoneyard with
+    /// nothing of its kind in reach on the barns' ring. A Stoneyard never
+    /// stands on rocks, which clearing would quarry away; its lane may cross
+    /// them as any lane does (#178: rejecting such lanes left a village by a
+    /// rock field retrying the same few sites every dawn).</item>
     /// </list>
     /// The ground does not enter the score (#155): plains, scrub, forest and
     /// rocks are all ground a footprint may stand on, and what grows there
@@ -88,9 +92,10 @@ namespace KingdomWatch.Core.Construction
         public const int BarnLaneWeight = 2;
 
         /// <summary>
-        /// Score per cell a Granary's or Woodshed's door stands from what it
-        /// stands by: the stores of its kind already there, or for the first,
-        /// the nearest barn or the forest its Woodcutters work (#167). Twice
+        /// Score per cell a store's door stands from what it stands by: the
+        /// stores of its kind already there, or for the first, the nearest
+        /// barn, the forest its Woodcutters work (#167) or the rocks its
+        /// StoneGatherers work (#178). Twice
         /// <see cref="LaneWeight"/>, which a store pays per lane cell as a
         /// house does: a store keeps close to its yard, and takes a lot on a
         /// street there rather than a track of its own.
@@ -318,6 +323,23 @@ namespace KingdomWatch.Core.Construction
             _lane.AddRange(_keptLane);
             _keptLane.Clear();
             return keptCell >= 0;
+        }
+
+        // Whether any cell of a footprint anchored here is rocks.
+        private bool OnRocks(BuildingSpec spec, WorldPosition anchor)
+        {
+            for (var dy = 0; dy < spec.Height; dy++)
+            {
+                for (var dx = 0; dx < spec.Width; dx++)
+                {
+                    if (_grid[new WorldPosition(anchor.X + dx, anchor.Y + dy)] == TerrainKind.Rocks)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         // The best footprint the search reaches, on any ground (#155).
@@ -765,7 +787,7 @@ namespace KingdomWatch.Core.Construction
             }
 
             // A store placed by what it stands by (#167).
-            private bool IsStore => _kind == BuildingKind.Granary || _kind == BuildingKind.Woodshed;
+            private bool IsStore => _kind == BuildingKind.Granary || _kind == BuildingKind.Woodshed || _kind == BuildingKind.Stoneyard;
 
             // A store with nothing to stand by goes on the barns' ring.
             private bool OnRing => IsStore && _owner._storeBy.Count == 0;
@@ -791,7 +813,8 @@ namespace KingdomWatch.Core.Construction
                 var grid = _owner._grid;
                 var anchor = grid.PositionAt(cell);
 
-                if (!_owner.Fits(_spec, anchor, _centre))
+                if (!_owner.Fits(_spec, anchor, _centre)
+                    || (_kind == BuildingKind.Stoneyard && _owner.OnRocks(_spec, anchor)))
                 {
                     return false;
                 }

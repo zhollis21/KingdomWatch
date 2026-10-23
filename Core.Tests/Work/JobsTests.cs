@@ -183,7 +183,7 @@ namespace KingdomWatch.Core.Tests.Work
             // for building, and a store filled for its own sake is not.
             band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneReserve);
             w.Advance(SimulationTime.TicksPerDay);
-            Assert.That(Jobs.StoneReserve, Is.LessThan(Storage.BaseStone));
+            Assert.That(Jobs.StoneReserve, Is.LessThanOrEqualTo(Storage.BaseStone));
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.None), "everything covered: labour surplus");
             Assert.That(w.Jobs.HasTask(adult), Is.False);
         }
@@ -1579,17 +1579,17 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void A_death_takes_its_task_off_the_tally_as_well()
         {
-            // 196 wood, four short of 200, and stone one short of its
-            // reserve of 60: wood is the shorter share, so the cutter goes for
-            // it, and with his two counted it is no longer (2/200 against
-            // 1/60), so the gatherer goes to the rocks for the last stone.
+            // 195 wood, five short of 200, and stone one short of its
+            // reserve of 50: wood is the shorter share, so the cutter goes for
+            // it, and with his two counted it is no longer (3/200 against
+            // 1/50), so the gatherer goes to the rocks for the last stone.
             // The cutter then dies on the road and his two never arrive, so
             // by the time the gatherer is home with the stone in, wood is
             // wanted again. A dead worker still counted
             // as on his way would keep the store looking full all day.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(2));
-            band.SharedSupplies.Gather(ResourceKind.Wood, 196);
+            band.SharedSupplies.Gather(ResourceKind.Wood, 195);
             band.SharedSupplies.Gather(ResourceKind.Stone, Jobs.StoneReserve - 1);
             var cutter = w.Join(band, 30L);
             var gatherer = w.Join(band, 31L);
@@ -1608,8 +1608,8 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(196L), "the dead deliver nothing");
-                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "196 and nobody cutting is the shorter share again");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(195L), "the dead deliver nothing");
+                Assert.That(w.People.GetJob(gatherer), Is.EqualTo(JobKind.Woodcutter), "195 and nobody cutting is the shorter share again");
             });
         }
 

@@ -193,17 +193,19 @@ namespace KingdomWatch.Core.Work
         /// <summary>
         /// The stone a community keeps on hand with no house built, what
         /// building draws on (#166): no less than the dearest building's
-        /// stone, or that building could never be afforded, and less than
-        /// the store holds with no Stoneyard (#178). Each finished house adds
-        /// <see cref="StonePerHouse"/> (<see cref="StoneWant"/>).
+        /// stone, or that building could never be afforded, and no more
+        /// than the store holds with no Stoneyard (#178), which is the same
+        /// fifty. Each finished house adds <see cref="StonePerHouse"/>
+        /// (<see cref="StoneWant"/>).
         /// </summary>
-        public const int StoneReserve = 60;
+        public const int StoneReserve = 50;
 
         /// <summary>
         /// Stone each finished house adds to the reserve (#166): a bigger
         /// village builds more, and keeps more on hand for it. Held to the
-        /// store's capacity like every want, so with no Stoneyard it stops
-        /// rising at four houses.
+        /// store's capacity like every want, so past the base store it is
+        /// what a Stoneyard is wanted for (#178): from the first house, and
+        /// every five houses after.
         /// </summary>
         public const int StonePerHouse = 10;
 
