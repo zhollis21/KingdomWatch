@@ -730,10 +730,11 @@ namespace KingdomWatch.Game
         // Fences.png's 16 px pieces round the edge, a cell to each, with a gate
         // in the middle of the front; and three log slots along the middle,
         // each Outdoor_Decor's small stack and then its tall pile. The
-        // Stoneyard (#178) is the same yard, its slots holding Ores.png's
-        // grey heap (the camp's stone pile), then a second heap stacked on
-        // the first. Each composed once for every fill level, side by side
-        // in one texture.
+        // Stoneyard (#178) is the same yard behind Stone_Fence_Small.png's
+        // stone fence, laid out as Fences.png is, so an empty one still reads
+        // as stone; its slots hold Ores.png's grey heap (the camp's stone
+        // pile), then a second heap stacked on the first. Each composed once
+        // for every fill level, side by side in one texture.
         private const int YardWidth = 5, YardHeight = 4;
         private const int YardBase = 46; // where the piles stand, from the yard's top
         private static readonly int[] YardSlots = { 11, 30, 49 }; // the tall piles' left edges
@@ -743,8 +744,9 @@ namespace KingdomWatch.Game
         private const int HeapRise = 7; // how far the second heap stands over the first
 
         // Each cell of the fence, from the top left: (cell, piece) pairs, the
-        // piece as its column and row on Fences.png. Back row and sides first,
-        // so the piles stand in front of them, then the front row over the piles.
+        // piece as its column and row on Fences.png (and Stone_Fence_Small.png).
+        // Back row and sides first, so the piles stand in front of them, then
+        // the front row over the piles.
         private static readonly (Vector2Int cell, Vector2Int piece)[] BackFence =
         {
             (new Vector2Int(0, 0), new Vector2Int(1, 1)), (new Vector2Int(1, 0), new Vector2Int(2, 0)),
@@ -775,10 +777,12 @@ namespace KingdomWatch.Game
                 }
             }
             var fences = Texture(Decor + "Fences");
+            var stoneFences = Texture(Decor + "Stone_Fence_Small");
             var decor = Texture(Decor + "Outdoor_Decor");
             var ores = Texture(Decor + "Ores");
-            if (fences == null || decor == null || ores == null) return false;
+            if (fences == null || stoneFences == null || decor == null || ores == null) return false;
             var fence = new Sheet(ReadPixels(fences), fences.width, fences.height);
+            var stoneFence = new Sheet(ReadPixels(stoneFences), stoneFences.width, stoneFences.height);
             var logs = new Sheet(ReadPixels(decor), decor.width, decor.height);
             var stone = new Sheet(ReadPixels(ores), ores.width, ores.height);
 
@@ -787,7 +791,7 @@ namespace KingdomWatch.Game
                 if (fill > 1) Paste(yards, left, YardBase - TallPile.height, logs, TallPile);
                 else Paste(yards, left + (TallPile.width - SmallStack.width) / 2, YardBase - SmallStack.height, logs, SmallStack);
             });
-            Stoneyards = Yards("Stoneyard yards", fence, (yards, left, fill) =>
+            Stoneyards = Yards("Stoneyard yards", stoneFence, (yards, left, fill) =>
             {
                 var x = left + (TallPile.width - StoneHeap.width) / 2;
                 var foot = YardBase - StoneHeap.height + 1;
