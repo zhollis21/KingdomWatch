@@ -263,7 +263,8 @@ function Get-MilestoneRank($i) { if ($i.milestone) { $milestones.IndexOf($milest
 # against an [ordered] dictionary, so it sorts every issue equal and Sort-Object's
 # stable order silently falls through to fetch order.
 $ready = @($issues.Values | Where-Object ready | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, { $_.number })
-$current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 } | Select-Object -First 1
+# Open work, not open issues: a milestone of V2 ideas alone is never the current one.
+$current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -gt 0 } | Select-Object -First 1
 $next = if ($current) { $milestones[$milestones.IndexOf($current) + 1] } else { $null }
 
 # ---------------------------------------------------------------------------
@@ -423,7 +424,7 @@ $md.Add('# Roadmap')
 $md.Add('')
 $md.Add($stamp)
 $md.Add('')
-$md.Add("Every issue, in its milestone, with what it waits on. Arrows are GitHub's native *blocked by* relationships. An open issue is **ready** when everything it is blocked by is closed. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
+$md.Add("Every issue, in its milestone, with what it waits on. Arrows are GitHub's native *blocked by* relationships. An open issue is **ready** when everything it is blocked by is closed, unless it is a V2 idea (M10), which is never work to pick up. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
 $md.Add('')
 $md.Add('## Ready to pick up')
 $md.Add('')
@@ -437,7 +438,7 @@ if ($ready.Count) {
 } elseif (@($issues.Values | Where-Object { $_.state -eq 'open' }).Count -eq 0) { $md.Add('Nothing is open. Everything is done.') }
 else {
     $cycle = @($warnings | Where-Object { $_ -like 'Dependency cycle:*' }).Count -gt 0
-    $md.Add('Nothing is ready: every open issue is blocked.' + $(if ($cycle) { ' A dependency cycle in the warnings below is the likely cause.' } else { '' }))
+    $md.Add('Nothing is ready: every open issue is blocked or a V2 idea.' + $(if ($cycle) { ' A dependency cycle in the warnings below is the likely cause.' } else { '' }))
 }
 $md.Add('')
 $md.Add('## Milestones')

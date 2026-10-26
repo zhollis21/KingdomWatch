@@ -523,7 +523,7 @@ This is a **domain-event layer, not event sourcing** — not every axe swing bec
 
 ### Decision provenance
 
-The README principle is philosophy until the game can actually answer *why*. When Oakshire declares war, the AI knows it weighed resource competition, cultural hostility, a recent border raid, ruler personality, and trade relations — but if those are discarded, the player only sees the outcome.
+The README principle is philosophy until the game can actually answer *why*. When Oakshire declares war, the AI knows it weighed resource competition, cultural hostility, a recent border attack, ruler personality, and trade relations — but if those are discarded, the player only sees the outcome.
 
 Store the top **2–4 `ReasonCode` enums** on decisions that surface in the feed:
 
@@ -787,7 +787,7 @@ Band grows → settles → founds daughter settlements
 
 Secession is the same mechanism as the schism-and-exile founding trigger from §11. A settlement founded by exiles *is* a secession.
 
-**Polities hold their own diplomatic state**, distinct from the settlement attitudes in §10. Polity relations are moved by polity-level events — wars, treaties, raids, border claims, ruler personality, cultural distance, resource competition — rather than being recomputed from member settlements each time.
+**Polities hold their own diplomatic state**, distinct from the settlement attitudes in §10. Polity relations are moved by polity-level events — wars, treaties, border attacks, border claims, ruler personality, cultural distance, resource competition — rather than being recomputed from member settlements each time.
 
 The productive consequence is **disagreement between a ruler and their towns.** A polity can be at war with a neighbour whose settlements individually bear no grudge, which means a ruler can drag unwilling towns into a fight. Those settlements then have a concrete reason to secede — which is exactly where the fragmentation arc comes from. Let the disagreement mean something rather than smoothing it away.
 
@@ -923,7 +923,7 @@ Children primarily inherit their surrounding settlement culture.
 ### Divergence
 
 - **Drift** — small deterministic mutation each generation
-- **Reinforcement** — lived experience pushes values. Repeatedly raided → martial. **Culture becomes a record of history**
+- **Reinforcement** — lived experience pushes values. Repeatedly attacked → martial. **Culture becomes a record of history**
 - **Convergence** — trade, marriage, migration pull neighbours together; isolation preserves difference
 
 Consequence: **islands produce divergence, continents produce homogeneity.** Map archetypes now generate different *kinds* of world.
@@ -934,7 +934,7 @@ Cultural distance feeds diplomacy — distant values breed distrust, giving non-
 
 One system, three uses. Each settlement carries attitude values toward **each race, each other settlement, and the god** — moved by events, decaying over time, reinforced by repetition.
 
-Migration checks the target's attitude toward the mover's race plus the mover's personal reputation. A settlement raided by elves thirty years ago will not accept an elf migrant.
+Migration checks the target's attitude toward the mover's race plus the mover's personal reputation. A settlement attacked by elves thirty years ago will not accept an elf migrant.
 
 **Grievances track their witnesses.** Rather than a flat decaying number, each grievance stores who was present, and its strength derives from living witnesses plus descendants who were taught it.
 
@@ -986,13 +986,13 @@ grievance = memory with a negative attitude effect
 atrocity  = memory with political or racial meaning
 ```
 
-A divine act is just a memory like any other, its valence set by who it helped and who it hurt — §8's "Oakshire declared war" reasoning applies equally to "the god struck the raiders' captain."
+A divine act is just a memory like any other, its valence set by who it helped and who it hurt — §8's "Oakshire declared war" reasoning applies equally to "the god struck the enemy captain."
 
 Deferred deliberately. **Cheap insurance in the meantime: key both grievances and knowledge claims on `OriginEventId`** so the two can converge later without a data migration. Don't let their internals diverge structurally before M5.
 
 ### Attribution splits opinion
 
-Smite a raider captain: the saved village reveres you, the raiders' home settlement curses you. One act, two responses, from the attitude system already required for race relations.
+Smite the captain of an attacking army: the saved village reveres you, the army's home settlement curses you. One act, two responses, from the attitude system already required for race relations.
 
 ---
 
@@ -1207,7 +1207,7 @@ No food → morale ↓, movement ↓, desertion ↑, eventually death.
 
 That is enough to produce *cut the bridge → supply stops → siege fails* without building a quartermaster simulator.
 
-Armies of ~25 (roughly an 8% levy from a 300-person town) make this watchable: three carts of grain on a specific road, and when raiders take them, these named people starve.
+Armies of ~25 (roughly an 8% levy from a 300-person town) make this watchable: three carts of grain on a specific road, and when an enemy column takes them, these named people starve.
 
 **Sieges are not designed.** Walls, gates, duration, food stores, assault, surrender — deferred, in Open Questions. Not an MVP feature, but the castle-town fantasy eventually needs it.
 

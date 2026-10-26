@@ -22,7 +22,7 @@ namespace KingdomWatch.Core.Relationships
     /// is the store's bound to enforce, not the caller's to pre-apply.
     ///
     /// Promotion happens the moment a witness count reaches the threshold,
-    /// so a raid the whole village saw is promoted as it is recorded. Aging
+    /// so an attack the whole village saw is promoted as it is recorded. Aging
     /// and forgetting happen in <see cref="Compact"/>, which the owning
     /// system calls on its own cadence - this store never touches the clock.
     ///
