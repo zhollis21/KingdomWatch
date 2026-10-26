@@ -17,7 +17,8 @@
     open the markdown, or read graph.json directly.
 
     Readiness is derived, never stored: an open issue is ready when every
-    issue it is blocked by is closed. Cross-milestone edges are drawn as
+    issue it is blocked by is closed, unless it is a V2 candidate: an idea
+    rather than work, drawn as its own state. Cross-milestone edges are drawn as
     dashed stub nodes so each chart stays readable on its own.
 
     The only edges are GitHub's native "blocked by" relationships (the issue
@@ -69,6 +70,7 @@ $CLASSDEFS = @(
     'classDef done fill:#2da44e,color:#fff,stroke:#1a7f37'
     'classDef ready fill:#ddf4ff,color:#000,stroke:#0969da,stroke-width:2px'
     'classDef blocked fill:#eaeef2,color:#000,stroke:#8c959f'
+    'classDef idea fill:#fbefff,color:#000,stroke:#8250df'
     'classDef plain fill:#fff,color:#000,stroke:#999'
 )
 # Stubs for issues outside the chart keep their state fill and go dashed.
@@ -154,6 +156,7 @@ foreach ($n in $issueNodes) {
         openBlockers = @()
         ready = $false
         blocked = $false
+        idea = $false
     }
     if ($n.milestone -and $milestoneByNumber.ContainsKey([int]$n.milestone.number)) {
         $milestoneByNumber[[int]$n.milestone.number].issues.Add($number)
@@ -180,7 +183,10 @@ foreach ($i in $issues.Values) {
     # A blocker in another repository cannot be looked up either, so it counts as open too.
     $hasOpenBlocker = ($i.openBlockers.Count -gt 0) -or ($i.foreignBlockers.Count -gt 0)
     $i.blocked = ($i.state -eq 'open') -and $hasOpenBlocker
-    $i.ready = ($i.state -eq 'open') -and -not $hasOpenBlocker
+    # A V2 candidate is an idea outside launch scope, not work to pick up, so it is never
+    # ready even when nothing blocks it (#186). It is its own state in every view instead.
+    $i.idea = ($i.state -eq 'open') -and $i.milestone -and $milestoneByNumber[$i.milestone].title -match '\bV2\b'
+    $i.ready = ($i.state -eq 'open') -and -not $hasOpenBlocker -and -not $i.idea
     $i.blocking = @($i.blocking | Sort-Object)
     $i.openBlocking = @($i.blocking | Where-Object { $issues[$_].state -eq 'open' })
 }
@@ -257,7 +263,8 @@ function Get-MilestoneRank($i) { if ($i.milestone) { $milestones.IndexOf($milest
 # against an [ordered] dictionary, so it sorts every issue equal and Sort-Object's
 # stable order silently falls through to fetch order.
 $ready = @($issues.Values | Where-Object ready | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, { $_.number })
-$current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 } | Select-Object -First 1
+# Open work, not open issues: a milestone of V2 ideas alone is never the current one.
+$current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -gt 0 } | Select-Object -First 1
 $next = if ($current) { $milestones[$milestones.IndexOf($current) + 1] } else { $null }
 
 # ---------------------------------------------------------------------------
@@ -281,7 +288,7 @@ function Format-Label([object]$i) {
 }
 
 function Get-NodeClass([object]$i) {
-    if ($i.state -eq 'closed') { 'done' } elseif ($i.ready) { 'ready' } else { 'blocked' }
+    if ($i.state -eq 'closed') { 'done' } elseif ($i.idea) { 'idea' } elseif ($i.ready) { 'ready' } else { 'blocked' }
 }
 
 function Write-Chart {
@@ -363,7 +370,7 @@ function Write-IssueTable([int[]]$Numbers) {
     $out.Add('|---|---|---|---|---|---|')
     foreach ($n in ($Numbers | Sort-Object { Get-PriorityRank $issues[$_].priority }, { $_ })) {
         $i = $issues[$n]
-        $status = if ($i.state -eq 'closed') { '✓ Done' } elseif ($i.ready) { '**Ready**' } else { 'Blocked' }
+        $status = if ($i.state -eq 'closed') { '✓ Done' } elseif ($i.idea) { 'V2 idea' } elseif ($i.ready) { '**Ready**' } else { 'Blocked' }
         $out.Add("| $(Format-IssueLink $n) | $(Format-Title $i) | $($i.priority ?? '—') | $status | $(Format-Refs $i.blockedBy)$(Format-Foreign $i) | $(Format-Refs $i.blocking) |")
     }
     return $out
@@ -373,6 +380,7 @@ $legend = @(
     '```mermaid'
     'flowchart LR'
     '  L0["✓ done"]:::done --> L1["ready to pick up"]:::ready --> L2["blocked"]:::blocked'
+    '  L4["V2 idea, not work to pick up"]:::idea'
     '  L3["other milestone<br/><i>M9</i>"]:::blocked'
     '  L5["solid: blocked by"]:::plain --> L6[" "]:::plain'
 ) + ($CLASSDEFS | ForEach-Object { "  $_" }) + @("  style L3 $EXT_STYLE", '```')
@@ -403,6 +411,8 @@ $graph = [ordered]@{
             number = $_.number; title = $_.title; state = $_.state
             open = @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count
             closed = @($_.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
+            # Open, and every open issue a V2 idea: drawn purple in the overview.
+            idea = @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 -and @($_.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -eq 0
             issues = @($_.issues | Sort-Object)
         }
     })
@@ -416,7 +426,7 @@ $md.Add('# Roadmap')
 $md.Add('')
 $md.Add($stamp)
 $md.Add('')
-$md.Add("Every issue, in its milestone, with what it waits on. Arrows are GitHub's native *blocked by* relationships. An open issue is **ready** when everything it is blocked by is closed. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
+$md.Add("Every issue, in its milestone, with what it waits on. Arrows are GitHub's native *blocked by* relationships. An open issue is **ready** when everything it is blocked by is closed, unless it is a V2 idea (M10), which is never work to pick up. See [next.md](next.md) for the two milestones that matter right now, or a milestone page for the full chart.")
 $md.Add('')
 $md.Add('## Ready to pick up')
 $md.Add('')
@@ -430,7 +440,7 @@ if ($ready.Count) {
 } elseif (@($issues.Values | Where-Object { $_.state -eq 'open' }).Count -eq 0) { $md.Add('Nothing is open. Everything is done.') }
 else {
     $cycle = @($warnings | Where-Object { $_ -like 'Dependency cycle:*' }).Count -gt 0
-    $md.Add('Nothing is ready: every open issue is blocked.' + $(if ($cycle) { ' A dependency cycle in the warnings below is the likely cause.' } else { '' }))
+    $md.Add('Nothing is ready: every open issue is blocked or a V2 idea.' + $(if ($cycle) { ' A dependency cycle in the warnings below is the likely cause.' } else { '' }))
 }
 $md.Add('')
 $md.Add('## Milestones')
@@ -443,7 +453,8 @@ foreach ($m in $milestones) {
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
     $id = 'MS' + (Get-MilestoneOrder $m.title)
     $label = "$($m.title -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;')<br/>$closed done · $open open"
-    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } else { 'plain' }
+    $ideasOnly = $open -gt 0 -and @($m.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -eq 0
+    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } elseif ($ideasOnly) { 'idea' } else { 'plain' }
     $md.Add("  $id[`"$label`"]:::$class")
     if ($prev) { $md.Add("  $prev --> $id") }
     $prev = $id
@@ -492,7 +503,7 @@ $md.Add('')
 if ($current) {
     $groups = [ordered]@{ $current.title = @($current.issues) }
     if ($next) { $groups[$next.title] = @($next.issues) }
-    $md.Add("The earliest milestone with open work is **$(Format-Prose $current.title)**" + $(if ($next) { ", followed by **$(Format-Prose $next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label.')
+    $md.Add("The earliest milestone with open work is **$(Format-Prose $current.title)**" + $(if ($next) { ", followed by **$(Format-Prose $next.title)**." } else { '.' }) + ' Issues from other milestones that these wait on appear as dashed stubs; what they unblock is in the tables. Green = done, blue = ready to pick up, grey = blocked, purple = V2 idea; the P-number is the priority label.')
     $md.Add('')
     foreach ($l in (Write-Chart $groups 'TD')) { $md.Add($l) }
     foreach ($title in $groups.Keys) {
@@ -514,7 +525,7 @@ $md.Add('# The whole picture')
 $md.Add('')
 $md.Add($stamp)
 $md.Add('')
-$md.Add('Every milestone, every issue, every dependency. Green = done, blue = ready to pick up, grey = blocked; the P-number is the priority label. Milestone pages have the tables.')
+$md.Add('Every milestone, every issue, every dependency. Green = done, blue = ready to pick up, grey = blocked, purple = V2 idea; the P-number is the priority label. Milestone pages have the tables.')
 $md.Add('')
 $groups = [ordered]@{}
 foreach ($m in $milestones) { if ($m.issues.Count) { $groups[$m.title] = @($m.issues) } }

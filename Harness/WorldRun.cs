@@ -27,7 +27,7 @@ namespace KingdomWatch.Harness
     /// Milestones 1 to 3 of the economy ladder's section 9 can fire: the
     /// first settlement, founded at world start since #146, and since #100 a
     /// village's first house and first harvest, which the chronicle reports.
-    /// The rest wait on skills (#22) and the buildings that need them.
+    /// The rest wait on the seat tiers (#144) and the buildings that need them.
     /// </remarks>
     public sealed class WorldRun
     {

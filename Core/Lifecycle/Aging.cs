@@ -25,7 +25,7 @@ namespace KingdomWatch.Core.Lifecycle
     /// life one stage adrift. What a stage means to each system - who may
     /// marry, who is a dependent, who eats first - stays with that system
     /// (<see cref="AgeStages"/>); the adolescent-to-apprenticeship mapping
-    /// is #22's.
+    /// waits on skills, a V2 candidate (#22).
     ///
     /// **People arrive through <see cref="DomainEventKind.PersonBorn"/>**,
     /// and only that way. This class subscribes, and books the first

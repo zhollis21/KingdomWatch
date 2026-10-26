@@ -141,7 +141,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.People.GetJob(elder), Is.EqualTo(JobKind.Forager), "elders work");
                 Assert.That(w.People.GetJob(child), Is.EqualTo(JobKind.None));
                 Assert.That(w.Jobs.HasTask(child), Is.False);
-                Assert.That(w.People.GetJob(adolescent), Is.EqualTo(JobKind.None), "work assistance is #22's");
+                Assert.That(w.People.GetJob(adolescent), Is.EqualTo(JobKind.None), "adolescents do not work");
                 Assert.That(w.Jobs.HasTask(adolescent), Is.False);
 
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "scrub underfoot");
@@ -1717,8 +1717,8 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void A_work_trip_reveals_the_ground_it_covers()
         {
-            // Section 12 counts "foragers and hunters working out from a
-            // settlement" among the things that reveal, and nothing in Jobs
+            // Section 12 counts foragers working out from a settlement
+            // among the things that reveal, and nothing in Jobs
             // used to reveal anything. A trip to the far forest widens the
             // band's map around the whole route, so the frontier creeps
             // outward on the strength of the work itself.

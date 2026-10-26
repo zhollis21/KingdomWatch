@@ -38,8 +38,8 @@ namespace KingdomWatch.Core.Data
     /// household fail loudly on lookup.
     ///
     /// Skills are deliberately not a field either - section 5 indexes them
-    /// separately as [personIndex * skillCount + skillId], and they arrive with
-    /// #22 in M3.
+    /// separately as [personIndex * skillCount + skillId], and they are a V2
+    /// candidate (#22), not launch work.
     ///
     /// BirthCulture and Assimilation are raw bytes rather than enums because
     /// the enums that would give them meaning belong to systems not built yet.

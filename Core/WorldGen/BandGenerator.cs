@@ -54,7 +54,8 @@ namespace KingdomWatch.Core.WorldGen
     /// section 8 puts the ruler with the largest band; who leads and why is
     /// M7's. Oldest is a rule that needs no draw and reads as plausible.
     ///
-    /// **Skills start flat, and tools do not exist.** Section 15 lists basic
+    /// **Nobody has a skill, and tools do not exist.** Skills are a V2
+    /// candidate (#22, #186). Section 15 lists basic
     /// tools among a band's starting supplies; no tool resource exists yet
     /// (#78 enumerates the ladder) and none is invented here. Races are
     /// #34's: one <see cref="DemographicSettings"/> table, whichever the

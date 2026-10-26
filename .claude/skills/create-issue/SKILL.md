@@ -140,6 +140,8 @@ intentionally thin right now and should grow as `Core`/`Game` get built:
 - **Milestone scope** — check which milestone (M0–M9) the affected area belongs
   to and whether the issue is actually in-scope yet, or describes work that's
   intentionally deferred (design doc §19–21 lists what's deferred and why).
+  M10 holds V2 candidates (#186): an issue there states an idea and its open
+  questions, not a build plan.
 
 ---
 

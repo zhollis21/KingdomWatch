@@ -32,13 +32,13 @@ namespace KingdomWatch.Core.Data
         /// <summary>Play, chores, socialization.</summary>
         Child = 2,
 
-        /// <summary>Apprenticeship and work assistance. Not yet an adult.</summary>
+        /// <summary>Not yet an adult. Apprenticeship and work assistance, if skills come in V2 (#22).</summary>
         Adolescent = 3,
 
         /// <summary>Full participation.</summary>
         Adult = 4,
 
-        /// <summary>Reduced work, high skill, social weight.</summary>
+        /// <summary>Reduced work, social weight.</summary>
         Elder = 5,
     }
 

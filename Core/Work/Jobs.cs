@@ -35,8 +35,9 @@ namespace KingdomWatch.Core.Work
     /// threshold, so a round of pickers cannot all see the same shortfall and
     /// all fill it. That tally, and the band's head count, are built by the
     /// dawn pass and carried through the day rather than rescanned per pick -
-    /// a scan there made a day's work quadratic in population (#83). Skill
-    /// weighting is #22's; a settlement-wide plan is #23's and replaces
+    /// a scan there made a day's work quadratic in population (#83). There
+    /// is no skill weighting (skills are a V2 candidate, #22); a
+    /// settlement-wide plan is #23's and replaces
     /// "decide need" without touching "choose".
     ///
     /// **A band provisions for winter** (#53). Winter foraging does not feed
@@ -127,9 +128,9 @@ namespace KingdomWatch.Core.Work
     /// plan that will replace "decide need" is #23's.
     ///
     /// **Who works:** the living adults and elders of a band, tierless and at
-    /// full output. Section 6's reduced work for elders is a tier effect and
-    /// arrives with #22's skills; adolescents' work assistance is #22's
-    /// apprenticeship mapping.
+    /// full output. Adolescents do not work. Section 6's reduced work for
+    /// elders, and adolescents' work assistance through apprenticeship,
+    /// waited on skills, a V2 candidate (#22).
     ///
     /// **Death vacates.** <see cref="Lifecycle.Deaths"/> calls
     /// <see cref="Vacate"/> as a step of the cascade - the pending
@@ -211,8 +212,9 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
-        /// "foragers and hunters working out from a settlement" among the
-        /// things that reveal, and this is how far they reveal.
+        /// foragers working out from a settlement among the things that
+        /// reveal (hunters too, if V2 brings game, #114), and this is how far
+        /// they reveal.
         /// </summary>
         /// <remarks>
         /// Its own constant rather than <see cref="Nomadic.NomadicBands.RevealRadius"/>:

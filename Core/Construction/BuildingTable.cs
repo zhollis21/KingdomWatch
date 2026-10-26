@@ -78,8 +78,7 @@ namespace KingdomWatch.Core.Construction
         private static readonly BuildingSpec Barn = new BuildingSpec(Capability.Farming, SkillTier.Novice, 25, 50, 7, 5, 3, 32 * Hour);
         private static readonly BuildingSpec Field = new BuildingSpec(Capability.Farming, SkillTier.Novice, 5, 0, 5, 5, 0, 8 * Hour);
 
-        // The ladder gates storage at Apprentice construction; Novice until
-        // skills exist (#22), so that it is built at all (#98). Sized to the
+        // Storage needs no seat (#186 kept it ungated, as #98 built it). Sized to the
         // art's silo, and for a Woodshed to a fenced log yard, whose piles
         // stand inside the fence and need no clearance, as a field's crop.
         private static readonly BuildingSpec Granary = new BuildingSpec(Capability.Construction, SkillTier.Novice, 25, 50, 3, 2, 3, 24 * Hour);
