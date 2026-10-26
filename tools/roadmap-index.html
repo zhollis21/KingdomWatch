@@ -156,7 +156,7 @@
     const d = ['digraph {', `  rankdir=LR; bgcolor="transparent"; pad=0.2; node [shape=box style="filled,rounded" fontname="Helvetica" fontsize=11]; edge [color=${q(P.edge)} arrowsize=0.7];`];
     let prev = null;
     for (const m of graph.milestones) {
-      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : 'plain');
+      const s = m.issues.length && m.open === 0 ? 'done' : (m.number === graph.currentMilestone ? 'ready' : (m.idea ? 'idea' : 'plain'));
       const [fill, border, text] = P[s];
       const id = 'M' + m.number, n = msNum(m);
       d.push(`  ${id} [label=${q(m.title + '\n' + m.closed + ' done · ' + m.open + ' open')} fillcolor=${q(fill)} color=${q(border)} fontcolor=${q(text)} penwidth=${s === 'ready' ? 2 : 1}` + (n === null ? '' : ` URL=${q('#M' + n + '.md')}`) + '];');

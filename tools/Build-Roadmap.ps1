@@ -411,6 +411,8 @@ $graph = [ordered]@{
             number = $_.number; title = $_.title; state = $_.state
             open = @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count
             closed = @($_.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
+            # Open, and every open issue a V2 idea: drawn purple in the overview.
+            idea = @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 -and @($_.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -eq 0
             issues = @($_.issues | Sort-Object)
         }
     })
@@ -451,7 +453,8 @@ foreach ($m in $milestones) {
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
     $id = 'MS' + (Get-MilestoneOrder $m.title)
     $label = "$($m.title -replace '&', '#amp;' -replace '"', '#quot;' -replace '<', '#lt;' -replace '>', '#gt;')<br/>$closed done · $open open"
-    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } else { 'plain' }
+    $ideasOnly = $open -gt 0 -and @($m.issues | Where-Object { $issues[$_].state -eq 'open' -and -not $issues[$_].idea }).Count -eq 0
+    $class = if ($m.issues.Count -gt 0 -and $open -eq 0) { 'done' } elseif ($m -eq $current) { 'ready' } elseif ($ideasOnly) { 'idea' } else { 'plain' }
     $md.Add("  $id[`"$label`"]:::$class")
     if ($prev) { $md.Add("  $prev --> $id") }
     $prev = $id
