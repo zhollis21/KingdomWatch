@@ -71,7 +71,7 @@ namespace KingdomWatch.Core.Nomadic
     /// and all will in spring, and a band waits out the cold on its stores
     /// rather than wander. The machinery - a
     /// route costed into a travel time, one arrival event - is what #35's
-    /// founding parties and M4's armies reuse.
+    /// founding parties and M7's armies reuse.
     ///
     /// **A band scores only what it knows** (#81). Section 12's bounded map
     /// knowledge: a site counts toward a cell's score only if the band has

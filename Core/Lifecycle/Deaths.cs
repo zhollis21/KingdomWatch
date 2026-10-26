@@ -14,7 +14,7 @@ namespace KingdomWatch.Core.Lifecycle
     /// </summary>
     /// <remarks>
     /// **Deciding a death is not this class's job.** <see cref="Mortality"/>
-    /// rolls it and answers starvation; injury (M4) will raise its own. Each
+    /// rolls it and answers starvation; injury in a fight (#28) will raise its own. Each
     /// calls <see cref="Die"/>, and the world after the call is consistent: the
     /// event is published, the partnership ended, memories pruned, a
     /// pregnancy cancelled, the task and job vacated, the household
@@ -51,7 +51,7 @@ namespace KingdomWatch.Core.Lifecycle
     /// is held by their task, and the vacate gives it back (#24).
     ///
     /// **What is not here, and where it is.** Breaking an apprenticeship
-    /// (#22), destroying a master's checked-out Tools/Weapons/Armor rather
+    /// (#22, a V2 candidate), destroying a master's checked-out Tools/Weapons/Armor rather
     /// than passing them on (#78), and folding personal wealth into the household (#68) each join this cascade when
     /// the thing they act on exists. A step is added here, not subscribed.
     ///

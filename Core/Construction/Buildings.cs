@@ -24,7 +24,8 @@ namespace KingdomWatch.Core.Construction
     /// <see cref="AtDawn"/> for each settlement after its workers have
     /// picked. A new building is approved only when all five of the plan's
     /// section 9 conditions hold: someone with the skill
-    /// (<see cref="ISkillSource"/>), the wood in stock over and above the
+    /// (<see cref="ISkillSource"/>, everyone a Novice; the seat tier replaces
+    /// it at #144), the wood in stock over and above the
     /// coming winter's fuel, the buildings it stands on (a barn needs a
     /// house, a field a barn with room for it in its count and on the
     /// ground around it), hands to spare - somebody found

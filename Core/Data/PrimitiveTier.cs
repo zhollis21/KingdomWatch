@@ -62,7 +62,8 @@ namespace KingdomWatch.Core.Data
         /// so a band that did not store food in autumn could not forage its
         /// way through. Since #26 berry bushes are bare all winter, so nothing
         /// forages then and this recipe is not run; it stays as the season's entry until a
-        /// winter food source (#114's game) gives foraging something to find.
+        /// winter food source gives foraging something to find (game was the
+        /// candidate, now V2: #114).
         /// </summary>
         public static readonly Recipe ForageWinter = ForageYielding("Forage (winter)", 1);
 

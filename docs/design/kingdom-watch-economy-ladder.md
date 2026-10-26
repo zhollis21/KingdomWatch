@@ -5,8 +5,8 @@ which jobs and buildings exist, and what the six progression milestones
 actually mean as conditions the simulation can test.
 
 The [design plan](kingdom-watch-plan-v7.1.md) §9 explains *why* the economy is
-shaped this way — a capability graph rather than a tech tree, skill tiers to
-resolve the smithing chicken-and-egg. This document is the *what*. It exists
+shaped this way — a capability graph rather than a tech tree, paced by the
+settlement's seat tier (skill tiers until #186). This document is the *what*. It exists
 because the plan's §9 committed to "~10 resources with two-step chains" and to five gates
 on every building without ever naming a resource, a building or a milestone
 condition, which left #22, #23, #26, #37 and #53 each inventing the piece they
@@ -18,6 +18,13 @@ the M1 slice — Food, Wood, Stone, gathering only (#52) — and #100's
 buildings: the House, the Barn and its Fields, Grain and its milling, and
 the Builder and Farmer jobs; and #155's Forester. Everything else is still a plan.
 
+**Rescoped at #186.** Skills and apprenticeship, hunting and every animal,
+and drinking water are V2 candidates (#22, #114, #187, #101), out of launch
+scope. Each building's minimum skill became the seat tier it needs (§4),
+Soldiering left with the other skills (§8), and the progression milestones
+are buildings alone (§9). Rows for V2 work stay, marked, so the idea is not
+lost.
+
 Section numbers refer to this document unless they say "the plan's"; the
 design plan's sections are always cited that way.
 
@@ -28,7 +35,7 @@ to match.
 > **Table order is presentational.** `ResourceKind` and `JobKind` are
 > append-only and persisted, and the order in which the values below are
 > *appended* is deliberately not decided here — that belongs to the issue
-> doing the appending (#22 for jobs, #37 for resources). Read the rows as a
+> doing the appending (each job's own issue, #37 for resources). Read the rows as a
 > set. The values that already exist carry their real numbers, and those are
 > permanent.
 
@@ -48,7 +55,7 @@ the graph inspectable and the deadlock surface small.
 
 | Resource | Enum | Depth | Source | Notes |
 |---|---|---|---|---|
-| Food | `ResourceKind.Food = 1` | 0 | Foraged, hunted, or milled from Grain | No spoilage (§5 below). Going without it kills; the only other lack that does is winter fuel (§2). |
+| Food | `ResourceKind.Food = 1` | 0 | Foraged or milled from Grain (hunted too, if V2 brings game, #114) | No spoilage (§5 below). Going without it kills; the only other lack that does is winter fuel (§2). |
 | Wood | `ResourceKind.Wood = 2` | 0 | Gathered deadfall, later felled at a lumber camp | Also winter fuel — see §2. |
 | Stone | `ResourceKind.Stone = 3` | 0 | Loose surface stone, later quarried | |
 | Grain | `ResourceKind.Grain = 4` | 0 | Harvested from a field around a barn (#100) | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food at the meal, one Grain to five meals; no spoilage of its own. |
@@ -61,7 +68,7 @@ the graph inspectable and the deadlock surface small.
 | Recipe | Inputs | Outputs | Needs | Substitutes |
 |---|---|---|---|---|
 | Forage | — | Food | — | Hunt, Mill |
-| Hunt | — | Food | — | Forage, Mill |
+| Hunt *(V2, #114)* | — | Food | — | Forage, Mill |
 | Mill | Grain ×1 | Food ×5 | — | Forage, Hunt |
 | Gather wood | — | Wood | — | — |
 | Fell timber | — | Wood | lumber camp | Gather wood |
@@ -99,8 +106,9 @@ works the same origin faster — Fell timber over Gather wood, Quarry over
 Gather stone, Mine over Gather ore — is not a second source: lose the forest
 and both wood recipes go with it.
 
-Food has three independent sources and two of them need no building, so a
-settlement that loses its farm forages or hunts instead.
+Food has two independent sources at launch, bushes and farmland, and
+foraging needs no building, so a settlement that loses its farm forages
+instead. Hunting would be a third (V2, #114).
 
 Every other kind has a single source, and all but one of them are not
 survival-critical:
@@ -114,7 +122,7 @@ survival-critical:
   the base store holds; a Stoneyard takes none). Rocks are never used
   up, so a starting site and a band's settling place both need one in reach,
   as they need food; that one is then stone for good.
-- **Grain** exists only to become Food, which Forage and Hunt also supply
+- **Grain** exists only to become Food, which Forage also supplies
   directly. Losing farmland costs population capacity, not survival.
 - **Charcoal** comes only from Wood and has no substitute for smelting, but
   Wood substitutes for its other use, heating (§2) — its one essential,
@@ -187,16 +195,15 @@ carves out the roles that are not recipes at all.
 | Forager | `JobKind.Forager = 1` | Forage |
 | Woodcutter | `JobKind.Woodcutter = 2` | Gather wood |
 | StoneGatherer | `JobKind.StoneGatherer = 3` | Gather stone |
-| Hunter | *appended later* | Hunt |
+| Hunter *(V2, #114)* | *appended later* | Hunt |
 | OreGatherer | *appended later* | Gather ore |
 | CharcoalBurner | *appended later* | Burn charcoal |
 | Smelter | *appended later* | Smelt — at a campfire pit, or at a smeltery once one exists |
 
 Smelter is a tier-zero job because its recipe has a crude form (§7): the
 same recipe without the building, at a penalty. The smeltery raises the
-rate of a job that already exists rather than creating it, which is also how
-the metalworking skill that gates it gets learned in the first place.
-Lumberjack, Quarrier and Miner are different: their buildings run a
+rate of a job that already exists rather than creating it, so Metal flows
+before any seat is built. Lumberjack, Quarrier and Miner are different: their buildings run a
 different recipe from the gathering one, so they are separate jobs below.
 Farmer used to sit here too, working a scatter-sown clearing before any
 farm existed; #100 dropped that crude form (§7), so it is building-gated.
@@ -222,10 +229,9 @@ farm existed; #100 dropped that crude form (§7), so it is building-gated.
 Milling is deliberately not a job. A quern is tier-zero household work, so
 Grain becomes Food without anyone holding a role for it.
 
-**Soldiering is not a job either, and not in the tables above.** It is a
-skill a person carries — §8 — engaged only during a muster or a direct
-defense, layered on top of whatever standing job they hold the rest of the
-time. A Farmer who fights off a raid does not stop being a Farmer.
+**Fighting is not a job either, and not in the tables above.** Any adult
+musters (§8), on top of whatever standing job they hold the rest of the
+time. A Farmer who fights off an attack does not stop being a Farmer.
 
 ---
 
@@ -233,45 +239,50 @@ time. A Farmer who fights off a raid does not stop being a Farmer.
 
 ### Production and infrastructure
 
-Each with the five gates of the plan's §9: minimum relevant skill, necessary inputs,
+Each with the five gates of the plan's §9: the seat tier it needs, necessary inputs,
 prerequisite infrastructure, sufficient labour surplus, and actual settlement
 demand. Labour surplus and demand are per-settlement conditions rather than
 fixed numbers, so they are described rather than tabulated.
 
-| Building | Min skill | Inputs | Prerequisite | Enables |
+**The seat column replaced a minimum skill at #186.** Each skill tier maps
+onto the settlement's seat (§4a): Novice needed nothing and still needs
+nothing, Apprentice needs a Town Hall, Journeyman a Fort, Expert a Castle.
+The skill each row used to name is in brackets, for #22 if skills return.
+
+| Building | Seat | Inputs | Prerequisite | Enables |
 |---|---|---|---|---|
 | Camp | — | Wood | — | A band's temporary shelter, pitched at every stop and kept on settling (#54); housing until houses exist |
-| House | Novice construction | Wood, Stone | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
-| Barn | Novice farming | Wood, Stone | a house | The farmstead fields are laid out around, up to four (#100) |
-| Field | Novice farming | Wood | a barn with room, ground within reach of it | Grain, worked by Farmers (#100) |
-| Lumber camp | Apprentice woodcraft | Wood | forest in reach | Wood at rate |
-| Quarry | Apprentice masonry | Wood | rocks in reach | Stone at rate |
-| Mine | Journeyman masonry | Wood | rocks in reach, a quarry | Ore |
-| Smeltery | Journeyman metalworking | Stone | a house | Metal, at rate |
-| Smithy | Journeyman metalworking | Stone | a house | Tools, Weapons, Armor, forged from Metal |
-| Hall | Expert masonry | Stone | a quarry | Where festivals and funerals happen (the plan's §12 outdoor social life); the first dressed-stone building |
-| Palisade → Wall | Apprentice construction → Expert masonry | Wood, then Stone, Metal | a house, then also a quarry, a smithy | Basic perimeter defense from early on; the stone tier is the last milestone — see §4a |
-| Wooden watchtower → Stone watchtower | Novice construction → Apprentice masonry | Wood, then Stone | a house, then also a quarry | Standing lookout — standalone from the wall, not a prerequisite for it |
-| Town Hall → Fort → Castle | Apprentice → Journeyman → Expert construction | Wood, then Stone | — | One administrative slot, tiering as population and defensive need cross thresholds — see §4a. Not a building the player or an AI queues an upgrade for. |
-| Marketplace | Apprentice construction | Wood | a house | Where the abstracted settlement-to-settlement trade edge (the plan's §12) attaches, and where social life happens outdoors. No mechanics of its own. |
-| Dock | Apprentice construction | Wood | water in reach | Boat launch and cross-water traversal (#45, M8). Whether it also fishes for Food is open — see *What this does not decide*. |
+| House | — (novice construction) | Wood, Stone | a camp | Households with a real home (#69); tiers further as the settlement's demand grows, the same way the seat of government does below |
+| Barn | — (novice farming) | Wood, Stone | a house | The farmstead fields are laid out around, up to four (#100) |
+| Field | — (novice farming) | Wood | a barn with room, ground within reach of it | Grain, worked by Farmers (#100) |
+| Lumber camp | Town Hall (apprentice woodcraft) | Wood | forest in reach | Wood at rate |
+| Quarry | Town Hall (apprentice masonry) | Wood | rocks in reach | Stone at rate |
+| Mine | Fort (journeyman masonry) | Wood | rocks in reach, a quarry | Ore |
+| Smeltery | Fort (journeyman metalworking) | Stone | a house | Metal, at rate |
+| Smithy | Fort (journeyman metalworking) | Stone | a house | Tools, Weapons, Armor, forged from Metal |
+| Hall | Castle (expert masonry) | Stone | a quarry | Where festivals and funerals happen (the plan's §12 outdoor social life); the first dressed-stone building |
+| Palisade → Wall | Town Hall → Castle (apprentice construction → expert masonry) | Wood, then Stone, Metal | a house, then also a quarry, a smithy | Basic perimeter defense from early on; the stone tier is the last milestone — see §4a |
+| Wooden watchtower → Stone watchtower | — → Town Hall (novice construction → apprentice masonry) | Wood, then Stone | a house, then also a quarry | Standing lookout — standalone from the wall, not a prerequisite for it |
+| Town Hall → Fort → Castle | — (population) | Wood, then Stone | — | One administrative slot, tiering as population crosses thresholds — see §4a. Not a building the player or an AI queues an upgrade for. |
+| Marketplace | Town Hall (apprentice construction) | Wood | a house | Where the abstracted settlement-to-settlement trade edge (the plan's §12) attaches, and where social life happens outdoors. No mechanics of its own. |
+| Dock | Town Hall (apprentice construction) | Wood | water in reach | Boat launch and cross-water traversal (#45, M8). Whether it also fishes for Food is open — see *What this does not decide*. |
 
 Masonry is the one capability that climbs the whole way: dry-stone stacking
-at tier zero, a quarry at apprentice, a mine at journeyman, dressed stone —
-the hall and the wall — at expert. **Buildings that merely contain stone do
+at tier zero, a quarry with a Town Hall, a mine with a Fort, dressed stone —
+the hall and the wall — with a Castle. **Buildings that merely contain stone do
 not count as stone construction**, which is why the smeltery and the smithy
-are gated on metalworking rather than masonry even though both take Stone as
-an input. Without that distinction the "first stone building" milestone fires
-on whichever building happens to list Stone among its inputs, which would put
-it before the smithy and inverted against the ladder in §9.
+are not the "first stone building" even though both take Stone as an
+input. Without that distinction the milestone fires on whichever building
+happens to list Stone among its inputs, which would put it before the smithy
+and inverted against the ladder in §9.
 
 **Neither metalworking building waits on other metal infrastructure, or on
 the other.** Beyond the Stone and the house both need, their gate is
-Journeyman metalworking. Charcoal burns in a pit and surface ore is gathered like surface
-stone, so neither the smeltery nor a mine is a precondition for reaching
-Journeyman metalworking — making either one a prerequisite would put the
-whole metal branch behind journeyman masonry, which is the chicken-and-egg the plan's §9
-exists to prevent, reintroduced one rung up. The same independence holds
+a Fort. Charcoal burns in a pit and surface ore is gathered like surface
+stone, so neither the smeltery nor a mine is a precondition for metal —
+making either one a prerequisite would put the whole metal branch behind
+the masonry branch, a chain the plan's §9 keeps every capability free of.
+The same independence holds
 between the two metalworking buildings themselves: the smithy does not
 require a smeltery to exist first. It only needs Metal in stock, and crude
 pit-smelting already supplies that — so a settlement can forge Tools before
@@ -286,9 +297,12 @@ they go.
 #### 4a. Single slots that tier up, not a tech tree
 
 Town Hall → Fort → Castle is a single building slot that **tiers up as the
-settlement's own population and defensive need cross thresholds**, the same
-gating already used for the smithy — skill, inputs, infrastructure, labour
-surplus, demand. There is no player-driven or AI-queued "upgrade" button, and
+settlement's own population crosses thresholds**, the same gating already
+used for the smithy — inputs, infrastructure, labour surplus, demand.
+Defensive need was the plan's second driver; at launch nothing threatens a
+village before war (the plan's §14, M7), so it joins then (#186). Every other
+building's seat gate reads this slot, which makes the seat the pacing lever
+skill once was (the plan's §9). There is no player-driven or AI-queued "upgrade" button, and
 no fixed resource cost that unlocks the next tier on its own. This keeps the plan's §9
 and §20 "no research system, no explicit tech ladder" stance intact:
 nothing here is a purchased or researched upgrade, it is infrastructure
@@ -299,12 +313,12 @@ Houses tier the same way, independently, per household rather than per
 settlement.
 
 **The wall and the watchtower tier the same way, across two capabilities
-instead of one.** A settlement gets a Palisade and a wooden watchtower from
-Construction alone, long before anyone reaches Expert masonry — closing what
+instead of one.** A settlement gets a wooden watchtower with no seat and a
+Palisade with a Town Hall, long before its Castle — closing what
 would otherwise be a decades-long stretch (§9 below puts the stone Wall at
 year 70–100) with no built defense at all beyond §8's "anyone can fight."
-Reaching Expert masonry replaces the Palisade with a Wall, and Apprentice
-masonry replaces the wooden watchtower with a stone one. The stone tier is
+A Castle (with a quarry and a smithy) replaces the Palisade with a Wall, and
+a Town Hall (with a quarry) replaces the wooden watchtower with a stone one. The stone tier is
 still what milestone 6 in §9 below fires on — a Palisade is infrastructure on the
 way there, not an earlier version of the achievement, the same way a quarry
 plot existing doesn't bring forward "first stone building."
@@ -322,13 +336,17 @@ so a night's eating before the dawn check doesn't hide it; and storage is
 built from any wood in stock, the winter's fuel included, since a
 woodpile too small for the winter is exactly what a Woodshed answers.
 
-| Building | Min skill | Inputs | Prerequisite | Raises capacity for |
+| Building | Seat | Inputs | Prerequisite | Raises capacity for |
 |---|---|---|---|---|
-| Granary | Apprentice construction (Novice until #22) | Wood, Stone | a barn | Food, Grain |
-| Woodshed | Apprentice construction (Novice until #22) | Wood, Stone | a house | Wood, Charcoal |
-| Stoneyard | Apprentice construction (Novice until #22) | Wood | a house | Stone, Ore |
-| Vault | Journeyman construction | Stone | a smeltery or a smithy | Metal, Tools |
-| Armory | Apprentice construction | Stone | a smithy | Weapons, Armor |
+| Granary | — (built with no gate) | Wood, Stone | a barn | Food, Grain |
+| Woodshed | — (built with no gate) | Wood, Stone | a house | Wood, Charcoal |
+| Stoneyard | — (built with no gate) | Wood | a house | Stone, Ore |
+| Vault | Fort (journeyman construction) | Stone | a smeltery or a smithy | Metal, Tools |
+| Armory | Town Hall (apprentice construction) | Stone | a smithy | Weapons, Armor |
+
+The first three were Apprentice construction, standing at Novice until
+skills existed. They were built that way (#98, #178), and #186 kept them
+ungated rather than move them behind a Town Hall.
 
 #98 built the Granary and the Woodshed. #166 gave Stone a use - houses,
 barns and stores are built with it - and a want that grows with the
@@ -446,11 +464,11 @@ nobody equipped at all. An item is a bonus on top of that baseline, never a
 precondition for it.
 
 **No per-item quality.** Every Weapon, Armor piece or Tool of a given kind is
-functionally identical, whoever made it. A smith's skill tier changes only
-how fast the smithy can produce or replace them — throughput, not quality —
-which is the same rule §7 states for every production capability. A master
-smith's value is keeping more of the population equipped at once, not making
-any one soldier individually stronger.
+functionally identical, whoever made it. With no skills at launch (#186),
+every smith works at the same rate; how many smithies and smiths a
+settlement keeps decides how much of it stays equipped, not how strong any
+one soldier is. If skills return (#22), a smith's tier would change
+throughput only, never quality.
 
 **Destroyed on death, uniformly — no inheritance.** Tools, Weapons and Armor
 alike return to nothing when their holder dies; there is no transfer-to-
@@ -479,53 +497,44 @@ nothing was required to begin with.
 
 ## 7. The capability graph
 
-Eight capabilities, each with the five skill tiers of the plan's §9 —
-Novice → Apprentice → Journeyman → Expert → Master.
+Six capabilities at launch. Each was to carry the five skill tiers of the
+plan's §9, Novice → Apprentice → Journeyman → Expert → Master; since #186
+nobody has a skill, and the building forms gate on the seat (§4). Hunting
+and Soldiering were capabilities too, and left with game (#114) and skills
+(#22).
 
 The binding constraint in the plan's §9 is that **every capability must have a reachable path
 from primitive life**, or the chicken-and-egg simply moves one rung up. The
 check is per-capability and mechanical: each one needs a crude form that
-requires no building, so skill can be built before the building that skill
-gates.
+requires no building, so the work happens before the building that speeds
+it up exists.
 
-| Capability | Crude form at tier zero | What skill then unlocks |
+| Capability | Crude form at tier zero | Building forms, and the seat each needs |
 |---|---|---|
 | Foraging | Forage | — (no building form) |
-| Hunting | Hunt | — |
-| Woodcraft | Gather wood | Fell timber, at a lumber camp |
-| Construction | Camp | House, then storage, administrative and wood-tier defensive buildings |
-| Farming | None — see below | Barn and its fields |
-| Masonry | Dry-stone stacking | Quarry and the stone watchtower at apprentice, mine at journeyman, hall and wall at expert |
-| Metalworking | Ore smelted in a campfire pit | Smeltery and smithy, independently |
-| Soldiering | Any untrained adult, armed or not (§8) | — (no building form, ever) |
+| Woodcraft | Gather wood | Fell timber, at a lumber camp (Town Hall) |
+| Construction | Camp | House and storage (none), then administrative and wood-tier defensive buildings |
+| Farming | None — see below | Barn and its fields (none) |
+| Masonry | Dry-stone stacking | Quarry and the stone watchtower (Town Hall), mine (Fort), hall and wall (Castle) |
+| Metalworking | Ore smelted in a campfire pit | Smeltery and smithy, independently (Fort) |
 
 A crude form runs the same chain as its building form, worse and slower, and
 that is why §1's chain table lists each recipe once, with the crude site
 beside the building: a campfire pit and a smeltery both yield Metal. The crude form is not a separate recipe to
 balance, it is the same recipe without the building and at a penalty.
 
-Metalworking is the case the plan's §9 works through: a novice works metal badly at a
-pit, doing so builds skill, and at journeyman both a smeltery and a smithy
-become viable — so the technology climb is paced by human learning time
-rather than a timer, and varies per world because it depends on who happens
-to be good at what.
+Metalworking is the case the plan's §9 works through: metal is smelted badly
+at a pit from the start, and once the settlement's seat is a Fort both a
+smeltery and a smithy become viable — so the technology climb is paced by
+how fast a settlement grows rather than a timer, and varies per world.
 
-**Every capability but one only ever affects rate, never quality** (§6). The
-one exception is **Soldiering**, and it is not really an exception: the rule
-was always about *production* — how fast something gets made. A person
-fighting is not producing anything, so there is no rate for their own
-performance to be measured in. Soldiering can only ever mean "how good," and
-it grows the way metalworking's crude tier does — by doing, here meaning by
-surviving fights — rather than through any building at all, which is also why
-it needs no reachability check: it never required infrastructure to begin
-with.
+**A building form only ever changes rate, never quality** (§6).
 
 **Every row above but Farming has a tier-zero entry, so the graph is
 reachable.** A new capability is not finished until it has one, unless it is
 Farming's kind of exception: #100 dropped the scatter-sown clearing, because
-the barn that farming starts from needs only *Novice* farming — the lowest
-tier, which everyone holds — so no skill has to be learned before it, and
-the reachability the crude form existed for holds without it. What the
+the barn that farming starts from needs no seat, so nothing has to come
+before it, and the reachability the crude form existed for holds without it. What the
 clearing also did, feeding a village before its first crop, is now the
 settling check's job: a band settles only in early spring, where a year's
 picking of the bushes in reach would cover half as much again as a season's
@@ -536,21 +545,19 @@ eating — enough to carry it to its first harvest.
 ## 8. Combat and the levy
 
 **Equipment is never a hard gate on fighting.** Any adult can be levied for a
-muster or can join a direct defense — a raid, a predator, a siege — whether
+muster or can join a direct defense — an attack in war, a siege — whether
 or not they currently hold a Weapon or Armor. A settlement caught short-handed
 still has its trapped citizens.
 
-Two things vary how well that goes, and neither is the smith's skill:
+**One thing varies how well that goes: whether the person is equipped.**
+Real, but the exact effect on survival or combat odds is not decided here —
+it is #28's disruption loop to design, once it exists to design against.
+A personal Soldiering tier, grown by surviving fights, was the second thing;
+it left with the other skills at #186 (#22).
 
-- **Whether the person is equipped.** Real, but the exact effect on survival
-  or combat odds is not decided here — it is #27/#28's threat-and-disruption
-  system to design, once it exists to design against.
-- **The person's own Soldiering tier** (§7) — a personal, quality-bearing
-  trait distinct from crafting skill, grown by experience.
-
-The smith's own skill tier is not one of the two. It governs how much of the
-population can be kept equipped at all (§6), which is a settlement-level
-readiness question, not an individual combat one.
+How many smiths a settlement keeps governs how much of the population can be
+kept equipped at all (§6), which is a settlement-level readiness question,
+not an individual combat one.
 
 ---
 
@@ -565,27 +572,24 @@ could softlock a world.
 | 1 | First settlement | The first `SettlementFounded`, at world start, since the world opens with its villages standing (#146; before that, the first `CampPitched`, #54) |
 | 2 | First permanent structure | A house completes |
 | 3 | First farm | A field brings in its first harvest (#100) |
-| 4 | First smithy | A smithy completes, OR a Journeyman metalworker exists |
-| 5 | First stone building | A building requiring expert masonry completes — normally the hall — OR an expert mason exists |
-| 6 | First wall | A wall encloses a settlement, OR the settlement has stood a raid and an expert mason exists |
+| 4 | First smithy | A smithy completes |
+| 5 | First stone building | A Hall completes |
+| 6 | First wall | A stone Wall encloses a settlement |
 
-Milestones 5 and 6 carry an OR because each can softlock on infrastructure
-lagging behind skill: a settlement can reach expert masonry, or stand a raid
-while it has one, well before the specific building completes. The alternate
-condition is in every case the *capability* having been reached rather than
-the building existing, which is what the milestone is really measuring.
+**Buildings only, no OR (#186).** Milestones 4–6 used to carry a skill
+alternative (a journeyman metalworker, an expert mason, a raid stood with an
+expert mason) so a settlement whose capability ran ahead of its buildings
+could not softlock. Skills are a V2 candidate, and #186 dropped the
+alternatives rather than replace them.
 
-Milestone 4's OR does not rescue an ore-less world, and no wording of it
-could: Metalworking has no ore-free path at any tier, crude or built (§7's
-crude form is literally "Ore smelted in a campfire pit"), the same way
-Farming has no farmland-free path. **A genuinely ore-less world never reaches
-milestone 4**, and never reaches milestone 6 through Wall's own primary
-condition either, since Wall needs Metal. Milestone 6's OR still reaches such
-a world if it has been raided, since expert masonry alone needs no ore, and
-milestone 5 (Hall) never needed Metal to begin with — so an ore-less,
-never-raided world stalls at milestone 5, not milestone 3. That is a real
-limit of that world, not a bug, the same way a band that never finds a site
-it can settle stays nomadic (#54) rather than being blocked.
+**A genuinely ore-less world never reaches milestone 4 or 6.** Metalworking
+has no ore-free path at any tier, crude or built (§7's crude form is
+literally "Ore smelted in a campfire pit"), the same way Farming has no
+farmland-free path, and the Wall needs Metal. The Hall needs none, so such a
+world still reaches milestone 5 and stalls there. Without the old raid
+alternative, 6 is now out of its reach for good. That is a real limit of
+that world, not a bug, the same way a band that never finds a site it can
+settle stays nomadic (#54) rather than being blocked.
 
 ### Target pacing
 
@@ -593,28 +597,29 @@ it can settle stays nomadic (#54) rather than being blocked.
 and durations: chosen to be plausible for the arc §1 of the design plan
 describes, not tuned. Nothing here should be read as a balance decision.**
 
-They exist because the plan's §15 calls time to first journeyman "a critical pacing
-number" and says to tune it in the harness early, and until something states
-a target there is nothing to tune toward. The first world run (#17) could only
-measure the first row: nothing in M1 builds, so every building milestone waits
-on #100's building model, and the skill milestones on #22.
+They exist because the plan's §15 calls time to first Town Hall (first
+journeyman until #186) "a critical pacing number" and says to tune it in the
+harness early, and until something states a target there is nothing to tune
+toward. The first world run (#17) could only measure the first row: nothing
+in M1 builds, so every building milestone waits on #100's building model,
+and the seat rows on #144.
 
 | Milestone | Target | Confirmed by |
 |---|---|---|
 | First settlement | year 0 | Fires at world start (#146); tested on every seed by #17 |
 | First permanent structure | year 3–5 | #100 (buildings), #23 |
-| First farm | year 8–15 | #100, #22; seasons (#53) gate sowing once farms exist |
-| **First journeyman, any craft** | **year 20–30** | #22, the number the plan's §15 names |
-| First smithy | year 30–40 | #22 |
-| First stone building | year 50–70 | #23 |
-| First wall | year 70–100 | #23 |
+| First farm | year 8–15 | #100; seasons (#53) gate sowing once farms exist |
+| **First Town Hall** | **year 20–30** | #144, the number the plan's §15 names |
+| First smithy | year 30–40 | #144 (a Fort), #99 |
+| First stone building | year 50–70 | #144 (a Castle), #142 |
+| First wall | year 70–100 | #145 |
 
 A full ladder in roughly a century, against the ~1,650-person equilibrium of
 the design plan's §1 and the centuries it spans. The shape that matters more
-than the numbers: the gap from farm to smithy is learning time, not
-construction time, and the gap from smithy to wall is skill again. If tuning
-collapses either gap, the capability climb has stopped being paced by people
-and the pacing lever the design plan's §9 describes has been lost.
+than the numbers: the gaps from farm to smithy and from smithy to wall are
+growth time, the population each seat tier waits on, not construction time.
+If tuning collapses either gap, the climb has stopped being paced by the
+settlement and the pacing lever the design plan's §9 describes has been lost.
 
 ---
 
@@ -633,7 +638,7 @@ flowchart LR
   classDef sink fill:#fdeeee,stroke:#9a4a4a,color:#3a1a1a
 
   Forage["Forage"]:::gathered --> Food["Food"]:::gathered
-  Hunt["Hunt"]:::gathered --> Food
+  Hunt["Hunt<br/><i>V2</i>"]:::gathered -.-> Food
   GW["Gather wood"]:::gathered --> Wood["Wood"]:::gathered
   FT["Fell timber<br/><i>lumber camp</i>"]:::built --> Wood
   GS["Gather stone"]:::gathered --> Stone["Stone"]:::gathered
@@ -693,7 +698,7 @@ flowchart LR
   House --> M2["2 · first permanent structure"]:::ms
   Plot --> M3["3 · first farm"]:::ms
   Smithy --> M4["4 · first smithy"]:::ms
-  Hall --> M5["5 · first stone building<br/><i>expert masonry</i>"]:::ms
+  Hall --> M5["5 · first stone building<br/><i>needs a Castle</i>"]:::ms
   Wall --> M6["6 · first wall"]:::ms
 ```
 
@@ -710,23 +715,22 @@ tier-zero form per §7.
 ## What this does not decide
 
 - **Implementation.** No enum gains a value and no recipe is written here.
-  Jobs and skill tiers are #22, the building model #100 (which built the
+  The seat tier is #144, the Smith job #99, the building model #100 (which built the
   House, Barn and Field; #142–#145 and their owners append the rest),
   placement #23, the road to the resource set #37, regeneration rates #26,
   seasonal reassignment #53, and workplaces in the daily schedule #21.
 - **Append order.** See the note at the top.
 - **Any pacing number, or any capacity number, as fact.** Every figure in §5
-  and §9 is a placeholder awaiting #17 and #22.
+  and §9 is a placeholder awaiting the harness.
 - **A tech tree.** The plan's §9 keeps "there is no research system" and "an explicit
   tech ladder is a v2 consideration at earliest", and the plan's §20 leaves explicit
   technology progression deferred. Town Hall → Fort → Castle is demand-gated
   infrastructure (§4a), not a researched or purchased upgrade.
-- **The exact effect of being equipped, a Soldiering tier, or which tier of
-  wall or watchtower a settlement has, on a fight's outcome.** §8 states that
-  equipment and Soldiering both matter and that neither is the smith's
-  concern; §4a adds the wall and watchtower to that same open question. The
-  formula for all of it is #27/#28's, once a threat system exists to need one.
-- **Drinking water as a survival need.** Raised, not resolved — nothing here
+- **The exact effect of being equipped, or which tier of wall or watchtower a
+  settlement has, on a fight's outcome.** §8 states that equipment matters;
+  §4a adds the wall and watchtower to that same open question. The formula
+  for all of it is #28's, once the disruption loop exists to need one.
+- **Drinking water as a survival need.** A V2 candidate (#101) — nothing here
   depends on it existing.
 - **Whether the Dock also produces Food, via fishing.** Its traversal role
   (#45) is settled; fishing is open.

@@ -141,7 +141,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(w.People.GetJob(elder), Is.EqualTo(JobKind.Forager), "elders work");
                 Assert.That(w.People.GetJob(child), Is.EqualTo(JobKind.None));
                 Assert.That(w.Jobs.HasTask(child), Is.False);
-                Assert.That(w.People.GetJob(adolescent), Is.EqualTo(JobKind.None), "work assistance is #22's");
+                Assert.That(w.People.GetJob(adolescent), Is.EqualTo(JobKind.None), "adolescents do not work");
                 Assert.That(w.Jobs.HasTask(adolescent), Is.False);
 
                 Assert.That(w.Jobs.SiteFor(band, JobKind.Forager), Is.EqualTo(WorkWorld.Camp), "scrub underfoot");

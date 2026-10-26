@@ -2,6 +2,8 @@
 
 > **How to read this.** A living plan, not a specification. It records current best thinking and is expected to be revised as real code gets written and teaches us things. Treat its claims the way `/kickoff` treats an issue's — a well-informed hypothesis from someone who had context you may lack, worth taking seriously and not worth adopting unexamined. Where the code and this document disagree, that is a prompt to work out which one is wrong, not an automatic win for the document. §2's "Locked decisions" are the settled *game* questions, reopened deliberately rather than casually; everything else, including the code sketches below, is illustrative.
 
+> **Scope, October 26, 2026 (#186):** drinking water as a need, skills and apprenticeship, every animal, and raiders left launch scope and became V2 candidates (M10). Buildings gate on the settlement's seat tier instead of skill (§9), and M4's disruption folded into M7, where war is the first thing that attacks a village (§19).
+
 > **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets remain open (#20, M9). Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
@@ -42,14 +44,14 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Economy | Seven resources with chains, data-driven and extensible |
 | Technology | **Emergent from the recipe graph** — no tech tree (v2 at earliest) |
 | Seasons | Full — harvest cycles, stores, winter mortality as an *outcome* |
-| Skills | **Five tiers** (novice→master); tier zero needs no building; apprenticeship transmits |
+| Skills | **None at launch** (#186). Skill tiers and apprenticeship are V2 candidates (#22); buildings gate on the settlement's seat tier instead |
 | Movement | **Soft avoidance** — agents never hard-block cells |
 | Polity attitudes | Polities hold **their own diplomatic state**, distinct from settlements |
 | Households | **First-class entity** — person → household → home |
 | Property | **Hybrid** — household owns the home, individuals own wealth; tools and arms are settlement stock, checked out (#78) |
 | Kinship | Hard ban through grandparents; first cousins a **culture taboo**, permitted until culture exists (#163) |
 | Grievances | **Witness-tracked**, not flat decay — inheritable across generations |
-| Animals | Livestock and monsters persistent; **game as regional populations** |
+| Animals | **None at launch** (#186). Game, livestock, predators and monsters are V2 candidates (#114, #187); §13 keeps the model |
 | Settlements | Founded and abandoned freely; **secession** is a founding trigger |
 | Map | Procedural with archetypes (continents / islands / watering hole) |
 | Races | Two — humans and **elves** (long-lived, insular) |
@@ -612,12 +614,12 @@ Roughly a third of the population is children. They cannot sit at `Job = Child, 
 ```
 Infant       → mostly home, invisible
 Child        → play, chores, socialization
-Adolescent   → apprenticeship, work assistance
+Adolescent   → work assistance
 Adult        → full participation
-Elder        → reduced work, high skill, social weight
+Elder        → reduced work, social weight
 ```
 
-Adolescent maps directly onto apprenticeship. No childhood simulator needed — but children must visibly exist in villages.
+No childhood simulator needed — but children must visibly exist in villages. Adolescents were to map onto apprenticeship and elders to carry high skill; both wait on skills, a V2 candidate (#22, #186).
 
 *Performance note:* ~500 children add to the stepped tier when visible. Budget for it.
 
@@ -658,7 +660,7 @@ Most of this is mechanical and must happen, or it generates bugs:
 ```
 Cancel tasks and reservations
 Vacate the job → work manager reposts it
-Break apprenticeship in both directions
+Break apprenticeship in both directions   (V2, #22)
 Transfer personal wealth to the household
 Emit PersonDied
 ```
@@ -673,7 +675,7 @@ The decisions on top of that:
 
 As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
 
-Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). Reservations need no step of their own: every one a person holds is held by their task, and `Vacate` gives it back (#24). The steps that act on things not yet built join the cascade when they are: breaking an apprenticeship (#22), destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). Reservations need no step of their own: every one a person holds is held by their task, and `Vacate` gives it back (#24). The steps that act on things not yet built join the cascade when they are: breaking an apprenticeship (#22, a V2 candidate), destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 
@@ -761,9 +763,9 @@ Commit crime · Seek revenge
 
 ### Launch scope
 
-**At launch: marriage, household formation, apprenticeship, migration, and profession change.** Feuds, revenge, reconciliation, factions, crime, and leadership challenges are deferred.
+**At launch: marriage, household formation, migration, and profession change.** Feuds, revenge, reconciliation, factions, crime, and leadership challenges are deferred. Seeking an apprenticeship goes with skills, a V2 candidate (#22, #186).
 
-**Traits therefore do not unlock actions — they bias the five that exist.** An ambitious person is likelier to change profession toward high-status trades; someone who resents the chief is likelier to migrate away. A grudge is a reason to leave rather than a reason to kill.
+**Traits therefore do not unlock actions — they bias the four that exist.** An ambitious person is likelier to change profession toward high-status trades; someone who resents the chief is likelier to migrate away. A grudge is a reason to leave rather than a reason to kill.
 
 *What this defers:* political drama. The world will have rich economic and family history and thin political history. War still functions — polity-level diplomacy produces it from cultural distance and resource competition — but wars will not have personal causes at launch.
 
@@ -799,7 +801,7 @@ This feeds decision provenance directly: *"Oakshire declared war — border clai
 
 **Target as many resources as their chains earn, with two-step chains, defined as data.** The original estimate here was ~10; the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settled on seven after two of the original ten — Clay and Pottery, plus a third, Hide — turned out to have no use that another resource didn't already cover. Padding toward a round number was never a reason to track one separately.
 
-**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and why skill tiers resolve the chicken-and-egg. The ladder is the enumeration those arguments were always about: the resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
+**The contents live in [the economy ladder](kingdom-watch-economy-ladder.md) (#78).** This section is the reasoning — why a capability graph rather than a tech tree, and how seat tiers pace it (skill tiers until #186). The ladder is the enumeration those arguments were always about: the resources and their chains, the jobs by tier, the buildings with their five gates, and the six milestones as conditions the sim can test, with target pacing. It is a map rather than a schema — nothing in it is implemented, and the append order for `ResourceKind` and `JobKind` is deliberately left to the issues that append.
 
 ```
 recipe: smelt
@@ -810,7 +812,7 @@ recipe: smelt
   substitutes: []
 ```
 
-Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-watch-economy-ladder.md), #78, settled the count and the set). Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (weight for hauling) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; the rest of the seven, and the Tools/Weapons/Armor the smithy forges from Metal, wait for #37 and #22.
+Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-watch-economy-ladder.md), #78, settled the count and the set). Recipes are data (`Recipe`, `PrimitiveTier`); the resource set itself is a `ResourceKind` enum rather than a config file, as of #12. The need a file would serve — changing the set without a rebuild — does not exist yet, and per-resource data (weight for hauling) can live in a table keyed by the enum when a system first needs one. Every mutation funnels through the ledger, so swapping the enum for a table id later is mechanical. M1 ships Food, Wood and Stone, all gathered; the rest of the seven, and the Tools/Weapons/Armor the smithy forges from Metal, wait for #37 and #99.
 
 **As of #52, people gather them.** A `JobKind` — Forager, Woodcutter, StoneGatherer — is a row in `JobTable`: the recipe it runs and the terrain it runs on (berry scrub, forest, rocks; open plains have none of them since #137). A band's living adults and elders work, tierless and at full output, inside a dawn-to-dusk window (06:00–18:00, placeholders): a worker picks a job when free — at dawn and at each completion — and starts one task of it, at the band's cheapest-to-reach site for that job, if the task would end by dusk. Need is three thresholds read live: forage while food, counting what is on its way home, covers fewer than ten days; then wood and stone to a stock cap; then idle. The window is #21's daily schedule in miniature and the thresholds are #23's town planner in miniature; both replace their part without touching the other. Elders' reduced work and adolescents' assistance are #22's, with the skill tiers they belong to.
 
@@ -818,58 +820,34 @@ Start at 3–4 for M1, expand toward seven by M6 (the [economy ladder](kingdom-w
 
 **As of #155, settlements plant.** A Forester (`JobKind.Forester = 6`) plants a tree on a cell of plains: the cell turns to forest and grows as a sapling, standing five years later. Nothing else grows a tree back: a felled one leaves plains, open to Foresters and buildings at once, which the view draws with the tree's stump for five years. A settlement wants Foresters while its forest in reach, counting the trees it planted that are still growing, gives less than twice what a new house waits on (its hearths and one more burning through a winter, with a quarter of headroom); a house itself waits on grown trees only, so planting runs ahead of housing rather than housing running ahead of the wood. Each trip sets out from the centre, and a tree goes in outside the town, past the square 20 cells out each way to the ends of its planned spokes, within a day's walk: on the nearest plains beside forest, so a wood grows out from its edge, or any plains when none is, but never on a road, a lane or under a building. That is past an hour's walk, so a planted tree mostly counts half and a village plants about twice as many. One planting is an hour's work, and the tree goes in as the trip sets out; the view draws it once the work is done, the forester digging with the hoe and then watering it in. Clearing pays what harvesting would: a tree its cuts as wood, a rock its stone, and a bush the fruit it has left this season (none in winter or once stripped) and 1 Wood of brushwood.
 
-**As of #100, settlements build and farm.** `Construction/Buildings` holds one record per building — a House, a Barn, or a Field tied to a barn — with a footprint of cells near its settlement. At each settlement's dawn, after its workers have picked, a building is approved only when all five conditions above hold: the skill (read through `ISkillSource`, everyone a Novice until #22), wood in stock beyond the coming winter's fuel, its prerequisite (a barn needs a house, a field a barn with room — ground within reach of it as well as a place in its count of four, since a barn with no ground left for a field counted as having room and held off every barn after it, #163), hands to spare (someone found nothing needed this morning), and demand — a household without a home, or food in reach falling short of a year's eating with less than a year in store. One goes up at a time. Placement is a stand-in for #23: the nearest footprint of open plains, else one that Builders clear first (a standing tree costs what felling it by woodcutting would, and gives its wood). Since #155 the ground does not enter placement at all (§12). Footprints are the ground the art stands on (house 5×5, barn 7×5, field 5×5), the rows a roof stands over north of a house or barn are kept free of other buildings, and so is a yard seven cells square around the camp (#150). Builders and Farmers claim two-hour shares, ranked against gathering by the same shortfall rule. A field needs ten days of four worker-hours, then five days of harvest at six Grain a day; a day counts once its hours are done, at most one a day, and nobody works a field in winter. Winter kills what stands in it: a crop still growing, or the days of a harvest not yet brought in (the Grain of those finished is kept), and the field is sown afresh for the spring (#150). Grain is milled at the meal, five meals to one. Settling is on again: a band settles only in the first half of spring, where a year's picking of the bushes in reach would cover half as much again as a season's eating, and there is ground for a barn. Villages now farm and grow for decades, then freeze once the trees in their reach are cut faster than they regrow (#147).
+**As of #100, settlements build and farm.** `Construction/Buildings` holds one record per building — a House, a Barn, or a Field tied to a barn — with a footprint of cells near its settlement. At each settlement's dawn, after its workers have picked, a building is approved only when all five conditions above hold: the skill (read through `ISkillSource`, everyone a Novice; since #186 skills are a V2 candidate and the gate becomes the seat tier, #144), wood in stock beyond the coming winter's fuel, its prerequisite (a barn needs a house, a field a barn with room — ground within reach of it as well as a place in its count of four, since a barn with no ground left for a field counted as having room and held off every barn after it, #163), hands to spare (someone found nothing needed this morning), and demand — a household without a home, or food in reach falling short of a year's eating with less than a year in store. One goes up at a time. Placement is a stand-in for #23: the nearest footprint of open plains, else one that Builders clear first (a standing tree costs what felling it by woodcutting would, and gives its wood). Since #155 the ground does not enter placement at all (§12). Footprints are the ground the art stands on (house 5×5, barn 7×5, field 5×5), the rows a roof stands over north of a house or barn are kept free of other buildings, and so is a yard seven cells square around the camp (#150). Builders and Farmers claim two-hour shares, ranked against gathering by the same shortfall rule. A field needs ten days of four worker-hours, then five days of harvest at six Grain a day; a day counts once its hours are done, at most one a day, and nobody works a field in winter. Winter kills what stands in it: a crop still growing, or the days of a harvest not yet brought in (the Grain of those finished is kept), and the field is sown afresh for the spring (#150). Grain is milled at the meal, five meals to one. Settling is on again: a band settles only in the first half of spring, where a year's picking of the bushes in reach would cover half as much again as a season's eating, and there is ground for a barn. Villages now farm and grow for decades, then freeze once the trees in their reach are cut faster than they regrow (#147).
 
 ### Technology is a capability graph, not a tree
 
-**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers work every job untooled because they have no smithy. Build a smithy — with a settlement, ore access, and a skilled person — and Tools become possible: a rate bonus on top of what already works, never a precondition for it (#78).
+**There is no research system.** Capability is gated by infrastructure, which the recipe graph already expresses. Wanderers work every job untooled because they have no smithy. Build a smithy — with a settlement, ore access, and a seat grown enough to support it — and Tools become possible: a rate bonus on top of what already works, never a precondition for it (#78).
 
-The only addition needed is a **primitive tier**, buildable with no buildings — foraging, hunting, gathering, dry-stone stacking, campfire smelting, temporary camps. The economy ladder (#78) settles the actual set, one crude form per capability — with Farming the one exception since #100: its barn needs only Novice farming, the tier everyone holds, so no skill has to be learned before it and the crude clearing was dropped (ladder §7).
+The only addition needed is a **primitive tier**, buildable with no buildings — foraging, gathering, dry-stone stacking, campfire smelting, temporary camps (hunting too, once game exists; a V2 candidate, #114). The economy ladder (#78) settles the actual set, one crude form per capability — with Farming the one exception since #100: its barn needs no seat at all, so nothing has to come before it and the crude clearing was dropped (ladder §7).
 
 **This is not free, and pacing is the open problem.** If every settlement implicitly knows every recipe, then camp → farm → quarry → smithy → hall → stone wall can cascade almost instantly and near-identically in every world. Gating needs to come from conditions the sim already tracks:
 
 ```
 Building requires:
-    minimum relevant skill in the settlement
+    the settlement's seat at the building's tier
     necessary inputs available
     prerequisite infrastructure
     sufficient labour surplus
     actual settlement demand
 ```
 
-### Skill tiers resolve the chicken-and-egg
+### Seat tiers pace the climb
 
-*How does anyone become skilled enough at smithing if nobody can smith until a smithy exists?*
+**Changed at #186.** The plan first resolved the chicken-and-egg (*how does anyone become skilled enough at smithing if nobody can smith until a smithy exists?*) with five skill tiers per capability, novice to master, learned by doing and passed on by apprenticeship. Skills are now a V2 candidate (#22), so nobody has one at launch.
 
-**Every capability has graded skill tiers, and tier zero requires no dedicated building.**
+**The settlement's seat sets what it can attempt.** Every settlement's administrative seat tiers up in one slot — none, then Town Hall, Fort, Castle (ladder §4a) — and each building names the seat it needs. The ladder's skill tiers map straight across: what needed an Apprentice needs a Town Hall, a Journeyman a Fort, an Expert a Castle. At launch the seat tiers on population alone; defensive need joins once war (§14) gives it a source.
 
-```
-Novice → Apprentice → Journeyman → Expert → Master
-```
+**Every capability must still have a reachable path from primitive life.** Nobody needs a skill, and every capability keeps a crude, buildingless form, so no rung can deadlock: a seat-gated building is a faster way to do work that already happens.
 
-A novice works metal badly at a campfire pit. Doing so builds skill. At a threshold, a proper smithy becomes viable, and the smithy then enables faster learning and better output.
-
-Tiers gate what a settlement can attempt — a smithy needs a journeyman metalworker, stone construction needs an expert mason.
-
-*Naming caution:* `SkillTier.Apprentice` is not the same as being in an apprenticeship. Keep the tier and the relationship distinct in code.
-
-```
-crude, buildingless work
-    ↓ learning by doing
-sufficient skill
-    ↓
-crude forge becomes viable
-    ↓
-true smithing job
-    ↓ apprenticeship accelerates mastery
-mastery
-```
-
-If the lowest tier still requires infrastructure, the deadlock simply moves one rung up. **Every capability must have a reachable path from primitive life.**
-
-This is also **the capability-graph pacing lever.** If a smithy needs a journeyman metalworker and reaching journeyman takes years of crude work, the technology climb is paced by human learning time rather than a timer — and it varies per world, because it depends on who happens to be good at what.
-
-So a smithy is not `Year > 50`, it is *permanent population + charcoal production + accessible ore + a sufficiently skilled craftsperson + spare labour*. Most of that is implied by systems already in the plan — but recognize that this constitutes a **capability graph**, which is a soft technology system even though nobody researches anything. Name it, and tune its pacing deliberately.
+This is **the capability-graph pacing lever.** A smithy is not `Year > 50`, it is *permanent population (through the seat) + charcoal production + accessible ore + spare labour*. It varies per world, because it depends on how fast each settlement grows. Most of that is implied by systems already in the plan — but recognize that this constitutes a **capability graph**, which is a soft technology system even though nobody researches anything. Name it, and tune its pacing deliberately. What skill would add back is pacing by human learning time and by who happens to be good at what; that is #22's to weigh.
 
 The payoff is still the game's progression arc — stone age village to castle town — and better milestones than population thresholds: first settlement, first permanent structure, first farm, first smithy, first stone building, first wall.
 
@@ -887,7 +865,7 @@ Full seasons turn the economy from a rate into a cycle:
 - **Famine is a timing problem.** Adequate annual output can still starve a town in March — and you can watch the granary empty
 - **Campaigning season** — armies marching in winter starve
 - **Seasonal work reassignment** — farmers do something else in January
-- **Livestock need winter fodder**; game grows scarce in hard years
+- **Livestock need winter fodder**; game grows scarce in hard years (both V2 candidates, #114)
 
 Balancing requires multi-year harness runs.
 
@@ -897,7 +875,7 @@ Balancing requires multi-year harness runs.
 - **Bands provision for winter.** `Jobs`' food target is ten days' draw. From the first day of summer it adds a whole winter's draw, and in winter it adds what is left of the winter. The wood target is the cap plus a winter of fires for every hearth in the band, raised the same way. Without that look-ahead a ten-day buffer starves every band every winter, which is the winter-as-regulator §6 rules out.
 - **Winter heating is `Warmth`**, `Hunger`'s shape as the economy ladder's §2 asked. Each winter evening a community burns one Wood per household hearth, plus one communal fire for anyone in no household. When wood is short, households with a dependent are lit first, then the rest in formation order, then the communal fire. Two dark nights are hardship, and from the third each costs health. Zero health raises `ExposureCritical`, and `Mortality` answers it with `Froze`.
 
-A famine or a cold house is now something that went wrong: too few hands, a band grown since summer. A worker takes the store furthest below its target, so foragers no longer crowd out the woodpile (#17). Forage yields are the first numbers the harness tuned (#17); the rest are placeholders. Livestock, fodder and campaigning season wait on §13 and M4. Charcoal as the efficient fuel waits on the resource being appended.
+A famine or a cold house is now something that went wrong: too few hands, a band grown since summer. A worker takes the store furthest below its target, so foragers no longer crowd out the woodpile (#17). Forage yields are the first numbers the harness tuned (#17); the rest are placeholders. Livestock and fodder are V2 candidates (#114); campaigning season waits on war (M7). Charcoal as the efficient fuel waits on the resource being appended.
 
 ---
 
@@ -1022,9 +1000,9 @@ Smite a raider captain: the saved village reveres you, the raiders' home settlem
 
 ### Hierarchical job assignment
 
-The work manager decides need (`8 lumberjacks, 4 miners, 12 farmers, 3 builders`); citizens choose among posted jobs, weighted by skill. An order of magnitude cheaper than per-citizen utility AI and far easier to debug.
+The work manager decides need (`8 lumberjacks, 4 miners, 12 farmers, 3 builders`); citizens choose among posted jobs (weighted by skill, if skills come back in V2, #22). An order of magnitude cheaper than per-citizen utility AI and far easier to debug.
 
-**As built (#52), for bands — and, since #54, settlements, through the same `ICommunity`; a band with a destination at dawn starts nobody, everyone walks with it.** "Decide need" is three thresholds on the band's ledger, and "choose" is the first job in a fixed priority — food, wood, stone — that is needed, has a reachable site, and fits before dusk; skill weighting waits for skills (#22). The choice is made when the person is free rather than once a day, so a band whose food is covered by noon sends its afternoon hands to wood. Nothing is stored between picks: how many are on a job is a scan of the members, and what they will bring home counts toward the threshold so a round of pickers cannot all fill the same gap. The town planner (#23) replaces the thresholds with a plan; the choosing stays.
+**As built (#52), for bands — and, since #54, settlements, through the same `ICommunity`; a band with a destination at dawn starts nobody, everyone walks with it.** "Decide need" is three thresholds on the band's ledger, and "choose" is the first job in a fixed priority — food, wood, stone — that is needed, has a reachable site, and fits before dusk; skill weighting waits for skills, a V2 candidate (#22). The choice is made when the person is free rather than once a day, so a band whose food is covered by noon sends its afternoon hands to wood. Nothing is stored between picks: how many are on a job is a scan of the members, and what they will bring home counts toward the threshold so a round of pickers cannot all fill the same gap. The town planner (#23) replaces the thresholds with a plan; the choosing stays.
 
 ### Buildings emerge from systems, not thresholds
 
@@ -1197,6 +1175,8 @@ When a polity fragments, **the nearest settlement by traversal distance inherits
 
 ## 13. Animals
 
+**Not at launch (#186).** Every kind of animal is a V2 candidate: game and livestock in #114, predators and monsters in #187. This section is the model they would start from.
+
 Aggregate where continuity doesn't matter. Nobody cares whether Deer #8732 is the same deer as Tuesday.
 
 | Type | Model |
@@ -1265,9 +1245,9 @@ Basic tools and shared supplies
 
 **Built at #54, as `BandGenerator`.** Lineages first: a band of *n* gets about *n* / 5 founding couples, at least 8 and at most 12, each partnered through `FamilyFormation.Partner` so the rules check them and each has a household; children are dealt to the couples in turn until the band is full, up to four each, as old as the younger parent allows at sixteen or more at the birth; anyone left over is a single adult and a lineage of their own. Ages come from the race's table - founders a few years into its adulthood, children under it, born at or past its fertile age - as keyed draws under `RandomDomain.BandGeneration`, mixed with the band's id and the person's index, so a seed is a band. The oldest adult leads — a rule needing no draw; who leads and why is M7's. Supplies are ten days of food and wood for a few camps. Tools are not generated because no tool resource exists (#78). Four of the five stages are present at start — infants, children and adolescents among the children, adults among the founders — and elders arrive with time; the age table is one race's until #34. Every person is announced with `PersonBorn` so ageing and mortality book their wake-ups. The lineage count's viability run — thirty people, two centuries, partners found in every generation — sits with the generator in `DemographicsRunTests`; the five-century form waits on #69 for the reason given above.
 
-**Skills start flat.** No masters exist at world start, so apprenticeship accelerates nothing initially and the first journeyman must emerge purely from learning-by-doing. That is thematically right for a stone-age opening — and it makes **time to first journeyman a critical pacing number**, since it gates the first smithy and therefore the entire capability climb. Tune it in the harness early.
+**Nobody has a skill at launch** (#186), so the critical pacing number is **population to first Town Hall**: the seat gates the first quarry and lumber camp, and through Fort and Castle the rest of the capability climb (§9). Tune it in the harness early.
 
-It also front-loads the race asymmetry: an elf novice has three centuries to reach master, a human perhaps forty working years. Elf settlements should out-skill human ones steadily, which is why the mastery ceiling (§10) matters.
+If skills return (#22), they would start flat, with no masters at world start, and front-load the race asymmetry: an elf novice has three centuries to reach master, a human perhaps forty working years.
 
 **Temporary dwellings satisfy the housing requirement in nomadic mode.** Household formation requires a home (§6), and nomads have no permanent buildings — so camp space counts as housing until settlement.
 
@@ -1350,7 +1330,7 @@ Power 5 unlocks when ANY of:
 
 Early milestones must fire within minutes, since the ladder repeats every world. The from-scratch start gives better ones than population thresholds: first settlement, first permanent structure, first farm, first smithy, first stone building, first wall.
 
-Order powers from observational (bless, heal, nudge) to world-shaping (plague, earthquake, dinosaur). Keep unlocks diegetic — powers *awaken*, they are not purchased.
+Order powers from observational (bless, heal, nudge) to world-shaping (plague, earthquake; a dinosaur, if monsters come in V2). Keep unlocks diegetic — powers *awaken*, they are not purchased.
 
 ### Powers are unlimited, and blunt
 
@@ -1368,7 +1348,7 @@ Powers are blunt instruments, not precision tools. Lightning kills a person; it 
 | Heal one person | Yes | Saves a life, not a population |
 | Bless one field, one season | Yes | One farm, one harvest — not a food supply |
 | Shape terrain | Yes | Changes the world; solves no failure state |
-| Spawn a monster | Yes | Creates a problem rather than removing one |
+| Spawn a monster (V2, with monsters: #187) | Yes | Creates a problem rather than removing one |
 | Earthquake | Yes | Destructive, indiscriminate |
 | Inspire or enrage an individual | Yes | Biases one person's decisions |
 | Spawn food stores | No | Deflates seasons, storage, famine, logistics at once |
@@ -1530,7 +1510,7 @@ Perspective affects camera behavior, selection, building footprint, occlusion, w
 
 The M0 3D baseline (#3) measured a different renderer, so it does not carry over. The 2D one is measured ahead of the stress test (#20, M9).
 
-Art scope: two races, five age stages, four seasons of terrain, livestock, game, predators, monsters, per-culture architecture variants, plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
+Art scope: two races, five age stages, four seasons of terrain, per-culture architecture variants (livestock, game, predators and monsters only if V2 brings them, #114, #187), plus sleep/eat/socialize/idle on top of work verbs. Keep pixel art small (16–24px) and use paper-doll layering.
 
 **The art, as of #121.** Kenmi's Cute Fantasy packs, which may be used and modified but not redistributed; they live in a private submodule (`docs/unity.md`). **A cell is one 16 px tile, about 1.5 m**, and a villager (about 13×18 px) is about one cell tall. **Distances are sized by walking time, not metres (#123).** The clock runs 180 times faster than life at 1×, so a real walking pace (about a tick a cell) would look a hundred times too fast at every speed. Instead a plains cell takes 200 ticks, which reads as a walk of about 1.35 m/s at 1×, and distances are sized by the time it takes to walk them: a worker goes to the nearest site there is, as far out as still leaves the work and the walk home before dusk (`Jobs.ReachCost`: about four hours out for a forager or woodcutter, some 72 cells over plains), a band moves about a quarter of a day (54 cells) and sees as far, and the M1 map is 1080×1080, about five days across. Sight that wide holds every site while anything is near, so work widens a settlement's map only a little, on trips to the edge of what it knows once nothing nearer is left: until the Scouting purpose (#85), a settlement knows about what its band saw, and §12's growing map is #85's to deliver. The Unity driver's speeds are §4's ladder, so 1× is one of them. Medium and Near zoom snap to whole multiples of 16 px per cell so the art stays crisp, and below that to half and quarter size (8 and 4 px), where each screen pixel still covers the same square of art; the art shows down to quarter size (being tried, #130). Only the part of the map in view is built, 32×32 cells at a time, since the whole map is over a million tiles (#130). At half and quarter size the scenery is tilemap tiles rather than a renderer per tree, since a phone-sized screen of quarter-size art is some 50,000 of them; people draw in front of it there, and walk behind trees only from full size up (#131). Far is a one-colour-per-cell map in the art's colours: each cell is its ground, shoreline and scenery averaged to one pixel, season and all. A new season spreads in ragged fronts from a dozen random places, over about ten days, the same cell for cell zoomed in or out (#131). The ground already changes with Core's seasons (winter is snow), which is the terrain part of the four-seasons scope above. A villager is six paper-doll layers (body, shoes, trousers, shirt, hands, hair), plus a tool once work animations exist (#126), and all villager frames share one atlas.
 
@@ -1596,19 +1576,21 @@ Then choose perspective.
 
 **M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7).
 
-**M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Skills, apprenticeship, age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
+**M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
-**M4 — one disruption.** Raiders and predators. Villagers flee, militia musters, fighting, burning, recovery, rebuilding.
+**M4 — folded into M7 (#186).** It was one disruption: raiders and predators. Both are now V2 candidates (#27, #187), so the first thing that attacks a village is war, and the disruption loop moved with it.
 
 **M5 — god powers.** Three powers: lightning, heal a person, and one of inspire/enrage or bless-a-field. **Terrain shaping is deliberately not here** — raising terrain cascades into roads, buildings, trees, rivers, bridges, path caches, territory, and water connectivity, and touching rivers means accidentally building hydrology. It arrives after M6 has worldgen and traversal mature. Witnessed attribution and the rumor propagation it runs through (#41 — §20 always had it before M5; cross-settlement propagation lights up when M6 supplies trade routes) let word of what you did spread and distort. Prove the loop on a touchscreen.
 
 **M6 — worldgen and dynamics.** Procedural maps with sanity check, two races in separate homelands, founding and abandonment, attitudes and migration, trade, economy toward the full seven resources.
 
-**M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence. Save/load with versioning. Vertical slice.
+**M7 — society and politics.** Social/personal decision system, polities, secession, succession, cultural drift, naming divergence. War, and the one disruption it brings a village (from M4): villagers flee, militia musters, fighting, burning, recovery, rebuilding (#28, then #110). Save/load with versioning. Vertical slice.
 
 **M8 — naval.** Boats, cross-water trade and transport, island archetype. *Largest single feature; the §12 traversal abstraction must exist from M1.*
 
 **M9 — pre-release performance: the ugly stress test.** Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android (#18). No finished art, but placeholders that cost what the art will: 16–24px sprites layered 6–7 deep per agent (§18, #121), across as many atlases as the art scope implies, animated. Thresholds set *before* running (#20): choose the budget fraction, measure the 2D baseline, then split the budget into sim ms and render ms per frame.
+
+**M10 — V2 candidates.** Not launch work: ideas taken out of scope at #186, each an issue that states the idea and its open questions. Drinking water as a need (#101), skills and apprenticeship (#22), wildlife (#114), beasts (#187), raiders (#27).
 
 ---
 
@@ -1616,9 +1598,9 @@ Then choose perspective.
 
 Sequenced by when they block progress. Items now specified elsewhere in this document, or in its companion [economy ladder](kingdom-watch-economy-ladder.md), are marked ✓.
 
-**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **capability-graph pacing and the skill chicken-and-egg** ✓
+**Before M1:** households and lifecycle ✓ · **storage accessor layer** ✓ · **minimal demographic timing model** ✓ · **safe save snapshot semantics** ✓ · **durable EventId** ✓ · **keyed randomness** ✓ · **LOD equivalence tests** ✓ · entity model ✓ · **MobileGroup / NomadicBand** ✓ · durable EntityId vs runtime handle ✓ · **simulation clock, event scheduler, and deterministic phase ordering** ✓ · **relationship model and retention rules** ✓ · **scheduled↔stepped task state** ✓ · domain-event layer ✓ · decision provenance ✓ · family formation and kinship ✓ · death cascade ✓ · property model ✓ · **resource ledger authority** ✓ · **WorldValidator and cross-platform state hash** ✓ · primitive recipe tier ✓ · traversal abstraction ✓ · **bounded map knowledge** ✓ · **capability-graph pacing and the skill chicken-and-egg** ✓ (seat tiers since #186)
 
-**Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, wildlife, soil, finite stone and ore)
+**Before M3:** settlement layout and town planning · task and resource reservation ✓ · movement and collision model · resource regeneration (forests, soil, finite stone and ore; wildlife if V2 brings it, #114)
 
 **Before M5:** knowledge and rumor propagation ✓
 
@@ -1636,7 +1618,7 @@ Sequenced by when they block progress. Items now specified elsewhere in this doc
 
 ## 21. Open questions
 
-1. ~~**Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world~~ — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78): each capability has a crude tier-zero form, so the climb is paced by how long real people take to reach journeyman, which varies per world. The targets there are placeholders until #17 and #22 measure them.
+1. ~~**Capability-graph pacing** — what stops camp → farm → kiln → quarry → smithy → stone wall cascading identically in every world~~ — answered by [the economy ladder](kingdom-watch-economy-ladder.md) (#78): each capability has a crude tier-zero form, so nothing deadlocks. Since #186 the climb is paced by how fast a settlement's seat grows (§9) rather than by how long people take to reach journeyman. The targets there are placeholders until the harness measures them.
 2. **Performance budgets** — set as a fraction of a measured 2D baseline, fraction chosen before measuring; owned by #20, at M9
 3. Disease and plague as a system
 4. Siege model — walls, gates, duration, stores, assault, surrender

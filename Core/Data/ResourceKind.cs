@@ -15,7 +15,7 @@ namespace KingdomWatch.Core.Data
     /// that nothing spoils; capacity is the only supply-side constraint.
     ///
     /// M1 ships the three gathered resources below (#12). Metal, and the
-    /// Tools/Weapons/Armor the smithy forges from it, wait on #37 and #22;
+    /// Tools/Weapons/Armor the smithy forges from it, wait on #37 and #99;
     /// the economy ladder (#78) settles them as checked out from the
     /// settlement rather than personal property. Hide is not one of the
     /// seven the ladder settled on - considered and cut, not deferred.

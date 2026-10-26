@@ -5,9 +5,10 @@ namespace KingdomWatch.Core.Construction
     /// is a tier of, and what a building's minimum skill names.
     /// </summary>
     /// <remarks>
-    /// Declared here because the building gate (#100) needs to name one
-    /// before the skills that hold them exist; #22 stores skills against
-    /// these. Append-only, for the reason <see cref="Data.JobKind"/> is.
+    /// Declared here because the building gate (#100) needs to name one.
+    /// Since #186 skills are a V2 candidate (#22), Hunting and Soldiering
+    /// with them, and the gate becomes the seat tier (#144). Append-only,
+    /// for the reason <see cref="Data.JobKind"/> is.
     /// </remarks>
     public enum Capability : byte
     {
@@ -30,7 +31,7 @@ namespace KingdomWatch.Core.Construction
     /// </summary>
     /// <remarks>
     /// Not an apprenticeship: <c>SkillTier.Apprentice</c> is a level of
-    /// skill, and being someone's apprentice is a relationship (#22).
+    /// skill, and being someone's apprentice is a relationship (#22, V2).
     /// </remarks>
     public enum SkillTier : byte
     {

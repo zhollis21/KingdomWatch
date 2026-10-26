@@ -17,7 +17,8 @@
     open the markdown, or read graph.json directly.
 
     Readiness is derived, never stored: an open issue is ready when every
-    issue it is blocked by is closed. Cross-milestone edges are drawn as
+    issue it is blocked by is closed. The ready list leaves out V2 candidates,
+    which are ideas rather than work. Cross-milestone edges are drawn as
     dashed stub nodes so each chart stays readable on its own.
 
     The only edges are GitHub's native "blocked by" relationships (the issue
@@ -256,7 +257,10 @@ function Get-MilestoneRank($i) { if ($i.milestone) { $milestones.IndexOf($milest
 # The number tie-break must be a script block: a bare `number` key does not resolve
 # against an [ordered] dictionary, so it sorts every issue equal and Sort-Object's
 # stable order silently falls through to fetch order.
-$ready = @($issues.Values | Where-Object ready | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, { $_.number })
+# A V2 candidate is an idea outside launch scope, not work to pick up, so it never makes the
+# ready list even when nothing blocks it (#186). Its chart still draws it as unblocked.
+function Test-V2Candidate($i) { $i.milestone -and $milestoneByNumber[$i.milestone].title -match '\bV2\b' }
+$ready = @($issues.Values | Where-Object { $_.ready -and -not (Test-V2Candidate $_) } | Sort-Object { Get-MilestoneRank $_ }, { Get-PriorityRank $_.priority }, { $_.number })
 $current = $milestones | Where-Object { @($_.issues | Where-Object { $issues[$_].state -eq 'open' }).Count -gt 0 } | Select-Object -First 1
 $next = if ($current) { $milestones[$milestones.IndexOf($current) + 1] } else { $null }
 
@@ -456,7 +460,7 @@ $md.Add('|---|---|---|---|---|')
 foreach ($m in $milestones) {
     $open = @($m.issues | Where-Object { $issues[$_].state -eq 'open' }).Count
     $closed = @($m.issues | Where-Object { $issues[$_].state -eq 'closed' }).Count
-    $rdy = @($m.issues | Where-Object { $issues[$_].ready }).Count
+    $rdy = @($m.issues | Where-Object { $issues[$_].ready -and -not (Test-V2Candidate $issues[$_]) }).Count
     $md.Add("| [$(Format-Prose $m.title)]($REPO_URL/milestone/$($m.number)) | $closed | $open | $rdy | [M$(Get-MilestoneOrder $m.title).md](M$(Get-MilestoneOrder $m.title).md) |")
 }
 $unscheduled = @($issues.Values | Where-Object { -not $_.milestone })

@@ -18,7 +18,7 @@ That sentence is the whole design. Everything else is in service of it.
 | How do we work in this repo? | [AGENTS.md](AGENTS.md) — conventions, the issue → `/kickoff` → PR loop, what the tests enforce |
 | How do I run Core in Unity? | [docs/unity.md](docs/unity.md) |
 | How do I release to Google Play? | [docs/release.md](docs/release.md) |
-| The backlog | [Issues](https://github.com/zhollis21/KingdomWatch/issues) · [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) M0–M9 |
+| The backlog | [Issues](https://github.com/zhollis21/KingdomWatch/issues) · [Milestones](https://github.com/zhollis21/KingdomWatch/milestones) M0–M9, plus M10 for V2 candidates |
 
 ## Build
 
