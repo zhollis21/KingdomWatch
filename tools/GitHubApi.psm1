@@ -27,20 +27,51 @@
 
 function Invoke-GhJson {
     <#
-      One `gh api` call, parsed. Throws with the API's own error body on failure
+      One `gh api` read, parsed. Throws with the API's own error body on failure
       rather than returning something half-formed for the caller to trip over.
+
+      A server error or a dropped connection is retried at 0, 3 and 10 seconds
+      first, the same schedule as the roadmap's label writes: the roadmap makes
+      a read per issue, and a single 502 among them used to end the run (#189).
+      Everything else - a 404, a 403, a rate limit - throws on the first try,
+      and so does a read that is still failing after the last retry. Callers
+      must never see a skipped read: a missing blocked_by list would publish
+      that issue as ready.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
-    # gh prints the API's error body to stderr and exits non-zero, so stderr is
-    # captured to put the reason in the exception rather than losing it. It can
-    # also write to stderr on a *successful* call (deprecation and rate-limit
-    # notices), and those lines would break the parse, so they are dropped by
-    # type instead: merged stderr arrives as ErrorRecord, stdout as string.
-    $output = & gh api -H 'Accept: application/vnd.github+json' $Path 2>&1
-    if ($LASTEXITCODE) { throw "gh api $Path failed with exit code ${LASTEXITCODE}: $($output -join [Environment]::NewLine)" }
+    $delays = 0, 3, 10
+    for ($attempt = 1; ; $attempt++) {
+        if ($delays[$attempt - 1]) { Start-Sleep -Seconds $delays[$attempt - 1] }
+        # gh prints the API's error body to stderr and exits non-zero, so stderr is
+        # captured to put the reason in the exception rather than losing it. It can
+        # also write to stderr on a *successful* call (deprecation and rate-limit
+        # notices), and those lines would break the parse, so they are dropped by
+        # type instead: merged stderr arrives as ErrorRecord, stdout as string.
+        $output = & gh api -H 'Accept: application/vnd.github+json' $Path 2>&1
+        if (-not $LASTEXITCODE) { break }
+        $message = "gh api $Path failed with exit code ${LASTEXITCODE}: $($output -join [Environment]::NewLine)"
+        if ($attempt -ge $delays.Count -or -not (Test-TransientGhFailure $message)) {
+            if ($attempt -gt 1) { $message += " (after $attempt attempts)" }
+            throw $message
+        }
+        Write-Warning "$message - retrying in $($delays[$attempt])s."
+    }
     ($output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join [Environment]::NewLine | ConvertFrom-Json
+}
+
+function Test-TransientGhFailure {
+    <#
+      True when a failed `gh api` call is worth repeating: GitHub answered with
+      a 5xx, or the request never got an answer at all. gh appends
+      `gh: Server Error (HTTP 502)` to the body it echoes; a connection failure
+      comes through as Go's own error text, matched on the phrases gh's
+      transport produces. Anything not recognised here is treated as permanent.
+    #>
+    param([Parameter(Mandatory)][string]$Message)
+    $Message -match '\bHTTP 5\d\d\b' -or
+        $Message -match 'dial tcp|connection reset|i/o timeout|TLS handshake timeout|unexpected EOF|context deadline exceeded|error connecting to'
 }
 
 function Get-Paged {
