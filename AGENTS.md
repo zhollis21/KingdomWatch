@@ -207,7 +207,9 @@ fits one page works, so tooling looks healthy right up until it does not.
 the workaround has exactly one copy — import it rather than hand-rolling a
 second. `Get-Paged` refuses a `PageSize` above 100, because GitHub silently
 serves 100 for anything larger and the next short page would read as the end of
-the collection.
+the collection. `Invoke-GhJson` also retries a 5xx or a dropped connection at
+0, 3 and 10 seconds before throwing, since GitHub drops the odd read among the
+roadmap's hundred-plus; any other failure throws at once.
 
 **A skill cannot page in a shell loop.** The command-prefix allow rules those
 skills are granted match the first word, so a `for … do … gh api … done` starts
