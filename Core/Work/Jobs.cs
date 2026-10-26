@@ -212,8 +212,9 @@ namespace KingdomWatch.Core.Work
 
         /// <summary>
         /// How far a worker on the road sees, in cells. Section 12 names
-        /// "foragers and hunters working out from a settlement" among the
-        /// things that reveal, and this is how far they reveal.
+        /// foragers working out from a settlement among the things that
+        /// reveal (hunters too, if V2 brings game, #114), and this is how far
+        /// they reveal.
         /// </summary>
         /// <remarks>
         /// Its own constant rather than <see cref="Nomadic.NomadicBands.RevealRadius"/>:

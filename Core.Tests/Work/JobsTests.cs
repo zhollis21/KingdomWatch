@@ -1717,8 +1717,8 @@ namespace KingdomWatch.Core.Tests.Work
         [Test]
         public void A_work_trip_reveals_the_ground_it_covers()
         {
-            // Section 12 counts "foragers and hunters working out from a
-            // settlement" among the things that reveal, and nothing in Jobs
+            // Section 12 counts foragers working out from a settlement
+            // among the things that reveal, and nothing in Jobs
             // used to reveal anything. A trip to the far forest widens the
             // band's map around the whole route, so the frontier creeps
             // outward on the strength of the work itself.

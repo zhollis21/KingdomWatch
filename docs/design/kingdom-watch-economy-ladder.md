@@ -58,7 +58,7 @@ the graph inspectable and the deadlock surface small.
 | Food | `ResourceKind.Food = 1` | 0 | Foraged or milled from Grain (hunted too, if V2 brings game, #114) | No spoilage (§5 below). Going without it kills; the only other lack that does is winter fuel (§2). |
 | Wood | `ResourceKind.Wood = 2` | 0 | Gathered deadfall, later felled at a lumber camp | Also winter fuel — see §2. |
 | Stone | `ResourceKind.Stone = 3` | 0 | Loose surface stone, later quarried | |
-| Grain | `ResourceKind.Grain = 4` | 0 | Harvested from a field around a barn (#100) | A much higher yield per worker than Forage or Hunt — the thing that lets a settled population outgrow a foraging one. Milled into Food at the meal, one Grain to five meals; no spoilage of its own. |
+| Grain | `ResourceKind.Grain = 4` | 0 | Harvested from a field around a barn (#100) | A much higher yield per worker than Forage (or Hunt, if V2 brings it) — the thing that lets a settled population outgrow a foraging one. Milled into Food at the meal, one Grain to five meals; no spoilage of its own. |
 | Ore | *appended later* | 0 | Surface nodules and bog iron, later mined | |
 | Charcoal | *appended later* | 1 | Wood, burnt in a pit | The efficient fuel — see §2. No building raises its yield; a pit is a pit. |
 | Metal | *appended later* | 2 | Ore + Charcoal, smelted | The plan's §9 `smelt` example. Feeds Tools, Weapons and Armor (§6). |
@@ -67,9 +67,9 @@ the graph inspectable and the deadlock surface small.
 
 | Recipe | Inputs | Outputs | Needs | Substitutes |
 |---|---|---|---|---|
-| Forage | — | Food | — | Hunt, Mill |
+| Forage | — | Food | — | Mill (Hunt, if V2) |
 | Hunt *(V2, #114)* | — | Food | — | Forage, Mill |
-| Mill | Grain ×1 | Food ×5 | — | Forage, Hunt |
+| Mill | Grain ×1 | Food ×5 | — | Forage (Hunt, if V2) |
 | Gather wood | — | Wood | — | — |
 | Fell timber | — | Wood | lumber camp | Gather wood |
 | Gather stone | — | Stone | — | — |

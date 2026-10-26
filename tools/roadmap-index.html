@@ -98,16 +98,16 @@
   // weight. Two palettes, because a fill that reads on white vanishes on
   // #161b22 and vice versa; every fill/text pair is at least 4.5:1.
   const PALETTES = {
-    light: { done: ['#1a7f37', '#116329', '#ffffff'], ready: ['#0969da', '#0550ae', '#ffffff'], blocked: ['#d0d7de', '#6e7781', '#1f2328'],
+    light: { done: ['#1a7f37', '#116329', '#ffffff'], ready: ['#0969da', '#0550ae', '#ffffff'], blocked: ['#d0d7de', '#6e7781', '#1f2328'], idea: ['#8250df', '#6639ba', '#ffffff'],
              cluster: '#57606a', clusterText: '#1f2328', edge: '#57606a', stub: '#1f2328', plain: ['#ffffff', '#8c959f', '#1f2328'] },
-    dark:  { done: ['#238636', '#3fb950', '#ffffff'], ready: ['#1f6feb', '#58a6ff', '#ffffff'], blocked: ['#30363d', '#8b949e', '#e6edf3'],
+    dark:  { done: ['#238636', '#3fb950', '#ffffff'], ready: ['#1f6feb', '#58a6ff', '#ffffff'], blocked: ['#30363d', '#8b949e', '#e6edf3'], idea: ['#8957e5', '#a371f7', '#ffffff'],
              cluster: '#8b949e', clusterText: '#e6edf3', edge: '#8b949e', stub: '#e6edf3', plain: ['#0d1117', '#8b949e', '#e6edf3'] },
   };
   const PRIORITIES = ['P0-blocker', 'P1-high', 'P2-normal', 'P3-someday'];
   const PRIORITY_WIDTH = { 'P0-blocker': 3.5, 'P1-high': 2.2, 'P2-normal': 1.2, 'P3-someday': 0.6 };
   let P = PALETTES[dark ? 'dark' : 'light'];
   const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  const stateOf = i => i.state === 'closed' ? 'done' : (i.ready ? 'ready' : 'blocked');
+  const stateOf = i => i.state === 'closed' ? 'done' : (i.idea ? 'idea' : (i.ready ? 'ready' : 'blocked'));
   const prioShort = i => i.priority ? i.priority.split('-')[0] : null;
   function wrap(text, width) {
     const out = [], words = text.split(/\s+/); let line = '';
@@ -170,6 +170,7 @@
     <span>${chip('done')} Done</span>
     <span>${chip('ready')} Ready to pick up</span>
     <span>${chip('blocked')} Blocked</span>
+    <span>${chip('idea')} V2 idea, not work to pick up</span>
     <span>${chip('blocked', `border-style:dashed;border-width:2px;border-color:${P.stub}`)} Blocker in another milestone</span>
     <span><i class="line" style="border-top-color:${P.edge}"></i> Blocked by</span>
     <span>${chip('blocked', 'border-width:3.5px')} P0 &nbsp; ${chip('blocked', 'border-width:2.2px')} P1 &nbsp; ${chip('blocked', 'border-width:1.2px')} P2 &nbsp; ${chip('blocked', 'border-width:0.6px')} P3 — Priority is the label prefix and the border weight</span>
@@ -267,7 +268,7 @@
       const spec = specs[k];
       if (!spec) { box.classList.add('small'); box.replaceChildren(msg('error', 'No chart definition for this page; graph.json may be missing.')); continue; }
       await drawChart(spec, box, gen); if (gen !== generation) return;
-      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
+      if (spec.kind === 'issues' && !hinted) { hinted = true; const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Scroll or pinch to zoom, drag to pan, tap a node to open the issue. Green: done. Blue: ready to pick up. Grey: blocked. Purple: V2 idea. Dashed: a blocker in another milestone. Arrows: blocked by. P0–P3 prefix and border weight: priority.'; box.after(p); }
     }
     window.scrollTo(0, 0);
   }
