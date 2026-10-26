@@ -62,6 +62,17 @@ namespace KingdomWatch.Game
         private Stage stage;
         private bool finished;
 
+        // Everything a run logs at error level, so a passing run is a clean
+        // one (#140): Finish lists them in the run log and quits with 1, and
+        // Look.ps1 and Profile.ps1 fail on it. Collected from before the
+        // first scene loads, since the driver's own setup errors (a bad
+        // -seed, no view) come before the run exists. Logged from any thread,
+        // hence the lock.
+        private const int ErrorsListed = 20;
+        private static readonly object errorsLock = new object();
+        private static readonly List<string> errors = new List<string>();
+        private static int errorCount;
+
         private ScriptedRun(CameraRig rig, WorldView2D view, World world, string folder)
         {
             this.rig = rig;
@@ -393,8 +404,46 @@ namespace KingdomWatch.Game
             Object.Destroy(shot);
             Profiler.logFile = "";
             Line("Captures: " + stamp + "_NN_<stop>.raw, one per stop");
+            int count;
+            string[] listed;
+            lock (errorsLock)
+            {
+                count = errorCount;
+                listed = errors.ToArray();
+            }
+            if (count > 0)
+            {
+                Line("Errors: " + count + " logged, so the run fails; the player's log has them in full.");
+                foreach (var error in listed) Line("  " + error);
+                if (count > listed.Length) Line("  and " + (count - listed.Length) + " more");
+            }
             File.WriteAllText(Path.Combine(folder, stamp + ".log"), log.ToString());
-            Application.Quit();
+            Application.Quit(count > 0 ? 1 : 0);
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ListenForErrors()
+        {
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-scripted-run") < 0) return;
+            Application.logMessageReceivedThreaded += NoteError;
+        }
+
+        private static void NoteError(string message, string stackTrace, LogType type)
+        {
+            if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+            // An exception's first line says what; its stack's first line, where.
+            var line = type == LogType.Exception && !string.IsNullOrEmpty(stackTrace) ? FirstLine(message) + " at " + FirstLine(stackTrace) : FirstLine(message);
+            lock (errorsLock)
+            {
+                errorCount++;
+                if (errors.Count < ErrorsListed) errors.Add(line);
+            }
+        }
+
+        private static string FirstLine(string text)
+        {
+            var end = text.IndexOf('\n');
+            return (end < 0 ? text : text.Substring(0, end)).TrimEnd('\r');
         }
 
         private void Line(string text)

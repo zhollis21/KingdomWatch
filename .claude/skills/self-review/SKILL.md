@@ -32,6 +32,10 @@ Review all code written in this session against the checklist below. Fix every i
 - `Core` stays single-targeted (`netstandard2.1`) — no `#if` splitting behavior between targets
 - New storage fields go through the accessor layer (`PersonStore` or equivalent), not touched directly by systems
 
+**The Unity view**
+
+- A change under `Game/` that alters what is drawn has been looked at, not just compiled: `pwsh tools/Look.ps1` where it shows (`docs/unity.md`, "Looks"), or `pwsh tools/Profile.ps1 -HudDemo -Stops whole-map` for the panel, and the screenshot opened. Say in the summary which look was run and what it showed. On #26 the HUD's text went missing and the user found it first, because nothing had looked (#140)
+
 **Execution trace**
 
 - Walk the happy path end-to-end

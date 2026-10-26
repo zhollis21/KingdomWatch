@@ -9,7 +9,9 @@
     which the profiling route - year 0, around the first village - never
     reaches. This runs the world -Years on before the first frame, flies
     to -Show (the first finished building of that kind, at full size) and
-    the whole map, saves a screenshot of each, and prints their paths.
+    the whole map, saves a screenshot of each, and prints their paths. A
+    run that logs an error, exception or failed assert fails, after its
+    screenshots, and lists them (#140).
 
     A view regression check is two looks: the same -Seed, -Years and -Show
     on the base branch and on the change, side by side. Nothing is kept as
@@ -85,7 +87,7 @@ if ($Days -gt 0) { $arguments += @('-days', $Days) }
 if ($Seed) { $arguments += @('-seed', $Seed) }
 if ($Show) { $arguments += @('-show', $Show) }
 if ($Flat) { $arguments += '-hud-flat' }
-Invoke-Program $player $arguments | Out-Null
+$exitCode = Invoke-Program $player $arguments
 
 # The run's log names it; its screenshots share its stamp.
 $log = Get-ChildItem $captures -Filter 'Run_*.log' | Where-Object LastWriteTime -ge $started | Sort-Object LastWriteTime | Select-Object -Last 1
@@ -96,8 +98,11 @@ if (-not $log) {
 }
 
 $shots = @(Get-ChildItem $captures -Filter "$($log.BaseName)_*.png" | Sort-Object Name)
-if ($shots.Count -eq 0) { throw "The look saved no screenshot; see $playerLog." }
 
 Get-Content $log.FullName
 Write-Host ''
 $shots | ForEach-Object { Write-Host "Screenshot: $($_.FullName)" }
+# A finished run quits with 1 when it logged errors; the run log above lists
+# them. Checked before the screenshots, since an error can be why there are none.
+if ($exitCode -ne 0) { throw "The look logged errors (exit $exitCode); they are listed above, and in full in $playerLog." }
+if ($shots.Count -eq 0) { throw "The look saved no screenshot; see $playerLog." }
