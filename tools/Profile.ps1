@@ -21,6 +21,11 @@
     and 4. Everything it writes is git-ignored: the screenshots show the
     licensed art, which never goes in this repository.
 
+    A run that logs an error, exception or failed assert fails without
+    step 4, listing them: its timings are not worth comparing (#140). A
+    player still running after five minutes is stopped, and the run fails
+    (#194).
+
 .PARAMETER Width
     Window width in pixels. 2400 by 1080 is a phone held sideways, which is
     how many screen pixels the view has to fill on one.
@@ -110,20 +115,30 @@ if ($Notch) { $arguments += '-hud-notch' }
 if ($Flat) { $arguments += '-hud-flat' }
 if ($Seed) { $arguments += @('-seed', $Seed) }
 if ($Stops) { $arguments += @('-stops', ($Stops -join ',')) }
-Invoke-Program $player $arguments | Out-Null
+# Five minutes, about five times a whole route with the player's start, so
+# only a run that will never finish - one that throws every frame - reaches
+# it (#194 review).
+$timeout = 300
+$exitCode = Invoke-Program $player $arguments -TimeoutSeconds $timeout
+$playerLog = Join-Path $captures 'player.log'
 
 # The run's log names it; its captures, one per stop, share its stamp.
 $log = Get-ChildItem $captures -Filter 'Run_*.log' | Where-Object LastWriteTime -ge $started | Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $log) {
-    # The player says why in its log - a stop -Stops names that does not
-    # exist - so say it here too.
-    $playerLog = Join-Path $captures 'player.log'
-    $why = if (Test-Path $playerLog) { (Select-String -Path $playerLog -Pattern '^(ScriptedRun|SimulationDriver): ' | Select-Object -First 1).Line } else { $null }
-    throw "The run did not finish; see $playerLog.$(if ($why) { "`n$why" })"
+if ($null -eq $exitCode -or -not $log) {
+    # Killed at the timeout, or crashed: the player's log says what it can.
+    $what = if ($null -eq $exitCode) { "did not finish within $timeout s and was stopped" } else { "did not finish (exit $exitCode)" }
+    throw "The run $what; see $playerLog.$((Get-PlayerProblems $playerLog | ForEach-Object { "`n$_" }) -join '')"
 }
 $stamp = $log.BaseName
 $captured = @(Get-ChildItem $captures -Filter "${stamp}_*.raw" | Sort-Object Name)
-if ($captured.Count -eq 0) { throw "The run recorded no capture; see $(Join-Path $captures 'player.log')." }
+
+# A finished run quits with 1 when it logged errors, and lists them in its
+# log. Checked before the captures, since an error can be why there are none.
+if ($exitCode -ne 0) {
+    Get-Content $log.FullName
+    throw "The run logged errors (exit $exitCode), so its captures were not analysed; they are listed above, and in full in $playerLog."
+}
+if ($captured.Count -eq 0) { throw "The run recorded no capture; see $playerLog." }
 
 # A run of a few stops is a look, not a measurement: its screenshots are
 # what it is for, and analysing its captures would cost a Unity session.

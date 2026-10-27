@@ -62,6 +62,17 @@ namespace KingdomWatch.Game
         private Stage stage;
         private bool finished;
 
+        // Everything a run logs at error level, so a passing run is a clean
+        // one (#140): Finish lists them in the run log and quits with 1, and
+        // Look.ps1 and Profile.ps1 fail on it. Collected from before the
+        // first scene loads, since the driver's own setup errors (a bad
+        // -seed, no view) come before the run exists. Logged from any thread,
+        // hence the lock.
+        private const int ErrorsListed = 20;
+        private static readonly object errorsLock = new object();
+        private static readonly List<string> errors = new List<string>();
+        private static int errorCount;
+
         private ScriptedRun(CameraRig rig, WorldView2D view, World world, string folder)
         {
             this.rig = rig;
@@ -116,14 +127,14 @@ namespace KingdomWatch.Game
             var show = System.Array.IndexOf(args, "-show");
             if (show >= 0 && !run.AddShow(show + 1 < args.Length ? args[show + 1] : ""))
             {
-                Application.Quit(1);
+                GiveUp("-show found nothing to show");
                 return null;
             }
 
             var only = System.Array.IndexOf(args, "-stops");
             if (only >= 0 && !run.Keep(only + 1 < args.Length ? args[only + 1] : ""))
             {
-                Application.Quit(1);
+                GiveUp("-stops names no stop");
                 return null;
             }
 
@@ -393,8 +404,84 @@ namespace KingdomWatch.Game
             Object.Destroy(shot);
             Profiler.logFile = "";
             Line("Captures: " + stamp + "_NN_<stop>.raw, one per stop");
+            var report = ErrorReport();
+            foreach (var line in report) Line(line);
             File.WriteAllText(Path.Combine(folder, stamp + ".log"), log.ToString());
-            Application.Quit();
+            Application.Quit(report.Count > 0 ? 1 : 0);
+        }
+
+        // Whether the player was launched with -scripted-run.
+        public static bool Wanted { get; private set; }
+
+        // Ends a player launched with -scripted-run whose run never began:
+        // its setup returned early, threw, or was asked for a stop there is
+        // none of. Without this the player ran on with nothing to fly, and
+        // Look.ps1 and Profile.ps1 waited on it for ever (#194 review). It
+        // writes a run log saying why, with what was logged, and quits with 1.
+        public static void GiveUp(string why)
+        {
+            if (gaveUp) return;
+            gaveUp = true;
+            var args = System.Environment.GetCommandLineArgs();
+            var at = System.Array.IndexOf(args, "-scripted-run");
+            if (at >= 0 && at + 1 < args.Length)
+            {
+                var name = "Run_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+                var text = new StringBuilder();
+                text.AppendLine("Scripted run " + name + " did not start: " + why + ".");
+                foreach (var line in ErrorReport()) text.AppendLine(line);
+                Directory.CreateDirectory(args[at + 1]);
+                File.WriteAllText(Path.Combine(args[at + 1], name + ".log"), text.ToString());
+                Debug.Log("ScriptedRun: " + text);
+            }
+            Application.Quit(1);
+        }
+
+        private static bool gaveUp;
+
+        // The run log's closing lines, listing what was logged at error
+        // level; none for a clean run.
+        private static List<string> ErrorReport()
+        {
+            int count;
+            string[] listed;
+            lock (errorsLock)
+            {
+                count = errorCount;
+                listed = errors.ToArray();
+            }
+            var lines = new List<string>();
+            if (count == 0) return lines;
+            lines.Add("Errors: " + count + " logged, so the run fails; the player's log has them in full.");
+            foreach (var error in listed) lines.Add("  " + error);
+            if (count > listed.Length) lines.Add("  and " + (count - listed.Length) + " more");
+            return lines;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ListenForErrors()
+        {
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-scripted-run") < 0) return;
+            Wanted = true;
+            Application.logMessageReceivedThreaded += NoteError;
+        }
+
+        private static void NoteError(string message, string stackTrace, LogType type)
+        {
+            if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+            // An exception's first line says what; its stack's first line, where.
+            var line = type == LogType.Exception && !string.IsNullOrEmpty(stackTrace) ? FirstLine(message) + " at " + FirstLine(stackTrace) : FirstLine(message);
+            lock (errorsLock)
+            {
+                errorCount++;
+                if (errors.Count < ErrorsListed) errors.Add(line);
+            }
+        }
+
+        private static string FirstLine(string text)
+        {
+            var end = text.IndexOf('\n');
+            return (end < 0 ? text : text.Substring(0, end)).TrimEnd('\r');
         }
 
         private void Line(string text)

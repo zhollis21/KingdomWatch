@@ -144,6 +144,12 @@ namespace KingdomWatch.Game
 
         private void Update()
         {
+#if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
+            // Unity calls Update after a Start that returned early or threw, so
+            // a scripted run whose setup failed ends here rather than leaving
+            // the player running with nothing to fly (#194 review).
+            if (scriptedRun == null && ScriptedRun.Wanted) ScriptedRun.GiveUp("the scene's setup failed before the run began");
+#endif
             if (world == null || paused) return;
 
             // A long frame (a hitch, a debugger pause) is capped rather than
