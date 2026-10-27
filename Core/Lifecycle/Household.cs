@@ -7,8 +7,8 @@ using KingdomWatch.Core.Data;
 namespace KingdomWatch.Core.Lifecycle
 {
     /// <summary>
-    /// One or more people sharing a home and food access - and, once #68
-    /// gives them any, wealth. Section 3's social container: a person belongs to a household and occupies a home
+    /// One or more people sharing a home and food access. Section 3's social
+    /// container: a person belongs to a household and occupies a home
     /// through it, wherever they physically are.
     /// </summary>
     /// <remarks>
@@ -26,7 +26,8 @@ namespace KingdomWatch.Core.Lifecycle
     /// No ledger. Section 6 gives the household food ACCESS, not food: meals
     /// draw from the settlement's - today the band's - stock, and the
     /// household decides who eats first (see <see cref="Needs.Hunger"/>).
-    /// Accumulated wealth and personal property are #68.
+    /// Nobody owns wealth: personal wealth was dropped at #68, and is a V2
+    /// question (#196).
     /// </remarks>
     public sealed class Household
     {
