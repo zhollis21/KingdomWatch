@@ -482,8 +482,8 @@ been corrected in the same change.** It used to read, in the property
 section: *"On death, personal wealth folds into the household. This gives
 some wealth variation and makes a master's tools a real asset."* Tools are no
 longer inherited, so they can no longer be that asset; general personal
-wealth still folds into the household and still gives variation, tools just
-aren't part of it. (Personal wealth itself was later dropped at #68, since
+wealth was to still fold into the household and still give variation, tools
+just weren't part of it. (Personal wealth itself was later dropped at #68, since
 nothing gives a person any; it is a V2 question, #196.) This settles #68's
 open question for tools specifically: neither pure ledger stock nor freely
 inheritable property, they are checked-out-while-in-use and gone at death.

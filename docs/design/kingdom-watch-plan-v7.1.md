@@ -649,7 +649,7 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 ### Property
 
-**Household ownership.** The household owns the home and bulk goods. Individuals own nothing at launch; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
+**Household ownership.** The household owns the home; the settlement owns bulk goods. Individuals own nothing at launch; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
 
 **Changed at #68.** This section first described a hybrid: individuals owned personal wealth and status, and on death the wealth folded into the household, for some variation between families without the machinery of dynastic inheritance law. Nothing gives a person wealth, though — no wages, no coin, no trade between people — so it would always be zero, and it was dropped. Whether people or households own wealth, and whether money exists at all, is a V2 question (#196). Status is a social input to behaviour, with traits and reputation (§7, #113). Tools, Weapons and Armor had already left it before then: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
