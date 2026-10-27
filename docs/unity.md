@@ -12,13 +12,13 @@ git submodule update --init
 
 Some of the pack's paths are long; on Windows, if the checkout fails with "Filename too long", run `git config --global core.longpaths true` and try again.
 
-A git worktree starts with the submodule registered but empty. Fill it from the main checkout's copy, which clones locally rather than downloading:
+A git worktree starts with the submodule registered but empty. Fill it from the main checkout's copy, which clones locally rather than downloading. Git refuses a local clone for a submodule unless told it is allowed, and the source is named on the command rather than set in the config, which every worktree shares (#193):
 
 ```
-git submodule update --init --reference <main checkout>/Game/Assets/Art Game/Assets/Art
+git -c protocol.file.allow=always -c "submodule.Game/Assets/Art.url=<main checkout>/Game/Assets/Art" submodule update --init Game/Assets/Art
 ```
 
-Claude Code sessions do this themselves: a `SessionStart` hook (`.claude/hooks/init-art.ps1`) runs it whenever a session opens on a worktree whose `Game/Assets/Art` is empty and the main checkout's is not; it never reaches for the remote. `tools/Profile.ps1` refuses to run without the art unless `-Flat` says that is meant, since a run over plain markers measures nothing about the game as it is drawn.
+Claude Code sessions do this themselves: a `SessionStart` hook (`.claude/hooks/init-art.ps1`) checks out the art at every session start, in every worktree whose `Game/Assets/Art` is empty, from the main checkout's copy. It never reaches for the remote, and does nothing when the main checkout has no art either. `tools/Profile.ps1` refuses to run without the art unless `-Flat` says that is meant, since a run over plain markers measures nothing about the game as it is drawn.
 
 Without the submodule (a public clone, or no access) the game still runs: the view logs that the art is missing and draws coloured cells and plain markers instead. `Game/Assets/Editor/PixelArtImport.cs` sets the import settings for everything under `Assets/Art`: point filtering, no compression, no mipmaps. If the art looks blurry or villagers are missing, reimport `Assets/Art`.
 
