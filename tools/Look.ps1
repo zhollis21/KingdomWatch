@@ -11,7 +11,8 @@
     to -Show (the first finished building of that kind, at full size) and
     the whole map, saves a screenshot of each, and prints their paths. A
     run that logs an error, exception or failed assert fails, after its
-    screenshots, and lists them (#140).
+    screenshots, and lists them (#140). A player still running after five
+    minutes and 10 s a year of -Years is stopped, and the look fails (#194).
 
     A view regression check is two looks: the same -Seed, -Years and -Show
     on the base branch and on the change, side by side. Nothing is kept as
@@ -87,14 +88,18 @@ if ($Days -gt 0) { $arguments += @('-days', $Days) }
 if ($Seed) { $arguments += @('-seed', $Seed) }
 if ($Show) { $arguments += @('-show', $Show) }
 if ($Flat) { $arguments += '-hud-flat' }
-$exitCode = Invoke-Program $player $arguments
+# Five minutes, and 10 s a year the world runs on first: about five times
+# what a look takes (12 s at year 0, 49 s at year 20), so only a run that
+# will never finish - one that throws every frame - reaches it (#194 review).
+$timeout = 300 + 10 * $Years + [math]::Ceiling($Days / 12)
+$exitCode = Invoke-Program $player $arguments -TimeoutSeconds $timeout
 
 # The run's log names it; its screenshots share its stamp.
 $log = Get-ChildItem $captures -Filter 'Run_*.log' | Where-Object LastWriteTime -ge $started | Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $log) {
-    # The player says why in its log: no such kind, or none standing yet.
-    $why = if (Test-Path $playerLog) { (Select-String -Path $playerLog -Pattern '^(ScriptedRun|SimulationDriver): ' | Select-Object -First 1).Line } else { $null }
-    throw "The look did not finish; see $playerLog.$(if ($why) { "`n$why" })"
+if ($null -eq $exitCode -or -not $log) {
+    # Killed at the timeout, or crashed: the player's log says what it can.
+    $what = if ($null -eq $exitCode) { "did not finish within $timeout s and was stopped" } else { "did not finish (exit $exitCode)" }
+    throw "The look $what; see $playerLog.$((Get-PlayerProblems $playerLog | ForEach-Object { "`n$_" }) -join '')"
 }
 
 $shots = @(Get-ChildItem $captures -Filter "$($log.BaseName)_*.png" | Sort-Object Name)

@@ -127,14 +127,14 @@ namespace KingdomWatch.Game
             var show = System.Array.IndexOf(args, "-show");
             if (show >= 0 && !run.AddShow(show + 1 < args.Length ? args[show + 1] : ""))
             {
-                Application.Quit(1);
+                GiveUp("-show found nothing to show");
                 return null;
             }
 
             var only = System.Array.IndexOf(args, "-stops");
             if (only >= 0 && !run.Keep(only + 1 < args.Length ? args[only + 1] : ""))
             {
-                Application.Quit(1);
+                GiveUp("-stops names no stop");
                 return null;
             }
 
@@ -404,6 +404,45 @@ namespace KingdomWatch.Game
             Object.Destroy(shot);
             Profiler.logFile = "";
             Line("Captures: " + stamp + "_NN_<stop>.raw, one per stop");
+            var report = ErrorReport();
+            foreach (var line in report) Line(line);
+            File.WriteAllText(Path.Combine(folder, stamp + ".log"), log.ToString());
+            Application.Quit(report.Count > 0 ? 1 : 0);
+        }
+
+        // Whether the player was launched with -scripted-run.
+        public static bool Wanted { get; private set; }
+
+        // Ends a player launched with -scripted-run whose run never began:
+        // its setup returned early, threw, or was asked for a stop there is
+        // none of. Without this the player ran on with nothing to fly, and
+        // Look.ps1 and Profile.ps1 waited on it for ever (#194 review). It
+        // writes a run log saying why, with what was logged, and quits with 1.
+        public static void GiveUp(string why)
+        {
+            if (gaveUp) return;
+            gaveUp = true;
+            var args = System.Environment.GetCommandLineArgs();
+            var at = System.Array.IndexOf(args, "-scripted-run");
+            if (at >= 0 && at + 1 < args.Length)
+            {
+                var name = "Run_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+                var text = new StringBuilder();
+                text.AppendLine("Scripted run " + name + " did not start: " + why + ".");
+                foreach (var line in ErrorReport()) text.AppendLine(line);
+                Directory.CreateDirectory(args[at + 1]);
+                File.WriteAllText(Path.Combine(args[at + 1], name + ".log"), text.ToString());
+                Debug.Log("ScriptedRun: " + text);
+            }
+            Application.Quit(1);
+        }
+
+        private static bool gaveUp;
+
+        // The run log's closing lines, listing what was logged at error
+        // level; none for a clean run.
+        private static List<string> ErrorReport()
+        {
             int count;
             string[] listed;
             lock (errorsLock)
@@ -411,20 +450,19 @@ namespace KingdomWatch.Game
                 count = errorCount;
                 listed = errors.ToArray();
             }
-            if (count > 0)
-            {
-                Line("Errors: " + count + " logged, so the run fails; the player's log has them in full.");
-                foreach (var error in listed) Line("  " + error);
-                if (count > listed.Length) Line("  and " + (count - listed.Length) + " more");
-            }
-            File.WriteAllText(Path.Combine(folder, stamp + ".log"), log.ToString());
-            Application.Quit(count > 0 ? 1 : 0);
+            var lines = new List<string>();
+            if (count == 0) return lines;
+            lines.Add("Errors: " + count + " logged, so the run fails; the player's log has them in full.");
+            foreach (var error in listed) lines.Add("  " + error);
+            if (count > listed.Length) lines.Add("  and " + (count - listed.Length) + " more");
+            return lines;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ListenForErrors()
         {
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-scripted-run") < 0) return;
+            Wanted = true;
             Application.logMessageReceivedThreaded += NoteError;
         }
 

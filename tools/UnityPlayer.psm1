@@ -18,13 +18,30 @@ function Get-UnityEditor([string]$Game) {
 # under a folder with a space in its name split every path in two (#135
 # review). And it waits for the process alone: Start-Process -Wait also waits
 # for everything it started, and Unity's licensing client outlives it.
-function Invoke-Program([string]$Path, [string[]]$Arguments) {
+# Given -TimeoutSeconds, a program still running then is killed and $null
+# returned in place of an exit code: a scripted run that throws every frame
+# never finishes, and a look waited on it for ever (#194 review).
+function Invoke-Program([string]$Path, [string[]]$Arguments, [int]$TimeoutSeconds = 0) {
     $info = [System.Diagnostics.ProcessStartInfo]::new($Path)
     $info.UseShellExecute = $false
     foreach ($argument in $Arguments) { $info.ArgumentList.Add($argument) }
     $process = [System.Diagnostics.Process]::Start($info)
-    $process.WaitForExit()
+    if ($TimeoutSeconds -le 0) {
+        $process.WaitForExit()
+    }
+    elseif (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+        $process.Kill($true)
+        $process.WaitForExit()
+        return $null
+    }
     $process.ExitCode
+}
+
+# The lines of a player's log that say what went wrong - the scripted run's
+# and the driver's own, and exceptions - for a run that left no run log.
+function Get-PlayerProblems([string]$PlayerLog) {
+    if (-not (Test-Path $PlayerLog)) { return @() }
+    @(Select-String -Path $PlayerLog -Pattern '^(ScriptedRun|SimulationDriver): |^\w+Exception: ' | Select-Object -First 20 | ForEach-Object Line)
 }
 
 # Whether a Unity - the Editor, or a headless run - has the project open: it
@@ -78,4 +95,4 @@ function Build-Player([string]$Root, [string]$Game, [string]$Unity) {
     Invoke-Unity $Unity $Game 'KingdomWatch.Game.Editor.DevBuild.Windows' (Join-Path $Game 'Builds/devbuild.log') @('-buildTarget', 'Win64')
 }
 
-Export-ModuleMember -Function Get-UnityEditor, Invoke-Program, Test-UnityProjectOpen, Invoke-Unity, Assert-Art, Build-Player
+Export-ModuleMember -Function Get-UnityEditor, Invoke-Program, Get-PlayerProblems, Test-UnityProjectOpen, Invoke-Unity, Assert-Art, Build-Player
