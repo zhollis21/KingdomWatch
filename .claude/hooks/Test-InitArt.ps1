@@ -14,7 +14,7 @@ function Check([bool]$Ok, [string]$What) {
     else { Write-Host "FAIL  $What"; $script:failures++ }
 }
 
-function Invoke-Git { & git.exe @args 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "git $args failed" } }
+function Invoke-Git { & git @args 2>&1 | Out-Null; if ($LASTEXITCODE) { throw "git $args failed" } }
 
 function Has-Art([string]$Worktree) {
     Test-Path (Join-Path $Worktree 'Game/Assets/Art/sprite.txt')
@@ -30,7 +30,12 @@ function Run-Hook([string]$Project) {
     finally { Pop-Location }
 }
 
+# No system or global git config, for the hook as well as the setup: a
+# global protocol.file.allow=always would hide the hook leaving it out.
 $env:GIT_CONFIG_NOSYSTEM = '1'
+$env:GIT_CONFIG_GLOBAL = Join-Path $scratch 'gitconfig'
+New-Item -ItemType Directory $scratch | Out-Null
+New-Item -ItemType File $env:GIT_CONFIG_GLOBAL | Out-Null
 $env:GIT_AUTHOR_NAME = $env:GIT_COMMITTER_NAME = 'test'
 $env:GIT_AUTHOR_EMAIL = $env:GIT_COMMITTER_EMAIL = 'test@example.com'
 
