@@ -4,6 +4,8 @@
 
 > **Scope, October 26, 2026 (#186):** drinking water as a need, skills and apprenticeship, every animal, and raiders left launch scope and became V2 candidates (M10). Buildings gate on the settlement's seat tier instead of skill (§9), and M4's disruption folded into M7, where war is the first thing that attacks a village (§19).
 
+> **Ownership, October 27, 2026 (#68):** individuals own nothing at launch. Personal wealth was dropped because nothing gives a person any; it and money are a V2 question (#196), and status goes with traits and reputation (#113). §2's Property row and §6 are updated.
+
 > **Perspective, September 26, 2026 (#72):** the game is **¾ oblique 2D**. That reverses the M0 decision of September 9 (#1), which picked orthographic 3D with sprite villagers after desktop and Android prototype trials. The 3D prototype has been retired; §18 has the reasoning. How to run Core in the Unity project is documented in [the Unity guide](../unity.md). Sustained performance budgets remain open (#20, M9). Repository directories use `Game/`, `Core/`, `Core.Tests/`, and `Harness/`; the KingdomWatch-prefixed paths below are the original design notation.
 
 *A grounded low-fantasy god sim. Supersedes v7. Adds the simulation clock and scheduler, corrected real/sim-time cadence, threshold-crossing compression, LOD equivalence testing, keyed deterministic randomness, durable EventId, safe save snapshots, the storage accessor layer, decision provenance, family formation and death rules, witness-tracked grievances, semantic zoom, and the confirmed .NET/Unity version path.*
@@ -48,7 +50,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Movement | **Soft avoidance** — agents never hard-block cells |
 | Polity attitudes | Polities hold **their own diplomatic state**, distinct from settlements |
 | Households | **First-class entity** — person → household → home |
-| Property | **Hybrid** — household owns the home, individuals own wealth; tools and arms are settlement stock, checked out (#78) |
+| Property | **Household and settlement** — household owns the home, individuals own nothing at launch (#68); personal wealth and money are a V2 question (#196); tools and arms are settlement stock, checked out (#78) |
 | Kinship | Hard ban through grandparents; first cousins a **culture taboo**, permitted until culture exists (#163) |
 | Grievances | **Witness-tracked**, not flat decay — inheritable across generations |
 | Animals | **None at launch** (#186). Game, livestock, predators and monsters are V2 candidates (#114, #187); §13 keeps the model |
@@ -79,7 +81,7 @@ These must never collapse into each other. Getting this wrong is the failure mod
 
 ```
 Person      — an individual. Has a birth culture and a current cultural affinity.
-Household   — one or more people sharing a home, food access, and wealth.
+Household   — one or more people sharing a home and food access.
 Dynasty     — a lineage across households and generations.
 Settlement  — a place. Owns bulk resources, layout, buildings, and a culture.
 Polity      — one or more settlements under a ruler. The unit of war and alliance.
@@ -586,7 +588,7 @@ This is among the highest-value architectural decisions in a deterministic simul
 Person → belongs to → Household → occupies → Home
 ```
 
-A household holds adults, children, dependents, a home, food access, and accumulated wealth.
+A household holds adults, children, dependents, a home, and food access.
 
 The chain this enables:
 
@@ -601,7 +603,7 @@ Aldric + Mira marry → form household → need a home
 
 ### Household food
 
-Settlement owns bulk resources. Household has food *access*, wealth/status, and possibly a small buffer. Meals consume settlement supply — no simulating every loaf in every pantry.
+Settlement owns bulk resources. Household has food *access* and possibly a small buffer. Meals consume settlement supply — no simulating every loaf in every pantry.
 
 *UI consequence:* the "Grain: 4 days" house tooltip must read from settlement stores scaled by household size. Otherwise it advertises household economics that don't exist.
 
@@ -647,11 +649,11 @@ As built (#9), `FamilyFormation` is the rulebook and not the matchmaker: `Evalua
 
 ### Property
 
-**Hybrid ownership.** The household owns the home and bulk goods. Individuals own personal wealth and status; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
+**Household ownership.** The household owns the home and bulk goods. Individuals own nothing at launch; Tools, Weapons and Armor are checked out from the settlement rather than owned (below).
 
-On death, personal wealth folds into the household. This gives some wealth variation, without the machinery of full dynastic inheritance law. Tools, Weapons and Armor are the exception: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
+**Changed at #68.** This section first described a hybrid: individuals owned personal wealth and status, and on death the wealth folded into the household, for some variation between families without the machinery of dynastic inheritance law. Nothing gives a person wealth, though — no wages, no coin, no trade between people — so it would always be zero, and it was dropped. Whether people or households own wealth, and whether money exists at all, is a V2 question (#196). Status is a social input to behaviour, with traits and reputation (§7, #113). Tools, Weapons and Armor had already left it before then: the [economy ladder](kingdom-watch-economy-ladder.md) (#78) settles them as checked out from the settlement's own stock rather than owned outright, destroyed with their holder rather than inherited — so a master's *skill* is the asset that survives them, not their kit.
 
-As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. The individual side has nothing to stand on yet — no personal wealth — so it is #68, and the transfer-on-death step joins the cascade with it. Homes are behind an `IHousing` seam. At #9 its only implementation was `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement), which bands still use; since #69 a settlement's homes are its houses (`SettlementHousing`, see Population equilibrium below). A household's `Home` names its house, whether claimed when it formed or moved into from a tent at dawn (`Households.MoveIn`), and dissolving the household gives the house back.
+As built (#9), the household side is a `Household` with an id, a home and a member list, and no ledger: meals draw from the settlement's — today the band's — stock, and the household decides who eats first. There is no individual side (above), so nothing passes to the household on a death. Homes are behind an `IHousing` seam. At #9 its only implementation was `CampSpace`, unlimited and identity-less (§15: temporary dwellings satisfy the requirement), which bands still use; since #69 a settlement's homes are its houses (`SettlementHousing`, see Population equilibrium below). A household's `Home` names its house, whether claimed when it formed or moved into from a tent at dawn (`Households.MoveIn`), and dissolving the household gives the house back.
 
 ### Death cascade
 
@@ -661,7 +663,6 @@ Most of this is mechanical and must happen, or it generates bugs:
 Cancel tasks and reservations
 Vacate the job → work manager reposts it
 Break apprenticeship in both directions   (V2, #22)
-Transfer personal wealth to the household
 Emit PersonDied
 ```
 
@@ -675,7 +676,7 @@ The decisions on top of that:
 
 As built (#9), the cascade is `Deaths.Die(person, reasons)`: one synchronous operation, in one order, whoever decided the death — the mortality model (#11), starvation, injury. It publishes `PersonDied` first, because the partnership record names the event that ended it; then ends the partnership, prunes the dead from every witness list, takes them out of their household, strikes them from their band (a dead leader is simply no leader; who leads next is #54's or #39's), and frees the storage slot. It is deliberately *not* a chain of phase-separated reactions: §4's phases exist so that reactions to a death land after it, and the cascade is not a reaction but what the death is. Reactions still get their turn through the event. Two consequences worth knowing: a subscriber hearing `PersonDied` sees the world from just before it, which is fine because subscribers listen and book rather than act; and `Die` cannot be called from inside a subscriber, because its own publish is the recursion the bus refuses.
 
-Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). Reservations need no step of their own: every one a person holds is held by their task, and `Vacate` gives it back (#24). The steps that act on things not yet built join the cascade when they are: breaking an apprenticeship (#22, a V2 candidate), destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78), personal wealth (#68). They are added to `Deaths`, not subscribed, for the reason below.
+Adoption walks the genealogy by degree — a surviving parent, then adult siblings, grandparents, aunts and uncles, first cousins — for a living adult with a household other than the orphaned one, and within a degree takes the lowest id, so two runs agree on who took the child. Dependents are everyone below Adult, adolescents included: §6 puts full participation at Adult, and an adolescent alone in a house is a child alone in a house. With no kin to take them, the orphans keep the household; nothing invents a guardian, and the validator (#13) can flag a household with no adult. Tasks and the job joined the cascade with #52: `Jobs.Vacate` cancels the pending completion, returns any inputs in process to the band's ledger and clears the job, before the person leaves the household and the band. The checklist's "work manager reposts it" happens implicitly rather than as a step: the next free hand sees the shortfall (§12). Reservations need no step of their own: every one a person holds is held by their task, and `Vacate` gives it back (#24). The steps that act on things not yet built join the cascade when they are: breaking an apprenticeship (#22, a V2 candidate) and destroying a master's checked-out Tools/Weapons/Armor rather than passing them on (#78). They are added to `Deaths`, not subscribed, for the reason below.
 
 ### Relationships
 

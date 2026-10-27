@@ -483,9 +483,10 @@ section: *"On death, personal wealth folds into the household. This gives
 some wealth variation and makes a master's tools a real asset."* Tools are no
 longer inherited, so they can no longer be that asset; general personal
 wealth still folds into the household and still gives variation, tools just
-aren't part of it. This settles #68's open question for tools specifically:
-neither pure ledger stock nor freely inheritable property, they are
-checked-out-while-in-use and gone at death.
+aren't part of it. (Personal wealth itself was later dropped at #68, since
+nothing gives a person any; it is a V2 question, #196.) This settles #68's
+open question for tools specifically: neither pure ledger stock nor freely
+inheritable property, they are checked-out-while-in-use and gone at death.
 
 **No fallback is needed when Metal is unreachable.** A settlement with no
 reachable Ore is not without functioning jobs or a functioning levy — it is
