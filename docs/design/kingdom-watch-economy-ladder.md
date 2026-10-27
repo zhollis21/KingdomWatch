@@ -224,7 +224,7 @@ farm existed; #100 dropped that crude form (§7), so it is building-gated.
 |---|---|
 | Builder (`JobKind.Builder = 4`) | Clears the ground and raises a building from the wood set aside for it. Consumes, produces nothing — but a tree felled in clearing is wood like any other (#100). |
 | Forester (`JobKind.Forester = 6`) | Plants a tree on plains while the settlement's forest in reach, saplings counted, falls short of twice what its hearths and one more need. The only way a tree grows back. Produces nothing now: the tree is wood in five years (#155). |
-| Hauler | Moves stock between site, store and workshop. |
+| Hauler | Moves stock between site, store and workshop. A V2 candidate (#181): at launch, output lands in stock when a trip comes home. |
 
 Milling is deliberately not a job. A quern is tier-zero household work, so
 Grain becomes Food without anyone holding a role for it.

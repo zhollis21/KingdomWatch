@@ -1013,6 +1013,8 @@ Population rises → tool demand rises → shortfall detected
 → materials hauled → built → skilled worker assigned
 ```
 
+Nothing hauls at launch: a building's materials are embodied at approval and its builders bring only their hours. Hauling is a V2 candidate (#181).
+
 ### The town planner may be the hardest AI problem here
 
 Because the player never places buildings, the AI must produce towns that are functional, walkable, expandable, defensible, and attractive. The entire appeal of zooming in evaporates if villages look like spilled LEGO.
@@ -1051,7 +1053,7 @@ Tasks must **reserve** resource quantity, target, workstation, construction slot
 
 Boring system. Determines whether your villagers look intelligent.
 
-**As built (#24).** The failure above needs piles and haulers, and nothing hauls yet: output lands in the ledger when a trip comes home, and a building's materials are embodied at approval. What can be double-booked today is claimed as a task sets out, and held by it: a harvest of its bush or tree (#26), the tree a Forester plants (#155), a Builder's or Farmer's share of a building's hours (#100), and a recipe's inputs in process. An approved building holds its footprint, lane and share of the square from gatherers until they are cleared (#100, #23). When the agent dies, `Jobs.Vacate` in the death cascade gives each back (#52). The task does not change once started, and routes are priced once at the start (#25), so neither cancels a claim. `Harness/WorldValidator.CheckReservations` checks section 5's rule from both ends: hours, inputs or ground held beyond what the tasks out and the uncleared buildings own are unowned, and a task out whose claim is gone is lost. A harvest is checked one way only, since a bush's claims count what it has given this season and a trip home leaves its claim counted. Nothing reserves or carries stock yet, so any stock reserved or carried is unowned. Piles, workstations, burning and blocked paths, and one registry that the four kinds of claim move into, wait for hauling (#181).
+**As built (#24).** The failure above needs piles and haulers, and nothing hauls yet: output lands in the ledger when a trip comes home, and a building's materials are embodied at approval. What can be double-booked today is claimed as a task sets out, and held by it: a harvest of its bush or tree (#26), the tree a Forester plants (#155), a Builder's or Farmer's share of a building's hours (#100), and a recipe's inputs in process. An approved building holds its footprint, lane and share of the square from gatherers until they are cleared (#100, #23). When the agent dies, `Jobs.Vacate` in the death cascade gives each back (#52). The task does not change once started, and routes are priced once at the start (#25), so neither cancels a claim. `Harness/WorldValidator.CheckReservations` checks section 5's rule from both ends: hours, inputs or ground held beyond what the tasks out and the uncleared buildings own are unowned, and a task out whose claim is gone is lost. A harvest is checked one way only, since a bush's claims count what it has given this season and a trip home leaves its claim counted. Nothing reserves or carries stock yet, so any stock reserved or carried is unowned. Piles, workstations, burning and blocked paths, and one registry that the four kinds of claim move into, wait for hauling, a V2 candidate (#181).
 
 ### Movement and collision
 
@@ -1134,7 +1136,7 @@ The point is the exploration motive. A polity that has used up its known viable 
 Bridges are the **first real test of the traversal abstraction**, and they exercise it at M6 rather than waiting for naval at M8. A bridge is exactly a traversal-cost modification: an impassable water edge becomes a cheap land edge.
 
 - **The polity commissions them**, not the settlement — the first polity-level construction decision in the design, and something concrete for polities to do besides war and alliance. Requires the polity to levy materials and labour from member settlements
-- **Construction reuses the existing pipeline** — demand detected → bridge requested → job posted → materials hauled → built
+- **Construction reuses the existing pipeline** — demand detected → bridge requested → job posted → materials hauled → built (materials embodied at approval until hauling, a V2 candidate, #181)
 - **Bridgeable narrow points score highly in site selection**, which makes towns sit at river crossings the way real ones do
 - Pathfinding must handle **edges appearing and disappearing at runtime**, invalidating cached paths when a bridge is destroyed
 
@@ -1577,7 +1579,7 @@ Then choose perspective.
 
 **M2 — Core on device.** Core wired into the Unity build for the first time (#72), and the world hash checked under IL2CPP (#90). History compaction is designed (#74, §17) before M3–M7 each shape the journal; measuring save size and cold load (#19) sizes its retention window and era length once save/load exists (#42, M7).
 
-**M3 — one living village, well laid out.** Wake, eat, work, harvest, haul, build, home, sleep, through a full year. Age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
+**M3 — one living village, well laid out.** Wake, eat, work, harvest, build, home, sleep, through a full year. Age stages, **town planner**, **resource reservation**. The event feed (#73) — the only way to learn what just happened in the village. Zoom in and out cleanly.
 
 **M4 — folded into M7 (#186).** It was one disruption: raiders and predators. Both are now V2 candidates (#27, #187), so the first thing that attacks a village is war, and the disruption loop moved with it.
 
@@ -1591,7 +1593,7 @@ Then choose perspective.
 
 **M9 — pre-release performance: the ugly stress test.** Full population, ~10,000 trees, ~500 buildings, 200 agents stepped and pathfinding, on Android (#18). No finished art, but placeholders that cost what the art will: 16–24px sprites layered 6–7 deep per agent (§18, #121), across as many atlases as the art scope implies, animated. Thresholds set *before* running (#20): choose the budget fraction, measure the 2D baseline, then split the budget into sim ms and render ms per frame.
 
-**M10 — V2 candidates.** Not launch work: ideas taken out of scope at #186, each an issue that states the idea and its open questions. Drinking water as a need (#101), skills and apprenticeship (#22), wildlife (#114), beasts (#187), raiders (#27).
+**M10 — V2 candidates.** Not launch work: ideas taken out of scope at #186, each an issue that states the idea and its open questions. Drinking water as a need (#101), skills and apprenticeship (#22), wildlife (#114), beasts (#187), raiders (#27), hauling (#181).
 
 ---
 
