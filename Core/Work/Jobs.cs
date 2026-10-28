@@ -16,7 +16,8 @@ namespace KingdomWatch.Core.Work
     /// <see cref="ScheduledEventKind.TaskCompleted"/>: at dawn each tracked
     /// band's free workers take the job the band most needs and set out on
     /// one task of it; each task that completes delivers its output to the
-    /// band's ledger and, if there is daylight left, picks the next.
+    /// band's ledger and, if there is daylight left, picks the next from
+    /// where it ended - or, if nothing fits before dusk, walks home.
     /// </summary>
     /// <remarks>
     /// **Need is decided by the band, the job is chosen by the person, and
@@ -31,7 +32,7 @@ namespace KingdomWatch.Core.Work
     /// was short, and a settlement short of food all year froze with an empty
     /// woodpile (#17). It runs at dawn and at every completion, so a band whose food
     /// is covered by noon sends its afternoon hands to wood without waiting
-    /// for tomorrow. What is already on its way home counts toward the
+    /// for tomorrow. What tasks under way will deliver counts toward the
     /// threshold, so a round of pickers cannot all see the same shortfall and
     /// all fill it. That tally, and the band's head count, are built by the
     /// dawn pass and carried through the day rather than rescanned per pick -
@@ -67,9 +68,9 @@ namespace KingdomWatch.Core.Work
     /// was started, not necessarily before dawn - waits for the next one.
     ///
     /// **A task is section 4's scheduled task.** <see cref="WorkTask"/>
-    /// holds the start, the three legs, the origin and the destination; the
-    /// coarse route is kept here beside it, copied from the band's site
-    /// route at the start, and <see cref="PositionAt"/> is the
+    /// holds the start, the walk and the work, the origin and the
+    /// destination; the coarse route is kept here beside it, copied from the
+    /// site's route at the start, and <see cref="PositionAt"/> is the
     /// reconstruction - where the worker is at any instant, without a step
     /// having been simulated. The route is stored rather than recomputed so
     /// that a grid change mid-task (a bridge, one day) cannot put someone on
@@ -81,8 +82,10 @@ namespace KingdomWatch.Core.Work
     /// still leaves the work and the walk home before dusk - one search
     /// per job (<see cref="Pathfinder.TryFindNearest"/>),
     /// however many candidates there are and whether or not any of them
-    /// connect - so every worker on a job walks the same route to the same
-    /// cell. Three searches per band per day rather than one per task, and
+    /// connect - so every worker setting out from the band walks the same
+    /// route to the same cell. Three searches per band per day for the
+    /// picks made there rather than one per task (picks made out in the
+    /// field search for themselves, see below), and
     /// one more whenever a site is spent (#26): a trip claims its harvest
     /// from <see cref="LandCover"/> as it sets out, and a pick that finds its
     /// site bare searches again from the same place, so a band strips one
@@ -102,11 +105,24 @@ namespace KingdomWatch.Core.Work
     /// shows a little more beyond it. #85's deliberate scouting is section
     /// 12's answer to a map that must keep growing.
     ///
-    /// **A task starts and ends where the band stood when it started.** The
-    /// worker walks out from the band's position and back to it, and that
-    /// origin is the task's, not the band's live one - so a band that moved
-    /// while workers were out would leave them at the old camp when they
-    /// return. <see cref="Nomadic.NomadicBands"/> never does: its council
+    /// **A worker works from where they stand** (#199). The first task of the
+    /// day sets out from the band's position, from the sites found there at
+    /// dawn. A task walks there and works, and its output counts when the
+    /// work ends - nothing is carried (#181). The next pick is made where it
+    /// ended: the jobs are ranked by need as at dawn, then, most needed
+    /// first, the nearest place for each is searched from the worker's own
+    /// cell (<see cref="FitsFrom"/>) until one fits before dusk with the walk
+    /// home after it. Standing on work that is left - a bush with picks, a
+    /// tree with cuts, a building's next share - finds it at no walk at all,
+    /// and a pick that fits nothing walks home: a task of its own
+    /// (<see cref="WorkTask.IsWalkHome"/>), to the band's position as it was
+    /// when the walk began. Ranking lazily gives the answer searching every
+    /// job would, for one search a pick while the most needed job fits.
+    /// The village's count of what its land gives (<see cref="TripsPerDay"/>,
+    /// <see cref="NearWalk"/>) still assumes a round trip a task, which keeps
+    /// it on the safe side. A band that moved while workers were out would
+    /// leave them walking home to the old camp.
+    /// <see cref="Nomadic.NomadicBands"/> never does: its council
     /// sits at first light, before this pass, and a band with a
     /// <see cref="ICommunity.Destination"/> at dawn starts nobody - everyone
     /// walks with the band, and tomorrow's pass finds sites from the new
@@ -181,7 +197,7 @@ namespace KingdomWatch.Core.Work
         /// </summary>
         public const long TicksPerCostUnit = 2L;
 
-        /// <summary>Foragers are needed while the band's food, counting what is on its way home, covers fewer days than this.</summary>
+        /// <summary>Foragers are needed while the band's food, counting what tasks under way will deliver, covers fewer days than this.</summary>
         public const int FoodTargetDays = 10;
 
         /// <summary>
@@ -221,9 +237,10 @@ namespace KingdomWatch.Core.Work
         /// a band on the march and a forager on a day trip are different
         /// sights, and deliberate scouting (#85) is likely to want to tell
         /// them apart. The two matched until #123 widened the band's to a quarter
-        /// of a day's walk; this one was left alone, and while every trip starts
-        /// inside a band's sight it reveals nothing new, so its size does not
-        /// matter until something works from where no band stood.
+        /// of a day's walk; this one was left alone. A trip set out from the
+        /// band stays inside its sight and reveals nothing new; one set out
+        /// from where the last ended (#199) can reach a little past it, so
+        /// this is how far a day's work widens what a community knows.
         /// </remarks>
         public const int RevealRadius = 6;
 
@@ -333,6 +350,18 @@ namespace KingdomWatch.Core.Work
 
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
+
+        // Where a pick made away from the band's position goes (FitsFrom):
+        // found from the worker's own cell, so no other worker shares it.
+        private readonly Site _pickSite = new Site();
+
+        // Whether the last FitsFrom kept the worker where they stand, so the
+        // way home they have is the way home still.
+        private bool _pickKeepsHome;
+
+        // The jobs a pick ranks, most needed first (ChooseJob). One of each
+        // job at most, so sized by the kinds.
+        private readonly Candidate[] _candidates = new Candidate[JobKindCount];
 
         /// <param name="buildings">
         /// What settlements build and farm (#100); null for a world where
@@ -537,6 +566,31 @@ namespace KingdomWatch.Core.Work
         }
 
         /// <summary>
+        /// The way home from where this person's task leaves them, band last,
+        /// as the pick that started it priced it (#199): what a walk home
+        /// after it walks. Throws if they have no task.
+        /// </summary>
+        public ReadOnlySpan<WorldPosition> HomeRouteOf(PersonHandle person)
+        {
+            var slot = RequireSlot(person);
+            return new ReadOnlySpan<WorldPosition>(slot.Home, 0, slot.HomeCount);
+        }
+
+        /// <summary>
+        /// What <see cref="HomeRouteOf"/> cost when it was priced, in route
+        /// cost: what the next pick's dusk bound and the walk home are read
+        /// from. Throws if they have no task.
+        /// </summary>
+        public long HomeCostOf(PersonHandle person) => RequireSlot(person).HomeCost;
+
+        /// <summary>
+        /// For a Forester's task, the walk between the band and the tree in
+        /// route cost that the tree was counted for, given back if the
+        /// planting is vacated. For the world hash. Throws if they have no task.
+        /// </summary>
+        public long PlantCostOf(PersonHandle person) => RequireSlot(person).PlantCost;
+
+        /// <summary>
         /// Where this person's task puts them at an instant: section 4's
         /// reconstruction. On a walking leg, the route cell last stepped
         /// onto (<see cref="PlaceAt"/>); at work, the destination. Throws if
@@ -568,11 +622,9 @@ namespace KingdomWatch.Core.Work
             switch (task.PhaseAt(now))
             {
                 case TaskPhase.Outbound:
-                    return AlongRoute(slot, elapsed, task.TravelTicks, forward: true);
+                    return AlongRoute(slot, elapsed, task.TravelTicks);
                 case TaskPhase.Working:
                     return RoutePlace.Standing(task.Destination);
-                case TaskPhase.Returning:
-                    return AlongRoute(slot, elapsed - task.TravelTicks - task.WorkTicks, task.ReturnTicks, forward: false);
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(now), now, person + "'s task runs from " + task.Start + " to " + task.End + ".");
@@ -700,6 +752,14 @@ namespace KingdomWatch.Core.Work
                 var tracked = TrackedFor(task.Holder);
                 _clock.Cancel(task.Completion);
 
+                // A walk home holds nothing and is nobody's duty.
+                if (task.IsWalkHome)
+                {
+                    slot.Clear();
+                    _people.SetJob(person, JobKind.None);
+                    return;
+                }
+
                 if (JobTable.IsGathering(task.Job))
                 {
                     var recipe = JobTable.Recipe(task.Job, task.Start.Season);
@@ -718,7 +778,7 @@ namespace KingdomWatch.Core.Work
                     // So was a tree planted (#155): one that never gets its
                     // forester's hour is not planted.
                     _land.Unplant(task.Destination);
-                    tracked.PlantShort += RequireBuildings().WoodPerPlantingAt(task.TravelTicks / TicksPerCostUnit) * Buildings.PlantHeadroomDenominator;
+                    tracked.PlantShort += RequireBuildings().WoodPerPlantingAt(slot.PlantCost) * Buildings.PlantHeadroomDenominator;
                 }
                 else
                 {
@@ -812,14 +872,15 @@ namespace KingdomWatch.Core.Work
                     var member = members[i];
 
                     // Membership lags death until the cascade strikes the dead
-                    // from the band. Nobody has a task at dawn: no task outlives
-                    // dusk, and only the stream runs a pass.
+                    // from the band. Nobody has a task at dawn: no job
+                    // outlives dusk, nor any walk home the night, and only
+                    // the stream runs a pass.
                     if (!IsWorker(member))
                     {
                         continue;
                     }
 
-                    if (!TryStart(tracked, member))
+                    if (!TryStart(tracked, member, tracked.SitesFrom, 0L))
                     {
                         idle++;
                     }
@@ -872,6 +933,14 @@ namespace KingdomWatch.Core.Work
 
             var tracked = TrackedFor(task.Holder);
 
+            // Home for the night: the day's work is over.
+            if (task.IsWalkHome)
+            {
+                slot.Clear();
+                _people.SetJob(worker, JobKind.None);
+                return;
+            }
+
             if (JobTable.IsGathering(task.Job))
             {
                 // Gathering has no inputs in process, so completing is a Gather;
@@ -887,8 +956,8 @@ namespace KingdomWatch.Core.Work
                     Storage.Spill(ledger, kind, CapacityOf(tracked, kind));
                 }
 
-                // A tree's last cut fells it for good, now that its trip is
-                // home and can no longer give the cut back (#155).
+                // A tree's last cut fells it for good, now that its work is
+                // done and can no longer give the cut back (#155).
                 if (task.Job == JobKind.Woodcutter)
                 {
                     _land.Fell(task.Destination);
@@ -902,14 +971,48 @@ namespace KingdomWatch.Core.Work
             // A Forester's tree went in as the trip set out: nothing to deliver.
             slot.Clear();
             tracked.OnDuty[(int)task.Job]--;
-            _people.SetJob(worker, JobKind.None);
 
-            TryStart(tracked, worker);
+            // The next pick is made where the work was (#199), and a worker
+            // with nothing more that fits walks home in the clothes of the job
+            // they finished. The slot keeps the way home it was given (Slot.Home)
+            // until a task that starts gives it another.
+            if (!TryStart(tracked, worker, task.Destination, slot.HomeCost))
+            {
+                WalkHome(tracked, worker, task.Destination);
+            }
         }
 
-        // Picks a job for a free worker and starts one task of it, or leaves
-        // them idle when nothing is needed, reachable and short enough.
-        private bool TryStart(Tracked tracked, PersonHandle worker)
+        // Starts the walk from where the last task ended back to the band,
+        // along the way home found when that task was picked (Slot.Home) - no
+        // search here: the pick priced it before dusk. Walked as it was
+        // found, as a round trip once walked its way out reversed, so ground
+        // changed since (a clearing, a road) can only change its pace, and a
+        // band that has moved since is walked back to where it stood. A
+        // worker already there is simply idle.
+        private void WalkHome(Tracked tracked, PersonHandle worker, WorldPosition from)
+        {
+            var slot = SlotFor(worker.Index);
+
+            if (slot.HomeCount < 2)
+            {
+                _people.SetJob(worker, JobKind.None);
+                return;
+            }
+
+            var home = slot.Home[slot.HomeCount - 1];
+            var travel = slot.HomeCost * TicksPerCostUnit;
+            var completion = _clock.Schedule(
+                _clock.Now.Plus(travel), Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
+
+            slot.Task = new WorkTask(worker, tracked.Group.Id, JobKind.None, _clock.Now, travel, 0L, from, home, completion);
+            slot.TakeHomeRoute();
+            PriceRoute(slot);
+        }
+
+        // Picks a job for a free worker standing at `from`, `homeCost` from
+        // the band, and starts one task of it, or leaves them idle when
+        // nothing is needed, reachable and short enough.
+        private bool TryStart(Tracked tracked, PersonHandle worker, WorldPosition from, long homeCost)
         {
             // Sites were found from wherever the band stood at dawn. A band
             // that has moved since (#54) picks from where it stands now, or a
@@ -922,16 +1025,15 @@ namespace KingdomWatch.Core.Work
             }
 
             var now = _clock.Now;
-            var job = ChooseJob(tracked, now, out var building);
+            var job = ChooseJob(tracked, now, from, homeCost, out var building, out var site);
 
             if (job == JobKind.None)
             {
                 return false;
             }
 
-            var site = SiteOf(tracked, job);
             var work = WorkTicksOf(job, building, now);
-            var end = now.Plus(TripTicks(site, work));
+            var end = now.Plus((site.Cost * TicksPerCostUnit) + work);
 
             // Inputs first: BeginRecipe refuses before it moves anything, and
             // a booking for an instant after now cannot be refused, so
@@ -948,25 +1050,45 @@ namespace KingdomWatch.Core.Work
 
             var slot = SlotFor(worker.Index);
             slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, site.ReturnCost * TicksPerCostUnit,
-                tracked.Group.Position, site.Destination, completion);
+                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, from, site.Destination, completion);
             slot.CopyRoute(site.Route);
             // Priced before the ground is claimed below: a Forester's plot
             // turns to forest as the tree goes in, and the walk there was
             // charged on plains.
             PriceRoute(slot);
 
+            // The way home from the work, as the pick priced it: the route
+            // out reversed from the band's own sites, the walk back FitsFrom
+            // found, still in the scratch route, or for a worker staying put
+            // the one they had. Kept for the walk home and for the next
+            // pick's bound.
+            if (site == _pickSite && !_pickKeepsHome)
+            {
+                // Revealed as it is priced, as a round trip's way back once
+                // was with its way out: the way out reversed is already seen.
+                slot.SetHome(_scratchRoute, reversed: false, site.ReturnCost);
+                _knownMaps.RevealAlong(tracked.Group.Id, _scratchRoute, RevealRadius);
+            }
+            else if (site != _pickSite)
+            {
+                slot.SetHome(site.Route, reversed: true, site.ReturnCost);
+            }
+
             if (job == JobKind.Forester)
             {
                 // The tree goes in now, as a harvest is claimed (#155), so the
                 // next Forester's pick finds the next cell. Cannot refuse -
-                // ChooseJob only offers plantable plains.
+                // ChooseJob only offers plantable plains. What it counts for
+                // is how far it stands from the band: the walk out from there,
+                // or, for a pick made in the field, the walk back to it. Kept,
+                // so a Vacate gives back what this took.
                 _land.Plant(site.Destination);
-                tracked.PlantShort -= RequireBuildings().WoodPerPlantingAt(site.Cost) * Buildings.PlantHeadroomDenominator;
+                slot.PlantCost = site == _pickSite ? site.ReturnCost : site.Cost;
+                tracked.PlantShort -= RequireBuildings().WoodPerPlantingAt(slot.PlantCost) * Buildings.PlantHeadroomDenominator;
             }
             else if (building is null)
             {
-                // The harvest is claimed now, not on the way home (#26): whoever
+                // The harvest is claimed now, not when the work is done (#26): whoever
                 // takes a bush's last trip leaves it bare for the next picker,
                 // whose ChooseJob then finds the next bush. Cannot refuse -
                 // ChooseJob only offers a site that can be worked.
@@ -984,8 +1106,7 @@ namespace KingdomWatch.Core.Work
 
             // Section 12: reveal is computed from the scheduled movement, at
             // the moment it is scheduled, so a stepped agent walking the same
-            // route reveals the same cells. The way home is the way out
-            // reversed, so one walk of the route covers the round trip.
+            // route reveals the same cells. The walk home reveals its own.
             _knownMaps.RevealAlong(tracked.Group.Id, site.Route, RevealRadius);
             return true;
         }
@@ -993,56 +1114,47 @@ namespace KingdomWatch.Core.Work
         // Of the jobs that are needed, have a site, and whose task would end by
         // dusk, the one whose store is furthest below its target, as a share
         // of that target; an even shortfall goes in priority order. Need
-        // counts what is on its way home: everyone with a task is about to
+        // counts what is under way: everyone with a task is about to
         // deliver its output, so a round of pickers spreads across the short
         // stores rather than all filling the first. Taking the first needed
         // job instead sent every hand to food while food was short, and a
         // settlement short of food all year froze with an empty woodpile
         // (#17's first 200-year runs).
-        private JobKind ChooseJob(Tracked tracked, SimulationTime now, out Building? building)
+        //
+        // Lazily (#199): the jobs that are needed are ranked first, which is
+        // arithmetic on the ledger, and only then is each asked, in that
+        // order, whether it has a place that fits - the first that does is
+        // the one the rule above picks, for a search or two rather than one
+        // per job. From the band's position the places are its shared sites,
+        // and a gathering job without one that fits is not ranked at all;
+        // from anywhere else each is searched for from the worker's own cell
+        // (FitsFrom), into `_pickSite`. `site` is where the task goes.
+        //
+        // A field pick is refused unsearched when the work and `homeCost` -
+        // the walk home from where the worker stands - already run past dusk:
+        // no walk there and back to the band can be shorter than the walk
+        // back from here, so nothing could fit. Most field picks that fit
+        // nothing are a day's last, and this is what keeps them cheap.
+        private JobKind ChooseJob(Tracked tracked, SimulationTime now, WorldPosition from, long homeCost, out Building? building, out Site site)
         {
             var ticksUntilDusk = TicksUntilDusk(now);
             var season = now.Season;
             var winterDays = WinterDaysAhead(now);
             var ledger = tracked.Group.SharedSupplies;
+            var atBand = from == tracked.SitesFrom;
 
             // At least one: the dawn pass counts before anything starts, and
             // a pick follows either that pass - which only offers a living
             // member - or a completion, which only a worker started at that
             // pass can reach. So the daily draw in WantOf is never zero.
             var living = tracked.Living;
-            var chosen = JobKind.None;
-            long chosenShort = 0L;
-            long chosenTarget = 1L;
-            building = null;
+            var count = 0;
 
             for (var i = 0; i < Priority.Count; i++)
             {
                 var job = Priority[i];
-                var site = SiteOf(tracked, job);
 
-                // A site spent since it was found - by this band's last pick
-                // or another band's - is found again, from the same place
-                // and over the same known map, so pickers move on to the
-                // next bush or tree rather than walk to a bare one (#26).
-                // A search that found nothing looks again once a claim has
-                // been given back since, here or by another band (#141 review).
-                // So is one cleared for a building since (#100): plains
-                // would otherwise read as workable forever. And one approved
-                // for a building since, which nobody gathers on any more.
-                if ((site.Reachable && (!_land.IsWorkable(site.Destination) || !JobTable.WorksOn(job, _grid[site.Destination])
-                        || (_buildings is object && _buildings.IsReserved(site.Destination))))
-                    || (!site.Reachable && site.LandReturns != _land.Returns))
-                {
-                    FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
-                }
-
-                if (!site.Reachable)
-                {
-                    continue;
-                }
-
-                if (TripTicks(site, JobTable.Recipe(job, season).Duration) > ticksUntilDusk)
+                if (atBand && !SharedSiteFits(tracked, job, season, ticksUntilDusk))
                 {
                     continue;
                 }
@@ -1061,20 +1173,7 @@ namespace KingdomWatch.Core.Work
 
                 var target = Math.Min(want, capacity);
                 var shortBy = Math.Min(stillWanted, capacity) - Expected(tracked, ledger, kind);
-
-                // Needed at all, and strictly further short than the best so
-                // far - compared as fractions by cross-multiplying. Food's
-                // target is up to 40 per person and wood's about 10, so the
-                // products fit a long until some 150 million people share one
-                // community. Checked so that a world past that throws rather
-                // than quietly sending hands to the wrong store (the #103
-                // review).
-                if (shortBy > 0L && checked(shortBy * chosenTarget) > checked(chosenShort * target))
-                {
-                    chosen = job;
-                    chosenShort = shortBy;
-                    chosenTarget = target;
-                }
+                count = Rank(count, job, shortBy, target, null);
             }
 
             // A settlement's building and its fields rank by the same rule:
@@ -1085,43 +1184,99 @@ namespace KingdomWatch.Core.Work
             {
                 var id = tracked.Group.Id;
 
-                if (_buildings.TryBuildWork(id, out var project, out var buildShort, out var buildTarget)
-                    && Fits(tracked, JobKind.Builder, project, now, ticksUntilDusk)
-                    && checked(buildShort * chosenTarget) > checked(chosenShort * buildTarget))
+                if (_buildings.TryBuildWork(id, out var project, out var buildShort, out var buildTarget))
                 {
-                    chosen = JobKind.Builder;
-                    chosenShort = buildShort;
-                    chosenTarget = buildTarget;
-                    building = project;
+                    count = Rank(count, JobKind.Builder, buildShort, buildTarget, project);
                 }
 
-                if (_buildings.TryFieldWork(id, out var field, out var fieldShort, out var fieldTarget)
-                    && Fits(tracked, JobKind.Farmer, field, now, ticksUntilDusk)
-                    && checked(fieldShort * chosenTarget) > checked(chosenShort * fieldTarget))
+                if (_buildings.TryFieldWork(id, out var field, out var fieldShort, out var fieldTarget))
                 {
-                    chosen = JobKind.Farmer;
-                    chosenShort = fieldShort;
-                    chosenTarget = fieldTarget;
-                    building = field;
+                    count = Rank(count, JobKind.Farmer, fieldShort, fieldTarget, field);
                 }
 
                 // And its Foresters (#155), by the wood a year its forest is
                 // short of, saplings counted, against what its hearths and one
                 // more need.
-                if (tracked.PlantShort > 0L
-                    && FitsPlanting(tracked, ticksUntilDusk)
-                    && checked(tracked.PlantShort * chosenTarget) > checked(chosenShort * tracked.PlantTarget))
+                count = Rank(count, JobKind.Forester, tracked.PlantShort, tracked.PlantTarget, null);
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                var candidate = _candidates[i];
+                var job = candidate.Job;
+                building = candidate.Building;
+
+                if (atBand
+                    ? (JobTable.IsGathering(job)
+                        || (job == JobKind.Forester ? FitsPlanting(tracked, ticksUntilDusk) : Fits(tracked, job, RankedBuilding(job, building), now, ticksUntilDusk)))
+                    : WorkTicksOf(job, building, now) + (homeCost * TicksPerCostUnit) <= ticksUntilDusk
+                        && FitsFrom(tracked, from, homeCost, job, building, now, ticksUntilDusk))
                 {
-                    chosen = JobKind.Forester;
+                    site = atBand ? SiteOf(tracked, job) : _pickSite;
+                    return job;
                 }
             }
 
-            if (chosen != JobKind.Builder && chosen != JobKind.Farmer)
+            building = null;
+            site = _pickSite;
+            return JobKind.None;
+        }
+
+        // The building a Builder or Farmer was ranked with: Rank is only
+        // handed one for those two jobs, and always one for them.
+        private static Building RankedBuilding(JobKind job, Building? building) =>
+            building ?? throw new InvalidOperationException(job + " was ranked without the building it works.");
+
+        // Puts a needed job into the ranking, most short first as a share of
+        // its target - compared as fractions by cross-multiplying. Food's
+        // target is up to 40 per person and wood's about 10, so the products
+        // fit a long until some 150 million people share one community.
+        // Checked so that a world past that throws rather than quietly sending
+        // hands to the wrong store (the #103 review). A job goes after every
+        // one as short as it, so an even shortfall keeps the order offered:
+        // food, wood, stone, building, field, planting.
+        private int Rank(int count, JobKind job, long shortBy, long target, Building? building)
+        {
+            if (shortBy <= 0L)
             {
-                building = null;
+                return count;
             }
 
-            return chosen;
+            var at = count;
+
+            while (at > 0 && checked(shortBy * _candidates[at - 1].Target) > checked(_candidates[at - 1].Short * target))
+            {
+                _candidates[at] = _candidates[at - 1];
+                at--;
+            }
+
+            _candidates[at] = new Candidate(job, shortBy, target, building);
+            return count + 1;
+        }
+
+        // Whether the band's own site for a gathering job is there and a trip
+        // to it - out, work, and back to the band - ends by dusk.
+        private bool SharedSiteFits(Tracked tracked, JobKind job, Season season, long ticksUntilDusk)
+        {
+            var site = SiteOf(tracked, job);
+
+            // A site spent since it was found - by this band's last pick
+            // or another band's - is found again, from the same place
+            // and over the same known map, so pickers move on to the
+            // next bush or tree rather than walk to a bare one (#26).
+            // A search that found nothing looks again once a claim has
+            // been given back since, here or by another band (#141 review).
+            // So is one cleared for a building since (#100): plains
+            // would otherwise read as workable forever. And one approved
+            // for a building since, which nobody gathers on any more.
+            if ((site.Reachable && (!_land.IsWorkable(site.Destination) || !JobTable.WorksOn(job, _grid[site.Destination])
+                    || (_buildings is object && _buildings.IsReserved(site.Destination))))
+                || (!site.Reachable && site.LandReturns != _land.Returns))
+            {
+                FindSite(tracked.SitesFrom, _knownMaps.For(tracked.Group.Id), job, site);
+            }
+
+            return site.Reachable && TripTicks(site, JobTable.Recipe(job, season).Duration) <= ticksUntilDusk;
         }
 
         // Whether a trip to work this building can be routed and is home by
@@ -1200,6 +1355,91 @@ namespace KingdomWatch.Core.Work
             _scratchRoute.AddRange(site.Route);
             _scratchRoute.Reverse();
             site.ReturnCost = _pathfinder.CostOfRoute(_scratchRoute, Mover);
+        }
+
+        // Whether a worker standing at `from`, away from the band, has a place
+        // for this job that a walk there, the work and the walk back to the
+        // band fit before dusk (#199). The place is the nearest from their
+        // own cell - for a gatherer the nearest workable cell of the job's
+        // ground, for a Forester the nearest plantable plains (beside forest
+        // first, as from the band), for a Builder or Farmer the building's
+        // work place - so one standing on work that is left walks nowhere.
+        // Every search is bounded by the walking the day has left, so a late
+        // pick looks only close by; a Forester's tree must also stand within
+        // the band's WoodReach by the walk back, the bound the band's own
+        // search keeps. Found into `_pickSite`, its ReturnCost being the walk
+        // back to the band rather than the route reversed.
+        private bool FitsFrom(Tracked tracked, WorldPosition from, long homeCost, JobKind job, Building? building, SimulationTime now, long ticksUntilDusk)
+        {
+            var site = _pickSite;
+            var work = WorkTicksOf(job, building, now);
+            var walking = (ticksUntilDusk - work) / TicksPerCostUnit;
+            site.Reachable = false;
+
+            if (walking < 0L || (job == JobKind.Forager && !LandCover.BushesFruitIn(now.Season)))
+            {
+                return false;
+            }
+
+            var known = _knownMaps.For(tracked.Group.Id);
+            bool found;
+            long cost;
+
+            if (job == JobKind.Builder || job == JobKind.Farmer)
+            {
+                found = _pathfinder.TryFindRoute(
+                    from, RequireBuildings().WorkPlaceOf(RankedBuilding(job, building)), Mover, int.MaxValue, walking, site.Route, out cost);
+            }
+            else if (job == JobKind.Forester)
+            {
+                var buildings = RequireBuildings();
+                found = _pathfinder.TryFindNearest(
+                        from, Mover, PlainsMask, known, buildings.BesideForest, null, false, int.MaxValue, walking, site.Route, out cost)
+                    || _pathfinder.TryFindNearest(
+                        from, Mover, PlainsMask, known, buildings.Plantable, null, false, int.MaxValue, walking, site.Route, out cost);
+            }
+            else
+            {
+                found = _pathfinder.TryFindNearest(
+                    from, Mover, JobTable.Terrain(job), known, _workable, null, false, int.MaxValue, walking, site.Route, out cost);
+            }
+
+            if (!found)
+            {
+                return false;
+            }
+
+            var destination = site.Route[site.Route.Count - 1];
+            var homeBound = job == JobKind.Forester ? Math.Min(walking - cost, Buildings.WoodReach) : walking - cost;
+
+            // Staying put, the commonest pick: the way home is the one the
+            // worker already has, and needs no search.
+            _pickKeepsHome = destination == from;
+
+            if (_pickKeepsHome)
+            {
+                if (homeCost > homeBound)
+                {
+                    return false;
+                }
+
+                site.Reachable = true;
+                site.Destination = destination;
+                site.Cost = cost;
+                site.ReturnCost = homeCost;
+                return true;
+            }
+
+            if (!_pathfinder.TryFindRoute(destination, tracked.Group.Position, Mover, int.MaxValue, homeBound, _scratchRoute, out var newHomeCost))
+            {
+                return false;
+            }
+
+            site.Reachable = true;
+            site.Destination = destination;
+            site.Cost = cost;
+            site.ReturnCost = newHomeCost;
+            return true;
         }
 
         // How long one task of a job works at its site: a gathering recipe's
@@ -1415,7 +1655,7 @@ namespace KingdomWatch.Core.Work
         private bool IsWorker(PersonHandle member) =>
             _people.IsAlive(member) && Works(_people.GetAgeStage(member));
 
-        private static RoutePlace AlongRoute(Slot slot, long elapsed, long leg, bool forward)
+        private static RoutePlace AlongRoute(Slot slot, long elapsed, long leg)
         {
             var last = slot.RouteCount - 1;
 
@@ -1423,20 +1663,20 @@ namespace KingdomWatch.Core.Work
             // worker is on it.
             if (last == 0) return RoutePlace.Standing(slot.Route[0]);
 
-            var walkedTo = forward ? slot.Out : slot.Back;
+            var walkedTo = slot.Out;
             var total = walkedTo[last];
 
             // A leg of no length is walked the instant it starts.
             //
             // Plain 64-bit arithmetic: elapsed is at most the leg, the leg is
-            // under a day's ticks (no task runs past dusk), and the total is
+            // under a day's ticks (no job runs past dusk, no walk home all night), and the total is
             // at most 14 * TerrainRule.MaxCost per cell - so the product
             // exceeds a long only on a route millions of cells long, past any
             // grid the pathfinder could search. A wider multiply here would
             // be a guard nothing can exercise, the stance the ledger takes on
             // its flow counters.
             var walked = leg == 0L ? total : elapsed * total / leg;
-            if (walked >= total) return RoutePlace.Standing(CellOf(slot, last, forward));
+            if (walked >= total) return RoutePlace.Standing(slot.Route[last]);
 
             // The first cell whose running cost is past what has been
             // walked: the one being stepped onto.
@@ -1449,31 +1689,22 @@ namespace KingdomWatch.Core.Work
             }
 
             return new RoutePlace(
-                CellOf(slot, low - 1, forward), CellOf(slot, low, forward), walked - walkedTo[low - 1], walkedTo[low] - walkedTo[low - 1]);
+                slot.Route[low - 1], slot.Route[low], walked - walkedTo[low - 1], walkedTo[low] - walkedTo[low - 1]);
         }
 
-        // The i-th cell walked, from whichever end the leg starts.
-        private static WorldPosition CellOf(Slot slot, int i, bool forward) =>
-            slot.Route[forward ? i : slot.RouteCount - 1 - i];
-
-        // Prices the task's route both ways as it sets out, the way its legs
-        // were charged, so PlaceAt is a lookup a frame rather than a walk of
+        // Prices the task's route as it sets out, the way its walk was
+        // charged, so PlaceAt is a lookup a frame rather than a walk of
         // the route, and a grid changed under it since (a road laid, a cell
         // closed) does not stretch steps the leg never counted. Each step
         // costs at least one unit, so none takes no time.
         private void PriceRoute(Slot slot)
         {
             slot.Out[0] = 0L;
-            slot.Back[0] = 0L;
             for (var i = 1; i < slot.RouteCount; i++)
             {
-                slot.Out[i] = slot.Out[i - 1] + StepCost(slot, i, forward: true);
-                slot.Back[i] = slot.Back[i - 1] + StepCost(slot, i, forward: false);
+                slot.Out[i] = slot.Out[i - 1] + Math.Max(1L, _pathfinder.CostOfStep(slot.Route[i - 1], slot.Route[i], Mover));
             }
         }
-
-        private long StepCost(Slot slot, int i, bool forward) =>
-            Math.Max(1L, _pathfinder.CostOfStep(CellOf(slot, i - 1, forward), CellOf(slot, i, forward), Mover));
 
         // Off the map is the grid's refusal (the indexer throws); a cell the
         // mover cannot stand on is this one. No site is reachable from such
@@ -1691,6 +1922,27 @@ namespace KingdomWatch.Core.Work
                 _land.Ripe.Accepts(cell) && (_buildings is null || !_buildings.IsReserved(cell));
         }
 
+        // A needed job as ChooseJob ranks it: how far short, of what target,
+        // and for a Builder or Farmer which building.
+        private readonly struct Candidate
+        {
+            public Candidate(JobKind job, long shortBy, long target, Building? building)
+            {
+                Job = job;
+                Short = shortBy;
+                Target = target;
+                Building = building;
+            }
+
+            public JobKind Job { get; }
+
+            public long Short { get; }
+
+            public long Target { get; }
+
+            public Building? Building { get; }
+        }
+
         private sealed class Site
         {
             public Site()
@@ -1732,12 +1984,54 @@ namespace KingdomWatch.Core.Work
 
             public int RouteCount;
 
-            // The route's running cost from each end, cell by cell, as it
-            // was priced when the task began (PriceRoute): presentation
-            // only, derived from the route and never hashed.
+            // The route's running cost, cell by cell, as it was priced when
+            // the task began (PriceRoute): presentation only, derived from
+            // the route and never hashed.
             public long[] Out = Array.Empty<long>();
 
-            public long[] Back = Array.Empty<long>();
+            // A Forester's walk from the band to the tree planted, in route
+            // cost: what the tree was counted for, given back if it is not
+            // planted after all (Vacate).
+            public long PlantCost;
+
+            // The way home from the last task's work, band last, and what it
+            // cost when the task was picked (#199): what the walk home walks,
+            // and the next pick's bound. Kept past the task's end, until a
+            // task that starts sets another.
+            public WorldPosition[] Home = Array.Empty<WorldPosition>();
+
+            public int HomeCount;
+
+            public long HomeCost;
+
+            public void SetHome(IReadOnlyList<WorldPosition> route, bool reversed, long cost)
+            {
+                if (Home.Length < route.Count)
+                {
+                    Home = new WorldPosition[Math.Max(route.Count, Home.Length * 2)];
+                }
+
+                for (var i = 0; i < route.Count; i++)
+                {
+                    Home[i] = route[reversed ? route.Count - 1 - i : i];
+                }
+
+                HomeCount = route.Count;
+                HomeCost = cost;
+            }
+
+            // Makes the way home the route walked: the walk home's own.
+            public void TakeHomeRoute()
+            {
+                if (Route.Length < HomeCount)
+                {
+                    Route = new WorldPosition[Math.Max(HomeCount, Route.Length * 2)];
+                    Out = new long[Route.Length];
+                }
+
+                Array.Copy(Home, Route, HomeCount);
+                RouteCount = HomeCount;
+            }
 
             public void CopyRoute(List<WorldPosition> route)
             {
@@ -1745,7 +2039,6 @@ namespace KingdomWatch.Core.Work
                 {
                     Route = new WorldPosition[Math.Max(route.Count, Route.Length * 2)];
                     Out = new long[Route.Length];
-                    Back = new long[Route.Length];
                 }
 
                 route.CopyTo(Route);

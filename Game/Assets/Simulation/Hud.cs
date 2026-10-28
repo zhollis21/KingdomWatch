@@ -28,6 +28,7 @@ namespace KingdomWatch.Game
         public int Health;
         public JobKind Job;
         public bool Working;
+        public bool GoingHome;
         public bool Following;
 
         // The community whose stock the resource card shows: the selected
@@ -183,7 +184,7 @@ namespace KingdomWatch.Game
         // The selection card's width: the column's, or across an upright screen.
         private float cardWidth = ColumnWidth;
         private float CardInner => cardWidth - 2f * Pad;
-        private (ulong, EntityKind, int, AgeStage, JobKind, bool, int, ulong, EntityKind) selectionSeen = (ulong.MaxValue, EntityKind.None, int.MinValue, AgeStage.None, JobKind.None, false, 0, 0, EntityKind.None);
+        private (ulong, EntityKind, int, AgeStage, JobKind, bool, bool, int, ulong, EntityKind) selectionSeen = (ulong.MaxValue, EntityKind.None, int.MinValue, AgeStage.None, JobKind.None, false, false, 0, 0, EntityKind.None);
         private float shownHealth;
         private int shownHealthTip = -1;
 
@@ -736,14 +737,14 @@ namespace KingdomWatch.Game
 
             var person = s.SelectedKind == EntityKind.Person;
             var inner = CardInner;
-            if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
+            if (Changed(ref selectionSeen, (s.SelectedId, s.SelectedKind, s.Years, s.Stage, s.Job, s.Working, s.GoingHome, s.SelectedPeople, s.CommunityId, s.CommunityKind)))
             {
                 if (person)
                 {
                     selectionName.Value = "Person " + s.SelectedId;
                     selectionTitle.Value = s.Stage + ", " + s.Years + " yrs";
                     selectionLine.Value = s.Job == JobKind.None ? "No job" : s.Job.ToString();
-                    selectionStatus.Value = s.Working ? "Working" : "Idle";
+                    selectionStatus.Value = s.GoingHome ? "Going home" : s.Working ? "Working" : "Idle";
                     selectionCommunity.Value = (s.CommunityKind == EntityKind.Settlement ? "Settlement " : "Band ") + s.CommunityId;
                 }
                 else

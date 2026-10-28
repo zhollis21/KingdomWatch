@@ -272,6 +272,7 @@ namespace KingdomWatch.Game
                 s.Health = people.GetHealth(person);
                 s.Job = people.GetJob(person);
                 s.Working = world.Jobs.HasTask(person);
+                s.GoingHome = s.Working && world.Jobs.TaskOf(person).IsWalkHome;
                 community = CommunityOf(person);
             }
             else if (selected.Kind == EntityKind.Settlement || selected.Kind == EntityKind.MobileGroup)

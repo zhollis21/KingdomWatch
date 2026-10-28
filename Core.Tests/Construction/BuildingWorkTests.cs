@@ -446,7 +446,7 @@ namespace KingdomWatch.Core.Tests.Construction
             w.Dawn();
             var house = w.Buildings.All.Single();
             var approved = w.World.Now;
-            w.World.AdvanceTo(new SimulationTime(15L * SimulationTime.TicksPerHour));
+            w.World.AdvanceTo(new SimulationTime(12L * SimulationTime.TicksPerHour));
 
             var later = w.Settlement.Members
                 .Where(m => w.World.Jobs.HasTask(m) && w.World.Jobs.TaskOf(m).Job == JobKind.Forager && w.World.Jobs.TaskOf(m).Start > approved)
@@ -488,14 +488,18 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(w.Jobs.TaskOf(worker).Destination, Is.EqualTo(KingdomWatch.Core.Tests.Work.WorkWorld.ForestCell));
 
             // While the first trip is out, the only tree is cleared for good.
-            // Home at midday, the woodcutter picks again - from the site found
-            // at dawn, which is now plains, and plains count as workable.
+            // Done at midday, the woodcutter picks again where they stand,
+            // which is now plains, and plains count as workable; and the band
+            // picks again at dawn from the site it found the day before.
             w.Land.Clear(KingdomWatch.Core.Tests.Work.WorkWorld.ForestCell);
             w.AdvanceTo(w.Jobs.TaskOf(worker).End);
+            Assert.That(w.Jobs.TaskOf(worker).IsWalkHome, Is.True, "nothing left to cut, and nothing else needed");
+
+            w.AdvanceToDawn();
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Jobs.HasTask(worker), Is.False, "nothing left to cut, and nothing else needed");
+                Assert.That(w.Jobs.HasTask(worker), Is.False, "still nothing at dawn");
                 Assert.That(w.Jobs.HasSite(band, JobKind.Woodcutter), Is.False);
             });
         }
