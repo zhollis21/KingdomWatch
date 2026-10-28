@@ -1409,6 +1409,10 @@ namespace KingdomWatch.Core.Work
                 return false;
             }
 
+            // Only the nearest place is tried. It is nearest from here, not
+            // from home, so one further off but back toward the band could fit
+            // where it does not; trying the next few was measured in the #200
+            // review and saved one field pick in 660 for 13% more run time.
             var destination = site.Route[site.Route.Count - 1];
             var homeBound = job == JobKind.Forester ? Math.Min(walking - cost, Buildings.WoodReach) : walking - cost;
 

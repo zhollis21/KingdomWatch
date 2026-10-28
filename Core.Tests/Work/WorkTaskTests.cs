@@ -46,10 +46,10 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(() => new WorkTask(Worker, new EntityId(EntityKind.Person, 7UL), JobKind.Forager, Start, 1L, 1L, Home, Forest, Completion), Throws.ArgumentException, "a holder is a community, not a person");
                 Assert.That(() => new WorkTask(Worker, new EntityId(EntityKind.Settlement, 7UL), JobKind.Forager, Start, 1L, 1L, Home, Forest, Completion), Throws.Nothing, "a settlement holds a task as a band does");
                 Assert.That(() => new WorkTask(Worker, Band, (JobKind)200, Start, 1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, -1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>());
-                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 1L, 0L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>(), "a job works");
-                Assert.That(() => new WorkTask(Worker, Band, JobKind.None, Start, 1L, 1L, Forest, Home, Completion), Throws.TypeOf<ArgumentOutOfRangeException>(), "a walk home does not");
-                Assert.That(() => new WorkTask(Worker, Band, JobKind.None, Start, 0L, 0L, Forest, Home, Completion), Throws.TypeOf<ArgumentOutOfRangeException>(), "a walk home goes somewhere");
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, -1L, 1L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>().With.Property("ParamName").EqualTo("travelTicks"));
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 1L, 0L, Home, Forest, Completion), Throws.TypeOf<ArgumentOutOfRangeException>().With.Property("ParamName").EqualTo("workTicks"), "a job works");
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.None, Start, 1L, 1L, Forest, Home, Completion), Throws.TypeOf<ArgumentOutOfRangeException>().With.Property("ParamName").EqualTo("workTicks"), "a walk home does not");
+                Assert.That(() => new WorkTask(Worker, Band, JobKind.None, Start, 0L, 0L, Forest, Home, Completion), Throws.TypeOf<ArgumentOutOfRangeException>().With.Property("ParamName").EqualTo("travelTicks"), "a walk home goes somewhere");
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 1L, 1L, Home, Forest, EventId.None), Throws.ArgumentException);
                 // A walk of no length is fine: the site can be underfoot.
                 Assert.That(() => new WorkTask(Worker, Band, JobKind.Forager, Start, 0L, 1L, Home, Forest, Completion), Throws.Nothing);

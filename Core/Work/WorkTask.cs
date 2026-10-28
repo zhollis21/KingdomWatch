@@ -97,10 +97,15 @@ namespace KingdomWatch.Core.Work
 
             // A job works for a while; a walk home works not at all, and is
             // nothing but its walk.
-            if (job == JobKind.None ? workTicks != 0L || travelTicks == 0L : workTicks <= 0L)
+            if (job == JobKind.None ? workTicks != 0L : workTicks <= 0L)
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(workTicks), workTicks, "Work takes a positive number of ticks, and a walk home none, over a walk of some length.");
+                    nameof(workTicks), workTicks, job == JobKind.None ? "A walk home does no work." : "Work takes a positive number of ticks.");
+            }
+
+            if (job == JobKind.None && travelTicks == 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(travelTicks), travelTicks, "A walk home walks somewhere.");
             }
 
             if (completion.IsNone)

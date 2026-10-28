@@ -895,6 +895,45 @@ namespace KingdomWatch.Core.Tests.Work
         }
 
         [Test]
+        public void A_pick_in_the_field_tries_only_the_nearest_place_for_a_job()
+        {
+            // One cut fells a tree. The woodcutter's first, 34 cells east, is
+            // the only one the band knows at dawn, and its cut ends at
+            // 11:59:20; the walk there shows two more. One step further east
+            // is the nearest from the felled tree, but a cut there and the
+            // walk home would end past dusk. Two steps back west would fit,
+            // but a field pick tries only the nearest place, so the woodcutter
+            // walks home. Deliberate (the #200 review): on seed 3 over 25
+            // years, trying two more places saved 47 of some 31,000 field
+            // picks for 13% more run time, because most picks whose nearest
+            // place fails are a day's last, and nothing would fit.
+            var grid = new TerrainGrid(64, WorkWorld.Height, TerrainKind.Plains);
+            var first = new WorldPosition(36, 2);
+            var east = new WorldPosition(37, 2);
+            var west = new WorldPosition(34, 2);
+            grid.Set(first, TerrainKind.Forest);
+            grid.Set(east, TerrainKind.Forest);
+            grid.Set(west, TerrainKind.Forest);
+            var w = new WorkWorld(1UL, grid);
+            w.Land.TreeCuts = 1;
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.KnownMaps.Reveal(band.Id, first, 0);
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.TaskOf(adult).Destination, Is.EqualTo(first));
+
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            var next = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(band.Id, east) && w.KnownMaps.Knows(band.Id, west), Is.True, "both shown by the walk out");
+                Assert.That(next.IsWalkHome, Is.True, "the nearest does not fit, and the next is not tried");
+            });
+        }
+
+        [Test]
         public void A_worker_with_nothing_that_fits_walks_home_by_dusk()
         {
             // Out to the forest by 06:16:40 and cutting until 10:16:40, then
