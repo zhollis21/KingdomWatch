@@ -815,6 +815,54 @@ namespace KingdomWatch.Core.Tests.Validation
         }
 
         [Test]
+        public void A_worker_s_way_home_is_folded_in()
+        {
+            // Two worlds alike but for one river cell that only the way home
+            // goes near (the #200 review). One cut fells a tree: the
+            // woodcutter fells the one four steps east of camp, then the one
+            // four steps south of it, picked from where they stand. Both
+            // walks out run straight along a row and a column; the way home
+            // from the second runs back along the diagonal, through the cell
+            // the river closes in one of the worlds. AddWork hashes no
+            // terrain, so only the way home can tell the two apart.
+            static (WorkWorld World, PersonHandle Adult) Run(bool river)
+            {
+                var grid = WorkWorld.DefaultMap();
+                grid.Set(new WorldPosition(6, 6), TerrainKind.Forest);
+
+                if (river)
+                {
+                    grid.Set(new WorldPosition(4, 4), TerrainKind.SmallRiver);
+                }
+
+                var w = new WorkWorld(1UL, grid);
+                w.Land.TreeCuts = 1;
+                var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+                WorkWorld.FillStone(band);
+                var adult = w.Join(band, 30L);
+                w.AdvanceToDawn();
+                w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+                return (w, adult);
+            }
+
+            var (open, inOpen) = Run(river: false);
+            var (closed, inClosed) = Run(river: true);
+            var task = open.Jobs.TaskOf(inOpen);
+            var other = closed.Jobs.TaskOf(inClosed);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(task.Destination, Is.EqualTo(new WorldPosition(6, 6)), "the second tree, picked in the field");
+                Assert.That((other.Origin, other.Destination, other.Start, other.TravelTicks, other.WorkTicks), Is.EqualTo((task.Origin, task.Destination, task.Start, task.TravelTicks, task.WorkTicks)));
+                Assert.That(closed.Jobs.RouteOf(inClosed).ToArray(), Is.EqualTo(open.Jobs.RouteOf(inOpen).ToArray()), "the same walk out");
+                Assert.That(closed.Jobs.HomeRouteOf(inClosed).ToArray(), Is.Not.EqualTo(open.Jobs.HomeRouteOf(inOpen).ToArray()), "a different way home");
+                Assert.That(
+                    new WorldHash().AddWork(closed.Jobs, closed.People).Value,
+                    Is.Not.EqualTo(new WorldHash().AddWork(open.Jobs, open.People).Value));
+            });
+        }
+
+        [Test]
         public void Work_is_folded_in_whatever_order_bands_were_tracked()
         {
             static ulong HashWith(bool westFirst)

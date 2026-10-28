@@ -466,8 +466,8 @@ namespace KingdomWatch.Game
             {
                 if (record.Id.IsNone || !world.Jobs.HasTask(record.Handle)) continue;
                 var task = world.Jobs.TaskOf(record.Handle);
-                var phase = task.PhaseAt(now);
-                if (phase != TaskPhase.Outbound && phase != TaskPhase.Working) continue;
+                // A walk home is on its way to nothing being worked.
+                if (task.IsWalkHome || task.PhaseAt(now) == TaskPhase.None) continue;
                 (task.Job == JobKind.Forester ? beingPlanted : beingWorked).Add(task.Destination.Y * width + task.Destination.X);
             }
         }
@@ -630,16 +630,10 @@ namespace KingdomWatch.Game
             {
                 dx = task.Destination.X - task.Origin.X;
                 dy = task.Destination.Y - task.Origin.Y;
-                if (task.PhaseAt(now) == TaskPhase.Returning)
-                {
-                    dx = -dx;
-                    dy = -dy;
-                }
             }
             switch (task.PhaseAt(now))
             {
                 case TaskPhase.Outbound:
-                case TaskPhase.Returning:
                     return new Activity(ArtSet.Motion.Walk, ArtSet.Tool.None, dx, dy, 0f, 0f);
                 case TaskPhase.Working:
                     if (task.Job == JobKind.Builder && buildings.SpotAt(task.Destination) != null)
@@ -1820,7 +1814,7 @@ namespace KingdomWatch.Game
             {
                 // A tree on every forest cell and a berry bush on every scrub
                 // cell, each as the land has it (#26): a stump where a tree's
-                // last cut is on its way home, a sapling a Forester planted
+                // last cut is being worked, a sapling a Forester planted
                 // (#155), and the season's fruit or a bare bush. Kept current
                 // by Regrow.
                 var growth = GrowthOf(kind, x, y);

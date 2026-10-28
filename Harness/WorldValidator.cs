@@ -899,6 +899,13 @@ namespace KingdomWatch.Harness
             for (var i = 0; i < _workers.Count; i++)
             {
                 var task = jobs.TaskOf(_workers[i]);
+
+                // A walk home holds nothing (#199).
+                if (task.IsWalkHome)
+                {
+                    continue;
+                }
+
                 var cell = grid.IndexOf(task.Destination);
 
                 if (JobTable.IsGathering(task.Job))

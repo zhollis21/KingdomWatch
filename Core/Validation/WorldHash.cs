@@ -785,11 +785,16 @@ namespace KingdomWatch.Core.Validation
                 Mix(task.Start.Ticks);
                 Mix(task.TravelTicks);
                 Mix(task.WorkTicks);
-                Mix(task.ReturnTicks);
                 Mix(task.Origin);
                 Mix(task.Destination);
                 Mix(task.Completion);
                 MixRoute(route);
+
+                // The way home steers the next pick and the walk home (#199),
+                // and a Forester's counted cost is given back on a vacate.
+                Mix(jobs.HomeCostOf(_workerIds[i].Handle));
+                MixRoute(jobs.HomeRouteOf(_workerIds[i].Handle));
+                Mix(task.Job == JobKind.Forester ? jobs.PlantCostOf(_workerIds[i].Handle) : 0L);
             }
 
             for (var i = 0; i < _communities.Count; i++)

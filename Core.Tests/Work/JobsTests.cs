@@ -4,6 +4,7 @@ using KingdomWatch.Core.Clock;
 using KingdomWatch.Core.Construction;
 using KingdomWatch.Core.Data;
 using KingdomWatch.Core.Events;
+using KingdomWatch.Core.Land;
 using KingdomWatch.Core.Needs;
 using KingdomWatch.Core.Nomadic;
 using KingdomWatch.Core.Traversal;
@@ -150,7 +151,6 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(task.Holder, Is.EqualTo(band.Id));
                 Assert.That(task.Start, Is.EqualTo(w.Now));
                 Assert.That(task.TravelTicks, Is.Zero);
-                Assert.That(task.ReturnTicks, Is.Zero);
                 Assert.That(task.WorkTicks, Is.EqualTo(PrimitiveTier.Forage.Duration));
                 Assert.That(task.Origin, Is.EqualTo(WorkWorld.Camp));
                 Assert.That(task.Destination, Is.EqualTo(WorkWorld.Camp));
@@ -170,14 +170,14 @@ namespace KingdomWatch.Core.Tests.Work
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Woodcutter), "food covered, wood short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToForest));
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack), "the way home enters plains and the scrub camp");
+            Assert.That(w.Jobs.SurveyOf(band, JobKind.Woodcutter).ReturnCost * Jobs.TicksPerCostUnit, Is.EqualTo(WorkWorld.TicksBack), "the way home, priced to fit the day, enters plains and the scrub camp");
 
             band.SharedSupplies.Gather(ResourceKind.Wood, Jobs.WoodReserve);
             w.Advance(SimulationTime.TicksPerDay);
             Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.StoneGatherer), "wood stocked, stone short");
             Assert.That(w.Jobs.SiteFor(band, JobKind.StoneGatherer), Is.EqualTo(WorkWorld.RocksCell));
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(WorkWorld.TicksToRocks));
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(WorkWorld.TicksBack));
+            Assert.That(w.Jobs.SurveyOf(band, JobKind.StoneGatherer).ReturnCost * Jobs.TicksPerCostUnit, Is.EqualTo(WorkWorld.TicksBack));
 
             // The reserve, not the store's capacity (#166): stone is wanted
             // for building, and a store filled for its own sake is not.
@@ -467,12 +467,10 @@ namespace KingdomWatch.Core.Tests.Work
         public void A_band_that_moved_since_dawn_picks_from_where_it_stands()
         {
             // Sites are found from the band's position at dawn. If the band
-            // has moved by the time someone picks, a task built from those
-            // sites would start at the new camp and walk a route from the
-            // old one; the pick refreshes first instead. The worker came home
-            // to the old camp - a task ends where it started - and what a
-            // moving band does about that is #54's; here, the next task sets
-            // out from wherever the band is.
+            // has moved by the time someone picks, the pick finds them again
+            // from where it stands now, so the next pick made at the band
+            // starts from the new camp. A worker out in the field picks from
+            // where they stand (#199): here, the same tree again.
             var w = new WorkWorld();
             var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
             WorkWorld.FillStone(band);
@@ -490,12 +488,12 @@ namespace KingdomWatch.Core.Tests.Work
 
             Assert.Multiple(() =>
             {
-                Assert.That(next.Origin, Is.EqualTo(newCamp));
-                Assert.That(route[0], Is.EqualTo(newCamp), "the route starts where the worker does");
+                Assert.That(next.Origin, Is.EqualTo(WorkWorld.ForestCell), "from where the worker stands");
+                Assert.That(route[0], Is.EqualTo(WorkWorld.ForestCell), "the route starts where the worker does");
                 Assert.That(next.Destination, Is.EqualTo(WorkWorld.ForestCell));
-                Assert.That(route.Length, Is.EqualTo(2), "one step from the new camp to the forest");
-                Assert.That(next.TravelTicks, Is.EqualTo(200L * Jobs.TicksPerCostUnit));
-                Assert.That(w.Jobs.SiteFor(band, JobKind.Woodcutter), Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(next.TravelTicks, Is.Zero);
+                Assert.That(w.Jobs.SitesFoundFrom(band), Is.EqualTo(newCamp), "the band's sites, found again from the new camp");
+                Assert.That(w.Jobs.SurveyOf(band, JobKind.Woodcutter).Cost, Is.EqualTo(200L), "one step from the new camp to the forest");
             });
         }
 
@@ -649,6 +647,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(Yield));
                 Assert.That(w.Jobs.HasTask(adult), Is.True, "still hungry, still daylight: out again");
                 Assert.That(w.Jobs.TaskOf(adult).Start, Is.EqualTo(first.End));
+                Assert.That(w.Jobs.TaskOf(adult).Origin, Is.EqualTo(first.Destination), "from where the work was (#199)");
                 Assert.That(w.Jobs.TaskOf(adult).Completion, Is.Not.EqualTo(first.Completion));
             });
         }
@@ -682,9 +681,10 @@ namespace KingdomWatch.Core.Tests.Work
         public void A_trip_that_would_end_after_dusk_is_not_taken()
         {
             // Standing on rocks, the nearest place to forage is a scrub cell
-            // one step away: a cost of 150 out and 300 back. Trips end at
-            // 10:11:40 and 14:23:20; the third would end at 18:35 and is not
-            // started.
+            // one step away: a cost of 150 out and 300 back. The first trip
+            // walks out and works until 10:05; the second works the same bush
+            // until 14:05; a third, with the walk back, would end at 18:15 and
+            // is not started - the forager walks home instead (#199).
             var grid = WorkWorld.ScrubOnly();
             grid.Set(WorkWorld.Camp, TerrainKind.Rocks);
             var w = new WorkWorld(1UL, grid);
@@ -694,7 +694,7 @@ namespace KingdomWatch.Core.Tests.Work
 
             w.AdvanceToDawn();
             Assert.That(w.Jobs.TaskOf(adult).TravelTicks, Is.EqualTo(150L * Jobs.TicksPerCostUnit), "out onto scrub");
-            Assert.That(w.Jobs.TaskOf(adult).ReturnTicks, Is.EqualTo(300L * Jobs.TicksPerCostUnit), "back onto the rocks");
+            Assert.That(w.Jobs.SurveyOf(band, JobKind.Forager).ReturnCost, Is.EqualTo(300L), "back onto the rocks");
 
             w.AdvanceTo(w.Today(Jobs.Dusk));
 
@@ -735,10 +735,7 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(task.PhaseAt(working), Is.EqualTo(TaskPhase.Working));
                 Assert.That(w.Jobs.PositionAt(adult, working), Is.EqualTo(WorkWorld.ForestCell));
 
-                var returning = task.Start.Plus(Walk + task.WorkTicks + (Walk / 2L));
-                Assert.That(task.PhaseAt(returning), Is.EqualTo(TaskPhase.Returning));
-                Assert.That(w.Jobs.PositionAt(adult, returning), Is.EqualTo(new WorldPosition(4, 2)), "halfway home");
-                Assert.That(w.Jobs.PositionAt(adult, task.End), Is.EqualTo(WorkWorld.Camp), "home");
+                Assert.That(w.Jobs.PositionAt(adult, task.End), Is.EqualTo(WorkWorld.ForestCell), "still there when the work is done (#199)");
 
                 Assert.That(() => w.Jobs.PositionAt(adult, task.Start.Plus(-1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => w.Jobs.PositionAt(adult, task.End.Plus(1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
@@ -778,11 +775,251 @@ namespace KingdomWatch.Core.Tests.Work
                 Assert.That(working.To, Is.EqualTo(WorkWorld.ForestCell));
                 Assert.That(working.Along, Is.Zero);
 
-                Assert.That(home.From, Is.EqualTo(WorkWorld.Camp), "home at the end");
-                Assert.That(home.To, Is.EqualTo(WorkWorld.Camp));
+                Assert.That(home.From, Is.EqualTo(WorkWorld.ForestCell), "at work at the end: no walk back (#199)");
+                Assert.That(home.To, Is.EqualTo(WorkWorld.ForestCell));
 
                 Assert.That(() => w.Jobs.PlaceAt(adult, task.Start.Plus(-1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
                 Assert.That(() => w.Jobs.PlaceAt(adult, task.End.Plus(1L)), Throws.TypeOf<ArgumentOutOfRangeException>());
+            });
+        }
+
+        [Test]
+        public void A_worker_stays_on_work_that_is_left()
+        {
+            // The tree has cuts left after the first, so the next task works
+            // it again from where the woodcutter stands: no walk back to the
+            // camp and out again (#199).
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var first = w.Jobs.TaskOf(adult);
+
+            w.AdvanceTo(first.End);
+            var second = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Job, Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(first.End, Is.EqualTo(first.Start.Plus(WorkWorld.TicksToForest + PrimitiveTier.GatherWood.Duration)), "out and work, no way back");
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(PrimitiveTier.GatherWood.Outputs[0].Quantity), "the wood counts when the work ends");
+                Assert.That(second.Job, Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(second.Origin, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(second.Destination, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(second.TravelTicks, Is.Zero, "the tree is underfoot");
+            });
+        }
+
+        [Test]
+        public void A_worker_moves_on_from_where_they_stand_and_walks_home_the_way_priced()
+        {
+            // One cut fells a tree, and a second tree stands one step east of
+            // the first. The woodcutter fells the first, walks one step to the
+            // second rather than back to camp and out again, fells it too,
+            // and with no tree left walks home from there along the way the
+            // second pick priced: into the first tree's cell, now plains,
+            // three more plains and the scrub camp (#199).
+            var grid = WorkWorld.DefaultMap();
+            var second = new WorldPosition(7, 2);
+            grid.Set(second, TerrainKind.Forest);
+            var w = new WorkWorld(1UL, grid);
+            w.Land.TreeCuts = 1;
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var first = w.Jobs.TaskOf(adult);
+            var back = w.Jobs.RouteOf(adult).ToArray();
+            Array.Reverse(back);
+            Assert.That(w.Jobs.HomeRouteOf(adult).ToArray(), Is.EqualTo(back), "from the band, the way out reversed");
+
+            w.AdvanceTo(first.End);
+            var moved = w.Jobs.TaskOf(adult);
+            var home = w.Jobs.HomeRouteOf(adult).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Destination, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(moved.Job, Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(moved.Origin, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(moved.Destination, Is.EqualTo(second));
+                Assert.That(moved.TravelTicks, Is.EqualTo(200L * Jobs.TicksPerCostUnit), "one step into the forest");
+                Assert.That(home[0], Is.EqualTo(second));
+                Assert.That(home[home.Length - 1], Is.EqualTo(WorkWorld.Camp));
+                Assert.That(w.Jobs.HomeCostOf(adult), Is.EqualTo(400L + 150L));
+            });
+
+            w.AdvanceTo(moved.End);
+            var walk = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(walk.IsWalkHome, Is.True, "no tree left");
+                Assert.That(walk.Origin, Is.EqualTo(second));
+                Assert.That(walk.Destination, Is.EqualTo(WorkWorld.Camp));
+                Assert.That(walk.TravelTicks, Is.EqualTo((400L + 150L) * Jobs.TicksPerCostUnit));
+                Assert.That(w.Jobs.RouteOf(adult).ToArray(), Is.EqualTo(home), "the way the pick priced");
+            });
+        }
+
+        [Test]
+        public void A_worker_does_not_stay_for_work_the_walk_home_would_take_past_dusk()
+        {
+            // A tree 37 plains cells east: 2:10:00 out, so the first cut ends
+            // at 12:10, and the walk home is 2:06:40. A second cut would end at
+            // 16:10, with time for the work but not for the walk home after it,
+            // so the woodcutter walks home at 12:10 instead (#199).
+            var grid = new TerrainGrid(64, WorkWorld.Height, TerrainKind.Plains);
+            var forest = new WorldPosition(40, 2);
+            grid.Set(forest, TerrainKind.Forest);
+            var w = new WorkWorld(1UL, grid);
+            w.Land.TreeCuts = LandCover.MaxClaims;
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.KnownMaps.Reveal(band.Id, forest, 1);
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var first = w.Jobs.TaskOf(adult);
+            Assert.That(first.Destination, Is.EqualTo(forest));
+
+            w.AdvanceTo(first.End);
+            var next = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.End, Is.EqualTo(w.Today(Jobs.Dawn + (3900L * Jobs.TicksPerCostUnit) + PrimitiveTier.GatherWood.Duration)));
+                Assert.That(next.IsWalkHome, Is.True, "another cut fits before dusk, the walk home after it does not");
+                Assert.That(next.End, Is.LessThanOrEqualTo(w.Today(Jobs.Dusk)));
+            });
+        }
+
+        [Test]
+        public void A_pick_in_the_field_tries_only_the_nearest_place_for_a_job()
+        {
+            // One cut fells a tree. The woodcutter's first, 34 cells east, is
+            // the only one the band knows at dawn, and its cut ends at
+            // 11:59:20; the walk there shows two more. One step further east
+            // is the nearest from the felled tree, but a cut there and the
+            // walk home would end past dusk. Two steps back west would fit,
+            // but a field pick tries only the nearest place, so the woodcutter
+            // walks home. Deliberate (the #200 review): on seed 3 over 25
+            // years, trying two more places saved 47 of some 31,000 field
+            // picks for 13% more run time, because most picks whose nearest
+            // place fails are a day's last, and nothing would fit.
+            var grid = new TerrainGrid(64, WorkWorld.Height, TerrainKind.Plains);
+            var first = new WorldPosition(36, 2);
+            var east = new WorldPosition(37, 2);
+            var west = new WorldPosition(34, 2);
+            grid.Set(first, TerrainKind.Forest);
+            grid.Set(east, TerrainKind.Forest);
+            grid.Set(west, TerrainKind.Forest);
+            var w = new WorkWorld(1UL, grid);
+            w.Land.TreeCuts = 1;
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            w.KnownMaps.Reveal(band.Id, first, 0);
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.TaskOf(adult).Destination, Is.EqualTo(first));
+
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            var next = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.KnownMaps.Knows(band.Id, east) && w.KnownMaps.Knows(band.Id, west), Is.True, "both shown by the walk out");
+                Assert.That(next.IsWalkHome, Is.True, "the nearest does not fit, and the next is not tried");
+            });
+        }
+
+        [Test]
+        public void A_worker_with_nothing_that_fits_walks_home_by_dusk()
+        {
+            // Out to the forest by 06:16:40 and cutting until 10:16:40, then
+            // again until 14:16:40. A third cut and the walk back would end at
+            // 18:31:40, so the woodcutter walks home instead, still dressed for
+            // the job until they arrive.
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            var dawn = w.Now;
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            var walk = w.Jobs.TaskOf(adult);
+            var halfway = walk.Start.Plus(walk.TravelTicks / 2L);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(walk.Start, Is.EqualTo(dawn.Plus(WorkWorld.TicksToForest + (2L * PrimitiveTier.GatherWood.Duration))));
+                Assert.That(walk.IsWalkHome, Is.True);
+                Assert.That(walk.Job, Is.EqualTo(JobKind.None));
+                Assert.That(walk.Origin, Is.EqualTo(WorkWorld.ForestCell));
+                Assert.That(walk.Destination, Is.EqualTo(WorkWorld.Camp));
+                Assert.That(walk.TravelTicks, Is.EqualTo(WorkWorld.TicksBack));
+                Assert.That(walk.PhaseAt(halfway), Is.EqualTo(TaskPhase.Outbound));
+                Assert.That(w.Jobs.PositionAt(adult, walk.End), Is.EqualTo(WorkWorld.Camp), "home");
+                Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.Woodcutter), "dressed for the job on the way");
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Woodcutter), Is.Zero, "a walk home is nobody's duty");
+            });
+
+            w.AdvanceTo(walk.End);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(walk.End, Is.LessThan(w.Today(Jobs.Dusk)));
+                Assert.That(w.Jobs.HasTask(adult), Is.False, "home for the night");
+                Assert.That(w.People.GetJob(adult), Is.EqualTo(JobKind.None));
+                Assert.That(band.SharedSupplies.Available(ResourceKind.Wood), Is.EqualTo(2L * PrimitiveTier.GatherWood.Outputs[0].Quantity));
+            });
+        }
+
+        [Test]
+        public void A_pick_in_the_field_passes_over_a_job_with_no_place_for_the_next()
+        {
+            // Winter: food is the store furthest short, but every bush is
+            // bare, so the woodcutter's pick at the tree finds no place to
+            // forage and takes the next most needed job, where it stands.
+            var w = new WorkWorld();
+            w.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason));
+            var band = w.NewBand(WorkWorld.Camp, 0);
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            Assert.That(w.Jobs.TaskOf(adult).Job, Is.EqualTo(JobKind.Woodcutter), "nothing to forage at dawn either");
+
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            var next = w.Jobs.TaskOf(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(next.Job, Is.EqualTo(JobKind.Woodcutter));
+                Assert.That(next.TravelTicks, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void A_worker_who_dies_on_the_way_home_leaves_nothing_behind()
+        {
+            var w = new WorkWorld();
+            var band = w.NewBand(WorkWorld.Camp, WorkWorld.PlentifulFood(1));
+            WorkWorld.FillStone(band);
+            var adult = w.Join(band, 30L);
+            w.AdvanceToDawn();
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            w.AdvanceTo(w.Jobs.TaskOf(adult).End);
+            Assert.That(w.Jobs.TaskOf(adult).IsWalkHome, Is.True);
+            var pending = w.Clock.ScheduledCount;
+
+            w.Jobs.Vacate(adult);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.Jobs.HasTask(adult), Is.False);
+                Assert.That(w.Clock.ScheduledCount, Is.EqualTo(pending - 1), "the arrival is cancelled");
+                Assert.That(w.Jobs.OnDuty(band, JobKind.Woodcutter), Is.Zero);
             });
         }
 

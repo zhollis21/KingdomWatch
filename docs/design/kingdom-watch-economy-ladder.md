@@ -415,7 +415,7 @@ the winter ahead; `Jobs.WoodReserve` (200) of wood plus the winter's fuel;
 #178), what building draws on: never less than the dearest building
 takes, and held to the 50 the base store holds until a Stoneyard (#178)
 raises it, 50 at a time. Before #166 stone was gathered as long as there was room. Workers aim for the lesser of the want
-and the capacity, counting what's on its way home. Farmers stop once the
+and the capacity, counting what tasks under way will deliver. Farmers stop once the
 Grain is full, and the fields stand idle.
 
 **Overflow is lost.** Whatever still arrives past capacity is destroyed,
