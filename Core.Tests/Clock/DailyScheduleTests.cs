@@ -10,11 +10,12 @@ namespace KingdomWatch.Core.Tests.Clock
         private static readonly long Hour = SimulationTime.TicksPerHour;
 
         [Test]
-        public void The_day_runs_wake_dawn_dusk_supper_nightfall_bed_in_that_order()
+        public void The_day_runs_wake_dawn_dusk_supper_nightfall_bed_at_the_hours_decided()
         {
+            // The hours as decided at the #21 kickoff, the same all year.
             Assert.That(
                 new[] { DailySchedule.Wake, DailySchedule.Dawn, DailySchedule.Dusk, DailySchedule.Supper, DailySchedule.Nightfall, DailySchedule.Bed },
-                Is.Ordered.And.All.InRange(0L, SimulationTime.TicksPerDay - 1L));
+                Is.EqualTo(new[] { 5L * Hour, 6L * Hour, 18L * Hour, 19L * Hour, 20L * Hour, 21L * Hour }));
         }
 
         [Test]

@@ -190,7 +190,7 @@ namespace KingdomWatch.Game
         private const int NightHalfTo = 20;
         private static readonly Color NightColour = new Color32(34, 48, 112, 255);
         private SpriteRenderer night;
-        private float nightStrength = 1f;
+        private float nightStrength;
 
         private readonly List<Figure> people = new List<Figure>();
         private readonly List<EntityId> peopleIds = new List<EntityId>();
@@ -473,8 +473,12 @@ namespace KingdomWatch.Game
         private void DrawNight(SimulationTime now)
         {
             if (nightShader == null || sceneCamera == null) return;
+            var target = Speed <= NightFullTo ? 1f : Speed <= NightHalfTo ? 0.5f : 0f;
             if (night == null)
             {
+                // The first frame starts where the speed says, not eased in
+                // from somewhere else: no flash of night at 1000x (#203 review).
+                nightStrength = target;
                 var white = Own(new Texture2D(1, 1) { name = "Night" });
                 white.SetPixel(0, 0, Color.white);
                 white.Apply(false);
@@ -485,7 +489,6 @@ namespace KingdomWatch.Game
                 night.transform.SetParent(sceneCamera.transform, false);
                 night.transform.localPosition = new Vector3(0f, 0f, sceneCamera.nearClipPlane + 1f);
             }
-            var target = Speed <= NightFullTo ? 1f : Speed <= NightHalfTo ? 0.5f : 0f;
             nightStrength = Mathf.MoveTowards(nightStrength, target, Time.unscaledDeltaTime);
             var dark = NightDarkest * Darkness(now.TickOfDay) * nightStrength;
             night.enabled = dark > 0f;
