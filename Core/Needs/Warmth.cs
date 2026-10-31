@@ -77,7 +77,7 @@ namespace KingdomWatch.Core.Needs
     public sealed class Warmth : IScheduledEventHandler
     {
         /// <summary>Tick of day the fires are lit - after dusk, when everyone is home.</summary>
-        public const long Nightfall = 20L * SimulationTime.TicksPerHour;
+        public const long Nightfall = DailySchedule.Nightfall;
 
         /// <summary>Wood one hearth burns in one winter night.</summary>
         public const int FuelPerFire = 1;
@@ -394,10 +394,9 @@ namespace KingdomWatch.Core.Needs
             // the food is short too - and at least one while there is wood
             // for one, so none is left unburned.
             var ledger = group.SharedSupplies;
-            // Food for every day but one counts as lasting: whether today's
-            // meal is eaten depends on when this community's meals fall, and
-            // erring by a day is safe - one missed meal is inside hunger's
-            // grace, so it costs nobody health (the #156 review).
+            // Food for every day but today's counts as lasting: supper comes
+            // before the fires (DailySchedule), so today's meal is eaten (the
+            // #156 review).
             var fedToSpring = Hunger.MealsInStore(ledger) >= (long)Living(members) * Hunger.DailyRation * (now.DaysUntilSpring - 1L);
             var nights = Math.Max(1L, now.DaysUntilSpring - (fedToSpring ? HardshipNights : SharedHardshipNights));
             var fires = ledger.Available(ResourceKind.Wood) / FuelPerFire;

@@ -171,7 +171,26 @@ namespace KingdomWatch.Game
         // Draws the zoomed-out map as a season spreads (SeasonSpread.shader).
         // Without it, the map changes season everywhere at once.
         public Shader spreadShader;
+        // Night over the map (NightTint.shader, #21). Without it, nights
+        // stay as light as days.
+        public Shader nightShader;
         public Camera sceneCamera;
+
+        // The game speed, 1 to 10,000, for the night's fade: SimulationDriver
+        // sets it before each Refresh.
+        public int Speed { get; set; } = 1;
+
+        // Night (#21): a soft blue, multiplied over the map at up to this
+        // much, faded in from dusk to supper and out from waking to dawn.
+        // Only at speeds where a night lasts long enough to watch: full to
+        // 5x, half at 20x (a day in 24 s), none from 100x (a day in 5 s),
+        // where it would flash; a change of speed eases there over a second.
+        private const float NightDarkest = 0.35f;
+        private const int NightFullTo = 5;
+        private const int NightHalfTo = 20;
+        private static readonly Color NightColour = new Color32(34, 48, 112, 255);
+        private SpriteRenderer night;
+        private float nightStrength = 1f;
 
         private readonly List<Figure> people = new List<Figure>();
         private readonly List<EntityId> peopleIds = new List<EntityId>();
@@ -445,6 +464,45 @@ namespace KingdomWatch.Game
             using (BuildingsMarker.Auto()) DrawBuildings();
             using (CommunitiesMarker.Auto()) DrawCommunities(world, pixelsPerCell, tiled);
             DrawHighlight();
+            DrawNight(world.Now);
+        }
+
+        // The night quad across the camera's view, as dark as the hour and
+        // the speed say (NightDarkest). Eased in real time, paused or not, so
+        // pausing on a speed change still settles.
+        private void DrawNight(SimulationTime now)
+        {
+            if (nightShader == null || sceneCamera == null) return;
+            if (night == null)
+            {
+                var white = Own(new Texture2D(1, 1) { name = "Night" });
+                white.SetPixel(0, 0, Color.white);
+                white.Apply(false);
+                night = new GameObject("Night").AddComponent<SpriteRenderer>();
+                night.sprite = Own(Sprite.Create(white, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f));
+                night.sharedMaterial = Own(new Material(nightShader));
+                night.sortingOrder = short.MaxValue;
+                night.transform.SetParent(sceneCamera.transform, false);
+                night.transform.localPosition = new Vector3(0f, 0f, sceneCamera.nearClipPlane + 1f);
+            }
+            var target = Speed <= NightFullTo ? 1f : Speed <= NightHalfTo ? 0.5f : 0f;
+            nightStrength = Mathf.MoveTowards(nightStrength, target, Time.unscaledDeltaTime);
+            var dark = NightDarkest * Darkness(now.TickOfDay) * nightStrength;
+            night.enabled = dark > 0f;
+            if (!night.enabled) return;
+            night.color = Color.Lerp(Color.white, NightColour, dark);
+            var tall = sceneCamera.orthographicSize * 2f;
+            night.transform.localScale = new Vector3(tall * sceneCamera.aspect, tall, 1f);
+        }
+
+        // How far into night an hour is, 0 to 1: rising from dusk to supper,
+        // falling from waking to dawn.
+        private static float Darkness(long tickOfDay)
+        {
+            if (tickOfDay < DailySchedule.Wake || tickOfDay >= DailySchedule.Supper) return 1f;
+            if (tickOfDay < DailySchedule.Dawn) return (float)(DailySchedule.Dawn - tickOfDay) / (DailySchedule.Dawn - DailySchedule.Wake);
+            if (tickOfDay < DailySchedule.Dusk) return 0f;
+            return (float)(tickOfDay - DailySchedule.Dusk) / (DailySchedule.Supper - DailySchedule.Dusk);
         }
 
         private ZoomBand BandFor(float pixelsPerCell, float scale)
@@ -477,6 +535,7 @@ namespace KingdomWatch.Game
             var used = 0;
             var now = world.Now;
             var visible = Band != ZoomBand.Far;
+            var bedtime = DailySchedule.IsBedtime(now);
             // One clock for every doll, offset per person so a crowd does not
             // step in time. Real time: it is presentation, not simulation.
             var tick = animationTime * FramesPerSecond;
@@ -527,7 +586,9 @@ namespace KingdomWatch.Game
                 var cell = at + new Vector2(0.5f + jitterX + activity.StandX, 0.5f + jitterY + activity.StandY);
                 crowd.Place(index, record.Id, cell, step, activity.Tool != ArtSet.Tool.None, carry);
                 crowdSlots[slot] = index;
-                figure.SetVisible(visible);
+                // Indoors at bedtime, in the house or tent (#21): nobody
+                // walks or works then, so no task means in bed.
+                figure.SetVisible(visible && !(bedtime && !world.Jobs.HasTask(person)));
 
                 if (figure.Doll)
                 {
@@ -1248,7 +1309,8 @@ namespace KingdomWatch.Game
             }
             else
             {
-                for (var i = 0; i < usedPeople; i++) Consider(people[i].Centre, peopleIds[i]);
+                // Not those indoors: nobody taps someone they cannot see.
+                for (var i = 0; i < usedPeople; i++) if (people[i].Visible) Consider(people[i].Centre, peopleIds[i]);
             }
 
             found.Sort((a, b) => a.Distance != b.Distance ? a.Distance.CompareTo(b.Distance) : a.Id.CompareTo(b.Id));
@@ -1290,7 +1352,8 @@ namespace KingdomWatch.Game
         // Where someone is, in cells (their cell's corner): part-way through
         // the step of their route under way while a task is (Jobs.PlaceAt),
         // so a walk slides rather than hops a cell at a time (#25); otherwise
-        // the cell they are stored at. `step` is that step, zero standing.
+        // at home - their house's door (#21), or the cell they are stored at,
+        // their camp or square. `step` is that step, zero standing.
         private static Vector2 WhereDrawn(World world, PersonHandle person, WorldPosition stored, SimulationTime now, out Vector2 step)
         {
             step = Vector2.zero;
@@ -1303,6 +1366,11 @@ namespace KingdomWatch.Game
                     step = new Vector2(place.To.X - place.From.X, place.To.Y - place.From.Y);
                     return new Vector2(place.From.X, place.From.Y) + step * ((float)place.Along / place.Step);
                 }
+            }
+            if (world.Buildings.HomeOf(world.People.GetHousehold(person)) is Building house)
+            {
+                var door = Buildings.DoorOf(house.Kind, house.Anchor);
+                return new Vector2(door.X, door.Y);
             }
             return new Vector2(stored.X, stored.Y);
         }

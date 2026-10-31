@@ -33,6 +33,12 @@
     Days past -Years, for a season: a year is four 30-day seasons from
     spring, so -Days 60 is the first day of autumn. Default 0, the first
     day of spring.
+.PARAMETER Hours
+    Hours past -Days, for a time of day: -Hours 22 is night (#21).
+    Default 0, midnight.
+.PARAMETER Speed
+    The game speed, one of 1, 5, 20, 100, 1000 or 10000. Default the
+    scene's, 1000x, where the night tint is off: -Speed 5 to see it.
 .PARAMETER Seed
     The world's seed. Default the scene's, 1.
 .PARAMETER SkipBuild
@@ -55,6 +61,10 @@ param(
     [int]$Years = 0,
     [ValidateRange(0, 1000)]
     [int]$Days = 0,
+    [ValidateRange(0, 23)]
+    [int]$Hours = 0,
+    [ValidateSet(0, 1, 5, 20, 100, 1000, 10000)]
+    [int]$Speed = 0,
     [ValidateRange(1, [int]::MaxValue)]
     [int]$Seed,
     [switch]$SkipBuild,
@@ -85,6 +95,8 @@ $playerLog = Join-Path $captures 'player.log'
 $arguments = @('-scripted-run', $captures, '-screen-fullscreen', '0', '-screen-width', $Width, '-screen-height', $Height, '-logFile', $playerLog, '-stops', $stops)
 if ($Years -gt 0) { $arguments += @('-years', $Years) }
 if ($Days -gt 0) { $arguments += @('-days', $Days) }
+if ($Hours -gt 0) { $arguments += @('-hours', $Hours) }
+if ($Speed -gt 0) { $arguments += @('-speed', $Speed) }
 if ($Seed) { $arguments += @('-seed', $Seed) }
 if ($Show) { $arguments += @('-show', $Show) }
 if ($Flat) { $arguments += '-hud-flat' }

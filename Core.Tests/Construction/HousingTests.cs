@@ -578,6 +578,92 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(read, Is.Not.EqualTo(before));
         }
 
+        [Test]
+        public void A_housed_worker_sets_out_from_their_door_and_walks_home_to_it_by_way_of_the_square()
+        {
+            // Home is the house, not the square (#21): the day's first walk
+            // starts at its door, and its last ends there. Both go by the
+            // square, where the pick is made from the band's own sites - what
+            // keeps a door as cheap as the square to start from.
+            var w = Fed(new BuildingsWorld(paint: Woods));
+            HouseEveryone(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
+            w.World.Jobs.Track(w.Settlement);
+            var now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            var square = w.Settlement.Position;
+            var worker = w.Settlement.Members.First(m => w.World.Jobs.HasTask(m));
+            var house = w.Buildings.HomeOf(w.World.People.GetHousehold(worker));
+            Assert.That(house, Is.Not.Null, "everyone was housed");
+            var door = Buildings.DoorOf(house!.Kind, house.Anchor);
+            var first = w.World.Jobs.TaskOf(worker);
+            var out_ = w.World.Jobs.RouteOf(worker).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.Origin, Is.EqualTo(door), "out from the door");
+                Assert.That(door, Is.Not.EqualTo(square), "a door away from the square, or there is no leg to walk");
+                Assert.That(out_, Does.Contain(square), "by way of the square");
+            });
+
+            while (!w.World.Jobs.TaskOf(worker).IsWalkHome)
+            {
+                w.World.AdvanceTo(w.World.Jobs.TaskOf(worker).End);
+                Assert.That(w.World.Jobs.HasTask(worker), Is.True, "every day ends with a walk home from the woods");
+            }
+
+            var walk = w.World.Jobs.TaskOf(worker);
+            var back = w.World.Jobs.RouteOf(worker).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(walk.Destination, Is.EqualTo(door), "home to the door");
+                Assert.That(
+                    back.Skip(Array.LastIndexOf(back, square)),
+                    Is.EqualTo(out_.Take(Array.IndexOf(out_, square) + 1).Reverse()),
+                    "by way of the square, and on along the morning's leg");
+            });
+        }
+
+        [Test]
+        public void A_door_s_walk_to_the_square_is_found_again_once_the_ground_changes()
+        {
+            // Each house's walk is kept between dawns (#21), so it must be
+            // found again when the ground under it changes: water across it
+            // overnight is walked round the next morning, not waded.
+            var w = Fed(new BuildingsWorld(paint: Woods));
+            HouseEveryone(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
+            w.World.Jobs.Track(w.Settlement);
+            var square = w.Settlement.Position;
+            var now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            var worker = w.Settlement.Members.First(m => w.World.Jobs.HasTask(m));
+            var leg = w.World.Jobs.RouteOf(worker).ToArray().TakeWhile(cell => cell != square).ToArray();
+            Assert.That(leg.Length, Is.GreaterThan(2), "a leg with a cell between door and square");
+            var flooded = leg[leg.Length / 2];
+
+            now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Bed)));
+            // The lane lifted too: a road over water is a bridge.
+            w.World.Grid.Set(flooded, TerrainKind.DeepWater);
+            w.World.Grid.SetRoad(flooded, RoadGrade.None);
+            now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            Assert.That(w.World.Jobs.HasTask(worker), Is.True, "out again the next morning");
+            var next = w.World.Jobs.RouteOf(worker).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(next[0], Is.EqualTo(leg[0]), "from the same door");
+                Assert.That(next, Does.Contain(square), "by way of the square");
+                Assert.That(next, Does.Not.Contain(flooded), "round the water");
+            });
+        }
+
         // Food enough that the settlement is never short, so its plans are
         // houses rather than barns and fields.
         private static BuildingsWorld Fed(BuildingsWorld w)

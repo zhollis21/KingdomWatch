@@ -29,15 +29,15 @@ namespace KingdomWatch.Core.Tests.Needs
         [Test]
         public void Food_that_lasts_the_winter_lets_a_short_woodpile_keep_its_full_gap()
         {
-            // Meals at midnight, fires at nightfall: by the first winter night
-            // the day's meal is eaten, and food for every meal still due must
+            // Supper, then the fires: by the first winter night the day's meal
+            // is eaten, and food for every meal still due must
             // not read as short (the #156 review). Short, it would ration the
             // fires to the shared gap and leave a hearth dark from the start.
             var w = Wired(out var hunger, out var warmth, out _);
             var band = Couples(w, 8, out var households);
             band.SharedSupplies.Gather(ResourceKind.Food, 16 * (int)SimulationTime.DaysPerSeason * Hunger.DailyRation);
             band.SharedSupplies.Gather(ResourceKind.Wood, 8 * OneShort(Warmth.HardshipNights) * Warmth.FuelPerFire);
-            Track(w, hunger, warmth, band, afterNightfall: false);
+            Track(w, hunger, warmth, band);
 
             w.Run(FirstWinterNight);
 
@@ -53,16 +53,16 @@ namespace KingdomWatch.Core.Tests.Needs
         [Test]
         public void Wood_that_lasts_the_winter_lets_a_short_store_keep_its_full_gap()
         {
-            // Fires at nightfall, meals after them: by the first winter meal
-            // tonight's fire has burned, and wood for every night still to come
-            // must not read as short, or the meal is rationed to the shared gap.
+            // Supper before the fires: at the first winter meal tonight's fire
+            // is still to burn, and wood for every night still to come must
+            // not read as short, or the meal is rationed to the shared gap.
             var w = Wired(out var hunger, out var warmth, out _);
             var band = Couples(w, 8, out var households);
             band.SharedSupplies.Gather(ResourceKind.Food, 16 * OneShort(Hunger.HardshipDays) * Hunger.DailyRation);
             band.SharedSupplies.Gather(ResourceKind.Wood, 8 * (int)SimulationTime.DaysPerSeason * Warmth.FuelPerFire);
-            Track(w, hunger, warmth, band, afterNightfall: true);
+            Track(w, hunger, warmth, band);
 
-            var firstWinterMeal = FirstWinterDay.Plus(Warmth.Nightfall + SimulationTime.TicksPerHour);
+            var firstWinterMeal = FirstWinterDay.Plus(DailySchedule.Supper);
             w.Run(firstWinterMeal);
 
             Assert.Multiple(() =>
@@ -90,7 +90,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var band = Couples(w, 4, out var households);
             band.SharedSupplies.Gather(ResourceKind.Food, 8 * OneShort(Hunger.HardshipDays) * Hunger.DailyRation);
             band.SharedSupplies.Gather(ResourceKind.Wood, 4 * OneShort(Warmth.HardshipNights) * Warmth.FuelPerFire);
-            Track(w, hunger, warmth, band, afterNightfall: false);
+            Track(w, hunger, warmth, band);
 
             w.Run(SimulationTime.FromDays(SimulationTime.DaysPerYear).Plus(-1L));
 
@@ -110,7 +110,7 @@ namespace KingdomWatch.Core.Tests.Needs
 
         private static readonly SimulationTime FirstWinterDay = SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason);
 
-        private static readonly SimulationTime FirstWinterNight = FirstWinterDay.Plus(Warmth.Nightfall);
+        private static readonly SimulationTime FirstWinterNight = FirstWinterDay.Plus(DailySchedule.Nightfall);
 
         // Days or nights of a winter that leave out its last gap.
         private static int OneShort(long gap) => (int)(SimulationTime.DaysPerSeason - gap);
@@ -146,12 +146,11 @@ namespace KingdomWatch.Core.Tests.Needs
             return band;
         }
 
-        // Tracked the day before winter: meals then fall due at midnight, or
-        // an hour after nightfall, every day from the first winter day.
-        private static void Track(Fixture w, Hunger hunger, Warmth warmth, MobileGroup band, bool afterNightfall)
+        // Tracked on the first winter morning: the first meal and the first
+        // fire are that evening's.
+        private static void Track(Fixture w, Hunger hunger, Warmth warmth, MobileGroup band)
         {
-            var dayBefore = FirstWinterDay.Plus(-SimulationTime.TicksPerDay);
-            w.Run(afterNightfall ? dayBefore.Plus(Warmth.Nightfall + SimulationTime.TicksPerHour) : dayBefore);
+            w.Run(FirstWinterDay);
             hunger.Track(band);
             warmth.Track(band);
         }
