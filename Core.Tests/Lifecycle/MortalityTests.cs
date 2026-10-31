@@ -271,9 +271,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
         [Test]
         public void A_fatal_meal_on_a_birthday_is_still_a_starvation_death()
         {
-            // Meals, checks and birthdays all fall on day boundaries, so the
-            // meal that takes someone to zero can share an instant with their
-            // yearly check - and the check sorts first. Zero health is
+            // Someone born at supper has their yearly check at supper (#21),
+            // so the meal that takes them to zero can share an instant with
+            // it - and the check sorts first. Zero health is
             // certain death whichever wake-up finds it, and it reads as
             // starvation, not as the illness the roll would otherwise name.
             var settings = new DemographicSettings
@@ -283,14 +283,17 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             };
             var w = new DemographicWorld(settings, 1UL);
             var band = w.NewStarvingBand();
-            var person = w.NewPerson(30L, Sex.Female);
+            // Thirty at the supper before the world began, so the next check
+            // is a year on.
+            var person = w.NewPersonBornAt(
+                DailySchedule.Supper - SimulationTime.TicksPerDay - (30L * SimulationTime.TicksPerYear), Sex.Female);
             band.AddMember(person);
             var id = w.IdOf(person);
 
-            // Damage starts at the day-3 meal; the birthday is day 120, so
-            // 118 meals of damage land exactly on it.
+            // Damage starts at the day-2 supper; the birthday is day 119's,
+            // so 118 meals of damage land exactly on it.
             var birthday = w.BirthdayOf(person, 31L);
-            Assert.That(birthday, Is.EqualTo(SimulationTime.FromDays(120L)));
+            Assert.That(birthday, Is.EqualTo(SimulationTime.FromDays(119L).Plus(DailySchedule.Supper)));
             w.People.SetHealth(person, (short)(118 * Hunger.StarvationDamagePerMeal));
 
             w.AdvanceTo(birthday.Plus(-1L));
@@ -316,9 +319,9 @@ namespace KingdomWatch.Core.Tests.Lifecycle
             var person = w.NewPerson(30L, Sex.Female);
             band.AddMember(person);
 
-            // Meals on days 1 and 2 are within grace; day 3 onward costs
-            // health. A hundred health at ten a meal is ten meals: day 12.
-            var fatal = SimulationTime.FromDays(12L);
+            // Suppers on days 0 and 1 are within grace; day 2 onward costs
+            // health. A hundred health at ten a meal is ten meals: day 11's.
+            var fatal = SimulationTime.FromDays(11L).Plus(DailySchedule.Supper);
             w.AdvanceTo(fatal.Plus(-1L));
             var justBefore = w.People.GetHealth(person);
             w.AdvanceTo(fatal);

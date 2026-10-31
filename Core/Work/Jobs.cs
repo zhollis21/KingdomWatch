@@ -59,13 +59,12 @@ namespace KingdomWatch.Core.Work
     ///
     /// **One task at a time, inside a dawn-to-dusk window.** A task is
     /// booked when it starts, never a day ahead, and is started only if it
-    /// ends by <see cref="Dusk"/>. The window is a stand-in for #21's daily
-    /// schedule - eat, work, socialise, sleep - and exists so that a forager
+    /// ends by <see cref="Dusk"/>. The window is the working part of the
+    /// day's hours (<see cref="DailySchedule"/>, #21), and is why a forager
     /// makes two or three trips a day rather than six around the clock,
     /// which is what keeps hunger a constraint. Someone idle at dawn stays
     /// idle until the next dawn: nothing wakes them mid-day, so a shortfall
-    /// that opens after the pass - a meal lands whenever the holder's stream
-    /// was started, not necessarily before dawn - waits for the next one.
+    /// that opens after the pass waits for the next one.
     ///
     /// **A task is section 4's scheduled task.** <see cref="WorkTask"/>
     /// holds the start, the walk and the work, the origin and the
@@ -118,6 +117,17 @@ namespace KingdomWatch.Core.Work
     /// (<see cref="WorkTask.IsWalkHome"/>), to the band's position as it was
     /// when the walk began. Ranking lazily gives the answer searching every
     /// job would, for one search a pick while the most needed job fits.
+    ///
+    /// **The housed go by way of the square** (#21). A worker whose household
+    /// has a house walks from its door to the band's position before the
+    /// day's first task, and from there back to the door after the walk
+    /// home: the first leg leads the first task's route, the last trails
+    /// the walk home's. Every pick is still made as above, from the square's
+    /// sites at dawn and the walk back to the square after, with the day
+    /// shortened by both legs - what keeps a door start as cheap as a start
+    /// at the square (the #21 timing, against a pick made from the door). A
+    /// household that moves in at dawn does so after the picks (#100), so
+    /// its first day has no legs.
     /// The village's count of what its land gives (<see cref="TripsPerDay"/>,
     /// <see cref="NearWalk"/>) still assumes a round trip a task, which keeps
     /// it on the safe side. A band that moved while workers were out would
@@ -179,10 +189,10 @@ namespace KingdomWatch.Core.Work
     public sealed class Jobs : IScheduledEventHandler
     {
         /// <summary>Tick of day the work day starts: the dawn pass runs here.</summary>
-        public const long Dawn = 6L * SimulationTime.TicksPerHour;
+        public const long Dawn = DailySchedule.Dawn;
 
         /// <summary>Tick of day the work day ends: no task is started that would end after it.</summary>
-        public const long Dusk = 18L * SimulationTime.TicksPerHour;
+        public const long Dusk = DailySchedule.Dusk;
 
         /// <summary>
         /// Ticks of walking per unit of route cost. At two, a plains cell
@@ -350,6 +360,10 @@ namespace KingdomWatch.Core.Work
 
         // Scratch for a site search: the route to the candidate being tried.
         private readonly List<WorldPosition> _scratchRoute = new List<WorldPosition>();
+
+        // Each house's walk to and from the band's position (#21), by house:
+        // looked up, never iterated.
+        private readonly Dictionary<EntityId, DoorLeg> _doors = new Dictionary<EntityId, DoorLeg>();
 
         // Where a pick made away from the band's position goes (FitsFrom):
         // found from the worker's own cell, so no other worker shares it.
@@ -880,7 +894,12 @@ namespace KingdomWatch.Core.Work
                         continue;
                     }
 
-                    if (!TryStart(tracked, member, tracked.SitesFrom, 0L))
+                    // From the door by way of the square (#21): the pick is
+                    // the square's, the walk to it leads the task.
+                    var slot = SlotFor(member.Index);
+                    FindDoor(tracked, member, slot);
+
+                    if (!TryStart(tracked, member, tracked.SitesFrom, 0L, fromDoor: slot.DoorCount > 1))
                     {
                         idle++;
                     }
@@ -976,7 +995,7 @@ namespace KingdomWatch.Core.Work
             // with nothing more that fits walks home in the clothes of the job
             // they finished. The slot keeps the way home it was given (Slot.Home)
             // until a task that starts gives it another.
-            if (!TryStart(tracked, worker, task.Destination, slot.HomeCost))
+            if (!TryStart(tracked, worker, task.Destination, slot.HomeCost, fromDoor: false))
             {
                 WalkHome(tracked, worker, task.Destination);
             }
@@ -987,32 +1006,83 @@ namespace KingdomWatch.Core.Work
         // search here: the pick priced it before dusk. Walked as it was
         // found, as a round trip once walked its way out reversed, so ground
         // changed since (a clearing, a road) can only change its pace, and a
-        // band that has moved since is walked back to where it stood. A
-        // worker already there is simply idle.
+        // band that has moved since is walked back to where it stood. On
+        // from there to the door for the housed (#21), along today's door
+        // leg, which every pick left time for. A worker already home is
+        // simply idle.
         private void WalkHome(Tracked tracked, PersonHandle worker, WorldPosition from)
         {
             var slot = SlotFor(worker.Index);
+            var door = slot.DoorFollowsHome;
 
-            if (slot.HomeCount < 2)
+            if (slot.HomeCount < 2 && !door)
             {
                 _people.SetJob(worker, JobKind.None);
                 return;
             }
 
-            var home = slot.Home[slot.HomeCount - 1];
-            var travel = slot.HomeCost * TicksPerCostUnit;
+            var travel = (slot.HomeCost + (door ? slot.DoorBack : 0L)) * TicksPerCostUnit;
             var completion = _clock.Schedule(
                 _clock.Now.Plus(travel), Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
-            slot.Task = new WorkTask(worker, tracked.Group.Id, JobKind.None, _clock.Now, travel, 0L, from, home, completion);
-            slot.TakeHomeRoute();
+            slot.TakeHomeRoute(door);
+            slot.Task = new WorkTask(
+                worker, tracked.Group.Id, JobKind.None, _clock.Now, travel, 0L, from, slot.Route[slot.RouteCount - 1], completion);
             PriceRoute(slot);
+        }
+
+        // Today's walk between the band's position and the worker's door
+        // (#21), into the slot: none for the unhoused, nor for a door the
+        // square has no route to within the reach houses are built in.
+        // Found once per house, not per worker, and again only once the
+        // ground or the band's position has changed: a search per worker
+        // every dawn was two thirds of what the legs cost (the #21 timing).
+        private void FindDoor(Tracked tracked, PersonHandle worker, Slot slot)
+        {
+            slot.ClearDoor();
+
+            if (!(_buildings?.HomeOf(_people.GetHousehold(worker)) is Building house))
+            {
+                return;
+            }
+
+            if (!_doors.TryGetValue(house.Id, out var leg))
+            {
+                leg = new DoorLeg();
+                _doors.Add(house.Id, leg);
+            }
+
+            if (leg.Rewrites != _grid.Rewrites || leg.From != tracked.SitesFrom)
+            {
+                leg.Rewrites = _grid.Rewrites;
+                leg.From = tracked.SitesFrom;
+                leg.Found = _pathfinder.TryFindRoute(
+                        tracked.SitesFrom, Buildings.DoorOf(house.Kind, house.Anchor), Mover, int.MaxValue, Buildings.BuildReach, leg.Route, out var back)
+                    && leg.Route.Count > 1;
+                leg.Back = back;
+
+                if (leg.Found)
+                {
+                    // Walked out as found back, reversed, as a site's route is.
+                    _scratchRoute.Clear();
+                    _scratchRoute.AddRange(leg.Route);
+                    _scratchRoute.Reverse();
+                    leg.Away = _pathfinder.CostOfRoute(_scratchRoute, Mover);
+                }
+            }
+
+            if (leg.Found)
+            {
+                slot.SetDoor(leg.Route, leg.Away, leg.Back);
+            }
         }
 
         // Picks a job for a free worker standing at `from`, `homeCost` from
         // the band, and starts one task of it, or leaves them idle when
-        // nothing is needed, reachable and short enough.
-        private bool TryStart(Tracked tracked, PersonHandle worker, WorldPosition from, long homeCost)
+        // nothing is needed, reachable and short enough. `fromDoor` is the
+        // day's first pick of a housed worker (#21): made at the band's
+        // position, with the walk there from the door leading the task.
+        private bool TryStart(Tracked tracked, PersonHandle worker, WorldPosition from, long homeCost, bool fromDoor)
         {
             // Sites were found from wherever the band stood at dawn. A band
             // that has moved since (#54) picks from where it stands now, or a
@@ -1024,8 +1094,13 @@ namespace KingdomWatch.Core.Work
                 RefreshSites(tracked);
             }
 
+            // Today's door legs come out of the day before any pick: the walk
+            // to the square ahead of this task, and the walk from it to the
+            // door after the walk home.
+            var slot = SlotFor(worker.Index);
+            var lead = fromDoor ? slot.DoorOut : 0L;
             var now = _clock.Now;
-            var job = ChooseJob(tracked, now, from, homeCost, out var building, out var site);
+            var job = ChooseJob(tracked, now, from, homeCost, (lead + slot.DoorBack) * TicksPerCostUnit, out var building, out var site);
 
             if (job == JobKind.None)
             {
@@ -1033,7 +1108,8 @@ namespace KingdomWatch.Core.Work
             }
 
             var work = WorkTicksOf(job, building, now);
-            var end = now.Plus((site.Cost * TicksPerCostUnit) + work);
+            var travel = (lead + site.Cost) * TicksPerCostUnit;
+            var end = now.Plus(travel + work);
 
             // Inputs first: BeginRecipe refuses before it moves anything, and
             // a booking for an instant after now cannot be refused, so
@@ -1048,10 +1124,9 @@ namespace KingdomWatch.Core.Work
             var completion = _clock.Schedule(
                 end, Phase, ScheduledEventKind.TaskCompleted, _people.GetId(worker), EntityId.None);
 
-            var slot = SlotFor(worker.Index);
+            slot.CopyRoute(site.Route, fromDoor);
             slot.Task = new WorkTask(
-                worker, tracked.Group.Id, job, now, site.Cost * TicksPerCostUnit, work, from, site.Destination, completion);
-            slot.CopyRoute(site.Route);
+                worker, tracked.Group.Id, job, now, travel, work, slot.Route[0], site.Destination, completion);
             // Priced before the ground is claimed below: a Forester's plot
             // turns to forest as the tree goes in, and the walk there was
             // charged on plains.
@@ -1135,9 +1210,13 @@ namespace KingdomWatch.Core.Work
         // no walk there and back to the band can be shorter than the walk
         // back from here, so nothing could fit. Most field picks that fit
         // nothing are a day's last, and this is what keeps them cheap.
-        private JobKind ChooseJob(Tracked tracked, SimulationTime now, WorldPosition from, long homeCost, out Building? building, out Site site)
+        //
+        // `reserve` is walking the day has spoken for already, between the
+        // band's position and a door (#21): everything must fit before dusk
+        // less it.
+        private JobKind ChooseJob(Tracked tracked, SimulationTime now, WorldPosition from, long homeCost, long reserve, out Building? building, out Site site)
         {
-            var ticksUntilDusk = TicksUntilDusk(now);
+            var ticksUntilDusk = TicksUntilDusk(now) - reserve;
             var season = now.Season;
             var winterDays = WinterDaysAhead(now);
             var ledger = tracked.Group.SharedSupplies;
@@ -1980,6 +2059,23 @@ namespace KingdomWatch.Core.Work
 
         // One person's task and the route it walks. The route buffer is kept
         // between tasks and only grows, so a slot allocates once.
+        // A house's walk from the band's position to its door, as last found
+        // (FindDoor), and the ground and position it was found on.
+        private sealed class DoorLeg
+        {
+            public long Rewrites = -1L;
+
+            public WorldPosition From;
+
+            public bool Found;
+
+            public long Away;
+
+            public long Back;
+
+            public List<WorldPosition> Route { get; } = new List<WorldPosition>();
+        }
+
         private sealed class Slot
         {
             public WorkTask Task;
@@ -2024,29 +2120,80 @@ namespace KingdomWatch.Core.Work
                 HomeCost = cost;
             }
 
-            // Makes the way home the route walked: the walk home's own.
-            public void TakeHomeRoute()
+            // Today's walk from the band's position to the household's door
+            // (#21), band first, and what it costs each way: found at dawn
+            // for the housed, empty for everyone else.
+            public WorldPosition[] Door = Array.Empty<WorldPosition>();
+
+            public int DoorCount;
+
+            public long DoorOut;
+
+            public long DoorBack;
+
+            // Whether the door leg carries on from where the way home ends:
+            // not when the band has moved since dawn, nor with no leg today.
+            public bool DoorFollowsHome => DoorCount > 1 && HomeCount > 0 && Home[HomeCount - 1] == Door[0];
+
+            public void SetDoor(List<WorldPosition> route, long away, long back)
             {
-                if (Route.Length < HomeCount)
+                if (Door.Length < route.Count)
                 {
-                    Route = new WorldPosition[Math.Max(HomeCount, Route.Length * 2)];
-                    Out = new long[Route.Length];
+                    Door = new WorldPosition[Math.Max(route.Count, Door.Length * 2)];
                 }
 
-                Array.Copy(Home, Route, HomeCount);
-                RouteCount = HomeCount;
+                route.CopyTo(Door);
+                DoorCount = route.Count;
+                DoorOut = away;
+                DoorBack = back;
             }
 
-            public void CopyRoute(List<WorldPosition> route)
+            public void ClearDoor()
             {
-                if (Route.Length < route.Count)
+                DoorCount = 0;
+                DoorOut = 0L;
+                DoorBack = 0L;
+            }
+
+            // Makes the way home the route walked: the walk home's own, and
+            // on to the door after it.
+            public void TakeHomeRoute(bool door)
+            {
+                var after = door ? DoorCount - 1 : 0;
+                Reserve(HomeCount + after);
+                Array.Copy(Home, Route, HomeCount);
+
+                if (door)
                 {
-                    Route = new WorldPosition[Math.Max(route.Count, Route.Length * 2)];
-                    Out = new long[Route.Length];
+                    Array.Copy(Door, 1, Route, HomeCount, after);
                 }
 
-                route.CopyTo(Route);
-                RouteCount = route.Count;
+                RouteCount = HomeCount + after;
+            }
+
+            // A site's route, which starts at the band's position, led by the
+            // walk there from the door when the task sets out from it.
+            public void CopyRoute(List<WorldPosition> route, bool fromDoor)
+            {
+                var lead = fromDoor ? DoorCount - 1 : 0;
+                Reserve(lead + route.Count);
+
+                for (var i = 0; i < lead; i++)
+                {
+                    Route[i] = Door[DoorCount - 1 - i];
+                }
+
+                route.CopyTo(Route, lead);
+                RouteCount = lead + route.Count;
+            }
+
+            private void Reserve(int count)
+            {
+                if (Route.Length < count)
+                {
+                    Route = new WorldPosition[Math.Max(count, Route.Length * 2)];
+                    Out = new long[Route.Length];
+                }
             }
 
             public void Clear()

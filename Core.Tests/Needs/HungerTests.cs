@@ -27,6 +27,10 @@ namespace KingdomWatch.Core.Tests.Needs
             public void Handle(ScheduledEvent scheduled, SimulationClock clock) => Raised.Add(scheduled);
         }
 
+        // The nth supper of a world that starts at tick zero: day n - 1 at 19:00.
+        private static SimulationTime Supper(long n) =>
+            SimulationTime.FromDays(n - 1L).Plus(DailySchedule.Supper);
+
         // Everything a meal touches, wired the way a world will wire it: the
         // router drives the clock, hunger owns MealDue, the journal remembers
         // what the bus publishes, and a recorder answers the crossing that
@@ -96,13 +100,15 @@ namespace KingdomWatch.Core.Tests.Needs
                 return member;
             }
 
+            // Through the next `days` suppers, one at a time, so the clock
+            // stands at the last meal served.
             internal void RunDays(long days)
             {
-                var start = Clock.Now;
+                var first = Clock.Now.Plus(DailySchedule.TicksUntilNext(Clock.Now, DailySchedule.Supper));
 
-                for (var day = 1L; day <= days; day++)
+                for (var day = 0L; day < days; day++)
                 {
-                    Clock.AdvanceTo(start.Plus(day * Day), Router);
+                    Clock.AdvanceTo(first.Plus(day * Day), Router);
                 }
             }
 
@@ -133,7 +139,7 @@ namespace KingdomWatch.Core.Tests.Needs
         }
 
         [Test]
-        public void Tracking_books_the_first_meal_a_day_out()
+        public void Tracking_books_the_first_meal_at_the_next_supper()
         {
             var world = new World();
             var band = world.NewBand(2, 30);
@@ -145,10 +151,42 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(world.Hunger.TrackedCount, Is.EqualTo(1));
                 Assert.That(world.Clock.TryPeekNext(out var next), Is.True);
                 Assert.That(next.Kind, Is.EqualTo(ScheduledEventKind.MealDue));
-                Assert.That(next.Time, Is.EqualTo(SimulationTime.FromDays(1L)));
+                Assert.That(next.Time, Is.EqualTo(new SimulationTime(DailySchedule.Supper)));
                 Assert.That(next.Phase, Is.EqualTo(Hunger.MealPhase));
                 Assert.That(next.PrimaryEntity, Is.EqualTo(band.Id));
                 Assert.That(next.SecondaryEntity, Is.EqualTo(EntityId.None));
+            });
+        }
+
+        [Test]
+        public void A_holder_tracked_at_or_after_supper_eats_at_tomorrow_s()
+        {
+            // A settlement founded at the band council (05:00) eats that
+            // evening; one tracked at supper itself, or after it, eats the
+            // next - never twice in one evening.
+            var world = new World();
+            var atSupper = world.NewBand(1, 30);
+            var after = world.NewBand(1, 30);
+            world.Clock.AdvanceTo(new SimulationTime(DailySchedule.Supper), world.Router);
+            world.Hunger.Track(atSupper);
+            world.Clock.AdvanceTo(new SimulationTime(DailySchedule.Supper + SimulationTime.TicksPerHour), world.Router);
+            world.Hunger.Track(after);
+
+            var tomorrow = SimulationTime.FromDays(1L).Plus(DailySchedule.Supper);
+            world.Clock.AdvanceTo(tomorrow.Plus(-1L), world.Router);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(atSupper.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(30), "not yet fed");
+                Assert.That(after.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(30), "not yet fed");
+            });
+
+            world.Clock.AdvanceTo(tomorrow, world.Router);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(world.People.GetLastFedAt(atSupper.Members[0]), Is.EqualTo(tomorrow));
+                Assert.That(world.People.GetLastFedAt(after.Members[0]), Is.EqualTo(tomorrow));
             });
         }
 
@@ -195,7 +233,8 @@ namespace KingdomWatch.Core.Tests.Needs
             // book into - not by throwing after the ledger has already moved.
             var world = new World();
             var band = world.NewBand(1, Hunger.DailyRation);
-            var lastMeal = new SimulationTime(long.MaxValue);
+            // The last supper the clock can represent.
+            var lastMeal = new SimulationTime(long.MaxValue - ((long.MaxValue - DailySchedule.Supper) % SimulationTime.TicksPerDay));
             world.Clock.AdvanceTo(lastMeal.Plus(-Hunger.MealInterval), world.Router);
             world.Hunger.Track(band);
 
@@ -228,7 +267,7 @@ namespace KingdomWatch.Core.Tests.Needs
 
                 foreach (var member in band.Members)
                 {
-                    Assert.That(world.People.GetLastFedAt(member), Is.EqualTo(SimulationTime.FromDays(1L)));
+                    Assert.That(world.People.GetLastFedAt(member), Is.EqualTo(Supper(1L)));
                     Assert.That(world.People.GetHealth(member), Is.EqualTo(StartingHealth));
                 }
 
@@ -250,7 +289,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(dispatched, Is.EqualTo(30));
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.EqualTo(1000 - 30 * Hunger.DailyRation));
                 Assert.That(world.Clock.TryPeekNext(out var next), Is.True);
-                Assert.That(next.Time, Is.EqualTo(SimulationTime.FromDays(31L)));
+                Assert.That(next.Time, Is.EqualTo(Supper(31L)));
             });
         }
 
@@ -285,7 +324,7 @@ namespace KingdomWatch.Core.Tests.Needs
 
             world.RunDays(1L);
 
-            var mealTime = SimulationTime.FromDays(1L);
+            var mealTime = Supper(1L);
 
             Assert.Multiple(() =>
             {
@@ -312,7 +351,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var band = world.NewBand(0, (int)SimulationTime.DaysPerSeason * Hunger.DailyRation);
             var elder = world.NewMember(band, AgeStage.Elder);
             var child = world.NewMember(band, AgeStage.Child);
-            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason), world.Router);
             world.Hunger.Track(band);
 
             world.RunDays(1L);
@@ -336,7 +375,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var band = world.NewBand(0, Hunger.DailyRation);
             var elder = world.NewMember(band, AgeStage.Elder);
             var child = world.NewMember(band, AgeStage.Child);
-            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason), world.Router);
             world.Hunger.Track(band);
 
             world.RunDays(1L);
@@ -359,7 +398,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var band = world.NewBand(0, 2 * rationed * Hunger.DailyRation);
             var elder = world.NewMember(band, AgeStage.Elder);
             var child = world.NewMember(band, AgeStage.Child);
-            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason - 1L), world.Router);
+            world.Clock.AdvanceTo(SimulationTime.FromDays(3L * SimulationTime.DaysPerSeason), world.Router);
             world.Hunger.Track(band);
 
             world.RunDays(1L);
@@ -387,7 +426,7 @@ namespace KingdomWatch.Core.Tests.Needs
 
             world.RunDays(1L);
 
-            var mealTime = SimulationTime.FromDays(1L);
+            var mealTime = Supper(1L);
 
             Assert.Multiple(() =>
             {
@@ -413,7 +452,7 @@ namespace KingdomWatch.Core.Tests.Needs
 
             Assert.Multiple(() =>
             {
-                Assert.That(world.People.GetLastFedAt(adult), Is.EqualTo(SimulationTime.FromDays(1L)));
+                Assert.That(world.People.GetLastFedAt(adult), Is.EqualTo(Supper(1L)));
                 Assert.That(world.People.GetLastFedAt(elder), Is.EqualTo(SimulationTime.Zero));
             });
         }
@@ -566,7 +605,7 @@ namespace KingdomWatch.Core.Tests.Needs
                 var crossing = world.Starvation.Raised[0];
                 Assert.That(crossing.Kind, Is.EqualTo(ScheduledEventKind.StarvationCritical));
                 Assert.That(crossing.PrimaryEntity, Is.EqualTo(world.People.GetId(starving)));
-                Assert.That(crossing.Time, Is.EqualTo(SimulationTime.FromDays(4L)), "the instant of the meal, not later");
+                Assert.That(crossing.Time, Is.EqualTo(Supper(4L)), "the instant of the meal, not later");
                 Assert.That(crossing.Phase, Is.EqualTo(SimulationPhase.Lifecycle), "after the meal's own phase");
                 Assert.That(world.People.GetHealth(starving), Is.Zero);
             });
@@ -630,8 +669,8 @@ namespace KingdomWatch.Core.Tests.Needs
                 Assert.That(started.PrimaryEntity, Is.EqualTo(band.Id));
                 Assert.That(started.SecondaryEntity, Is.EqualTo(EntityId.None));
                 Assert.That(started.Reasons, Is.EqualTo(Reasons.None), "a famine is not a decision");
-                Assert.That(started.Time, Is.EqualTo(SimulationTime.FromDays(2L)));
-                Assert.That(world.Journal[1].Time, Is.EqualTo(SimulationTime.FromDays(4L)));
+                Assert.That(started.Time, Is.EqualTo(Supper(2L)));
+                Assert.That(world.Journal[1].Time, Is.EqualTo(Supper(4L)));
             });
         }
 
@@ -688,7 +727,7 @@ namespace KingdomWatch.Core.Tests.Needs
             {
                 Assert.That(world.Journal.Count, Is.EqualTo(1));
                 Assert.That(world.Journal[0].Kind, Is.EqualTo(DomainEventKind.FamineStarted));
-                Assert.That(world.Journal[0].Time, Is.EqualTo(SimulationTime.FromDays(11L)));
+                Assert.That(world.Journal[0].Time, Is.EqualTo(Supper(11L)));
                 Assert.That(band.SharedSupplies.Available(ResourceKind.Food), Is.Zero);
             });
         }
@@ -769,7 +808,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var world = new World();
             var untracked = world.NewBand(1, 3);
             world.Clock.Schedule(
-                SimulationTime.FromDays(1L), Hunger.MealPhase, ScheduledEventKind.MealDue, untracked.Id, EntityId.None);
+                Supper(1L), Hunger.MealPhase, ScheduledEventKind.MealDue, untracked.Id, EntityId.None);
 
             Assert.That(() => world.RunDays(1L), Throws.InvalidOperationException);
         }
@@ -785,7 +824,7 @@ namespace KingdomWatch.Core.Tests.Needs
             var band = world.NewBand(1, 30);
             world.Hunger.Track(band);
             world.Clock.Schedule(
-                SimulationTime.FromDays(1L).Plus(1L), Hunger.MealPhase, ScheduledEventKind.MealDue, band.Id, EntityId.None);
+                Supper(1L).Plus(1L), Hunger.MealPhase, ScheduledEventKind.MealDue, band.Id, EntityId.None);
 
             Assert.Multiple(() =>
             {
