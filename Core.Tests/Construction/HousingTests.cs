@@ -664,6 +664,44 @@ namespace KingdomWatch.Core.Tests.Construction
             });
         }
 
+        [Test]
+        public void A_housed_worker_whose_door_the_square_cannot_reach_works_the_day_from_the_square()
+        {
+            // No door leg today (#21): the day is worked as the unhoused work
+            // it, out from the square and home to it, rather than not at all.
+            // A path cut to one house does not idle its household.
+            var w = Fed(new BuildingsWorld(paint: Woods));
+            HouseEveryone(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
+            w.World.Jobs.Track(w.Settlement);
+            var square = w.Settlement.Position;
+            var now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            var worker = w.Settlement.Members.First(m => w.World.Jobs.HasTask(m));
+            var house = w.Buildings.HomeOf(w.World.People.GetHousehold(worker));
+            var door = Buildings.DoorOf(house!.Kind, house.Anchor);
+            Assert.That(w.World.Jobs.TaskOf(worker).Origin, Is.EqualTo(door), "out from the door while it can be reached");
+
+            now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Bed)));
+            w.World.Grid.Set(door, TerrainKind.DeepWater);
+            w.World.Grid.SetRoad(door, RoadGrade.None);
+            now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            Assert.That(w.World.Jobs.HasTask(worker), Is.True, "still out to work");
+            Assert.That(w.World.Jobs.TaskOf(worker).Origin, Is.EqualTo(square), "out from the square");
+
+            while (!w.World.Jobs.TaskOf(worker).IsWalkHome)
+            {
+                w.World.AdvanceTo(w.World.Jobs.TaskOf(worker).End);
+                Assert.That(w.World.Jobs.HasTask(worker), Is.True, "every day ends with a walk home from the woods");
+            }
+
+            Assert.That(w.World.Jobs.TaskOf(worker).Destination, Is.EqualTo(square), "home to the square");
+        }
+
         // Food enough that the settlement is never short, so its plans are
         // houses rather than barns and fields.
         private static BuildingsWorld Fed(BuildingsWorld w)
