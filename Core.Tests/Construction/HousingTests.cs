@@ -700,6 +700,59 @@ namespace KingdomWatch.Core.Tests.Construction
             }
 
             Assert.That(w.World.Jobs.TaskOf(worker).Destination, Is.EqualTo(square), "home to the square");
+
+            // And stays there till morning: where the walk ended, not the door
+            // it could not reach (the #203 review).
+            w.World.AdvanceTo(w.World.Jobs.TaskOf(worker).End);
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Jobs.HasTask(worker), Is.False, "home");
+                Assert.That(w.World.Jobs.TryRestingAt(worker, out var rest), Is.True, "the day ended somewhere");
+                Assert.That(rest, Is.EqualTo(square), "at the square");
+            });
+        }
+
+        [Test]
+        public void A_worker_rests_where_the_day_s_walk_home_ended_until_the_next_dawn()
+        {
+            // Where the view draws someone idle (#21): the door for a day that
+            // ended there, nowhere of Jobs' before any day has.
+            var w = Fed(new BuildingsWorld(paint: Woods));
+            HouseEveryone(w);
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
+            w.World.Jobs.Track(w.Settlement);
+            var now = w.World.Clock.Now;
+            var nobody = w.Settlement.Members.First();
+            Assert.That(w.World.Jobs.TryRestingAt(nobody, out _), Is.False, "no day worked yet");
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+
+            var worker = w.Settlement.Members.First(m => w.World.Jobs.HasTask(m));
+            var house = w.Buildings.HomeOf(w.World.People.GetHousehold(worker));
+            var door = Buildings.DoorOf(house!.Kind, house.Anchor);
+            Assert.That(w.World.Jobs.TryRestingAt(worker, out _), Is.False, "out at work");
+
+            while (w.World.Jobs.HasTask(worker))
+            {
+                w.World.AdvanceTo(w.World.Jobs.TaskOf(worker).End);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Jobs.TryRestingAt(worker, out var rest), Is.True, "home for the night");
+                Assert.That(rest, Is.EqualTo(door), "at the door");
+            });
+
+            // A new dawn starts the day afresh, even for someone it gives
+            // nothing to do: with the woodpile full, they stay in at the door,
+            // which is the view's to draw rather than yesterday's walk's.
+            w.Wood(10_000);
+            now = w.World.Clock.Now;
+            w.World.AdvanceTo(now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn)));
+            Assert.Multiple(() =>
+            {
+                Assert.That(w.World.Jobs.HasTask(worker), Is.False, "nothing needed");
+                Assert.That(w.World.Jobs.TryRestingAt(worker, out _), Is.False, "yesterday's rest is over");
+            });
         }
 
         // Food enough that the settlement is never short, so its plans are

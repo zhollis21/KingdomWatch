@@ -127,7 +127,8 @@ namespace KingdomWatch.Core.Work
     /// shortened by both legs - what keeps a door start as cheap as a start
     /// at the square (the #21 timing, against a pick made from the door). A
     /// household that moves in at dawn does so after the picks (#100), so
-    /// its first day has no legs.
+    /// its first day has no legs. Either way a worker rests where the day's
+    /// walk home ended until the next dawn (<see cref="TryRestingAt"/>).
     /// The village's count of what its land gives (<see cref="TripsPerDay"/>,
     /// <see cref="NearWalk"/>) still assumes a round trip a task, which keeps
     /// it on the safe side. A band that moved while workers were out would
@@ -532,6 +533,31 @@ namespace KingdomWatch.Core.Work
         public bool HasTask(PersonHandle person) => SlotOf(person) is object;
 
         /// <summary>
+        /// Where this person's day's work ended (#21): the last cell of their
+        /// walk home, or where they stood when they had nothing to walk -
+        /// a house's door, or the band's position on a day with no way to
+        /// the door. False while they have a task, before any day has ended,
+        /// and from the next dawn's pass until their next day ends: where
+        /// the view draws someone idle.
+        /// </summary>
+        public bool TryRestingAt(PersonHandle person, out WorldPosition at)
+        {
+            // The slot's resting place is its last worker's: a slot taken
+            // over since names someone else, and a task under way names this
+            // person in Task rather than Resting.
+            var slot = person.IsNone || person.Index >= _slots.Length ? null : _slots[person.Index];
+
+            if (slot is null || slot.Resting != person || SlotOf(person) is object)
+            {
+                at = default;
+                return false;
+            }
+
+            at = slot.Rest;
+            return true;
+        }
+
+        /// <summary>
         /// Fills <paramref name="into"/> with the worker of every task in
         /// progress, in slot order. Clears the list first.
         /// </summary>
@@ -870,6 +896,18 @@ namespace KingdomWatch.Core.Work
             // adjusts counts it expects the day to have rebuilt.
             Recount(tracked);
 
+            // Yesterday's resting places end with the night, moving day or
+            // not: a band that marches is no longer where its day ended.
+            var everyone = tracked.Group.Members;
+
+            for (var i = 0; i < everyone.Count; i++)
+            {
+                if (everyone[i].Index < _slots.Length && _slots[everyone[i].Index] is Slot resting)
+                {
+                    resting.Resting = PersonHandle.None;
+                }
+            }
+
             // A moving day: the band's council (#54) set a destination before
             // this pass, and everyone walks with the band rather than out
             // from a camp it is leaving. Sites are found again tomorrow,
@@ -952,10 +990,11 @@ namespace KingdomWatch.Core.Work
 
             var tracked = TrackedFor(task.Holder);
 
-            // Home for the night: the day's work is over.
+            // Home for the night: the day's work is over, where the walk ended.
             if (task.IsWalkHome)
             {
                 slot.Clear();
+                slot.RestAt(worker, task.Destination);
                 _people.SetJob(worker, JobKind.None);
                 return;
             }
@@ -1017,6 +1056,7 @@ namespace KingdomWatch.Core.Work
 
             if (slot.HomeCount < 2 && !door)
             {
+                slot.RestAt(worker, from);
                 _people.SetJob(worker, JobKind.None);
                 return;
             }
@@ -2146,6 +2186,18 @@ namespace KingdomWatch.Core.Work
                 DoorCount = route.Count;
                 DoorOut = away;
                 DoorBack = back;
+            }
+
+            // Where the last worker of this slot ended their day, and who:
+            // TryRestingAt, until the next dawn's pass clears it.
+            public PersonHandle Resting;
+
+            public WorldPosition Rest;
+
+            public void RestAt(PersonHandle worker, WorldPosition at)
+            {
+                Resting = worker;
+                Rest = at;
             }
 
             public void ClearDoor()

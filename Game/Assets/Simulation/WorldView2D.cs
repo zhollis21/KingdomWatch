@@ -1355,8 +1355,10 @@ namespace KingdomWatch.Game
         // Where someone is, in cells (their cell's corner): part-way through
         // the step of their route under way while a task is (Jobs.PlaceAt),
         // so a walk slides rather than hops a cell at a time (#25); otherwise
-        // at home - their house's door (#21), or the cell they are stored at,
-        // their camp or square. `step` is that step, zero standing.
+        // where the day's walk home ended (Jobs.TryRestingAt), which is the
+        // square on a day the door could not be reached; otherwise at home -
+        // their house's door (#21), or the cell they are stored at, their
+        // camp or square. `step` is that step, zero standing.
         private static Vector2 WhereDrawn(World world, PersonHandle person, WorldPosition stored, SimulationTime now, out Vector2 step)
         {
             step = Vector2.zero;
@@ -1369,6 +1371,10 @@ namespace KingdomWatch.Game
                     step = new Vector2(place.To.X - place.From.X, place.To.Y - place.From.Y);
                     return new Vector2(place.From.X, place.From.Y) + step * ((float)place.Along / place.Step);
                 }
+            }
+            if (world.Jobs.TryRestingAt(person, out var rest))
+            {
+                return new Vector2(rest.X, rest.Y);
             }
             if (world.Buildings.HomeOf(world.People.GetHousehold(person)) is Building house)
             {
