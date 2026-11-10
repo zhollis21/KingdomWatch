@@ -896,6 +896,58 @@ namespace KingdomWatch.Core.Tests.Construction
             Assert.That(w.World.Jobs.OnDuty(w.Settlement, JobKind.Builder), Is.GreaterThan(0), "hands set out to build " + house);
         }
 
+        [Test]
+        public void A_household_housed_past_the_river_is_home_at_its_door_by_dusk()
+        {
+            // The walk between square and door is long out here, and comes
+            // out of the working day (#21): a day of trips to the woods
+            // still ends at the door by dusk.
+            var w = new BuildingsWorld(size: 100, paint: PaintCrowdedCentre);
+            w.Wood(5000);
+            w.Stores.Gather(ResourceKind.Food, 100000);
+            w.Dawn();
+            var house = w.Buildings.All.Single();
+            w.Finish(house);
+            w.Dawn();
+            var door = Buildings.DoorOf(house.Kind, house.Anchor);
+            var housed = w.Settlement.Members.Where(m => w.Buildings.HomeOf(w.World.People.GetHousehold(m)) == house).ToList();
+            w.Stores.Consume(ResourceKind.Wood, w.Stores.Available(ResourceKind.Wood));
+            w.World.Jobs.Track(w.Settlement);
+            var walksHome = 0;
+
+            for (var day = 0; day < 5; day++)
+            {
+                var now = w.World.Clock.Now;
+                var dawn = now.Plus(DailySchedule.TicksUntilNext(now, DailySchedule.Dawn));
+                var dusk = dawn.Plus(DailySchedule.Dusk - DailySchedule.Dawn);
+                w.World.AdvanceTo(dawn);
+
+                while (housed.Where(w.World.Jobs.HasTask).Select(m => w.World.Jobs.TaskOf(m).End).DefaultIfEmpty().Min() is var next
+                    && next.Ticks > 0L)
+                {
+                    foreach (var member in housed.Where(w.World.Jobs.HasTask))
+                    {
+                        var task = w.World.Jobs.TaskOf(member);
+
+                        if (task.IsWalkHome)
+                        {
+                            walksHome++;
+                            Assert.That(task.Destination, Is.EqualTo(door), member + "'s walk home");
+                            Assert.That(task.End, Is.LessThanOrEqualTo(dusk), member + " home by dusk on day " + day);
+                        }
+                    }
+
+                    w.World.AdvanceTo(next);
+                }
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Chebyshev(door, BuildingsWorld.Centre), Is.GreaterThan(CrowdedRadius), "a door past the river");
+                Assert.That(walksHome, Is.GreaterThan(0), "somebody walked home");
+            });
+        }
+
         // River round the camp out to CrowdedRadius, which no footprint or
         // lane takes, with a track running east through it: the only room
         // for a house is past the river, joined to the yard along the track.

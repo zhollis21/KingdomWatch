@@ -22,9 +22,8 @@ namespace KingdomWatch.Core.Needs
     /// a scheduled event, so a thirty-day jump dispatches thirty meals in order
     /// and the one that falls short publishes the famine on the day it starts,
     /// never at the end of the jump. What it gives up is per-person meal
-    /// TIMES, which nothing consumes before M3's daily schedules (#21) - and
-    /// adding those then is a change to when the draw happens, not to what it
-    /// draws from.
+    /// TIMES. Since #21 the meal is supper, at <see cref="DailySchedule.Supper"/>
+    /// for every holder, when everyone is home from work.
     ///
     /// Hunger itself is integrated, not polled: a person stores only when they
     /// last ate (<see cref="PersonRecord.LastFedAt"/>), and how hungry they are
@@ -264,8 +263,9 @@ namespace KingdomWatch.Core.Needs
             IndexOf((community ?? throw new ArgumentNullException(nameof(community))).Id) >= 0;
 
         /// <summary>
-        /// Starts feeding a holder: its first meal is booked one
-        /// <see cref="MealInterval"/> from now, and each meal books the next.
+        /// Starts feeding a holder: its first meal is booked for the next
+        /// <see cref="DailySchedule.Supper"/> after now, and each meal books
+        /// the next.
         /// Refuses a holder already tracked - two meal streams on one ledger
         /// would draw twice a day.
         /// </summary>
@@ -468,9 +468,9 @@ namespace KingdomWatch.Core.Needs
 
             var stores = group.SharedSupplies;
             var hearths = Warmth.CountHearths(group.Members, _people, _hearthScratch);
-            // Wood for every night but one counts as lasting: whether tonight's
-            // fire has burned depends on when this community's meals fall,
-            // and erring by a night is safe - one dark night is inside the
+            // Wood for every night but one counts as lasting, though supper
+            // comes before the fires (DailySchedule) and tonight's is still to
+            // burn: erring by a night is safe - one dark night is inside the
             // cold's grace, so it costs nobody health (the #156 review).
             var warmToSpring = stores.Available(ResourceKind.Wood) >= (long)hearths * Warmth.FuelPerFire * (now.DaysUntilSpring - 1L);
             var days = Math.Max(1L, now.DaysUntilSpring - (warmToSpring ? HardshipDays : SharedHardshipDays));
@@ -587,9 +587,12 @@ namespace KingdomWatch.Core.Needs
             }
         }
 
+        // The next supper strictly after now: a holder tracked at supper
+        // itself eats tomorrow, and a meal books the one a day later.
         private EventId ScheduleMeal(EntityId holder) =>
             _clock.Schedule(
-                _clock.Now.Plus(MealInterval), MealPhase, ScheduledEventKind.MealDue, holder, EntityId.None);
+                _clock.Now.Plus(DailySchedule.TicksUntilNext(_clock.Now, DailySchedule.Supper)),
+                MealPhase, ScheduledEventKind.MealDue, holder, EntityId.None);
 
         private Tracked TrackedFor(ICommunity group)
         {

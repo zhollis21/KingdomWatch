@@ -123,8 +123,8 @@ namespace KingdomWatch.Core.Nomadic
     /// </remarks>
     public sealed class NomadicBands : IScheduledEventHandler, IDomainEventSubscriber
     {
-        /// <summary>Tick of day the council sits: an hour before <see cref="Jobs.Dawn"/>.</summary>
-        public const long FirstLight = 5L * SimulationTime.TicksPerHour;
+        /// <summary>Tick of day the council sits: on waking (<see cref="DailySchedule.Wake"/>), an hour before <see cref="Jobs.Dawn"/>.</summary>
+        public const long FirstLight = DailySchedule.Wake;
 
         /// <summary>Days a band stays at one camp before it looks for the next.</summary>
         public const int CampDays = 20;

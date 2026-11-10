@@ -91,8 +91,19 @@ namespace KingdomWatch.Game
             // and -Days), starts where it stands. Without -days it stops at
             // the year boundary, where the harness hashes, so the year hash
             // still compares.
-            var start = WholeArgument(args, "-years") * SimulationTime.TicksPerYear + WholeArgument(args, "-days") * SimulationTime.TicksPerDay;
+            // -hours H, for a time of day (#21): night shows only after dusk.
+            var start = WholeArgument(args, "-years") * SimulationTime.TicksPerYear + WholeArgument(args, "-days") * SimulationTime.TicksPerDay
+                + WholeArgument(args, "-hours") * SimulationTime.TicksPerHour;
             if (start > 0L) world.AdvanceTo(new SimulationTime(start));
+            // -speed S, one of the ladder's steps: the night fades out from
+            // 100x, and a look runs at 1000x without it.
+            var speed = WholeArgument(args, "-speed");
+            if (speed > 0L)
+            {
+                var step = System.Array.IndexOf(SpeedSteps, (int)speed);
+                if (step >= 0) speedStep = step;
+                else Debug.LogError("SimulationDriver: -speed wants one of " + string.Join(", ", SpeedSteps) + "; ignoring it.", this);
+            }
 #endif
             SnapshotYear();
             // A scene missing a reference runs the simulation with no view,
@@ -193,6 +204,7 @@ namespace KingdomWatch.Game
             // the layers switch on, so this cannot feed back into the layer.
             rig.Snap = view.Band != ZoomBand.Far;
             rig.Apply(hud.Reserved, hud.TopInset, hud.BottomInset);
+            view.Speed = SpeedSteps[speedStep];
             view.Refresh(world, rig.RequestedPixelsPerCell, UiScale, paused);
             DropVanishedSelection();
 #if UNITY_INCLUDE_INSTRUMENTATION || UNITY_EDITOR
@@ -273,6 +285,7 @@ namespace KingdomWatch.Game
                 s.Job = people.GetJob(person);
                 s.Working = world.Jobs.HasTask(person);
                 s.GoingHome = s.Working && world.Jobs.TaskOf(person).IsWalkHome;
+                s.Bedtime = DailySchedule.IsBedtime(now);
                 community = CommunityOf(person);
             }
             else if (selected.Kind == EntityKind.Settlement || selected.Kind == EntityKind.MobileGroup)
