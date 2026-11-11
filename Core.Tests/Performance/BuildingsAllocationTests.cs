@@ -33,7 +33,7 @@ namespace KingdomWatch.Core.Tests.Performance
             // Long enough to raise a house, a barn and fields, and more, and to bring a
             // crop in, so every path the measured span takes has run.
             w.World.Advance(40L * SimulationTime.TicksPerDay);
-            Assert.That(w.Buildings.All, Has.Some.Matches<Building>(b => b.Kind == BuildingKind.Field && b.IsComplete));
+            Assert.That(w.Buildings.All, Has.Some.Matches<Building>(b => b is { Kind: BuildingKind.Field, IsComplete: true }));
 
             // No wood to build with from here, so nothing more is approved:
             // what is measured is the looking and the farming. Then a crop's
