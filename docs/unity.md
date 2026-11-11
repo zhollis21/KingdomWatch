@@ -83,7 +83,15 @@ The driver steps through `YearStepper`, which stops exactly on every year bounda
 dotnet run --project Harness -c Release -- --seed 1 --years 3
 ```
 
-That prints `Hash:` for the end of year 3, which should equal the debug card's `Hash at year 3`. The seed is set on the `SimulationDriver` component. The same check on an Android build (IL2CPP) matched at seed 1, year 6 (#90); it is manual, so re-run it when something that could diverge lands, such as a float in `Core` or a change to how the hash is built.
+That prints `Hash:` for the end of year 3, which should equal the debug card's `Hash at year 3`. The seed is set on the `SimulationDriver` component. The same check on an Android build (IL2CPP) matched at seed 1, year 6 (#90), and again at year 39 after the move to .NET 11 and the C# 15 compiler (#204). It is manual, so re-run it when something that could diverge lands, such as a float in `Core`, a change to how the hash is built, or a new compiler or IL2CPP toolchain. The debug card shows only the latest year's hash, so read it off and run the harness to that same year (`--years 39`).
+
+No phone is needed. Build the APK headless (`Unity -batchmode -projectPath Game -buildTarget Android -executeMethod KingdomWatch.Game.Editor.DevBuild.Android`, into `Game/Builds/Android/`), install it with `adb install -r` on the Android 16 emulator (an x86_64 image that translates ARM, which the ARM64-only player needs), and launch it with OpenGL ES forced:
+
+```
+adb shell am start -n com.RainbowSprinkles.KingdomWatch/com.unity3d.player.UnityPlayerGameActivity -e unity "-force-gles"
+```
+
+On Vulkan, the default, a development build crashes on launch in the emulator's Vulkan driver (`vkSetDebugUtilsObjectNameEXT`, a null pointer) when Unity labels its GPU objects. #90's run on a phone used the default.
 
 ## Android build
 
