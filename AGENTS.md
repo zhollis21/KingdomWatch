@@ -18,8 +18,8 @@ Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invis
 ```
 Game/              Unity project (6.6 -> 6.7 LTS). The only Unity-dependent piece.
 Core/              netstandard2.1, zero Unity dependencies, single-target
-Core.Tests/        net10.0, NUnit, references Core
-Harness/           net10.0 console, references Core
+Core.Tests/        net11.0, NUnit, references Core
+Harness/           net11.0 console, references Core
 docs/design/       full design and technical plan, plus the economy ladder
 ```
 

@@ -28,7 +28,7 @@ namespace KingdomWatch.Core.Tests
         public void Core_targets_netstandard21_and_only_netstandard21()
         {
             // This also catches multi-targeting, which is the failure mode section 5
-            // singles out. If Core ever grew a net10.0 target, this net10.0 test
+            // singles out. If Core ever grew a net11.0 target, this net11.0 test
             // project would resolve that build instead and the framework name
             // would come back as .NETCoreApp.
             var frameworkName = CoreAssembly
