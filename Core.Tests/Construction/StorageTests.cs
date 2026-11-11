@@ -172,7 +172,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             w.DawnAsIs();
 
-            Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b.Kind == BuildingKind.Stoneyard));
+            Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b is { Kind: BuildingKind.Stoneyard }));
         }
 
         [Test]
@@ -262,7 +262,7 @@ namespace KingdomWatch.Core.Tests.Construction
                 Assert.That(first.Kind, Is.EqualTo(BuildingKind.House));
                 Assert.That(Jobs.StoneWant(1), Is.GreaterThan(Storage.BaseStone), "a Stoneyard is wanted");
                 Assert.That(next.Kind, Is.EqualTo(BuildingKind.House));
-                Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b.Kind == BuildingKind.Stoneyard));
+                Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b is { Kind: BuildingKind.Stoneyard }));
             });
         }
 
@@ -493,7 +493,7 @@ namespace KingdomWatch.Core.Tests.Construction
 
             Assert.Multiple(() =>
             {
-                Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b.Kind == BuildingKind.Granary && b != granary));
+                Assert.That(w.Buildings.All, Has.None.Matches<Building>(b => b is { Kind: BuildingKind.Granary } && b != granary));
                 Assert.That(granary.Kind, Is.EqualTo(BuildingKind.Granary));
             });
         }

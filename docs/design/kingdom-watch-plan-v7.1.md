@@ -70,7 +70,7 @@ With powers-only agency, this is a mechanical necessity, not an aspiration: obse
 | Art perspective | **¾ oblique 2D** (§18). M0's prototypes picked orthographic 3D (#1); reversed at #72 |
 | Platform | Android and PC both ship (#115); the phone sets the performance budget |
 | Engine | **Start on Unity 6.6, move to 6.7 LTS when it ships** (late 2026), C# |
-| Frameworks | Core `netstandard2.1`; tests and harness `net10.0` |
+| Frameworks | Core `netstandard2.1`; tests and harness `net11.0` |
 | Data layout | **Dense records** behind a **storage accessor layer**; split hot fields only if a device profile measures a problem |
 
 ---
@@ -331,18 +331,18 @@ Tests and harness still target modern .NET; only the seam Unity crosses is const
 
 ```
 KingdomWatch.Core/          netstandard2.1   · zero Unity dependencies
-KingdomWatch.Core.Tests/    net10.0          · references Core
-KingdomWatch.Harness/       net10.0          · references Core
+KingdomWatch.Core.Tests/    net11.0          · references Core
+KingdomWatch.Harness/       net11.0          · references Core
 KingdomWatch.Game/          Unity 6.6 → 6.7  · consumes Core
 ```
 
-**net10.0, not net8.0:** .NET 8 and .NET 9 both reach end of support on November 10, 2026. .NET 10 shipped November 11, 2025 as LTS, supported through November 2028.
+**net11.0, the current release:** the scaffold started on .NET 10 LTS, because .NET 8 and .NET 9 both reached end of support on November 10, 2026. The repo moved to .NET 11 when it shipped that same month (#204). .NET 11 is STS, but STS now gets two years, so its support runs to about November 2028, the same as .NET 10 LTS. Measured on the move: the same world hash, and no change in test-suite or harness time beyond run-to-run noise. The SDK pin in `global.json` is anchored at the band's first feature release (`11.0.100`, `latestFeature`), so any 11.0 SDK satisfies it. When none is installed, its `errorMessage` says what to install.
 
-**What netstandard2.1 costs is small.** It is a compile-time API surface constraint, not a performance ceiling — the harness still runs on the .NET 10 runtime and gets its JIT, and `Span<T>` / `Memory<T>` are available. The losses are newer BCL surface and a few C# features needing runtime support (`init` accessors and records want an `IsExternalInit` shim, a five-line file).
+**What netstandard2.1 costs is small.** It is a compile-time API surface constraint, not a performance ceiling — the harness still runs on the .NET 11 runtime and gets its JIT, and `Span<T>` / `Memory<T>` are available. The losses are newer BCL surface and a few C# features needing runtime support (`init` accessors and records want an `IsExternalInit` shim, a five-line file).
 
 **This is temporary.** Unity is replacing Mono with CoreCLR targeting .NET 10 and C# 14 in Unity 6.8, after which Mono is gone. Timing is uncertain — the roadmap indicates end of 2026, while Unity has said CoreCLR would not be production-ready during 2026. For a multi-year project, netstandard2.1 is where Core starts, not necessarily where it stays.
 
-**Do not multi-target Core** as `netstandard2.1;net10.0`. The debugging strategy depends on the harness and the Unity build reaching bit-identical state from the same seed (the cross-platform hash below). Two compilation targets is two chances to diverge, and any `#if` in simulation code makes divergence likely rather than merely possible. Single-target the simulation.
+**Do not multi-target Core** as `netstandard2.1;net11.0`. The debugging strategy depends on the harness and the Unity build reaching bit-identical state from the same seed (the cross-platform hash below). Two compilation targets is two chances to diverge, and any `#if` in simulation code makes divergence likely rather than merely possible. Single-target the simulation.
 
 Core contents:
 
