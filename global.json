@@ -3,5 +3,8 @@
     "version": "11.0.100",
     "rollForward": "latestFeature",
     "errorMessage": "KingdomWatch needs a .NET 11 SDK (11.0.100 or any later 11.0 band). Install it from https://dotnet.microsoft.com/download/dotnet/11.0. If Visual Studio has moved this machine to a newer major SDK, moving the repo is its own change: see issue #204 for how the last one was done."
+  },
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
   }
 }
