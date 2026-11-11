@@ -28,8 +28,8 @@ See `docs/design/kingdom-watch-plan-v7.1.md` §5 for the architectural reasoning
 ### Building
 
 ```powershell
-dotnet build KingdomWatch.sln
-dotnet test KingdomWatch.sln -c Release
+dotnet build KingdomWatch.slnx
+dotnet test KingdomWatch.slnx -c Release
 dotnet run --project Harness
 ```
 

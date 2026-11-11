@@ -25,8 +25,8 @@ That sentence is the whole design. Everything else is in service of it.
 The simulation is plain C# with no Unity in it. From the repo root:
 
 ```powershell
-dotnet build KingdomWatch.sln
-dotnet test KingdomWatch.sln -c Release
+dotnet build KingdomWatch.slnx
+dotnet test KingdomWatch.slnx -c Release
 dotnet run --project Harness -c Release
 ```
 

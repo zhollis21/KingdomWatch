@@ -31,13 +31,13 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore KingdomWatch.sln
+        run: dotnet restore KingdomWatch.slnx
 
       - name: Build
-        run: dotnet build KingdomWatch.sln --configuration Release --no-restore
+        run: dotnet build KingdomWatch.slnx--configuration Release --no-restore
 
       - name: Test
-        run: dotnet test KingdomWatch.sln --configuration Release --no-build
+        run: dotnet test KingdomWatch.slnx--configuration Release --no-build
 
       # Puts the throughput figure in every CI log (#58) and fails the build
       # if the harness stops running. Twenty years gives the same
