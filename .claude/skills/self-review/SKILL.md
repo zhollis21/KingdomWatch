@@ -44,6 +44,12 @@ Review all code written in this session against the checklist below. Fix every i
 **Error handling**
 
 - Failures are visible (logged, surfaced, or explicitly and deliberately swallowed with a comment saying why) rather than silently discarded
+- Check which exceptions a method actually throws before catching them
+
+**Callers and public surface**
+
+- Check the existing code that calls what changed, not only the code you wrote
+- Changes to public or internal types are weighed for their callers inside and outside this change; a breaking change to a shared type is called out explicitly
 
 **Tests**
 
@@ -59,6 +65,7 @@ Judge coverage from the API surface, never from the test list. Before deciding t
 - Values round-trip at the extremes of their own type, not just at comfortable mid-range values — this is what catches a narrowing cast or a silent clamp
 - Tests probe the input space, not just the happy path — for every public entry point, what a caller *can* pass rather than what the docs say they should. Enums accept any cast int; structs have a `default`; sentinels and boundaries need their own cases (`AGENTS.md`, Building)
 - Any public API taking an enum rejects undefined values (`EnumGuard`) — full coverage will not catch this, since the lines still run
+- A collection handed out through a read-only interface can still be cast back and changed unless it really is read-only — test that, rather than trusting the declared type
 - **An allocation test's warm-up must actually reach the working set the measured pass needs.** Count what the measured pass will produce — events published, entries queued — and check it against every preallocated capacity by arithmetic, not by eye. A capacity that is off by a handful (a booking at midnight dispatching twice in one `AdvanceTo`) reports one large growth allocation that looks like a regression in the code under test and is not
 - Determinism has tests of its own where it is a requirement: repeat the same read twice and assert the order did not vary; assert that a sequence of operations lands in a fixed, stated arrangement rather than merely a valid one
 - A guard that cannot be reached, and cannot be reached in a test either, is unverifiable code — prefer deleting it over shipping it, unless a seam that exists for real reasons already makes it testable (see `IdAllocator`'s exhaustion guard, reachable through the `ResumeFrom` that save/load needs anyway)
@@ -87,6 +94,11 @@ Judge coverage from the API surface, never from the test list. Before deciding t
 - New abstractions follow existing patterns rather than introducing parallel ones
 - Simplest implementation that does the job — no bit-packing, caching, or hand-tuning without a specific identified need (`AGENTS.md`, Engineering principles)
 - **Verify claimed precedent instead of recalling it.** Before a decision rests on "the neighbouring code does this" — go read that code. Precedent recalled from memory is usually right about the pattern and wrong about the detail, and the detail is what settles the question: whether that guard is *tested*, whether that field is *validated*, whether that suppression was actually *approved*. One grep, before the justification, not after someone challenges it
+
+**Comments and docs**
+
+- Comments match the final code, not an earlier draft
+- **Widening what something accepts or reports includes its documentation.** When a rule starts firing for a second case, or a type starts accepting a third kind of caller, the summary that named the first one becomes wrong in the same change — and wrong in the way nobody notices, because it still reads as a sentence about the code. Re-read the doc comment of anything whose reach you changed, and audit the whole set rather than the line you touched
 
 **TODOs**
 

@@ -176,7 +176,8 @@ foreach ($prItem in $openPRs) {
 
             $tagStr = if ($tags.Count) { " | " + ($tags -join " | ") } else { "" }
 
-            $lines.Add("#### $($c.user.login) on ``$file`` line $line")
+            # The opening comment's id is what both the reply and Resolve-PrThread.ps1 take.
+            $lines.Add("#### $($c.user.login) on ``$file`` line $line (comment $($c.id))")
             $lines.Add("*$dt$tagStr*")
             $lines.Add("")
             $lines.Add($c.body.Trim())

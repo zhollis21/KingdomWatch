@@ -88,8 +88,9 @@ For each comment, the entry says:
      guard, a stale comment, a test the rule plainly requires): state the fix
      in a line and move on. Do not manufacture alternatives for it.
    - **A real choice** — two or more fixes that lead to different code, or a
-     fix with a cost worth knowing about: lay out the options with the pro and
-     con of each, and say which you recommend.
+     fix with a cost worth knowing about: say in prose what each direction
+     costs and which you recommend, and leave the choosing to the popup below
+     rather than rendering a menu here.
 
 Then ask. Use `AskUserQuestion` for the real choices, batched into one call;
 for the open-and-shut ones and the non-issues, ask for a single go-ahead rather
@@ -151,16 +152,14 @@ Don't leave handled comments open — the open-comment list should only ever sho
 > the rule and gets bounced to the interactive classifier. Resolve threads one call at a time.
 
 Threads are addressed by **comment id**, not by a thread id: the report above
-shows each thread under its opening comment, and that comment's id is what both
-the reply and the resolve call take. Thread state has no REST endpoint on
+prints each thread's opening comment as `(comment <id>)` on its heading, and that
+id is what both the reply and the resolve call take — read it from there, not
+from a separate call. Thread state has no REST endpoint on
 github.com — the report and the resolve script get it from the proxy's `ccr/`
 route in a cloud session and from GraphQL everywhere else (`Get-ReviewThreads`
 and `Resolve-ReviewThread` in `tools/GitHubApi.psm1`), so the commands below
 are the same on either.
 
-- **Comment ids**: read them from
-  `gh api repos/zhollis21/KingdomWatch/pulls/<pr>/comments` (the `id` of a
-  comment with no `in_reply_to_id` is a thread's opening comment).
 - **Reply to a review comment** (one standalone call):
   ```
   gh api repos/zhollis21/KingdomWatch/pulls/<pr>/comments/<commentId>/replies -f body='<reply text>'
