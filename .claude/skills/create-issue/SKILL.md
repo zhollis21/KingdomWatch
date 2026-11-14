@@ -80,6 +80,13 @@ git fetch origin --quiet
 git rev-list --count main..origin/main   # 0 = up to date; anything else, fast-forward first
 ```
 
+Because this repo squash-merges, `git branch --contains` returns nothing for work
+that shipped — so never conclude "unmerged" from it. Check whether the files
+themselves are on the remote tip (`git cat-file -e origin/main:<path>`). And when
+the body ends up asserting that something does not exist yet, name the ref and SHA
+you checked against, so a stale local is visible to the reader instead of baked
+into the issue.
+
 **An empty search result is not evidence of absence.** It is usually evidence you
 guessed the wrong word. Try at least two phrasings before believing a negative,
 and if you end up writing "there is no X" in the body, say what you searched for
@@ -96,29 +103,19 @@ git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 git log --oneline -n 5 -- <path>
 
 # Prior art — open AND closed, because "we tried that" lives in closed issues.
-# The term is matched literally, not as a regex: jq's test() would read
-# `Found(` as an unterminated group and fail outright, and `a.b` would
-# quietly match `axb`. --arg also keeps the shell out of the quoting.
+# Repo-scoped, then filtered by the script: the search/ endpoints are refused
+# ("sessions are bound to their configured repositories").
+# -Contains is a literal, case-insensitive match on title + body, never a regex,
+# so `Found(` or `a.b` mean exactly what they say. The filters are the script's
+# own because jq is not installed on the Windows dev machine.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
-  | jq -r --arg topic '<topic>' '.[] | select(.pull_request == null)
-           | select((.title + " " + (.body // "")) | ascii_downcase | contains($topic | ascii_downcase))
-           | "#\(.number) [\(.state)] \(.title)"' | head -8
-# Repo-scoped, then filtered here: the search/ endpoints are refused as well
-# ("sessions are bound to their configured repositories").
-# The term is matched literally, not as a regex: jq's test() would read
-# `Found(` as an unterminated group and fail outright, and `a.b` would
-# quietly match `axb`. --arg also keeps the shell out of the quoting.
-# One command, not a loop: `gh --paginate` follows a Link header the proxy
-# rejects, and a `for` loop is a compound command that starts with `for`, so
-# it falls outside this skill's command-prefix allow rules. The script throws
-# rather than quietly truncating if a collection outgrows its page cap.
+  -IssuesOnly -Contains '<topic>' -Format '#{number} [{state}] {title}' -First 8
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
-  | jq -r --arg keyword '<keyword>' '.[] | select((.title + " " + (.body // "")) | ascii_downcase | contains($keyword | ascii_downcase))
-           | "#\(.number) [\(.state)] \(.title)"' | head -5
+  -Contains '<keyword>' -Format '#{number} [{state}] {title}' -First 5
 ```
 
 Then, before any line number goes in the body, **open the file and confirm the
@@ -318,7 +315,7 @@ not have a type/priority taxonomy set up yet:
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/labels' \
-  | jq -r '.[] | "\(.name)  \(.description)"'
+  -Format '{name}  {description}'
 ```
 
 If a reasonable set exists, propose the full set with a one-line justification
@@ -424,9 +421,12 @@ comment and never get folded into the body. Then check:
    note which moved.
 3. **Is the body intact?** Shell-quoting damage takes many forms — confirm
    suspicious characters with `od -c` before assuming a substitution is safe.
-4. **Labels.** Missing priority, missing type. Ignore `blocked` — the roadmap
-   workflow sets and clears it from the relationships, so a wrong value there
-   means a wrong relationship, which is the next check.
+4. **Labels.** Missing priority, missing type — and any body that *states* its
+   own priority. Labels are what the backlog sorts by, so a `## Priority` section
+   in the body is a contradiction waiting to happen: drop the section rather than
+   reconciling it. Ignore `blocked` — the roadmap workflow sets and clears it
+   from the relationships, so a wrong value there means a wrong relationship,
+   which is the next check.
 5. **Relationships.** `gh api repos/zhollis21/KingdomWatch/issues/<N>/dependencies/blocked_by`
    against what the body says it depends on. Prose that names a dependency the
    relationship list lacks is the common drift. Named blockers that have since
@@ -446,7 +446,9 @@ When editing an approved body, `gh api … -X PATCH -F body=@<file>` **replaces 
 body** — so fetch, edit in place, diff, and only then write back.
 
 ```bash
-gh api repos/zhollis21/KingdomWatch/issues/<N> --jq .body > "<scratch>/issue-<N>.md"
+# --template, not --jq: --jq appends a newline that the PATCH then stores, so
+# every round trip would grow the body by a blank line. --template is byte-exact.
+gh api repos/zhollis21/KingdomWatch/issues/<N> --template '{{.body}}' > "<scratch>/issue-<N>.md"
 cp "<scratch>/issue-<N>.md" "<scratch>/issue-<N>.orig.md"
 # edit issue-<N>.md, then:
 diff "<scratch>/issue-<N>.orig.md" "<scratch>/issue-<N>.md"

@@ -96,7 +96,7 @@ gh api repos/zhollis21/KingdomWatch/issues/<N> --jq '
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues/<N>/comments' \
-  | jq -r '.[] | "--- comment by \(.user.login) @ \(.created_at) ---", .body'
+  -Format '--- comment by {user.login} @ {created_at} ---\n{body}'
 ```
 
 That second call deliberately renders every comment body, not just a count. Comments
@@ -141,6 +141,18 @@ git merge-base --is-ancestor main origin/main   # confirm fast-forward is safe
 git branch -f main origin/main                  # when not checked out on main
 ```
 
+Two things this protects beyond the obvious:
+
+- **Squash merges break `--contains`.** This repo squash-merges, so
+  `git branch -r --contains <branch-sha>` returns nothing even for work that
+  shipped. Don't conclude from an empty result that a branch is unmerged — check
+  whether the *files* are on `origin/main` (`git cat-file -e origin/main:<path>`),
+  or look for the squash commit by PR number.
+- **Say which ref you checked.** When you report "X isn't implemented yet" or
+  "Y doesn't exist on main", name the ref and SHA you verified against, so a stale
+  local can be spotted by the user in one glance rather than after the plan is
+  built on it.
+
 **Search broadly before concluding anything.** An empty search result is not
 evidence of absence, it is usually evidence you guessed the wrong word. Try at
 least two phrasings before believing a negative. When you do report something as
@@ -154,16 +166,15 @@ git log --oneline --since=<issue createdAt> --grep=<keyword> -i
 git log --format='%h %ad %s' --date=short -S "<snippet>" -- <path>
 # Repo-scoped, then filtered here: the search/ endpoints are refused as well
 # ("sessions are bound to their configured repositories").
-# The term is matched literally, not as a regex: jq's test() would read
-# `Found(` as an unterminated group and fail outright, and `a.b` would
-# quietly match `axb`. --arg also keeps the shell out of the quoting.
+# -Contains is a literal, case-insensitive match on title + body, never a regex,
+# so `Found(` or `a.b` mean exactly what they say. The filters are the script's
+# own because jq is not installed on the Windows dev machine.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/pulls?state=all' \
-  | jq -r --arg keyword '<keyword>' '.[] | select((.title + " " + (.body // "")) | ascii_downcase | contains($keyword | ascii_downcase))
-           | "#\(.number) [\(.state)] \(.title)"' | head -5
+  -Contains '<keyword>' -Format '#{number} [{state}] {title}' -First 5
 ```
 
 `git log -S` is the more reliable of the two log commands — it finds the commit
@@ -190,17 +201,13 @@ up on is just a description of the gap.
 open ones:
 
 ```bash
-# The term is matched literally, not as a regex: jq's test() would read
-# `Found(` as an unterminated group and fail outright, and `a.b` would
-# quietly match `axb`. --arg also keeps the shell out of the quoting.
+# -Contains is a literal, case-insensitive match on title + body, never a regex.
 # One command, not a loop: `gh --paginate` follows a Link header the proxy
 # rejects, and a `for` loop is a compound command that starts with `for`, so
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' \
-  | jq -r --arg topic '<topic>' '.[] | select(.pull_request == null)
-           | select((.title + " " + (.body // "")) | ascii_downcase | contains($topic | ascii_downcase))
-           | "#\(.number) [\(.state)] \(.title)"' | head -8
+  -IssuesOnly -Contains '<topic>' -Format '#{number} [{state}] {title}' -First 8
 ```
 
 What you're looking for is not only exact duplicates but **dependency order**,
@@ -221,6 +228,18 @@ open blocker, and starting it anyway is a decision for the user, not a default.
 Report the relationship you actually found rather than rounding it to
 "duplicate": _blocks_, _overlaps in part_, _supersedes_, and _duplicates_ lead to
 different recommendations.
+
+**The premise moved.** The code may have changed underneath the issue: the work
+is still wanted, but the shape the issue describes — the system it extends, the
+file it names, the step it slots into — no longer matches how things work. Read
+the relevant code and design doc section before accepting the issue's account of
+how things currently are, and plan against what is there now.
+
+Don't over-apply it. An old issue whose citations have drifted is not the same
+as one whose premise moved: if the mechanism it describes still behaves that
+way, the issue is valid and only its line numbers need fixing. Check the code
+before concluding a premise moved, exactly as you would before concluding an
+issue is stale.
 
 **The unstated assumption.** Most issues quietly assume some mechanism already
 behaves a certain way, and the assumption is worth checking directly — it is
@@ -274,7 +293,7 @@ findings at all. Mark the comment and look for that marker first:
 # it falls outside this skill's command-prefix allow rules. The script throws
 # rather than quietly truncating if a collection outgrows its page cap.
 pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues/<N>/comments' \
-  | jq -r '.[] | select(.body | contains("<!-- kickoff-findings -->")) | .id'
+  -Contains '<!-- kickoff-findings -->' -Format '{id}'
 
 # Update it in place
 gh api repos/zhollis21/KingdomWatch/issues/comments/<id> -X PATCH -f body='<!-- kickoff-findings -->
@@ -519,7 +538,9 @@ place, and write the whole thing back.
 
 ```bash
 # 1. Fetch the current body, and keep a pristine copy to diff against.
-gh api repos/zhollis21/KingdomWatch/issues/<N> --jq .body > "<scratch>/issue-<N>-body.md"
+#    --template, not --jq: --jq appends a newline that step 4 would store, so
+#    every round trip would grow the body by a blank line. --template is byte-exact.
+gh api repos/zhollis21/KingdomWatch/issues/<N> --template '{{.body}}' > "<scratch>/issue-<N>-body.md"
 cp "<scratch>/issue-<N>-body.md" "<scratch>/issue-<N>-body.orig.md"
 
 # 2. Edit issue-<N>-body.md, changing only the claims the plan contradicts.

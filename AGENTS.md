@@ -151,9 +151,10 @@ build it with `tools/Look.ps1`, look at the screenshot, and hand that back.
 `tools/UnityPlayer.psm1` (finding Unity, the art check, the player build).
 
 ```powershell
-# Every page of a REST collection, as one JSON array — for the skills, which
-# cannot page in a shell loop (see below)
-pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all'
+# Every page of a REST collection, as one JSON array — or one line per item with
+# -Format, filtered with -IssuesOnly / -Contains / -First, so no jq is needed.
+# For the skills, which cannot page in a shell loop (see below)
+pwsh tools/Get-GhPages.ps1 'repos/zhollis21/KingdomWatch/issues?state=all' -IssuesOnly -Contains 'granary' -Format '#{number} [{state}] {title}'
 ```
 
 `tools/GitHubApi.psm1` is not a script but the shared GitHub REST helpers the
@@ -217,6 +218,9 @@ with `for` and gets bounced to the interactive classifier — the same trap as
 putting `-X POST` before the endpoint. `tools/Get-GhPages.ps1` exists for that:
 it prints a whole collection as one JSON array, the command starts with `pwsh`,
 and it throws rather than truncating when a collection outgrows its page cap.
+Its `-Format` / `-Contains` / `-IssuesOnly` / `-First` filters stand in for
+`jq`, which is not installed on the Windows dev machine — don't pipe it into
+`jq`.
 
 `tools/` and `.claude/skills/` are clear of all of the above; keep them that
 way. A `gh issue`/`gh pr` one-liner from memory is the likely way it creeps
