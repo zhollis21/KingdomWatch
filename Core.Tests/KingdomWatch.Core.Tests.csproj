@@ -1,21 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <AssemblyName>KingdomWatch.Core.Tests</AssemblyName>
     <RootNamespace>KingdomWatch.Core.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!--
+    Tests run on Microsoft.Testing.Platform, not VSTest (#204): the project
+    builds into an executable that runs its own tests, and global.json puts
+    dotnet test in MTP mode. Set here rather than in Directory.Build.props,
+    which also reaches Core, and OutputType Exe would make Core a program.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.0" />
-    <PackageReference Include="NUnit" Version="4.3.2" />
-    <PackageReference Include="NUnit.Analyzers" Version="4.7.0" />
-    <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
+    <PackageReference Include="coverlet.MTP" Version="10.1.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.15.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.1" />
   </ItemGroup>
 
   <ItemGroup>

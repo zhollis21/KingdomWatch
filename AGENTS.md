@@ -18,8 +18,8 @@ Prose such as "Depends on #4" or "Related to #35" is fine for a reader but invis
 ```
 Game/              Unity project (6.6 -> 6.7 LTS). The only Unity-dependent piece.
 Core/              netstandard2.1, zero Unity dependencies, single-target
-Core.Tests/        net10.0, NUnit, references Core
-Harness/           net10.0 console, references Core
+Core.Tests/        net11.0, NUnit, references Core
+Harness/           net11.0 console, references Core
 docs/design/       full design and technical plan, plus the economy ladder
 ```
 
@@ -28,8 +28,8 @@ See `docs/design/kingdom-watch-plan-v7.1.md` §5 for the architectural reasoning
 ### Building
 
 ```powershell
-dotnet build KingdomWatch.sln
-dotnet test KingdomWatch.sln -c Release
+dotnet build KingdomWatch.slnx
+dotnet test KingdomWatch.slnx -c Release
 dotnet run --project Harness
 ```
 
@@ -68,8 +68,10 @@ Two exclusions from the hash are load-bearing: storage handles (a slot index and
 Test coverage, when you want to see what is untested:
 
 ```powershell
-dotnet test --collect:"XPlat Code Coverage" --filter "FullyQualifiedName!~CoreAssemblyContractTests"
+dotnet test --coverlet --coverlet-output-format cobertura --results-directory Core.Tests/TestResults --filter "FullyQualifiedName!~CoreAssemblyContractTests"
 ```
+
+Tests run on Microsoft.Testing.Platform rather than VSTest (#204): `global.json` puts `dotnet test` in that mode, and `Core.Tests` builds into an executable that runs its own tests. VSTest-style `--filter` expressions work unchanged. Two options are worth knowing while iterating: `--maximum-failed-tests 1` stops the run at the first failure instead of finishing the whole suite, and `--timeout 20m` ends a run that has hung.
 
 The filter is load-bearing. `coverlet` instruments `KingdomWatch.Core.dll` to insert hit tracking, and the rewritten assembly picks up `System.Runtime` and `System.Threading` references — so the zero-dependency contract test fails under coverage, correctly, because the instrumented assembly is not the one that ships. CI runs the full suite uninstrumented, so nothing is skipped there. Output lands in `Core.Tests/TestResults/` (git-ignored).
 

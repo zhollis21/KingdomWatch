@@ -30,7 +30,7 @@ if ((Test-Path $stamp) -and (Get-Content $stamp -Raw).Trim() -eq $hash) {
     exit 0
 }
 
-$output = & dotnet build (Join-Path $root 'KingdomWatch.sln') -c Release -v q -nologo 2>&1 | Out-String
+$output = & dotnet build (Join-Path $root 'KingdomWatch.slnx') -c Release -v q -nologo 2>&1 | Out-String
 
 if ($LASTEXITCODE -eq 0) {
     Set-Content -Path $stamp -Value $hash -NoNewline
@@ -49,6 +49,6 @@ if ($payload.stop_hook_active) {
 
 @{
     decision = 'block'
-    reason   = "dotnet build KingdomWatch.sln -c Release failed. Fix these before finishing:`n$errors"
+    reason   = "dotnet build KingdomWatch.slnx -c Release failed. Fix these before finishing:`n$errors"
 } | ConvertTo-Json -Compress
 exit 0

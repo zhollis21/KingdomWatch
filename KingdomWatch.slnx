@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Core/KingdomWatch.Core.csproj" />
+  <Project Path="Core.Tests/KingdomWatch.Core.Tests.csproj" />
+  <Project Path="Harness/KingdomWatch.Harness.csproj" />
+</Solution>

@@ -16,7 +16,7 @@
 
     <!--
       Implicit usings inject a different set per target framework, so code that
-      compiles in the net10.0 test project would not necessarily compile in
+      compiles in the net11.0 test project would not necessarily compile in
       netstandard2.1 Core. Explicit usings keep the two honest.
     -->
     <ImplicitUsings>disable</ImplicitUsings>
